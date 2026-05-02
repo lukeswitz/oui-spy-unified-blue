@@ -1,0 +1,211 @@
+/**
+ * OUI-SPY Unified Firmware — Shared Protocol Definitions
+ *
+ * All structs, enums, UUIDs, and queue definitions shared between
+ * the GATT server, engine registry, and individual engines.
+ */
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+
+// Hardware pins (XIAO ESP32-S3)
+#define PIN_BUZZER     3
+#define PIN_LED        21    // Onboard LED, active LOW
+#define PIN_NEOPIXEL   4     // WS2812B data
+#define PIN_GPS_RX     44    // Optional hardware GPS
+#define PIN_GPS_TX     43
+
+// Firmware version
+#define FW_VERSION     "3.0.0"
+#define FW_VERSION_NUM 0x030000
+
+// ============================================================================
+// Engine IDs — bitmask-compatible
+// ============================================================================
+enum EngineId : uint8_t {
+    ENGINE_DETECTOR   = 0,  // bitmask 0x01
+    ENGINE_FLOCK_BLE  = 1,  // bitmask 0x02
+    ENGINE_FLOCK_WIFI = 2,  // bitmask 0x04
+    ENGINE_FOXHUNTER  = 3,  // bitmask 0x08
+    ENGINE_SKYSPY     = 4,  // bitmask 0x10
+    ENGINE_UNIPWN     = 5,  // bitmask 0x20
+    ENGINE_COUNT      = 6
+};
+
+#define ENGINE_BITMASK(id) (1 << (id))
+
+// ============================================================================
+// Engine State
+// ============================================================================
+enum EngineState : uint8_t {
+    ESTATE_DISABLED      = 0,
+    ESTATE_IDLE          = 1,
+    ESTATE_SCANNING      = 2,
+    ESTATE_ACTIVE        = 3,
+    ESTATE_ALERTING      = 4,
+    // UniPwn-specific
+    ESTATE_TARGET_SEL    = 5,
+    ESTATE_CONNECTING    = 6,
+    ESTATE_EXPLOITING    = 7,
+    ESTATE_COMPLETE      = 8
+};
+
+// ============================================================================
+// Detection Methods
+// ============================================================================
+// Flock-WiFi methods
+#define METHOD_OUI_ADDR1       0
+#define METHOD_OUI_ADDR2       1
+#define METHOD_OUI_ADDR3       2
+#define METHOD_SSID            3
+#define METHOD_WILDCARD_PROBE  4
+
+// Flock-BLE methods
+#define METHOD_OUI_MATCH       0
+#define METHOD_NAME_MATCH      1
+#define METHOD_MFG_ID          2
+#define METHOD_RAVEN_UUID      3
+
+// Sky Spy methods
+#define METHOD_ODID_BLE        0
+#define METHOD_ODID_NAN        1
+#define METHOD_ODID_BEACON     2
+
+// ============================================================================
+// Detection Event — produced by engines, consumed by GATT notification task
+// ============================================================================
+typedef struct __attribute__((packed)) {
+    uint8_t  engine_id;          // EngineId
+    uint8_t  mac[6];             // Device MAC
+    int8_t   rssi;               // Signal strength
+    uint8_t  channel;            // WiFi channel or 0 for BLE
+    uint32_t timestamp_ms;       // millis() at detection
+    uint8_t  method;             // Engine-specific detection method
+
+    // Engine-specific extension (union saves RAM)
+    union {
+        // Flock-BLE / Flock-WiFi
+        struct {
+            uint8_t is_raven;
+            char    raven_fw[16];
+        } flock;
+
+        // Sky Spy ODID
+        struct {
+            char    uav_id[21];
+            char    op_id[21];
+            double  drone_lat;
+            double  drone_lon;
+            int16_t altitude_msl;
+            int16_t height_agl;
+            int16_t speed;
+            int16_t heading;
+            double  pilot_lat;
+            double  pilot_lon;
+        } odid;
+
+        // UniPwn
+        struct {
+            char    robot_type[8];
+            uint8_t exploited;
+            char    serial_num[32];
+        } unipwn;
+
+        // Detector
+        struct {
+            char    filter_desc[32];
+            uint8_t is_full_mac;
+        } detector;
+
+        // Foxhunter (RSSI sent separately via dedicated characteristic)
+        struct {
+            uint8_t _reserved;
+        } foxhunter;
+    } ext;
+} DetectionEvent;
+
+// ============================================================================
+// GPS Data — received from phone app via BLE
+// ============================================================================
+typedef struct __attribute__((packed)) {
+    double   latitude;
+    double   longitude;
+    float    altitude;
+    float    speed;
+    float    heading;
+    float    accuracy;
+    uint8_t  satellite_count;
+    int64_t  timestamp_ms;
+} GpsData;
+
+// ============================================================================
+// Engine Command — from GATT write to engine task
+// ============================================================================
+typedef struct {
+    uint8_t  command;       // 0x01=enable, 0x00=disable, 0x10=config_update
+    uint8_t  engine_id;
+    uint8_t  payload[64];
+    uint8_t  payload_len;
+} EngineCommand;
+
+// ============================================================================
+// Queues (extern, created in main.cpp)
+// ============================================================================
+extern QueueHandle_t detectionQueue;   // DetectionEvent, depth 64
+extern QueueHandle_t engineCmdQueue;   // EngineCommand, depth 8
+
+// ============================================================================
+// GPS State (extern, updated by BLE write callback)
+// ============================================================================
+extern volatile GpsData currentGps;
+extern volatile bool    gpsValid;
+
+// ============================================================================
+// GATT UUIDs
+// ============================================================================
+// Base UUID matches Flutter app: 0000XXXX-0ui5-4py0-bad0-c010ne1pan1c
+// NimBLE needs valid hex — "0ui5" isn't valid hex. Use the app's literal strings.
+// flutter_blue_plus Guid accepts arbitrary strings; NimBLE needs valid 128-bit UUIDs.
+// Canonical form: lowercase hex only. Map app UUIDs to valid hex.
+//
+// App uses: 0000XXXX-0ui5-4py0-bad0-c010ne1pan1c  (not valid hex)
+// We must use the SAME bytes on both sides.
+// flutter_blue_plus Guid() auto-lowercases and parses as string match.
+// NimBLE parses as 128-bit UUID from hex string.
+// Solution: use valid hex that both sides agree on.
+#define UUID_BASE            "0a15-4b70-ba00-c010ae1ba01c"
+#define SVC_UUID             "00000001-" UUID_BASE
+#define CHR_DEVICE_INFO      "00000001-" UUID_BASE
+#define CHR_ENGINE_CONTROL   "00000002-" UUID_BASE
+#define CHR_DETECTION_EVENTS "00000010-" UUID_BASE
+#define CHR_DEVICE_STATUS    "00000011-" UUID_BASE
+#define CHR_GPS_RECEIVE      "00000012-" UUID_BASE
+#define CHR_HARDWARE_CONFIG  "00000020-" UUID_BASE
+#define CHR_ALERT_CONFIG     "00000021-" UUID_BASE
+#define CHR_FOXHUNTER_CONFIG "00000130-" UUID_BASE
+#define CHR_FOXHUNTER_RSSI   "00000131-" UUID_BASE
+#define CHR_SKYSPY_TELEMETRY "00000140-" UUID_BASE
+#define CHR_UNIPWN_DEVICES   "00000150-" UUID_BASE
+#define CHR_UNIPWN_COMMAND   "00000151-" UUID_BASE
+
+// ============================================================================
+// Helper: push detection onto queue (ISR-safe variant available)
+// ============================================================================
+static inline bool pushDetection(const DetectionEvent* evt) {
+    if (detectionQueue == NULL) return false;
+    return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(10)) == pdTRUE;
+}
+
+static inline bool pushDetectionFromISR(const DetectionEvent* evt) {
+    if (detectionQueue == NULL) return false;
+    BaseType_t wake = pdFALSE;
+    bool ok = xQueueSendFromISR(detectionQueue, evt, &wake) == pdTRUE;
+    if (wake) portYIELD_FROM_ISR();
+    return ok;
+}
+
+#endif // PROTOCOL_H
