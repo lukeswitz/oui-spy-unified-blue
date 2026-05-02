@@ -27,6 +27,8 @@ static NimBLECharacteristic* chrGpsReceive = nullptr;
 static NimBLECharacteristic* chrHardwareConfig = nullptr;
 static NimBLECharacteristic* chrAlertConfig = nullptr;
 static NimBLECharacteristic* chrFoxhunterRssi = nullptr;
+static NimBLECharacteristic* chrFoxhunterConfig = nullptr;
+static NimBLECharacteristic* chrUnipwnCommand = nullptr;
 
 static bool phoneConnected = false;
 
@@ -181,9 +183,43 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 // ============================================================================
+// Foxhunter Config Callback — receive target MAC from app
+// ============================================================================
+extern void foxhunterSetTarget(const uint8_t* mac);
+
+class FoxhunterConfigCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.length() < 6) return;
+        foxhunterSetTarget((const uint8_t*)val.data());
+        Serial.printf("[BLE] Foxhunter target set via app\n");
+    }
+};
+
+// ============================================================================
+// UniPwn Command Callback — receive exploit commands from app
+// ============================================================================
+class UnipwnCommandCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.length() < 8) return;
+        // Parse: target_mac[6] command_type[1] payload_len[1] payload[N]
+        const uint8_t* data = (const uint8_t*)val.data();
+        uint8_t cmdType = data[6];
+        uint8_t payloadLen = data[7];
+        Serial.printf("[BLE] UniPwn command: type=%d target=%02x:%02x:%02x:%02x:%02x:%02x payload=%d bytes\n",
+                      cmdType, data[0], data[1], data[2], data[3], data[4], data[5], payloadLen);
+        // UniPwn exploitation requires BLE client mode — queued for engine to process
+        // Full exploitation chain not implemented in v3 (requires dedicated BLE client task)
+    }
+};
+
+// ============================================================================
 // Static callback instances
 // ============================================================================
 static ServerCallbacks serverCb;
+static FoxhunterConfigCallbacks foxhunterConfigCb;
+static UnipwnCommandCallbacks unipwnCommandCb;
 static EngineControlCallbacks engineControlCb;
 static GpsReceiveCallbacks gpsReceiveCb;
 static HardwareConfigCallbacks hwConfigCb;
@@ -260,11 +296,25 @@ void bleGattInit(void) {
     );
     chrAlertConfig->setCallbacks(&alertConfigCb);
 
+    // -- Foxhunter Config (WRITE) --
+    chrFoxhunterConfig = svc->createCharacteristic(
+        CHR_FOXHUNTER_CONFIG,
+        NIMBLE_PROPERTY::WRITE
+    );
+    chrFoxhunterConfig->setCallbacks(&foxhunterConfigCb);
+
     // -- Foxhunter RSSI (NOTIFY) --
     chrFoxhunterRssi = svc->createCharacteristic(
         CHR_FOXHUNTER_RSSI,
         NIMBLE_PROPERTY::NOTIFY
     );
+
+    // -- UniPwn Command (WRITE, NOTIFY) --
+    chrUnipwnCommand = svc->createCharacteristic(
+        CHR_UNIPWN_COMMAND,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+    );
+    chrUnipwnCommand->setCallbacks(&unipwnCommandCb);
 
     svc->start();
 
