@@ -19,6 +19,11 @@
 #include "engine_registry.h"
 #include "ble_gatt.h"
 #include "engines/flock_ble.h"
+#include "engines/detector.h"
+#include "engines/foxhunter.h"
+#include "engines/skyspy.h"
+#include "engines/flock_wifi.h"
+#include "engines/unipwn.h"
 
 // ============================================================================
 // Global queues and GPS state
@@ -153,14 +158,16 @@ void setup() {
     // Initialize engine registry
     engineRegistryInit();
 
-    // Register engines
+    // Register all engines
+    engineRegister(ENGINE_DETECTOR, &detectorCallbacks);
     engineRegister(ENGINE_FLOCK_BLE, &flockBleCallbacks);
+    engineRegister(ENGINE_FLOCK_WIFI, &flockWifiCallbacks);
+    engineRegister(ENGINE_FOXHUNTER, &foxhunterCallbacks);
+    engineRegister(ENGINE_SKYSPY, &skyspyCallbacks);
+    engineRegister(ENGINE_UNIPWN, &unipwnCallbacks);
 
     // Initialize BLE GATT server
     bleGattInit();
-
-    // Auto-enable Flock-BLE on boot (no app needed to test)
-    engineEnable(ENGINE_FLOCK_BLE);
 
     // Create FreeRTOS tasks
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
