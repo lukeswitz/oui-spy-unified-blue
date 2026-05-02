@@ -3,13 +3,16 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:share_plus/share_plus.dart';
 
 class WardriveScreen extends ConsumerStatefulWidget {
   const WardriveScreen({super.key});
@@ -99,6 +102,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
               Positioned(
                 top: 0, left: 0, right: 0,
                 child: WardriveStats(stats: wd.currentStats),
+              ),
+
+            // Idle: completed session summary (if map data present)
+            if (!wd.isActive && wd.hasSessionData)
+              Positioned(
+                top: 0, left: 0, right: 0,
+                child: _CompletedSessionBar(wd: wd, ref: ref),
               ),
 
             // Idle: mode selector + start
@@ -374,10 +384,43 @@ class _IdleControls extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        _Pill(
-          label: 'START',
-          color: t.color,
-          onTap: () => ref.read(wardriveProvider).startSession(),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: () => showModalBottomSheet(
+                context: ref.context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const _SessionHistorySheet(),
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.history, size: 14, color: AppTheme.textSecondary),
+                    SizedBox(width: 6),
+                    Text('SESSIONS', style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 11,
+                      fontWeight: FontWeight.w700, letterSpacing: 1,
+                    )),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            _Pill(
+              label: 'START',
+              color: t.color,
+              onTap: () => ref.read(wardriveProvider).startSession(),
+            ),
+          ],
         ),
       ],
     );
@@ -636,6 +679,233 @@ class _MarkerDot extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _CompletedSessionBar extends StatelessWidget {
+  const _CompletedSessionBar({required this.wd, required this.ref});
+  final WardriveController wd;
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.background.withValues(alpha: 0.85),
+        border: const Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, size: 14, color: AppTheme.success),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${wd.distanceKm.toStringAsFixed(1)} km',
+              style: const TextStyle(
+                color: AppTheme.textSecondary, fontSize: 10,
+                fontFamily: 'monospace', fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _shareCsv(context),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.upload, size: 12, color: AppTheme.accent),
+                  SizedBox(width: 4),
+                  Text('CSV', style: TextStyle(
+                    color: AppTheme.accent, fontSize: 9,
+                    fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                  )),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () {
+              wd.detections.clear();
+              wd.routePoints.clear();
+              wd.notifyListeners();
+            },
+            child: const Icon(Icons.close, size: 14, color: AppTheme.textDim),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareCsv(BuildContext context) async {
+    final sid = wd.lastCompletedSessionId ?? wd.sessionId;
+    if (sid.isEmpty) return;
+    final file = await wd.getCsvFile(sid);
+    if (file == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No CSV file found for this session')),
+        );
+      }
+      return;
+    }
+    await Share.shareXFiles([XFile(file.path)], subject: 'OUI-SPY WiGLE CSV');
+  }
+}
+
+class _SessionHistorySheet extends ConsumerWidget {
+  const _SessionHistorySheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.watch(databaseProvider);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.5,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppTheme.background,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border(top: BorderSide(color: AppTheme.border)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 32, height: 3,
+                decoration: BoxDecoration(
+                  color: AppTheme.textDim, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 12),
+              const Text('WARDRIVE SESSIONS', style: TextStyle(
+                color: AppTheme.textPrimary, fontSize: 12,
+                fontWeight: FontWeight.w700, letterSpacing: 1.5,
+              )),
+              const SizedBox(height: 8),
+              Expanded(
+                child: StreamBuilder<List<Session>>(
+                  stream: db.watchWardriveSessions(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator(
+                        color: AppTheme.accent, strokeWidth: 2));
+                    }
+                    final sessions = snapshot.data!
+                        .where((s) => s.endedAt != null)
+                        .toList();
+                    if (sessions.isEmpty) {
+                      return const Center(child: Text(
+                        'No completed sessions',
+                        style: TextStyle(color: AppTheme.textDim, fontSize: 12),
+                      ));
+                    }
+                    return ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemCount: sessions.length,
+                      itemBuilder: (_, i) => _SessionRow(
+                        session: sessions[i],
+                        onTap: () {
+                          Navigator.pop(context);
+                          ref.read(wardriveProvider).loadSession(sessions[i].id);
+                        },
+                        onShare: () => _shareSession(context, ref, sessions[i].id),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _shareSession(BuildContext context, WidgetRef ref, String sid) async {
+    final wd = ref.read(wardriveProvider);
+    final file = await wd.getCsvFile(sid);
+    if (file != null) {
+      await Share.shareXFiles([XFile(file.path)], subject: 'OUI-SPY WiGLE CSV');
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('CSV not found \u2014 session may predate auto-save')),
+        );
+      }
+    }
+  }
+}
+
+class _SessionRow extends StatelessWidget {
+  const _SessionRow({required this.session, required this.onTap, required this.onShare});
+  final Session session;
+  final VoidCallback onTap;
+  final VoidCallback onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = DateTime.fromMillisecondsSinceEpoch(session.startedAt);
+    final dateStr = DateFormat('MMM d, yyyy  HH:mm').format(start);
+    final duration = session.endedAt != null
+        ? Duration(milliseconds: session.endedAt! - session.startedAt)
+        : Duration.zero;
+    final durStr = '${duration.inMinutes}m ${duration.inSeconds % 60}s';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.route, size: 16, color: AppTheme.accent),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dateStr, style: const TextStyle(
+                    color: AppTheme.textPrimary, fontSize: 11,
+                    fontFamily: 'monospace', fontWeight: FontWeight.w500,
+                  )),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${session.distanceKm.toStringAsFixed(1)} km',
+                    style: const TextStyle(
+                      color: AppTheme.textDim, fontSize: 9,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            GestureDetector(
+              onTap: onShare,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                child: const Icon(Icons.ios_share, size: 14, color: AppTheme.textDim),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

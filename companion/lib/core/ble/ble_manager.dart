@@ -269,9 +269,20 @@ class BleManager {
 
   Future<void> enableEngine(Engine engine) async {
     if (_engineControl == null) return;
+    // WiFi engines are mutually exclusive — disable any running WiFi engine first
+    if (engine.isWifi) {
+      for (final conflict in Engine.values.where((e) => e.isWifi && e != engine)) {
+        await _engineControl!.write(
+          BleProtocol.encodeEngineControl(engine: conflict, enable: false),
+        );
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
     await _engineControl!.write(
       BleProtocol.encodeEngineControl(engine: engine, enable: true),
     );
+    // Read back state — notifications get dropped under detection flood
+    await _refreshEngineState();
   }
 
   Future<void> disableEngine(Engine engine) async {
@@ -279,6 +290,7 @@ class BleManager {
     await _engineControl!.write(
       BleProtocol.encodeEngineControl(engine: engine, enable: false),
     );
+    await _refreshEngineState();
   }
 
   /// Disable ALL engines on firmware — single BLE write.
@@ -286,6 +298,19 @@ class BleManager {
     if (_engineControl == null) return;
     await _engineControl!.write(BleProtocol.encodeDisableAll());
     DebugLog.log('BLE: sent DISABLE_ALL');
+    await _refreshEngineState();
+  }
+
+  /// Read engine state directly — bypasses unreliable NOTIFY under load.
+  Future<void> _refreshEngineState() async {
+    if (_engineControl == null) return;
+    try {
+      await Future.delayed(const Duration(milliseconds: 150));
+      final data = await _engineControl!.read();
+      _engineStates.add(BleProtocol.decodeEngineStatus(data));
+    } catch (e) {
+      DebugLog.log('BLE: engine state read failed: $e');
+    }
   }
 
   // -- GPS push --

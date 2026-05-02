@@ -8,9 +8,12 @@ plugins {
 android {
     namespace = "tech.colonelpanic.oui_spy"
     compileSdk = flutter.compileSdkVersion
+    // ndkVersion pinned to avoid corrupted 28.2 auto-download
+    // see: https://github.com/flutter/flutter/issues/164085
     ndkVersion = "28.0.13004108"
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -37,6 +40,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

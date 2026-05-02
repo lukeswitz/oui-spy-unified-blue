@@ -29,7 +29,7 @@ static int channelIdx = 0;
 static unsigned long lastChannelHop = 0;
 static const unsigned long DWELL_MS = 350;
 
-static bool scanning = false;
+static volatile bool scanning = false;
 
 // Dedup ring
 #define WIFI_DEDUP_SIZE 16
@@ -79,6 +79,7 @@ static bool IRAM_ATTR isDedupCooldownISR(const uint8_t* mac) {
 // ============================================================================
 
 static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type) {
+    if (!scanning) return;
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
@@ -156,8 +157,11 @@ static void flockWifiStart(void) {
 }
 
 static void flockWifiStop(void) {
+    scanning = false;  // volatile — ISR callback checks this
+    esp_wifi_set_promiscuous_rx_cb(NULL);
     esp_wifi_set_promiscuous(false);
-    scanning = false;
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
     Serial.println("[FLOCK-WIFI] Stopped");
 }
 

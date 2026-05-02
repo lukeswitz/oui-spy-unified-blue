@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -6,14 +7,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
-import 'package:oui_spy/core/db/app_database.dart' hide Detection;
+import 'package:oui_spy/core/db/app_database.dart' hide Detection, Session;
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/models/node.dart';
 import 'package:oui_spy/core/models/session.dart';
 import 'package:drift/drift.dart' as drift;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -65,11 +70,19 @@ enum WardriveRadio {
 }
 
 class WardriveController extends ChangeNotifier {
-  WardriveController(this._ble, this._gps, this._db);
+  WardriveController(this._ble, this._gps, this._db) {
+    // Re-enable engines after BLE reconnect (DISABLE_ALL fires on every connect)
+    _connSub = _ble.connectionState.listen((connState) {
+      if (connState == NodeConnectionState.ready && isActive) {
+        _reEnableEngines();
+      }
+    });
+  }
 
   final BleManager _ble;
   final GpsProvider _gps;
   final AppDatabase _db;
+  StreamSubscription<NodeConnectionState>? _connSub;
 
   WardriveState state = WardriveState.idle;
   WardriveTarget target = WardriveTarget.flock;
@@ -202,11 +215,167 @@ class WardriveController extends ChangeNotifier {
         uniqueMacCount: drift.Value(uniqueMacs.length),
         distanceKm: drift.Value(distanceKm),
       ));
+
+      // Auto-save WiGLE CSV for later upload
+      await _saveCsv(sessionId, detections);
+
       DebugLog.log('WARDRIVE: saved $sessionId (${detections.length} det, ${uniqueMacs.length} unique, ${_flockMacs.length} flock)');
     }
 
+    // Keep map data (routePoints, detections, markers) visible.
+    // Only cleared on next startSession().
+    _lastCompletedSessionId = sessionId;
     state = WardriveState.idle;
     notifyListeners();
+  }
+
+  /// Session ID of the most recently completed or loaded session.
+  String? _lastCompletedSessionId;
+  String? get lastCompletedSessionId => _lastCompletedSessionId;
+
+  /// Whether we have map data from a completed/loaded session.
+  bool get hasSessionData =>
+      routePoints.isNotEmpty || detections.isNotEmpty;
+
+  /// Load a previously saved wardrive session onto the map.
+  Future<void> loadSession(String sid) async {
+    if (isActive) return;
+
+    final dbRows = await _db.getDetectionMapsForSession(sid);
+    detections.clear();
+    _dedupedByMac.clear();
+    rawDetectionCount = 0;
+    uniqueMacs.clear();
+    _flockMacs.clear();
+    routePoints.clear();
+    distanceKm = 0;
+    droneCount = 0;
+    lastGpsForDistance = null;
+    foxhuntTarget = null;
+
+    for (final row in dbRows) {
+      final det = _detectionFromDb(row);
+      rawDetectionCount++;
+      uniqueMacs.add(det.macAddress);
+      if (det.engine == Engine.flockBle || det.engine == Engine.flockWifi) {
+        _flockMacs.add(det.macAddress);
+      }
+      if (det.engine == Engine.skySpy) droneCount++;
+
+      final key = '${det.macAddress}|${det.engine.name}';
+      final existing = _dedupedByMac[key];
+      if (existing != null) {
+        _dedupedByMac[key] = det.copyWith(
+          count: existing.count + 1,
+          rssi: det.rssi > existing.rssi ? det.rssi : existing.rssi,
+        );
+      } else {
+        _dedupedByMac[key] = det;
+        detections.add(det);
+      }
+
+      if (det.latitude != null && det.longitude != null) {
+        routePoints.add(LatLng(det.latitude!, det.longitude!));
+      }
+    }
+
+    // Reconstruct distance from route
+    for (var i = 1; i < routePoints.length; i++) {
+      distanceKm += _haversineKm(
+        routePoints[i - 1].latitude, routePoints[i - 1].longitude,
+        routePoints[i].latitude, routePoints[i].longitude,
+      );
+    }
+
+    // Load session metadata for start time display.
+    final sessionRow = await _db.getSessionById(sid);
+    if (sessionRow != null) {
+      startTime = DateTime.fromMillisecondsSinceEpoch(
+        (sessionRow as dynamic).startedAt as int,
+      );
+    }
+
+    sessionId = sid;
+    _lastCompletedSessionId = sid;
+    notifyListeners();
+    DebugLog.log('WARDRIVE: loaded session $sid (${detections.length} det, ${routePoints.length} pts)');
+  }
+
+  /// Convert a detection map (from `getDetectionMapsForSession`) to our model.
+  Detection _detectionFromDb(Map<String, dynamic> row) {
+    final engineName = row['engine'] as String;
+    final engine = Engine.values.firstWhere(
+      (e) => e.name == engineName,
+      orElse: () => Engine.wardrive,
+    );
+
+    return Detection(
+      id: '${row['id']}',
+      sessionId: row['sessionId'] as String,
+      nodeId: row['nodeId'] as String,
+      macAddress: row['macAddress'] as String,
+      deviceName: (row['deviceName'] as String?) ?? '',
+      engine: engine,
+      method: row['detectionMethod'] as String,
+      rssi: row['rssi'] as int,
+      channel: row['channel'] as int,
+      deviceTimestampMs: row['deviceTimestampMs'] as int,
+      appTimestamp: DateTime.fromMillisecondsSinceEpoch(row['appTimestamp'] as int),
+      ssid: (row['ssid'] as String?) ?? '',
+      count: (row['count'] as int?) ?? 1,
+      latitude: row['latitude'] as double?,
+      longitude: row['longitude'] as double?,
+      altitude: row['altitude'] as double?,
+      speed: row['speed'] as double?,
+      heading: row['heading'] as double?,
+      accuracy: row['accuracy'] as double?,
+      satelliteCount: row['satelliteCount'] as int?,
+    );
+  }
+
+  /// Save WiGLE CSV to persistent storage.
+  Future<String?> _saveCsv(String sid, List<Detection> dets) async {
+    if (dets.isEmpty) return null;
+    try {
+      final dir = await _wardriveDir();
+      final file = File(path.join(dir.path, '$sid.csv'));
+      final csv = WigleCsv.generate(dets);
+      await file.writeAsString(csv);
+      DebugLog.log('WARDRIVE: CSV saved ${file.path}');
+      return file.path;
+    } catch (e) {
+      DebugLog.log('WARDRIVE: CSV save failed: $e');
+      return null;
+    }
+  }
+
+  /// Get CSV file for a session (null if not yet saved).
+  Future<File?> getCsvFile(String sid) async {
+    final dir = await _wardriveDir();
+    final file = File(path.join(dir.path, '$sid.csv'));
+    if (await file.exists()) return file;
+    return null;
+  }
+
+  /// List all saved CSV files.
+  Future<List<File>> savedCsvFiles() async {
+    final dir = await _wardriveDir();
+    if (!await dir.exists()) return [];
+    return dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.csv'))
+        .toList()
+      ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+  }
+
+  static Future<Directory> _wardriveDir() async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory(path.join(docs.path, 'wardrives'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
   }
 
   void pauseSession() {
@@ -230,6 +399,18 @@ class WardriveController extends ChangeNotifier {
     _ble.setFoxhunterTarget(mac);
     foxhuntTarget = mac;
     notifyListeners();
+  }
+
+  /// Re-enable engines after BLE reconnect killed them with DISABLE_ALL.
+  void _reEnableEngines() {
+    DebugLog.log('WARDRIVE: re-enabling engines after reconnect');
+    for (final engine in activeEngines) {
+      _ble.enableEngine(engine);
+    }
+    if (foxhuntTarget != null) {
+      _ble.enableEngine(Engine.foxhunter);
+      _ble.setFoxhunterTarget(foxhuntTarget!);
+    }
   }
 
   SessionStats get currentStats {
@@ -313,6 +494,7 @@ class WardriveController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _connSub?.cancel();
     _detSub?.cancel();
     _gpsSub?.cancel();
     _statsTimer?.cancel();

@@ -387,7 +387,7 @@ class _ConnectedView extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               _EngineGrid(
-                engines: const [Engine.flockWifi, Engine.skySpy],
+                engines: const [Engine.flockWifi, Engine.skySpy, Engine.wardrive],
                 state: state,
                 crossCount: crossCount,
                 width: width,

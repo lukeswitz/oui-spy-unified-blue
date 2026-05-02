@@ -73,7 +73,19 @@ class AppDatabase extends _$AppDatabase {
       (select(sessions)..where((s) => s.nodeId.equals(nodeId))).get();
 
   Future<List<Session>> getWardriveSessions() =>
-      (select(sessions)..where((s) => s.isWardrive.equals(true))).get();
+      (select(sessions)
+            ..where((s) => s.isWardrive.equals(true))
+            ..orderBy([(s) => OrderingTerm.desc(s.startedAt)]))
+          .get();
+
+  Future<Session?> getSessionById(String id) =>
+      (select(sessions)..where((s) => s.id.equals(id))).getSingleOrNull();
+
+  Stream<List<Session>> watchWardriveSessions() =>
+      (select(sessions)
+            ..where((s) => s.isWardrive.equals(true))
+            ..orderBy([(s) => OrderingTerm.desc(s.startedAt)]))
+          .watch();
 
   // -- Detection operations --
 
@@ -91,6 +103,40 @@ class AppDatabase extends _$AppDatabase {
             ..where((d) => d.sessionId.equals(sessionId))
             ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))
           .get();
+
+  /// Returns detection rows as maps for cross-module consumption
+  /// (avoids drift Detection / model Detection name collision).
+  Future<List<Map<String, dynamic>>> getDetectionMapsForSession(
+      String sessionId) async {
+    final rows = await (select(detections)
+          ..where((d) => d.sessionId.equals(sessionId))
+          ..orderBy([(d) => OrderingTerm.asc(d.appTimestamp)]))
+        .get();
+    return rows
+        .map((r) => {
+              'id': r.id,
+              'sessionId': r.sessionId,
+              'nodeId': r.nodeId,
+              'macAddress': r.macAddress,
+              'deviceName': r.deviceName,
+              'engine': r.engine,
+              'detectionMethod': r.detectionMethod,
+              'rssi': r.rssi,
+              'channel': r.channel,
+              'deviceTimestampMs': r.deviceTimestampMs,
+              'appTimestamp': r.appTimestamp,
+              'ssid': r.ssid,
+              'count': r.count,
+              'latitude': r.latitude,
+              'longitude': r.longitude,
+              'altitude': r.altitude,
+              'speed': r.speed,
+              'heading': r.heading,
+              'accuracy': r.accuracy,
+              'satelliteCount': r.satelliteCount,
+            })
+        .toList();
+  }
 
   Future<int> uniqueMacCount(String sessionId) async {
     final query = selectOnly(detections)

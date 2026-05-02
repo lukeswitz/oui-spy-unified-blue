@@ -41,7 +41,12 @@ static bool phoneConnected = false;
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
         phoneConnected = true;
-        Serial.println("[BLE] Phone connected");
+        // Pause any active BLE scan to stabilize GATT connection
+        NimBLEScan* scan = NimBLEDevice::getScan();
+        if (scan && scan->isScanning()) {
+            scan->stop();
+        }
+        Serial.println("[BLE] Phone connected (scan paused for GATT)");
     }
 
     void onDisconnect(NimBLEServer* server) override {
@@ -477,13 +482,13 @@ void bleGattNotifyFoxhunterRssi(int8_t rssi, uint16_t intervalMs) {
 void bleGattNotifyEngineState(void) {
     if (!phoneConnected || chrEngineControl == nullptr) return;
 
-    uint8_t buf[8];
+    uint8_t buf[2 + ENGINE_COUNT];
     buf[0] = engineGetAvailableMask();
     buf[1] = engineGetActiveMask();
     for (int i = 0; i < ENGINE_COUNT; i++) {
         buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
     }
-    chrEngineControl->setValue(buf, 8);
+    chrEngineControl->setValue(buf, 2 + ENGINE_COUNT);
     chrEngineControl->notify();
 }
 

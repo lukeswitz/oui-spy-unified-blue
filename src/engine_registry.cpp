@@ -3,6 +3,7 @@
  */
 #include "engine_registry.h"
 #include <Arduino.h>
+#include <NimBLEDevice.h>
 
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
@@ -30,6 +31,12 @@ void engineDisableAll(void) {
         }
         states[i] = ESTATE_DISABLED;
     }
+    // Force-stop any lingering BLE scan to free the radio for GATT
+    NimBLEScan* scan = NimBLEDevice::getScan();
+    if (scan && scan->isScanning()) {
+        scan->stop();
+        Serial.println("[ENGINE] Force-stopped BLE scan");
+    }
     Serial.println("[ENGINE] All engines disabled");
 }
 
@@ -46,13 +53,16 @@ bool engineEnable(EngineId id) {
     // Already active?
     if (states[id] != ESTATE_DISABLED) return true;
 
-    // WiFi exclusivity check
+    // WiFi exclusivity — force-stop any conflicting WiFi engine
     if (isWifiEngine(id)) {
         for (int i = 0; i < ENGINE_COUNT; i++) {
             if (i != id && isWifiEngine((EngineId)i) && states[i] != ESTATE_DISABLED) {
-                Serial.printf("[ENGINE] Cannot enable %s — WiFi conflict with %s\n",
-                              engines[id]->name, engines[i]->name);
-                return false;
+                Serial.printf("[ENGINE] Stopping %s for WiFi handoff to %s\n",
+                              engines[i]->name, engines[id]->name);
+                if (engines[i] != nullptr && engines[i]->stop) {
+                    engines[i]->stop();
+                }
+                states[i] = ESTATE_DISABLED;
             }
         }
     }

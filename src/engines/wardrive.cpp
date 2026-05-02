@@ -5,9 +5,10 @@
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
 
-static bool wardriveActive = false;
+static volatile bool wardriveActive = false;
 static unsigned long lastWifiScan = 0;
 static unsigned long lastBleScan = 0;
+static volatile bool wifiScanInProgress = false;
 
 #define WIFI_SCAN_INTERVAL_MS  3000
 #define BLE_SCAN_DURATION_MS   2000
@@ -56,10 +57,23 @@ static uint8_t mapAuthMode(wifi_auth_mode_t mode) {
     }
 }
 
-static void wardriveWifiScan(void) {
+// Called from wardriveLoop to kick off an async WiFi scan
+static void wardriveWifiScanStart(void) {
     if (!wardriveActive) return;
-    int n = WiFi.scanNetworks(false, true, false, 200);
-    if (n <= 0) return;
+    if (wifiScanInProgress) return;
+    WiFi.scanNetworks(true, true, false, 200);  // async=true
+    wifiScanInProgress = true;
+}
+
+// Called from wardriveLoop to harvest async WiFi scan results
+static void wardriveWifiScanHarvest(void) {
+    int n = WiFi.scanComplete();
+    if (n == WIFI_SCAN_RUNNING) return;  // still scanning
+    if (n == WIFI_SCAN_FAILED) {
+        wifiScanInProgress = false;
+        return;
+    }
+    wifiScanInProgress = false;
 
     for (int i = 0; i < n; i++) {
         if (!wardriveActive) break;
@@ -147,16 +161,27 @@ static void wardriveStart(void) {
 
 static void wardriveStop(void) {
     Serial.println("[WARDRIVE] Stopping...");
-    wardriveActive = false;
+    wardriveActive = false;  // volatile — visible to BLE callbacks immediately
 
+    // Stop BLE scan first (runs on NimBLE host task)
     if (pWardriveScan != nullptr) {
         if (pWardriveScan->isScanning()) {
             pWardriveScan->stop();
-            delay(50);
         }
+        // Give NimBLE host task time to finish any in-flight callback
+        vTaskDelay(pdMS_TO_TICKS(100));
         pWardriveScan->clearResults();
         pWardriveScan->setAdvertisedDeviceCallbacks(nullptr, false);
         pWardriveScan = nullptr;
+    }
+
+    // Wait for any async WiFi scan to finish before killing radio
+    if (wifiScanInProgress) {
+        unsigned long deadline = millis() + 2000;
+        while (WiFi.scanComplete() == WIFI_SCAN_RUNNING && millis() < deadline) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+        wifiScanInProgress = false;
     }
 
     WiFi.scanDelete();
@@ -172,11 +197,18 @@ static void wardriveLoop(void) {
     if (!wardriveActive) return;
     unsigned long now = millis();
 
-    if (now - lastWifiScan >= WIFI_SCAN_INTERVAL_MS) {
-        lastWifiScan = now;
-        wardriveWifiScan();
+    // Always try to harvest completed WiFi scan results
+    if (wifiScanInProgress) {
+        wardriveWifiScanHarvest();
     }
 
+    // Kick off new async WiFi scan at interval
+    if (!wifiScanInProgress && now - lastWifiScan >= WIFI_SCAN_INTERVAL_MS) {
+        lastWifiScan = now;
+        wardriveWifiScanStart();
+    }
+
+    // BLE scan at interval
     if (now - lastBleScan >= BLE_SCAN_INTERVAL_MS) {
         lastBleScan = now;
         if (pWardriveScan != nullptr && !pWardriveScan->isScanning()) {

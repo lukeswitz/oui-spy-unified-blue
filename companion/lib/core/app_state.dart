@@ -73,6 +73,12 @@ class AppState extends ChangeNotifier {
         nodeId = _ble.nodeId;
         _gps.start();
       }
+      if (state == NodeConnectionState.disconnected ||
+          state == NodeConnectionState.reconnecting) {
+        // Reset engine UI to all-disabled — firmware state unknown until next read
+        activeEngines = 0;
+        engineStates = List.filled(Engine.values.length, EngineState.disabled);
+      }
       notifyListeners();
     }));
 
