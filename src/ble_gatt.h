@@ -22,4 +22,7 @@ void bleGattNotifyEngineState(void);
 // Check if a phone is connected
 bool bleGattIsConnected(void);
 
+// Send mesh status notification
+void bleGattNotifyMeshStatus(void);
+
 #endif // BLE_GATT_H

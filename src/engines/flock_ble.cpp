@@ -136,11 +136,17 @@ static bool isDedupCooldown(const uint8_t* mac) {
             return false;
         }
     }
-    // Add new entry
-    int idx = dedupCount < DEDUP_SIZE ? dedupCount++ : (dedupCount % DEDUP_SIZE);
+    // Add new entry — circular ring buffer
+    static int dedupHead = 0;
+    int idx;
+    if (dedupCount < DEDUP_SIZE) {
+        idx = dedupCount++;
+    } else {
+        idx = dedupHead;
+        dedupHead = (dedupHead + 1) % DEDUP_SIZE;
+    }
     memcpy(dedup[idx].mac, mac, 6);
     dedup[idx].lastSeen = now;
-    if (dedupCount <= DEDUP_SIZE) dedupCount = idx + 1;
     return false;
 }
 

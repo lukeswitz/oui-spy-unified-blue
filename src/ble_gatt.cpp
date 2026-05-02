@@ -13,6 +13,7 @@
  */
 #include "ble_gatt.h"
 #include "engine_registry.h"
+#include "mesh_espnow.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <NimBLEDevice.h>
@@ -29,6 +30,8 @@ static NimBLECharacteristic* chrAlertConfig = nullptr;
 static NimBLECharacteristic* chrFoxhunterRssi = nullptr;
 static NimBLECharacteristic* chrFoxhunterConfig = nullptr;
 static NimBLECharacteristic* chrUnipwnCommand = nullptr;
+static NimBLECharacteristic* chrMeshConfig = nullptr;
+static NimBLECharacteristic* chrMeshStatus = nullptr;
 
 static bool phoneConnected = false;
 
@@ -72,19 +75,20 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
             xQueueSend(engineCmdQueue, &cmd, pdMS_TO_TICKS(10));
         }
 
-        Serial.printf("[BLE] Engine command: %s engine %d\n",
-                      cmd.command == 0x01 ? "ENABLE" : "DISABLE",
-                      cmd.engine_id);
+        const char* cmdName = cmd.command == 0x01 ? "ENABLE"
+                             : cmd.command == 0x0F ? "DISABLE_ALL"
+                             : "DISABLE";
+        Serial.printf("[BLE] Engine command: %s engine %d\n", cmdName, cmd.engine_id);
     }
 
     void onRead(NimBLECharacteristic* chr) override {
-        uint8_t buf[8];
+        uint8_t buf[2 + ENGINE_COUNT];
         buf[0] = engineGetAvailableMask();
         buf[1] = engineGetActiveMask();
         for (int i = 0; i < ENGINE_COUNT; i++) {
             buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
         }
-        chr->setValue(buf, 8);
+        chr->setValue(buf, 2 + ENGINE_COUNT);
     }
 };
 
@@ -215,6 +219,56 @@ class UnipwnCommandCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 // ============================================================================
+// Mesh Config Callbacks
+// ============================================================================
+class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.length() < 3) return;
+
+        MeshConfig cfg = {};
+        cfg.enabled = (uint8_t)val[0];
+        cfg.encryption_enabled = (uint8_t)val[1];
+
+        size_t offset = 2;
+        if (cfg.encryption_enabled && val.length() >= offset + MESH_KEY_LEN) {
+            memcpy(cfg.key, val.data() + offset, MESH_KEY_LEN);
+            offset += MESH_KEY_LEN;
+        } else if (cfg.encryption_enabled) {
+            Serial.println("[BLE] Mesh config: encryption key too short");
+            return;
+        }
+
+        if (val.length() > offset) {
+            cfg.peer_count = (uint8_t)val[offset++];
+            for (uint8_t i = 0; i < cfg.peer_count && i < MESH_MAX_PEERS; i++) {
+                if (val.length() >= offset + 6) {
+                    memcpy(cfg.peers[i], val.data() + offset, 6);
+                    offset += 6;
+                }
+            }
+        }
+
+        if (cfg.enabled) {
+            meshEnable(&cfg);
+        } else {
+            meshDisable();
+        }
+
+        Serial.printf("[BLE] Mesh config: enabled=%d enc=%d peers=%d\n",
+                      cfg.enabled, cfg.encryption_enabled, cfg.peer_count);
+    }
+
+    void onRead(NimBLECharacteristic* chr) override {
+        uint8_t buf[3];
+        buf[0] = meshCurrentConfig.enabled;
+        buf[1] = meshCurrentConfig.encryption_enabled;
+        buf[2] = meshCurrentConfig.peer_count;
+        chr->setValue(buf, 3);
+    }
+};
+
+// ============================================================================
 // Static callback instances
 // ============================================================================
 static ServerCallbacks serverCb;
@@ -224,6 +278,7 @@ static EngineControlCallbacks engineControlCb;
 static GpsReceiveCallbacks gpsReceiveCb;
 static HardwareConfigCallbacks hwConfigCb;
 static AlertConfigCallbacks alertConfigCb;
+static MeshConfigCallbacks meshConfigCb;
 
 // ============================================================================
 // Init
@@ -316,6 +371,19 @@ void bleGattInit(void) {
     );
     chrUnipwnCommand->setCallbacks(&unipwnCommandCb);
 
+    // -- Mesh Config (READ, WRITE) --
+    chrMeshConfig = svc->createCharacteristic(
+        CHR_MESH_CONFIG,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+    );
+    chrMeshConfig->setCallbacks(&meshConfigCb);
+
+    // -- Mesh Status (READ, NOTIFY) --
+    chrMeshStatus = svc->createCharacteristic(
+        CHR_MESH_STATUS,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+    );
+
     svc->start();
 
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
@@ -332,50 +400,58 @@ void bleGattInit(void) {
 void bleGattNotifyDetection(const DetectionEvent* evt) {
     if (!phoneConnected || chrDetectionEvents == nullptr) return;
 
-    uint8_t buf[128];
-    size_t len = 14;
+    uint8_t buf[160];
+    size_t len = 19;
 
-    // Common header: engine_id[1] mac[6] rssi[1] channel[1] ts_ms[4] method[1]
+    // Common header: engine_id[1] mac[6] rssi[1] channel[1] ts_ms[4] method[1] source_node_id[5]
     buf[0] = evt->engine_id;
     memcpy(buf + 1, evt->mac, 6);
     buf[7] = (uint8_t)evt->rssi;
     buf[8] = evt->channel;
     memcpy(buf + 9, &evt->timestamp_ms, 4);
     buf[13] = evt->method;
+    memcpy(buf + 14, evt->source_node_id, MESH_NODE_ID_LEN);
 
     // Engine-specific extension
     switch ((EngineId)evt->engine_id) {
         case ENGINE_FLOCK_BLE:
         case ENGINE_FLOCK_WIFI:
-            buf[14] = evt->ext.flock.is_raven;
-            memcpy(buf + 15, evt->ext.flock.raven_fw, 16);
-            len = 31;
+            buf[19] = evt->ext.flock.is_raven;
+            memcpy(buf + 20, evt->ext.flock.raven_fw, 16);
+            len = 36;
             break;
 
         case ENGINE_SKYSPY:
-            memcpy(buf + 14, evt->ext.odid.uav_id, 21);
-            memcpy(buf + 35, evt->ext.odid.op_id, 21);
-            memcpy(buf + 56, &evt->ext.odid.drone_lat, 8);
-            memcpy(buf + 64, &evt->ext.odid.drone_lon, 8);
-            memcpy(buf + 72, &evt->ext.odid.altitude_msl, 2);
-            memcpy(buf + 74, &evt->ext.odid.height_agl, 2);
-            memcpy(buf + 76, &evt->ext.odid.speed, 2);
-            memcpy(buf + 78, &evt->ext.odid.heading, 2);
-            memcpy(buf + 80, &evt->ext.odid.pilot_lat, 8);
-            memcpy(buf + 88, &evt->ext.odid.pilot_lon, 8);
-            len = 96;
+            memcpy(buf + 19, evt->ext.odid.uav_id, 21);
+            memcpy(buf + 40, evt->ext.odid.op_id, 21);
+            memcpy(buf + 61, &evt->ext.odid.drone_lat, 8);
+            memcpy(buf + 69, &evt->ext.odid.drone_lon, 8);
+            memcpy(buf + 77, &evt->ext.odid.altitude_msl, 2);
+            memcpy(buf + 79, &evt->ext.odid.height_agl, 2);
+            memcpy(buf + 81, &evt->ext.odid.speed, 2);
+            memcpy(buf + 83, &evt->ext.odid.heading, 2);
+            memcpy(buf + 85, &evt->ext.odid.pilot_lat, 8);
+            memcpy(buf + 93, &evt->ext.odid.pilot_lon, 8);
+            len = 101;
             break;
 
         case ENGINE_UNIPWN:
-            memcpy(buf + 14, evt->ext.unipwn.robot_type, 8);
-            buf[22] = evt->ext.unipwn.exploited;
-            len = 23;
+            memcpy(buf + 19, evt->ext.unipwn.robot_type, 8);
+            buf[27] = evt->ext.unipwn.exploited;
+            len = 28;
             break;
 
         case ENGINE_DETECTOR:
-            buf[14] = evt->ext.detector.is_full_mac;
-            memcpy(buf + 15, evt->ext.detector.filter_desc, 32);
-            len = 47;
+            buf[19] = evt->ext.detector.is_full_mac;
+            memcpy(buf + 20, evt->ext.detector.filter_desc, 32);
+            len = 52;
+            break;
+
+        case ENGINE_WARDRIVE:
+            memcpy(buf + 19, evt->ext.wardrive.ssid, 33);
+            buf[52] = evt->ext.wardrive.auth_mode;
+            memcpy(buf + 53, evt->ext.wardrive.device_name, 21);
+            len = 74;
             break;
 
         default:
@@ -413,4 +489,19 @@ void bleGattNotifyEngineState(void) {
 
 bool bleGattIsConnected(void) {
     return phoneConnected;
+}
+
+void bleGattNotifyMeshStatus(void) {
+    if (!phoneConnected || chrMeshStatus == nullptr) return;
+
+    MeshStatus st = meshGetStatus();
+    uint8_t buf[11];
+    buf[0] = st.enabled;
+    buf[1] = st.peer_count;
+    buf[2] = st.connected_peers;
+    memcpy(buf + 3, &st.rx_count, 4);
+    memcpy(buf + 7, &st.tx_count, 4);
+
+    chrMeshStatus->setValue(buf, 11);
+    chrMeshStatus->notify();
 }

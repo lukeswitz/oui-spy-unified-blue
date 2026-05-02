@@ -48,7 +48,14 @@ static bool isDedupCooldown(const uint8_t* mac) {
             return false;
         }
     }
-    int idx = dedupCount < DEDUP_SIZE ? dedupCount++ : 0;
+    static int dedupHead = 0;
+    int idx;
+    if (dedupCount < DEDUP_SIZE) {
+        idx = dedupCount++;
+    } else {
+        idx = dedupHead;
+        dedupHead = (dedupHead + 1) % DEDUP_SIZE;
+    }
     memcpy(dedup[idx].mac, mac, 6);
     dedup[idx].ts = now;
     return false;

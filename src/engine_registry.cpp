@@ -10,7 +10,7 @@ static bool initialized[ENGINE_COUNT] = {false};
 
 // WiFi engines are mutually exclusive
 static bool isWifiEngine(EngineId id) {
-    return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY;
+    return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY || id == ENGINE_WARDRIVE;
 }
 
 void engineRegistryInit(void) {
@@ -19,7 +19,18 @@ void engineRegistryInit(void) {
         states[i] = ESTATE_DISABLED;
         initialized[i] = false;
     }
-    Serial.println("[ENGINE] Registry initialized");
+    Serial.println("[ENGINE] Registry initialized (all engines disabled)");
+}
+
+void engineDisableAll(void) {
+    for (int i = 0; i < ENGINE_COUNT; i++) {
+        if (states[i] != ESTATE_DISABLED && engines[i] != nullptr && engines[i]->stop) {
+            Serial.printf("[ENGINE] Force-stopping %s\n", engines[i]->name);
+            engines[i]->stop();
+        }
+        states[i] = ESTATE_DISABLED;
+    }
+    Serial.println("[ENGINE] All engines disabled");
 }
 
 void engineRegister(EngineId id, const EngineCallbacks* callbacks) {
@@ -121,6 +132,9 @@ void engineProcessCommand(const EngineCommand* cmd) {
             break;
         case 0x00: // Disable
             engineDisable((EngineId)cmd->engine_id);
+            break;
+        case 0x0F: // Disable ALL engines
+            engineDisableAll();
             break;
         case 0x10: // Config update — engine-specific handling
             // Engines read config from SPIFFS/NVS on demand

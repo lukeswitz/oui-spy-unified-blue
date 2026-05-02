@@ -25,6 +25,9 @@ void engineRegister(EngineId id, const EngineCallbacks* callbacks);
 bool engineEnable(EngineId id);
 bool engineDisable(EngineId id);
 
+// Force-disable ALL engines (stop callbacks + reset state)
+void engineDisableAll(void);
+
 // Get current state
 EngineState engineGetState(EngineId id);
 void engineSetState(EngineId id, EngineState state);

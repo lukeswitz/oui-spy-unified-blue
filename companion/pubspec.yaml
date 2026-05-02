@@ -1,0 +1,56 @@
+name: oui_spy
+description: "OUI-SPY Companion - Multi-engine RF detection and wardriving"
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # BLE
+  flutter_blue_plus: ^1.35.0
+  # GPS
+  geolocator: ^13.0.0
+  # Map
+  flutter_map: ^7.0.0
+  latlong2: ^0.9.0
+  # Database
+  drift: ^2.22.0
+  sqlite3_flutter_libs: ^0.5.0
+  # State management
+  flutter_riverpod: ^2.6.0
+  # Navigation
+  go_router: ^14.8.0
+  # Data models
+  freezed_annotation: ^2.4.0
+  json_annotation: ^4.9.0
+  # HTTP
+  dio: ^5.7.0
+  # Export / sharing
+  share_plus: ^10.1.0
+  path_provider: ^2.1.0
+  # Notifications
+  flutter_local_notifications: ^18.0.0
+  # Utils
+  collection: ^1.19.0
+  intl: ^0.19.0
+  uuid: ^4.5.0
+  crypto: ^3.0.0
+  wakelock_plus: ^1.2.0
+  permission_handler: ^11.4.0
+  flutter_secure_storage: ^10.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  drift_dev: ^2.22.0
+  freezed: ^2.5.0
+  json_serializable: ^6.9.0
+
+flutter:
+  uses-material-design: true

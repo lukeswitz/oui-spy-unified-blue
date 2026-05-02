@@ -12,6 +12,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+// Mesh constants (needed before DetectionEvent)
+#define MESH_MAX_PEERS       6
+#define MESH_KEY_LEN         32
+#define MESH_NONCE_LEN       12
+#define MESH_TAG_LEN         16
+#define MESH_NODE_ID_LEN     5
+
 // Hardware pins (XIAO ESP32-S3)
 #define PIN_BUZZER     3
 #define PIN_LED        21    // Onboard LED, active LOW
@@ -33,7 +40,8 @@ enum EngineId : uint8_t {
     ENGINE_FOXHUNTER  = 3,  // bitmask 0x08
     ENGINE_SKYSPY     = 4,  // bitmask 0x10
     ENGINE_UNIPWN     = 5,  // bitmask 0x20
-    ENGINE_COUNT      = 6
+    ENGINE_WARDRIVE   = 6,  // bitmask 0x40
+    ENGINE_COUNT      = 7
 };
 
 #define ENGINE_BITMASK(id) (1 << (id))
@@ -75,6 +83,10 @@ enum EngineState : uint8_t {
 #define METHOD_ODID_NAN        1
 #define METHOD_ODID_BEACON     2
 
+// Wardrive methods
+#define METHOD_WIFI_AP         0
+#define METHOD_BLE_ADV         1
+
 // ============================================================================
 // Detection Event — produced by engines, consumed by GATT notification task
 // ============================================================================
@@ -85,6 +97,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  channel;            // WiFi channel or 0 for BLE
     uint32_t timestamp_ms;       // millis() at detection
     uint8_t  method;             // Engine-specific detection method
+    char     source_node_id[MESH_NODE_ID_LEN]; // Origin node ("" = local)
 
     // Engine-specific extension (union saves RAM)
     union {
@@ -125,6 +138,13 @@ typedef struct __attribute__((packed)) {
         struct {
             uint8_t _reserved;
         } foxhunter;
+
+        // Wardrive (WiGLE-style capture)
+        struct {
+            char    ssid[33];
+            uint8_t auth_mode;     // 0=open,1=WEP,2=WPA,3=WPA2,4=WPA_WPA2,5=WPA2_ENT,6=WPA3
+            char    device_name[21];
+        } wardrive;
     } ext;
 } DetectionEvent;
 
@@ -193,11 +213,60 @@ extern volatile bool    gpsValid;
 #define CHR_UNIPWN_COMMAND   "00000151-" UUID_BASE
 
 // ============================================================================
+// Mesh Configuration
+// ============================================================================
+typedef struct __attribute__((packed)) {
+    uint8_t enabled;
+    uint8_t encryption_enabled;
+    uint8_t key[MESH_KEY_LEN];
+    uint8_t peer_count;
+    uint8_t peers[MESH_MAX_PEERS][6];
+} MeshConfig;
+
+typedef struct __attribute__((packed)) {
+    uint8_t enabled;
+    uint8_t peer_count;
+    uint8_t connected_peers;
+    uint32_t rx_count;
+    uint32_t tx_count;
+    uint32_t rx_errors;
+} MeshStatus;
+
+typedef struct __attribute__((packed)) {
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  engine_id;
+    uint8_t  mac[6];
+    int8_t   rssi;
+    uint8_t  channel;
+    uint32_t timestamp_ms;
+    uint8_t  method;
+    uint8_t  ext_data[96];
+    uint8_t  ext_len;
+} MeshDetectionPacket;
+
+// ============================================================================
+// GATT UUIDs — Mesh
+// ============================================================================
+#define CHR_MESH_CONFIG      "00000060-" UUID_BASE
+#define CHR_MESH_STATUS      "00000061-" UUID_BASE
+
+// ============================================================================
+// Mesh globals (extern, managed by mesh_espnow.cpp)
+// ============================================================================
+extern volatile MeshConfig meshCurrentConfig;
+extern volatile MeshStatus meshCurrentStatus;
+
+// ============================================================================
 // Helper: push detection onto queue (ISR-safe variant available)
 // ============================================================================
 static inline bool pushDetection(const DetectionEvent* evt) {
     if (detectionQueue == NULL) return false;
     return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(10)) == pdTRUE;
+}
+
+/// Stamp a DetectionEvent with current GPS from phone app.
+static inline void stampGps(DetectionEvent* evt) {
+    (void)evt; // GPS fields not in DetectionEvent struct — stamped by app side
 }
 
 static inline bool pushDetectionFromISR(const DetectionEvent* evt) {

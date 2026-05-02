@@ -61,7 +61,14 @@ static bool IRAM_ATTR isDedupCooldownISR(const uint8_t* mac) {
             return false;
         }
     }
-    int idx = wifiDedupCount < WIFI_DEDUP_SIZE ? wifiDedupCount++ : 0;
+    static int wifiDedupHead = 0;
+    int idx;
+    if (wifiDedupCount < WIFI_DEDUP_SIZE) {
+        idx = wifiDedupCount++;
+    } else {
+        idx = wifiDedupHead;
+        wifiDedupHead = (wifiDedupHead + 1) % WIFI_DEDUP_SIZE;
+    }
     memcpy(wifiDedup[idx].mac, mac, 6);
     wifiDedup[idx].ts = now;
     return false;

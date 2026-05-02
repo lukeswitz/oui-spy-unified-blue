@@ -18,12 +18,14 @@
 #include "protocol.h"
 #include "engine_registry.h"
 #include "ble_gatt.h"
+#include "mesh_espnow.h"
 #include "engines/flock_ble.h"
 #include "engines/detector.h"
 #include "engines/foxhunter.h"
 #include "engines/skyspy.h"
 #include "engines/flock_wifi.h"
 #include "engines/unipwn.h"
+#include "engines/wardrive.h"
 
 // ============================================================================
 // Global queues and GPS state
@@ -69,14 +71,50 @@ static void playBootMelody(void) {
 
 // ============================================================================
 // Detection Notification Task (Core 1)
-// Drains detectionQueue, sends BLE notifications to phone
+// Drains detectionQueue, deduplicates across engines, sends BLE notifications
 // ============================================================================
+#define NOTIFY_DEDUP_SIZE 48
+#define NOTIFY_DEDUP_COOLDOWN_MS 3000
+static struct {
+    uint8_t mac[6];
+    unsigned long ts;
+} notifyDedup[NOTIFY_DEDUP_SIZE];
+static int notifyDedupHead = 0;
+static int notifyDedupCount = 0;
+
+static bool isNotifyDedupCooldown(const uint8_t* mac) {
+    unsigned long now = millis();
+    for (int i = 0; i < notifyDedupCount; i++) {
+        if (memcmp(notifyDedup[i].mac, mac, 6) == 0) {
+            if (now - notifyDedup[i].ts < NOTIFY_DEDUP_COOLDOWN_MS) return true;
+            notifyDedup[i].ts = now;
+            return false;
+        }
+    }
+    int idx;
+    if (notifyDedupCount < NOTIFY_DEDUP_SIZE) {
+        idx = notifyDedupCount++;
+    } else {
+        idx = notifyDedupHead;
+        notifyDedupHead = (notifyDedupHead + 1) % NOTIFY_DEDUP_SIZE;
+    }
+    memcpy(notifyDedup[idx].mac, mac, 6);
+    notifyDedup[idx].ts = now;
+    return false;
+}
+
 static void detectionNotifyTask(void* param) {
     DetectionEvent evt;
     Serial.println("[TASK] Detection notify task started");
 
     for (;;) {
         if (xQueueReceive(detectionQueue, &evt, portMAX_DELAY) == pdTRUE) {
+            // Cross-engine dedup: suppress same MAC within cooldown window
+            if (isNotifyDedupCooldown(evt.mac)) continue;
+
+            // Broadcast to mesh peers (only local detections, not relayed ones)
+            meshBroadcastDetection(&evt);
+
             // Send BLE notification
             bleGattNotifyDetection(&evt);
 
@@ -120,6 +158,9 @@ static void statusHeartbeatTask(void* param) {
 
         if (bleGattIsConnected()) {
             bleGattNotifyEngineState();
+            if (meshIsEnabled()) {
+                bleGattNotifyMeshStatus();
+            }
         }
 
         // Serial heartbeat
@@ -165,6 +206,14 @@ void setup() {
     engineRegister(ENGINE_FOXHUNTER, &foxhunterCallbacks);
     engineRegister(ENGINE_SKYSPY, &skyspyCallbacks);
     engineRegister(ENGINE_UNIPWN, &unipwnCallbacks);
+    engineRegister(ENGINE_WARDRIVE, &wardriveCallbacks);
+
+    // Force all engines disabled at boot — no stale radio state
+    engineDisableAll();
+    Serial.printf("[INIT] Active mask after boot disable: 0x%02X\n", engineGetActiveMask());
+
+    // Initialize mesh subsystem
+    meshInit();
 
     // Initialize BLE GATT server
     bleGattInit();
