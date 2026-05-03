@@ -1,4 +1,4 @@
-# OUI SPY
+# OUI SPY Unified & Companion
 
 Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
 
@@ -45,23 +45,23 @@ Each engine runs on both WiFi and BLE. The user selects radio mode (WiFi, BLE, o
 The firmware runs an **engine registry** on FreeRTOS. Each engine registers init/start/stop/loop/config callbacks. The companion app sends enable/disable commands over BLE GATT using bitmasks. Detections flow through a shared queue (depth 64) and get pushed to the app as packed binary notifications.
 
 ```
- Your Phone                           XIAO ESP32-S3
-┌──────────────────┐                 ┌──────────────────────────────┐
-│  Companion App   │                 │  Engine Registry (7 engines) │
-│                  │◄── BLE GATT ──►│                              │
-│  Enable engines  │                 │  WiFi radio (exclusive):     │
-│  Stream GPS      │  DetectionEvent │    → Wardrive (STA scan)     │
-│  Receive dets    │◄───────────────┤│    → Sky Spy (promiscuous)   │
-│  Wardrive map    │                 │    → Flock-WiFi (promiscuous) │
-│  Export WiGLE    │                 │    → Detector* (promiscuous)  │
-│  Mesh management │                 │    → Foxhunter* (promiscuous) │
+ Your Phone/Laptop                           OUISPY (ESP32S3)
+┌──────────────────┐                 ┌──────────────────────────────-┐
+│  Companion App   │                 │  Engine Registry (7 engines)  │
+│                  │◄── BLE GATT ──► │                               │
+│  Enable engines  │                 │  WiFi radio (exclusive):      │
+│  Stream GPS      │  DetectionEvent │    → Wardrive                 │
+│  Receive dets    │◄───────────────┤│    → Sky Spy                  │
+│  Wardrive map    │                 │    → Flock-WiFi               │
+│  Export WiGLE    │                 │    → Detector*                │
+│  Mesh management │                 │    → Foxhunter*               │
 │                  │                 │       *when wardrive inactive │
-└──────────────────┘                 │                              │
-                                     │  BLE radio (shared):         │
+└──────────────────┘                 │                               │
+                                     │  BLE radio (shared):          │
                                      │    → All engines concurrent   │
-                                     │                              │
-                                     │  ESP-NOW Mesh (encrypted)    │
-                                     └──────────────────────────────┘
+                                     │                               │
+                                     │  ESP-NOW Mesh (encrypted)     │
+                                     └──────────────────────────────-┘
 ```
 
 ---
