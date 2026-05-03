@@ -1,5 +1,7 @@
 # OUI SPY Unified & Companion
 
+**About this fork:** 
+
 Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
 
 Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
@@ -118,7 +120,7 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 |----------|--------|
 | **Android** | [APK from latest release](https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest) — enable "Install unknown apps" |
 | **iOS** | TestFlight beta |
-| **macOS** | [Signed .app from latest release](https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest) |
+| **macOS** | [Signed .app from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
 
 ---
 
@@ -126,7 +128,7 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 
 ### Web Flasher (easiest)
 
-Open the [web flasher](https://colonelpanichacks.github.io/oui-spy-unified-blue/flasher/) in Chrome or Edge (89+). Plug in XIAO ESP32-S3 via USB-C. Click Connect & Flash. Requires Web Serial API (Chromium browsers only).
+Open the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) in Chrome or Edge (89+). Plug in XIAO ESP32-S3 via USB-C. Click Connect & Flash. Requires Web Serial API (Chromium browsers only).
 
 ### Python Flasher
 
