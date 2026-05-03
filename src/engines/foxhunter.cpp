@@ -17,12 +17,13 @@ static volatile unsigned long lastTargetSeen = 0;
 static volatile bool targetInRange = false;
 static unsigned long lastBeepTime = 0;
 
-// WiFi promiscuous
+// WiFi promiscuous — scan all channels to find target regardless of channel
 static volatile bool wifiActive = false;
-static const uint8_t channels[] = {1, 6, 11};
+static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
+static const int channelCount = 14;
 static int channelIdx = 0;
 static unsigned long lastChannelHop = 0;
-static const unsigned long DWELL_MS = 200;
+static const unsigned long DWELL_MS = 100;
 
 static int calculateBeepInterval(int rssi) {
     if (rssi >= -35) return 15;
@@ -217,7 +218,7 @@ static void foxhunterLoop(void) {
     }
 
     if (wifiActive && millis() - lastChannelHop >= DWELL_MS) {
-        channelIdx = (channelIdx + 1) % 3;
+        channelIdx = (channelIdx + 1) % channelCount;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
     }

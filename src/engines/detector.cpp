@@ -20,12 +20,13 @@ static unsigned long lastScanStart = 0;
 static const unsigned long SCAN_INTERVAL_MS = 3000;
 static const int SCAN_DURATION_S = 2;
 
-// WiFi promiscuous
+// WiFi promiscuous — scan all 2.4GHz channels to maximize watchlist hit rate
 static volatile bool wifiActive = false;
-static const uint8_t channels[] = {1, 6, 11};
+static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
+static const int channelCount = 14;
 static int channelIdx = 0;
 static unsigned long lastChannelHop = 0;
-static const unsigned long DWELL_MS = 350;
+static const unsigned long DWELL_MS = 120;
 
 #define DEDUP_SIZE 32
 #define DEDUP_COOLDOWN_MS 3000
@@ -236,7 +237,7 @@ static void detectorLoop(void) {
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
 
     if (wifiActive && millis() - lastChannelHop >= DWELL_MS) {
-        channelIdx = (channelIdx + 1) % 3;
+        channelIdx = (channelIdx + 1) % channelCount;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
     }
