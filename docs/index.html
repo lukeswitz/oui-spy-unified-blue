@@ -336,7 +336,7 @@
       { name: 'firmware.bin',    offset: 0x10000 },
     ];
 
-    const FIRMWARE_BASE = './firmware/';
+    const FIRMWARE_BASE = 'https://raw.githubusercontent.com/lukeswitz/oui-spy-unified-blue/companion/docs/firmware/';
 
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
@@ -439,7 +439,7 @@
         setStatus('FLASH COMPLETE', 'done');
         log('Flash complete. Resetting device...', 'success');
 
-        await esploader.hardReset();
+        await esploader.after("hard_reset");
         await transport.disconnect();
 
         flashBtn.textContent = 'DONE';
