@@ -146,8 +146,10 @@ void engineProcessCommand(const EngineCommand* cmd) {
         case 0x0F: // Disable ALL engines
             engineDisableAll();
             break;
-        case 0x10: // Config update — engine-specific handling
-            // Engines read config from SPIFFS/NVS on demand
+        case 0x10: // Config update — forward to engine's config handler
+            if (engines[cmd->engine_id] != nullptr && engines[cmd->engine_id]->config) {
+                engines[cmd->engine_id]->config(cmd->payload, cmd->payload_len);
+            }
             break;
     }
 }

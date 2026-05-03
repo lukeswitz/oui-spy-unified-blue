@@ -185,6 +185,14 @@ extern volatile GpsData currentGps;
 extern volatile bool    gpsValid;
 
 // ============================================================================
+// Hardware Config (extern, loaded at boot, updated by BLE write callback)
+// ============================================================================
+extern volatile bool    hwBuzzerEnabled;
+extern volatile uint8_t hwBuzzerVolume;      // 0-255 PWM duty cycle
+extern volatile bool    hwLedEnabled;
+extern volatile uint8_t hwNeopixelBrightness;
+
+// ============================================================================
 // GATT UUIDs
 // ============================================================================
 // Base UUID matches Flutter app: 0000XXXX-0ui5-4py0-bad0-c010ne1pan1c

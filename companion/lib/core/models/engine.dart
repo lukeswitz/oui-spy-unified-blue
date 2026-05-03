@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 
 /// All scan engines available in the OUI-SPY firmware.
 enum Engine {
-  detector('Detector', 'BLE watchlist alerting', Color(0xFF4A9EFF), 0x01),
+  detector('Detector', 'WiFi + BLE watchlist alerting', Color(0xFF4A9EFF), 0x01),
   flockBle('Flock BLE', 'Flock Safety BLE detection', Color(0xFFB44AFF), 0x02),
   flockWifi(
       'Flock WiFi', 'Flock Safety WiFi promiscuous', Color(0xFFFF4A8A), 0x04),
-  foxhunter('Foxhunter', 'RSSI proximity tracker', Color(0xFF4AFF8A), 0x08),
+  foxhunter('Foxhunter', 'WiFi + BLE proximity tracker', Color(0xFF4AFF8A), 0x08),
   skySpy('Sky Spy', 'FAA Remote ID / ODID detection', Color(0xFF4AFFEA), 0x10),
   uniPwn(
       'UniPwn', 'Unitree robot exploitation', Color(0xFFFF4A4A), 0x20),
   wardrive(
-      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFFFF4A), 0x40);
+      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8C4A), 0x40);
 
   const Engine(this.label, this.description, this.color, this.bitmask);
 
@@ -26,7 +26,13 @@ enum Engine {
       this == foxhunter ||
       this == uniPwn;
 
-  bool get isWifi => this == flockWifi || this == skySpy || this == wardrive;
+  bool get isWifi =>
+      this == flockWifi ||
+      this == skySpy ||
+      this == wardrive;
+
+  /// Engines that scan both WiFi and BLE radios.
+  bool get isDualRadio => this == detector || this == foxhunter || this == wardrive;
 
   IconData get icon {
     return switch (this) {

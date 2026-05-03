@@ -13,6 +13,7 @@ import 'package:oui_spy/features/home/home_screen.dart';
 import 'package:oui_spy/features/map/map_screen.dart';
 import 'package:oui_spy/features/onboarding/scan_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -89,15 +90,44 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class OuiSpyApp extends ConsumerWidget {
+class OuiSpyApp extends ConsumerStatefulWidget {
   const OuiSpyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OuiSpyApp> createState() => _OuiSpyAppState();
+}
+
+class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      final ble = ref.read(bleManagerProvider);
+      ble.disableAllEngines();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'OUI-SPY',
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
     );

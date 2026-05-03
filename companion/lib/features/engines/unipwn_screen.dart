@@ -49,11 +49,12 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final robots = _robots.values.toList()
       ..sort((a, b) => b.rssi.compareTo(a.rssi));
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       appBar: AppBar(title: const Text('UNIPWN')),
       body: Column(
         children: [
@@ -61,10 +62,10 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
           SizedBox(
             height: 160,
             child: robots.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'SCANNING FOR UNITREE ROBOTS...',
-                      style: TextStyle(color: AppTheme.textDim, letterSpacing: 1, fontSize: 11),
+                      style: TextStyle(color: t.textDim, letterSpacing: 1, fontSize: 11),
                     ),
                   )
                 : ListView.builder(
@@ -83,12 +84,12 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                           decoration: BoxDecoration(
                             color: selected
                                 ? AppTheme.uniPwn.withValues(alpha: 0.1)
-                                : AppTheme.surface,
+                                : t.surface,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: selected
                                   ? AppTheme.uniPwn
-                                  : AppTheme.border,
+                                  : t.border,
                               width: selected ? 1.5 : 0.5,
                             ),
                           ),
@@ -96,27 +97,27 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(Icons.smart_toy,
-                                  color: selected ? AppTheme.uniPwn : AppTheme.textDim,
+                                  color: selected ? AppTheme.uniPwn : t.textDim,
                                   size: 24),
                               const Spacer(),
                               Text(
                                 r.unipwn?.robotType ?? '?',
                                 style: TextStyle(
-                                  color: selected ? AppTheme.uniPwn : AppTheme.textPrimary,
+                                  color: selected ? AppTheme.uniPwn : t.textPrimary,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
                               Text(
                                 r.macAddress.substring(0, 8),
-                                style: const TextStyle(
-                                  color: AppTheme.textDim, fontSize: 10, fontFamily: 'monospace',
+                                style: TextStyle(
+                                  color: t.textDim, fontSize: 10, fontFamily: 'monospace',
                                 ),
                               ),
                               Text(
                                 '${r.rssi} dBm',
-                                style: const TextStyle(
-                                  color: AppTheme.textDim, fontSize: 10, fontFamily: 'monospace',
+                                style: TextStyle(
+                                  color: t.textDim, fontSize: 10, fontFamily: 'monospace',
                                 ),
                               ),
                             ],
@@ -130,10 +131,10 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
           // Exploit controls
           Expanded(
             child: _selectedTarget == null
-                ? const Center(
+                ? Center(
                     child: Text(
                       'SELECT A TARGET',
-                      style: TextStyle(color: AppTheme.textDim, letterSpacing: 2, fontSize: 12),
+                      style: TextStyle(color: t.textDim, letterSpacing: 2, fontSize: 12),
                     ),
                   )
                 : ListView(
@@ -182,8 +183,8 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                           Expanded(
                             child: TextField(
                               controller: _customCmdController,
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
+                              style: TextStyle(
+                                color: t.textPrimary,
                                 fontFamily: 'monospace',
                                 fontSize: 13,
                               ),

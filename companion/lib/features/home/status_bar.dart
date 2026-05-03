@@ -22,6 +22,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   GpsPosition? _gpsPosition;
   StreamSubscription<GpsPosition>? _gpsSub;
   int _nodeCount = 0;
+  Timer? _uptimeTimer;
 
   @override
   void initState() {
@@ -32,6 +33,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
       if (mounted) setState(() => _gpsPosition = pos);
     });
     _loadNodeCount();
+    _uptimeTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   Future<void> _loadNodeCount() async {
@@ -45,32 +52,55 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   @override
   void dispose() {
     _gpsSub?.cancel();
+    _uptimeTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border(
+          bottom: BorderSide(color: t.border, width: 0.5),
+        ),
       ),
       child: Row(
         children: [
-          _StatusDot(color: _connectionColor(state.connectionState), label: _connectionLabel(state.connectionState)),
-          const SizedBox(width: 16),
-          _StatusDot(color: _gpsColor, label: _gpsLabel),
-          if (state.totalDetections > 0) ...[
-            const SizedBox(width: 16),
-            Text(
-              '${state.totalDetections}',
-              style: const TextStyle(color: AppTheme.accent, fontSize: 11, fontFamily: 'monospace'),
+          // Connection chip
+          _ConnectionChip(state: state.connectionState),
+          const SizedBox(width: 10),
+          // Uptime
+          if (state.isConnected && state.sessionStartTime != null) ...[
+            _InfoChip(
+              icon: Icons.timer_outlined,
+              label: _formatUptime(state.sessionUptime),
+              color: t.textSecondary,
+            ),
+            const SizedBox(width: 10),
+          ],
+          // GPS
+          _InfoChip(
+            icon: Icons.satellite_alt,
+            label: _gpsLabel,
+            color: _gpsColor,
+          ),
+          if (state.meshEnabled) ...[
+            const SizedBox(width: 10),
+            _InfoChip(
+              icon: Icons.hub,
+              label: '${state.meshConnectedPeers}/${state.meshPeerCount}',
+              color: state.meshConnectedPeers > 0
+                  ? AppTheme.flockBle
+                  : t.textDim,
             ),
           ],
           const Spacer(),
+          // Device name + node count
           GestureDetector(
             onTap: () async {
               await context.push('/nodes');
@@ -81,18 +111,26 @@ class _StatusBarState extends ConsumerState<StatusBar> {
               children: [
                 Text(
                   state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        letterSpacing: 2,
-                        color: state.isConnected ? AppTheme.accent : AppTheme.textDim,
-                      ),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
+                    fontFamily: 'monospace',
+                    color: state.isConnected
+                        ? AppTheme.accent
+                        : t.textDim,
+                  ),
                 ),
                 if (_nodeCount > 0) ...[
                   const SizedBox(width: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(6),
+                      color: AppTheme.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       '+$_nodeCount',
@@ -106,8 +144,13 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                   ),
                 ],
                 const SizedBox(width: 4),
-                Icon(Icons.devices, size: 12,
-                    color: state.isConnected ? AppTheme.accent : AppTheme.textDim),
+                Icon(
+                  Icons.devices,
+                  size: 12,
+                  color: state.isConnected
+                      ? AppTheme.accent
+                      : t.textDim,
+                ),
               ],
             ),
           ),
@@ -116,25 +159,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     );
   }
 
-  Color _connectionColor(NodeConnectionState s) {
-    return switch (s) {
-      NodeConnectionState.ready => AppTheme.success,
-      NodeConnectionState.connecting || NodeConnectionState.negotiating || NodeConnectionState.syncing => AppTheme.warning,
-      NodeConnectionState.reconnecting => AppTheme.error,
-      _ => AppTheme.textDim,
-    };
-  }
-
-  String _connectionLabel(NodeConnectionState s) {
-    return switch (s) {
-      NodeConnectionState.ready => 'CONNECTED',
-      NodeConnectionState.connecting => 'CONNECTING',
-      NodeConnectionState.negotiating => 'MTU',
-      NodeConnectionState.syncing => 'SYNCING',
-      NodeConnectionState.reconnecting => 'RECONNECTING',
-      NodeConnectionState.scanning => 'SCANNING',
-      _ => 'DISCONNECTED',
-    };
+  String _formatUptime(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}min';
+    final s = d.inSeconds.remainder(60);
+    return '${m}min${s.toString().padLeft(2, '0')}s';
   }
 
   Color get _gpsColor {
@@ -149,29 +179,130 @@ class _StatusBarState extends ConsumerState<StatusBar> {
 
   String get _gpsLabel {
     final pos = _gpsPosition;
-    if (pos == null) return 'NO GPS';
+    if (pos == null) return '--';
     return '${pos.accuracy.toStringAsFixed(0)}m';
   }
 }
 
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.color, required this.label});
-  final Color color;
+// ---------------------------------------------------------------------------
+// Connection chip with glow dot
+// ---------------------------------------------------------------------------
+
+class _ConnectionChip extends StatelessWidget {
+  const _ConnectionChip({required this.state});
+  final NodeConnectionState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _color;
+    final isConnecting = state == NodeConnectionState.connecting ||
+        state == NodeConnectionState.negotiating ||
+        state == NodeConnectionState.syncing;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isConnecting)
+            SizedBox(
+              width: 6,
+              height: 6,
+              child: CircularProgressIndicator(
+                color: color,
+                strokeWidth: 1.5,
+              ),
+            )
+          else
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.4),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(width: 6),
+          Text(
+            _label,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color get _color {
+    return switch (state) {
+      NodeConnectionState.ready => AppTheme.success,
+      NodeConnectionState.connecting ||
+      NodeConnectionState.negotiating ||
+      NodeConnectionState.syncing =>
+        AppTheme.warning,
+      NodeConnectionState.reconnecting => AppTheme.error,
+      _ => AppTheme.textDim,
+    };
+  }
+
+  String get _label {
+    return switch (state) {
+      NodeConnectionState.ready => 'LIVE',
+      NodeConnectionState.connecting => 'LINKING',
+      NodeConnectionState.negotiating => 'MTU',
+      NodeConnectionState.syncing => 'SYNC',
+      NodeConnectionState.reconnecting => 'LOST',
+      NodeConnectionState.scanning => 'SCAN',
+      _ => 'OFFLINE',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Info chip (icon + label)
+// ---------------------------------------------------------------------------
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+  final IconData icon;
   final String label;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 6, height: 6,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            fontFamily: 'monospace',
+          ),
         ),
-        const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color, letterSpacing: 1,
-            )),
       ],
     );
   }

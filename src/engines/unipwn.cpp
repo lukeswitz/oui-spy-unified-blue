@@ -138,9 +138,10 @@ static void unipwnLoop(void) {
 }
 
 const EngineCallbacks unipwnCallbacks = {
-    .init  = unipwnInit,
-    .start = unipwnStart,
-    .stop  = unipwnStop,
-    .loop  = unipwnLoop,
-    .name  = "UniPwn"
+    .init   = unipwnInit,
+    .start  = unipwnStart,
+    .stop   = unipwnStop,
+    .loop   = unipwnLoop,
+    .config = NULL,
+    .name   = "UniPwn"
 };

@@ -12,6 +12,7 @@ typedef struct {
     void (*start)(void);         // Enable and start scanning
     void (*stop)(void);          // Disable and clean up
     void (*loop)(void);          // Called every main loop iteration while active
+    void (*config)(const uint8_t* payload, uint8_t len);  // Runtime config update (nullable)
     const char* name;            // Human-readable name
 } EngineCallbacks;
 

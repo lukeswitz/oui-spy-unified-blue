@@ -51,8 +51,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
     void onDisconnect(NimBLEServer* server) override {
         phoneConnected = false;
-        Serial.println("[BLE] Phone disconnected");
-        // Restart advertising
+        Serial.println("[BLE] Phone disconnected — disabling all engines");
+        engineDisableAll();
         NimBLEDevice::startAdvertising();
         Serial.println("[BLE] Advertising restarted");
     }
@@ -123,27 +123,37 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
         bool buzzer = val[0] != 0;
         bool led = val[1] != 0;
         uint8_t brightness = (uint8_t)val[2];
+        uint8_t buzzerVol = (val.length() >= 4) ? (uint8_t)val[3] : 100;
 
+        // Update runtime state immediately
+        hwBuzzerEnabled = buzzer;
+        hwBuzzerVolume = buzzerVol;
+        hwLedEnabled = led;
+        hwNeopixelBrightness = brightness;
+
+        // Persist to NVS
         Preferences p;
         p.begin("ouispy-hw", false);
         p.putBool("buzzer", buzzer);
+        p.putUChar("bz_vol", buzzerVol);
         p.putBool("led", led);
         p.putUChar("neo_brt", brightness);
         p.end();
 
-        Serial.printf("[BLE] Hardware config: buzzer=%d led=%d brightness=%d\n",
-                      buzzer, led, brightness);
+        Serial.printf("[BLE] Hardware config: buzzer=%d vol=%d led=%d brightness=%d\n",
+                      buzzer, buzzerVol, led, brightness);
     }
 
     void onRead(NimBLECharacteristic* chr) override {
         Preferences p;
         p.begin("ouispy-hw", true);
-        uint8_t buf[3];
+        uint8_t buf[4];
         buf[0] = p.getBool("buzzer", true) ? 1 : 0;
         buf[1] = p.getBool("led", true) ? 1 : 0;
         buf[2] = p.getUChar("neo_brt", 50);
+        buf[3] = p.getUChar("bz_vol", 100);
         p.end();
-        chr->setValue(buf, 3);
+        chr->setValue(buf, 4);
     }
 };
 

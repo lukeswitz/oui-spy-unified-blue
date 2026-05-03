@@ -6,23 +6,14 @@
  */
 #include "flock_ble.h"
 #include "protocol.h"
+#include "flock_oui.h"
 #include "ble_gatt.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
 // ============================================================================
-// Detection Patterns
+// Detection Patterns (OUI matching now in shared flock_oui.h)
 // ============================================================================
-
-static const char* mac_prefixes[] = {
-    // FS Ext Battery devices
-    "58:8e:81", "cc:cc:cc", "ec:1b:bd", "90:35:ea", "04:0d:84",
-    "f0:82:c0", "1c:34:f1", "38:5b:44", "94:34:69", "b4:e3:f9",
-    // Flock WiFi devices
-    "70:c9:4e", "3c:91:80", "d8:f3:bc", "80:30:49", "14:5a:fc",
-    "74:4c:a1", "08:3a:88", "9c:2f:9d", "94:08:53", "e4:aa:ea"
-};
-static const int mac_prefix_count = sizeof(mac_prefixes) / sizeof(mac_prefixes[0]);
 
 static const char* name_patterns[] = {
     "FS Ext Battery", "Penguin", "Flock", "Pigvision"
@@ -75,13 +66,9 @@ static uint32_t totalDetections = 0;
 // Helpers
 // ============================================================================
 
+// checkMACPrefix now uses shared flockMatchOui() from flock_oui.h
 static bool checkMACPrefix(const uint8_t* mac) {
-    char pfx[9];
-    snprintf(pfx, sizeof(pfx), "%02x:%02x:%02x", mac[0], mac[1], mac[2]);
-    for (int i = 0; i < mac_prefix_count; i++) {
-        if (strncasecmp(pfx, mac_prefixes[i], 8) == 0) return true;
-    }
-    return false;
+    return flockMatchOui(mac);
 }
 
 static bool checkDeviceName(const char* name) {
@@ -245,12 +232,6 @@ static FlockBLECallback scanCb;
 // ============================================================================
 
 static void flockBleInit(void) {
-    // NimBLE already initialized by ble_gatt. Just need scan handle.
-    bleScan = NimBLEDevice::getScan();
-    bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);  // true = duplicates
-    bleScan->setActiveScan(true);
-    bleScan->setInterval(100);
-    bleScan->setWindow(99);
     dedupCount = 0;
     totalDetections = 0;
     Serial.println("[FLOCK-BLE] Initialized");
@@ -258,25 +239,50 @@ static void flockBleInit(void) {
 
 static void flockBleStart(void) {
     scanning = true;
-    lastScanStart = 0;  // Force immediate scan
+
+    // If wardrive is active it already runs BLE scan with flock detection.
+    // Don't touch the shared NimBLEScan singleton — wardrive owns it.
+    if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) {
+        Serial.println("[FLOCK-BLE] Started (passive — wardrive handles BLE scan)");
+        return;
+    }
+
+    bleScan = NimBLEDevice::getScan();
+    bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
+    bleScan->setActiveScan(true);
+    bleScan->setInterval(100);
+    bleScan->setWindow(99);
+    lastScanStart = 0;
     Serial.println("[FLOCK-BLE] Started");
 }
 
 static void flockBleStop(void) {
-    if (bleScan && bleScan->isScanning()) {
-        bleScan->stop();
-    }
     scanning = false;
+
+    // Only stop scan if we own it (wardrive not active)
+    if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
+        if (bleScan && bleScan->isScanning()) {
+            bleScan->stop();
+        }
+        if (bleScan) {
+            bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
+        }
+    }
+    bleScan = nullptr;
     Serial.println("[FLOCK-BLE] Stopped");
 }
 
 static void flockBleLoop(void) {
-    if (!scanning || !bleScan) return;
+    if (!scanning) return;
 
+    // Passive mode when wardrive owns the scan
+    if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
+
+    if (!bleScan) return;
     unsigned long now = millis();
     if (now - lastScanStart >= SCAN_INTERVAL_MS) {
         if (!bleScan->isScanning()) {
-            bleScan->start(SCAN_DURATION_S, false);  // false = non-blocking
+            bleScan->start(SCAN_DURATION_S, false);
             lastScanStart = now;
         }
     }
@@ -287,9 +293,10 @@ static void flockBleLoop(void) {
 // ============================================================================
 
 const EngineCallbacks flockBleCallbacks = {
-    .init  = flockBleInit,
-    .start = flockBleStart,
-    .stop  = flockBleStop,
-    .loop  = flockBleLoop,
-    .name  = "Flock-BLE"
+    .init   = flockBleInit,
+    .start  = flockBleStart,
+    .stop   = flockBleStop,
+    .loop   = flockBleLoop,
+    .config = NULL,
+    .name   = "Flock-BLE"
 };

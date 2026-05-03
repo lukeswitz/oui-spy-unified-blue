@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
-import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DetectionRow extends ConsumerWidget {
@@ -11,6 +10,7 @@ class DetectionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
     final engine = detection.engine;
     final hasGps = detection.latitude != null;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
@@ -19,8 +19,8 @@ class DetectionRow extends ConsumerWidget {
     return GestureDetector(
       onLongPress: () => _showActions(context, ref),
       child: Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: IntrinsicHeight(
         child: Row(
@@ -44,8 +44,8 @@ class DetectionRow extends ConsumerWidget {
                         children: [
                           Text(
                             detection.macAddress.toUpperCase(),
-                            style: const TextStyle(
-                              color: AppTheme.textPrimary,
+                            style: TextStyle(
+                              color: t.textPrimary,
                               fontSize: 13,
                               fontFamily: 'monospace',
                               fontWeight: FontWeight.w500,
@@ -63,13 +63,13 @@ class DetectionRow extends ConsumerWidget {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.textDim.withValues(alpha: 0.15),
+                                    color: t.textDim.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(3),
                                   ),
                                   child: Text(
                                     '\u00d7${detection.count}',
-                                    style: const TextStyle(
-                                      color: AppTheme.textDim,
+                                    style: TextStyle(
+                                      color: t.textDim,
                                       fontSize: 9,
                                       fontWeight: FontWeight.w600,
                                       fontFamily: 'monospace',
@@ -108,8 +108,8 @@ class DetectionRow extends ConsumerWidget {
                                 Flexible(
                                   child: Text(
                                     detection.deviceName,
-                                    style: const TextStyle(
-                                      color: AppTheme.textSecondary,
+                                    style: TextStyle(
+                                      color: t.textSecondary,
                                       fontSize: 11,
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -123,16 +123,31 @@ class DetectionRow extends ConsumerWidget {
                     ),
                     // RSSI bar
                     _RssiIndicator(rssi: detection.rssi),
-                    const SizedBox(width: 10),
-                    // Time + GPS
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => _startFoxhunt(context, ref),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.foxhunter.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Icon(
+                          Icons.gps_fixed,
+                          size: 14,
+                          color: AppTheme.foxhunter,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           timeStr,
-                          style: const TextStyle(
-                            color: AppTheme.textDim,
+                          style: TextStyle(
+                            color: t.textDim,
                             fontSize: 10,
                             fontFamily: 'monospace',
                           ),
@@ -156,10 +171,21 @@ class DetectionRow extends ConsumerWidget {
     );
   }
 
+  void _startFoxhunt(BuildContext context, WidgetRef ref) {
+    ref.read(appStateProvider).setFoxhunterTarget(detection.macAddress);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Foxhunting ${detection.macAddress.toUpperCase().substring(0, 8)}...'),
+        backgroundColor: AppTheme.foxhunter,
+      ),
+    );
+  }
+
   void _showActions(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.surface,
+      backgroundColor: t.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
@@ -171,38 +197,29 @@ class DetectionRow extends ConsumerWidget {
           children: [
             Text(
               detection.macAddress.toUpperCase(),
-              style: const TextStyle(
-                color: AppTheme.textPrimary, fontSize: 14,
+              style: TextStyle(
+                color: t.textPrimary, fontSize: 14,
                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
               ),
             ),
             if (detection.deviceName.isNotEmpty)
               Text(detection.deviceName,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  style: TextStyle(color: t.textSecondary, fontSize: 12)),
             const SizedBox(height: 16),
-            if (detection.engine.isBle)
-              ListTile(
-                leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
-                title: const Text('Foxhunt This Device',
-                    style: TextStyle(color: AppTheme.foxhunter)),
-                subtitle: const Text('Track by RSSI proximity',
-                    style: TextStyle(color: AppTheme.textDim, fontSize: 11)),
-                onTap: () {
-                  final ble = ref.read(bleManagerProvider);
-                  ble.enableEngine(Engine.foxhunter);
-                  ble.setFoxhunterTarget(detection.macAddress);
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Foxhunting ${detection.macAddress.substring(0, 8)}...'),
-                      backgroundColor: AppTheme.foxhunter,
-                    ),
-                  );
-                },
-              ),
             ListTile(
-              leading: const Icon(Icons.copy, color: AppTheme.textSecondary),
-              title: const Text('Copy MAC', style: TextStyle(color: AppTheme.textPrimary)),
+              leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
+              title: const Text('Foxhunt This Device',
+                  style: TextStyle(color: AppTheme.foxhunter)),
+              subtitle: Text('Track by RSSI proximity',
+                  style: TextStyle(color: t.textDim, fontSize: 11)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _startFoxhunt(context, ref);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.copy, color: t.textSecondary),
+              title: Text('Copy MAC', style: TextStyle(color: t.textPrimary)),
               onTap: () {
                 // ignore: unused_import
                 Navigator.pop(ctx);
@@ -253,6 +270,7 @@ class _RssiIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     // Normalize RSSI from -100..0 to 0..1
     final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
     final color = Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
@@ -276,7 +294,7 @@ class _RssiIndicator extends StatelessWidget {
             borderRadius: BorderRadius.circular(1),
             child: LinearProgressIndicator(
               value: normalized,
-              backgroundColor: AppTheme.border,
+              backgroundColor: t.border,
               color: color,
               minHeight: 2,
             ),

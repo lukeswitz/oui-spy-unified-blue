@@ -39,9 +39,11 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.5.0
   crypto: ^3.0.0
+  path: ^1.9.0
   wakelock_plus: ^1.2.0
   permission_handler: ^11.4.0
   flutter_secure_storage: ^10.0.0
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

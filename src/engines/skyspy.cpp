@@ -253,9 +253,10 @@ static void skyspyLoop(void) {
 }
 
 const EngineCallbacks skyspyCallbacks = {
-    .init  = skyspyInit,
-    .start = skyspyStart,
-    .stop  = skyspyStop,
-    .loop  = skyspyLoop,
-    .name  = "Sky Spy"
+    .init   = skyspyInit,
+    .start  = skyspyStart,
+    .stop   = skyspyStop,
+    .loop   = skyspyLoop,
+    .config = NULL,
+    .name   = "Sky Spy"
 };

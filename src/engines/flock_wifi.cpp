@@ -5,23 +5,11 @@
  */
 #include "flock_wifi.h"
 #include "protocol.h"
+#include "flock_oui.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <string.h>
-
-// ============================================================================
-// OUI Table (41 known Flock Safety OUIs, byte-compiled for IRAM matching)
-// ============================================================================
-
-static const uint8_t ouiTable[][3] = {
-    {0x58,0x8e,0x81}, {0xcc,0xcc,0xcc}, {0xec,0x1b,0xbd}, {0x90,0x35,0xea},
-    {0x04,0x0d,0x84}, {0xf0,0x82,0xc0}, {0x1c,0x34,0xf1}, {0x38,0x5b,0x44},
-    {0x94,0x34,0x69}, {0xb4,0xe3,0xf9}, {0x70,0xc9,0x4e}, {0x3c,0x91,0x80},
-    {0xd8,0xf3,0xbc}, {0x80,0x30,0x49}, {0x14,0x5a,0xfc}, {0x74,0x4c,0xa1},
-    {0x08,0x3a,0x88}, {0x9c,0x2f,0x9d}, {0x94,0x08,0x53}, {0xe4,0xaa,0xea},
-};
-static const int ouiCount = sizeof(ouiTable) / sizeof(ouiTable[0]);
 
 // Channel hopping
 static const uint8_t channels[] = {1, 6, 11};
@@ -41,16 +29,7 @@ static int wifiDedupCount = 0;
 // IRAM helpers
 // ============================================================================
 
-static bool IRAM_ATTR matchOui(const uint8_t* mac) {
-    // Skip locally administered (randomized) MACs
-    if (mac[0] & 0x02) return false;
-    for (int i = 0; i < ouiCount; i++) {
-        if (mac[0] == ouiTable[i][0] &&
-            mac[1] == ouiTable[i][1] &&
-            mac[2] == ouiTable[i][2]) return true;
-    }
-    return false;
-}
+// matchOui now provided by flock_oui.h as flockMatchOuiISR()
 
 static bool IRAM_ATTR isDedupCooldownISR(const uint8_t* mac) {
     uint32_t now = millis();
@@ -98,7 +77,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     const uint8_t* matchMac = NULL;
 
     // Check addr2 (transmitter) — highest confidence
-    if (matchOui(addr2)) {
+    if (flockMatchOuiISR(addr2)) {
         method = METHOD_OUI_ADDR2;
         matchMac = addr2;
 
@@ -111,12 +90,12 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
         }
     }
     // Check addr1 (destination) — skip multicast
-    else if (!(addr1[0] & 0x01) && matchOui(addr1)) {
+    else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
         method = METHOD_OUI_ADDR1;
         matchMac = addr1;
     }
     // Check addr3 (BSSID) — management frames only
-    else if (frameType == 0 && matchOui(addr3)) {
+    else if (frameType == 0 && flockMatchOuiISR(addr3)) {
         method = METHOD_OUI_ADDR3;
         matchMac = addr3;
     }
@@ -177,9 +156,10 @@ static void flockWifiLoop(void) {
 }
 
 const EngineCallbacks flockWifiCallbacks = {
-    .init  = flockWifiInit,
-    .start = flockWifiStart,
-    .stop  = flockWifiStop,
-    .loop  = flockWifiLoop,
-    .name  = "Flock-WiFi"
+    .init   = flockWifiInit,
+    .start  = flockWifiStart,
+    .stop   = flockWifiStop,
+    .loop   = flockWifiLoop,
+    .config = NULL,
+    .name   = "Flock-WiFi"
 };

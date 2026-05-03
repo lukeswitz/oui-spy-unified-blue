@@ -3,8 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
-import 'package:oui_spy/core/ble/ble_manager.dart';
-import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class FoxhunterScreen extends ConsumerStatefulWidget {
@@ -16,7 +14,6 @@ class FoxhunterScreen extends ConsumerStatefulWidget {
 
 class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
   final _macController = TextEditingController();
-  String? _activeTarget;
 
   @override
   void dispose() {
@@ -27,23 +24,39 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
   void _setTarget() {
     final mac = _macController.text.trim();
     if (mac.length != 17) return;
-    final ble = ref.read(bleManagerProvider);
-    ble.enableEngine(Engine.foxhunter);
-    ble.setFoxhunterTarget(mac);
-    setState(() => _activeTarget = mac);
+    ref.read(appStateProvider).setFoxhunterTarget(mac);
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
+    final target = state.foxhunterTarget;
     final rssi = state.foxhunterRssi;
     final intervalMs = state.foxhunterIntervalMs;
     final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
     final color = Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
 
+    if (target != null && _macController.text.isEmpty) {
+      _macController.text = target;
+    }
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('FOXHUNTER')),
+      backgroundColor: t.background,
+      appBar: AppBar(
+        title: const Text('FOXHUNTER'),
+        actions: [
+          if (target != null)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined, color: AppTheme.error),
+              onPressed: () {
+                ref.read(appStateProvider).clearFoxhunterTarget();
+                _macController.clear();
+              },
+              tooltip: 'Stop',
+            ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -53,7 +66,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                 Expanded(
                   child: TextField(
                     controller: _macController,
-                    style: const TextStyle(color: AppTheme.textPrimary, fontFamily: 'monospace', fontSize: 14),
+                    style: TextStyle(color: t.textPrimary, fontFamily: 'monospace', fontSize: 14),
                     decoration: const InputDecoration(hintText: 'AA:BB:CC:DD:EE:FF', labelText: 'Target MAC'),
                   ),
                 ),
@@ -61,9 +74,9 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                 ElevatedButton(onPressed: _setTarget, child: const Text('HUNT')),
               ],
             ),
-            if (_activeTarget != null) ...[
+            if (target != null) ...[
               const SizedBox(height: 8),
-              Text('Tracking: $_activeTarget',
+              Text('Tracking: ${target.toUpperCase()}',
                   style: const TextStyle(color: AppTheme.foxhunter, fontSize: 11, fontFamily: 'monospace')),
             ],
             const Spacer(),
@@ -86,7 +99,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             ),
             const SizedBox(height: 24),
             Text('Beep interval: ${intervalMs}ms',
-                style: const TextStyle(color: AppTheme.textDim, fontSize: 11, fontFamily: 'monospace')),
+                style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
             const Spacer(),
           ],
         ),

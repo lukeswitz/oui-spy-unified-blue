@@ -35,6 +35,12 @@ QueueHandle_t engineCmdQueue = NULL;
 volatile GpsData currentGps = {};
 volatile bool gpsValid = false;
 
+// Hardware config — loaded from NVS at boot, updated live by BLE writes
+volatile bool    hwBuzzerEnabled = true;
+volatile uint8_t hwBuzzerVolume = 100;       // 0-255 PWM duty cycle
+volatile bool    hwLedEnabled = true;
+volatile uint8_t hwNeopixelBrightness = 50;
+
 // ============================================================================
 // Hardware
 // ============================================================================
@@ -48,20 +54,72 @@ static void initHardware(void) {
 }
 
 // ============================================================================
+// Hardware Config — load from NVS at boot
+// ============================================================================
+static void loadHardwareConfig(void) {
+    Preferences p;
+    p.begin("ouispy-hw", true);
+    hwBuzzerEnabled = p.getBool("buzzer", true);
+    hwBuzzerVolume = p.getUChar("bz_vol", 100);
+    hwLedEnabled = p.getBool("led", true);
+    hwNeopixelBrightness = p.getUChar("neo_brt", 50);
+    p.end();
+    Serial.printf("[HW] Config: buzzer=%d vol=%d led=%d neo=%d\n",
+                  (int)hwBuzzerEnabled, (int)hwBuzzerVolume,
+                  (int)hwLedEnabled, (int)hwNeopixelBrightness);
+}
+
+// ============================================================================
+// Buzzer Feedback — melodic triple-tone on target detection
+// ============================================================================
+
+/// Returns true if this engine produces alertable target detections.
+/// Whitelist approach: only engines that detect specific targets should chime.
+/// Wardrive is passive collection — no beep.
+/// Foxhunter has its own proximity beep loop — handled separately.
+static bool isAlertableEngine(uint8_t engine_id) {
+    switch ((EngineId)engine_id) {
+        case ENGINE_DETECTOR:
+        case ENGINE_FLOCK_BLE:
+        case ENGINE_FLOCK_WIFI:
+        case ENGINE_SKYSPY:
+        case ENGINE_UNIPWN:
+            return true;
+        case ENGINE_WARDRIVE:
+        case ENGINE_FOXHUNTER:
+        case ENGINE_COUNT:
+        default:
+            return false;
+    }
+}
+
+
+/// Pleasant ascending three-note chime: E6 → G#6 → B6
+static void detectionChime(void) {
+    if (!hwBuzzerEnabled || hwBuzzerVolume == 0) return;
+    const int notes[] = {1319, 1661, 1976};  // E6, G#6, B6 — major triad
+    for (int i = 0; i < 3; i++) {
+        ledcSetup(0, notes[i], 8);
+        ledcAttachPin(PIN_BUZZER, 0);
+        ledcWrite(0, hwBuzzerVolume);
+        delay(45);
+        ledcWrite(0, 0);
+        delay(20);
+    }
+    ledcDetachPin(PIN_BUZZER);
+}
+
+// ============================================================================
 // Boot melody — quick ascending chirp to indicate v3 app-controlled mode
 // ============================================================================
 static void playBootMelody(void) {
-    Preferences bzP;
-    bzP.begin("ouispy-hw", true);
-    bool buzzerOn = bzP.getBool("buzzer", true);
-    bzP.end();
-    if (!buzzerOn) return;
+    if (!hwBuzzerEnabled) return;
 
     const int notes[] = {523, 659, 784, 1047};  // C5, E5, G5, C6
     for (int i = 0; i < 4; i++) {
         ledcSetup(0, notes[i], 8);
         ledcAttachPin(PIN_BUZZER, 0);
-        ledcWrite(0, 80);
+        ledcWrite(0, hwBuzzerVolume > 0 ? hwBuzzerVolume : 80);
         delay(80);
         ledcWrite(0, 0);
         delay(30);
@@ -112,11 +170,25 @@ static void detectionNotifyTask(void* param) {
             // Cross-engine dedup: suppress same MAC within cooldown window
             if (isNotifyDedupCooldown(evt.mac)) continue;
 
+            // Audible + visual feedback only for target engines
+            if (isAlertableEngine(evt.engine_id)) {
+                Serial.printf("[CHIME] engine=%d\n", evt.engine_id);
+                detectionChime();
+                if (hwLedEnabled) {
+                    digitalWrite(PIN_LED, LOW);  // ON (active LOW)
+                }
+            }
+
             // Broadcast to mesh peers (only local detections, not relayed ones)
             meshBroadcastDetection(&evt);
 
             // Send BLE notification
             bleGattNotifyDetection(&evt);
+
+            // LED off after notification sent
+            if (hwLedEnabled) {
+                digitalWrite(PIN_LED, HIGH);
+            }
 
             // Also print to serial (for debugging / Flask compatibility)
             char macStr[18];
@@ -185,6 +257,9 @@ void setup() {
 
     // Initialize hardware
     initHardware();
+
+    // Load hardware config (buzzer/LED/neopixel) from NVS
+    loadHardwareConfig();
 
     // Create FreeRTOS queues
     detectionQueue = xQueueCreate(64, sizeof(DetectionEvent));

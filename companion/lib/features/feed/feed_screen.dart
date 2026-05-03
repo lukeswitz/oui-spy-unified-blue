@@ -39,12 +39,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final filtered = _filter(state.recentDetections);
     final sourceNodes = state.meshSourceNodes;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -53,7 +54,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               child: Row(
                 children: [
                   Text('FEED', style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        letterSpacing: 3, color: AppTheme.textDim,
+                        letterSpacing: 3, color: t.textDim,
                       )),
                   const Spacer(),
                   if (sourceNodes.isNotEmpty) ...[

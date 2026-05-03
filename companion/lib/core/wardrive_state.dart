@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -16,6 +16,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/models/node.dart';
 import 'package:oui_spy/core/models/session.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
@@ -60,7 +61,7 @@ enum WardriveTarget {
     },
   };
 
-  bool get hasRadioChoice => this == flock || this == wigleFlock;
+  bool get hasRadioChoice => this != drone;
 }
 
 enum WardriveRadio {
@@ -71,12 +72,33 @@ enum WardriveRadio {
 
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db) {
-    // Re-enable engines after BLE reconnect (DISABLE_ALL fires on every connect)
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready && isActive) {
         _reEnableEngines();
       }
     });
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final p = await SharedPreferences.getInstance();
+    _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
+    _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
+    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 150;
+    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 200;
+    _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
+    _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 2500;
+    notifyListeners();
+  }
+
+  Future<void> _savePrefs() async {
+    final p = await SharedPreferences.getInstance();
+    p.setInt('wd_wifiRssiRelog', _wifiRssiRelogDb);
+    p.setInt('wd_bleRssiRelog', _bleRssiRelogDb);
+    p.setInt('wd_wifiScanInterval', _wifiScanInterval);
+    p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
+    p.setInt('wd_bleScanDuration', _bleScanDuration);
+    p.setInt('wd_bleScanInterval', _bleScanInterval);
   }
 
   final BleManager _ble;
@@ -85,10 +107,42 @@ class WardriveController extends ChangeNotifier {
   StreamSubscription<NodeConnectionState>? _connSub;
 
   WardriveState state = WardriveState.idle;
-  WardriveTarget target = WardriveTarget.flock;
+  WardriveTarget target = WardriveTarget.wigle;
   WardriveRadio radio = WardriveRadio.both;
   bool flockFilter = false;
-  double markerDistanceM = 10.0;
+  double _markerDistanceM = 10.0;
+
+  int _wifiRssiRelogDb = 20;
+  int get wifiRssiRelogDb => _wifiRssiRelogDb;
+  set wifiRssiRelogDb(int v) { _wifiRssiRelogDb = v; notifyListeners(); _savePrefs(); }
+
+  int _bleRssiRelogDb = 15;
+  int get bleRssiRelogDb => _bleRssiRelogDb;
+  set bleRssiRelogDb(int v) { _bleRssiRelogDb = v; notifyListeners(); _savePrefs(); }
+
+  int _wifiScanInterval = 150;
+  int get wifiScanInterval => _wifiScanInterval;
+  set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); }
+
+  int _wifiDwellPerCh = 200;
+  int get wifiDwellPerCh => _wifiDwellPerCh;
+  set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); }
+
+  int _bleScanDuration = 800;
+  int get bleScanDuration => _bleScanDuration;
+  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); }
+
+  int _bleScanInterval = 2500;
+  int get bleScanInterval => _bleScanInterval;
+  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); }
+  double get markerDistanceM => _markerDistanceM;
+  set markerDistanceM(double v) {
+    _markerDistanceM = v;
+    notifyListeners();
+  }
+
+  int rawWifiCount = 0;
+  int rawBleCount = 0;
 
   List<Engine> get activeEngines => target.engines(radio);
   String? foxhuntTarget;
@@ -148,7 +202,7 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void startSession() {
+  Future<void> startSession() async {
     _gps.start();
 
     startTime = DateTime.now();
@@ -156,6 +210,8 @@ class WardriveController extends ChangeNotifier {
     detections.clear();
     _dedupedByMac.clear();
     rawDetectionCount = 0;
+    rawWifiCount = 0;
+    rawBleCount = 0;
     uniqueMacs.clear();
     _flockMacs.clear();
     routePoints.clear();
@@ -172,11 +228,9 @@ class WardriveController extends ChangeNotifier {
       isWardrive: const drift.Value(true),
     ));
 
-    for (final engine in activeEngines) {
-      _ble.enableEngine(engine);
-    }
-
     state = WardriveState.running;
+
+    await _enableEnginesSequentially(activeEngines);
 
     final cached = _gps.lastPosition;
     if (cached != null) {
@@ -194,6 +248,9 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> stopSession() async {
+    state = WardriveState.idle;
+    notifyListeners();
+
     _detSub?.cancel();
     _gpsSub?.cancel();
     _statsTimer?.cancel();
@@ -201,7 +258,9 @@ class WardriveController extends ChangeNotifier {
     _gpsSub = null;
     _statsTimer = null;
 
-    for (final engine in activeEngines) {
+    // Snapshot engines before clearing state
+    final enginesToStop = activeEngines.toList();
+    for (final engine in enginesToStop) {
       await _ble.disableEngine(engine);
     }
 
@@ -216,16 +275,12 @@ class WardriveController extends ChangeNotifier {
         distanceKm: drift.Value(distanceKm),
       ));
 
-      // Auto-save WiGLE CSV for later upload
       await _saveCsv(sessionId, detections);
 
       DebugLog.log('WARDRIVE: saved $sessionId (${detections.length} det, ${uniqueMacs.length} unique, ${_flockMacs.length} flock)');
     }
 
-    // Keep map data (routePoints, detections, markers) visible.
-    // Only cleared on next startSession().
     _lastCompletedSessionId = sessionId;
-    state = WardriveState.idle;
     notifyListeners();
   }
 
@@ -237,6 +292,20 @@ class WardriveController extends ChangeNotifier {
   bool get hasSessionData =>
       routePoints.isNotEmpty || detections.isNotEmpty;
 
+  /// Clear map overlay from a completed/loaded session.
+  void clearMapData() {
+    detections.clear();
+    _dedupedByMac.clear();
+    routePoints.clear();
+    uniqueMacs.clear();
+    _flockMacs.clear();
+    rawDetectionCount = 0;
+    distanceKm = 0;
+    droneCount = 0;
+    _lastCompletedSessionId = null;
+    notifyListeners();
+  }
+
   /// Load a previously saved wardrive session onto the map.
   Future<void> loadSession(String sid) async {
     if (isActive) return;
@@ -245,6 +314,8 @@ class WardriveController extends ChangeNotifier {
     detections.clear();
     _dedupedByMac.clear();
     rawDetectionCount = 0;
+    rawWifiCount = 0;
+    rawBleCount = 0;
     uniqueMacs.clear();
     _flockMacs.clear();
     routePoints.clear();
@@ -401,16 +472,47 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Radio bitmask for firmware config: 0x01=WiFi, 0x02=BLE, 0x03=both.
+  int get radioBitmask => switch (radio) {
+    WardriveRadio.wifi => 0x01,
+    WardriveRadio.ble => 0x02,
+    WardriveRadio.both => 0x03,
+  };
+
+  /// Enable engines one at a time with a settle delay after WiFi engines.
+  /// ESP32 WiFi init can destabilize the NimBLE connection if BLE scan
+  /// restarts too quickly; the resulting reconnect fires DISABLE_ALL.
+  Future<void> _enableEnginesSequentially(List<Engine> engineList) async {
+    for (final engine in engineList) {
+      if (state == WardriveState.idle) return;
+      if (engine == Engine.wardrive) {
+        await _ble.sendEngineConfig(
+          engine,
+          Uint8List.fromList([
+            radioBitmask,
+            wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
+            wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
+          ]),
+        );
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      if (state == WardriveState.idle) return;
+      await _ble.enableEngine(engine, radio: radioBitmask);
+      if (engine.isWifi) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+  }
+
   /// Re-enable engines after BLE reconnect killed them with DISABLE_ALL.
   void _reEnableEngines() {
     DebugLog.log('WARDRIVE: re-enabling engines after reconnect');
-    for (final engine in activeEngines) {
-      _ble.enableEngine(engine);
-    }
-    if (foxhuntTarget != null) {
-      _ble.enableEngine(Engine.foxhunter);
-      _ble.setFoxhunterTarget(foxhuntTarget!);
-    }
+    _enableEnginesSequentially(activeEngines).then((_) {
+      if (foxhuntTarget != null) {
+        _ble.enableEngine(Engine.foxhunter);
+        _ble.setFoxhunterTarget(foxhuntTarget!);
+      }
+    });
   }
 
   SessionStats get currentStats {
@@ -425,8 +527,14 @@ class WardriveController extends ChangeNotifier {
       totalDetections: rawDetectionCount,
       uniqueMacs: uniqueMacs.length,
       newMacs: uniqueMacs.length,
-      wifiDetections: _dedupedByMac.values.where((d) => d.engine.isWifi).length,
-      bleDetections: _dedupedByMac.values.where((d) => d.engine.isBle).length,
+      wifiDetections: _dedupedByMac.values.where((d) =>
+          d.method == 'wifi_ap' ||
+          (d.engine.isWifi && d.method != 'ble_adv')).length,
+      wifiTotal: rawWifiCount,
+      bleDetections: _dedupedByMac.values.where((d) =>
+          d.method == 'ble_adv' ||
+          (d.engine.isBle && d.method != 'wifi_ap')).length,
+      bleTotal: rawBleCount,
       flockCount: _flockMacs.length,
       droneCount: droneCount,
       detectionsPerKm: distanceKm > 0 ? rawDetectionCount / distanceKm : 0,
@@ -438,6 +546,8 @@ class WardriveController extends ChangeNotifier {
   void _onDetection(Detection detection) {
     if (state != WardriveState.running) return;
     rawDetectionCount++;
+    final isBle = detection.method == 'ble_adv' || detection.engine.isBle;
+    if (isBle) { rawBleCount++; } else { rawWifiCount++; }
     uniqueMacs.add(detection.macAddress);
     if (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi) {
       _flockMacs.add(detection.macAddress);
@@ -446,11 +556,20 @@ class WardriveController extends ChangeNotifier {
 
     final key = '${detection.macAddress}|${detection.engine.name}';
     final existing = _dedupedByMac[key];
+    final isBleMethod = detection.method == 'ble_adv' || detection.engine.isBle;
+    final threshold = isBleMethod ? bleRssiRelogDb : wifiRssiRelogDb;
+
     if (existing != null) {
+      final rssiDelta = (detection.rssi - existing.rssi).abs();
+      final shouldRelog = rssiDelta >= threshold;
       _dedupedByMac[key] = detection.copyWith(
         count: existing.count + 1,
         rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
       );
+      if (!shouldRelog) {
+        notifyListeners();
+        return;
+      }
     } else {
       _dedupedByMac[key] = detection;
       detections.add(detection);

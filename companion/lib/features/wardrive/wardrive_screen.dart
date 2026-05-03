@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -23,6 +24,7 @@ class WardriveScreen extends ConsumerStatefulWidget {
 
 class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   final _mapController = MapController();
+  bool _followMode = true;
 
   @override
   void dispose() {
@@ -37,17 +39,34 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       LatLng(pos.latitude, pos.longitude),
       _mapController.camera.zoom,
     );
+    if (!_followMode) setState(() => _followMode = true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final wd = ref.watch(wardriveProvider);
+    final gpsPos = ref.read(gpsProvider).lastPosition;
     final center = wd.currentPosition != null
         ? LatLng(wd.currentPosition!.latitude, wd.currentPosition!.longitude)
-        : const LatLng(38.627, -90.199);
+        : gpsPos != null
+            ? LatLng(gpsPos.latitude, gpsPos.longitude)
+            : const LatLng(38.627, -90.199);
+
+    // Auto-follow: keep map centered on current position while moving
+    if (_followMode && wd.isActive && wd.currentPosition != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.move(
+          LatLng(wd.currentPosition!.latitude, wd.currentPosition!.longitude),
+          _mapController.camera.zoom,
+        );
+      });
+    }
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       body: SafeArea(
         child: Stack(
           children: [
@@ -57,11 +76,19 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 15,
-                backgroundColor: const Color(0xFF0A0A0A),
+                backgroundColor: isDark ? const Color(0xFF0A0A0A) : const Color(0xFFE8E8EE),
+                onMapEvent: (event) {
+                  if (event is MapEventMoveStart &&
+                      event.source == MapEventSource.dragStart) {
+                    if (_followMode) setState(() => _followMode = false);
+                  }
+                },
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                  urlTemplate: isDark
+                      ? 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
+                      : 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
                   userAgentPackageName: 'tech.colonelpanic.ouispy',
                   maxZoom: 19,
                 ),
@@ -69,7 +96,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                   PolylineLayer(polylines: [
                     Polyline(
                       points: wd.routePoints,
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : AppTheme.accent.withValues(alpha: 0.6),
                       strokeWidth: 2.5,
                     ),
                   ]),
@@ -121,13 +150,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             // Active: focus button (top-right, below stats)
             if (wd.isActive)
               Positioned(
-                top: 90, right: 12,
+                top: 130, right: 12,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _IconBtn(
-                      icon: Icons.my_location,
+                      icon: _followMode ? Icons.my_location : Icons.location_searching,
                       onTap: () => _focusMap(wd),
+                      active: _followMode,
                     ),
                     if (wd.foxhuntTarget != null) ...[
                       const SizedBox(height: 6),
@@ -158,8 +188,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       ),
     );
   }
-
-  bool _isFlock(Engine e) => e == Engine.flockBle || e == Engine.flockWifi;
 
   List<Marker> _distanceFilteredMarkers(WardriveController wd) {
     final geoDetections = wd.dedupedDetections
@@ -225,7 +253,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     return switch (wd.state) {
       WardriveState.idle => const SizedBox.shrink(),
       WardriveState.running => Row(mainAxisSize: MainAxisSize.min, children: [
-          _Pill(label: 'PAUSE', color: AppTheme.warning,
+          _OutlinePill(label: 'PAUSE', color: AppTheme.textSecondary,
               onTap: () => ref.read(wardriveProvider).pauseSession()),
           const SizedBox(width: 12),
           _Pill(label: 'STOP', color: AppTheme.error,
@@ -235,7 +263,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
           _Pill(label: 'RESUME', color: AppTheme.success,
               onTap: () => ref.read(wardriveProvider).resumeSession()),
           const SizedBox(width: 12),
-          _Pill(label: 'STOP', color: AppTheme.error,
+          _OutlinePill(label: 'STOP', color: AppTheme.error,
               onTap: () => ref.read(wardriveProvider).stopSession()),
         ]),
     };
@@ -249,6 +277,7 @@ class _IdleControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final th = AppTheme.of(context);
     final t = wd.target;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -257,9 +286,9 @@ class _IdleControls extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: AppTheme.background.withValues(alpha: 0.92),
+            color: th.background.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.border, width: 0.5),
+            border: Border.all(color: th.border, width: 0.5),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -282,15 +311,22 @@ class _IdleControls extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(m.icon, size: 16, color: sel ? m.color : AppTheme.textDim),
+                            Icon(m.icon, size: 16, color: sel ? m.color : th.textDim),
                             const SizedBox(height: 2),
-                            Text(
-                              m.label,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: sel ? m.color : AppTheme.textDim,
-                                fontSize: 8, fontWeight: FontWeight.w700,
-                                letterSpacing: 0.5,
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                child: Text(
+                                  m.label,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    color: sel ? m.color : th.textDim,
+                                    fontSize: 8, fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -314,7 +350,17 @@ class _IdleControls extends StatelessWidget {
                       };
                       return Expanded(
                         child: GestureDetector(
-                          onTap: () => ref.read(wardriveProvider).setRadio(r),
+                          onTap: () {
+                            ref.read(wardriveProvider).setRadio(r);
+                            ref.read(appStateProvider).setEngineRadio(
+                              Engine.wardrive,
+                              switch (r) {
+                                WardriveRadio.wifi => 0x01,
+                                WardriveRadio.ble => 0x02,
+                                WardriveRadio.both => 0x03,
+                              },
+                            );
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 6),
                             margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -326,10 +372,10 @@ class _IdleControls extends StatelessWidget {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(radioIcon, size: 12,
-                                    color: sel ? t.color : AppTheme.textDim),
+                                    color: sel ? t.color : th.textDim),
                                 const SizedBox(width: 4),
                                 Text(r.label, style: TextStyle(
-                                  color: sel ? t.color : AppTheme.textDim,
+                                  color: sel ? t.color : th.textDim,
                                   fontSize: 9, fontWeight: FontWeight.w600,
                                 )),
                               ],
@@ -349,16 +395,16 @@ class _IdleControls extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: AppTheme.background.withValues(alpha: 0.92),
+            color: th.background.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.border, width: 0.5),
+            border: Border.all(color: th.border, width: 0.5),
           ),
           child: Row(
             children: [
-              const Icon(Icons.straighten, size: 12, color: AppTheme.textDim),
+              Icon(Icons.straighten, size: 12, color: th.textDim),
               const SizedBox(width: 6),
-              const Text('DIST', style: TextStyle(
-                color: AppTheme.textDim, fontSize: 8,
+              Text('DIST', style: TextStyle(
+                color: th.textDim, fontSize: 8,
                 fontWeight: FontWeight.w600, letterSpacing: 1,
               )),
               Expanded(
@@ -368,10 +414,9 @@ class _IdleControls extends StatelessWidget {
                     value: wd.markerDistanceM,
                     min: 1, max: 100,
                     activeColor: AppTheme.accent,
-                    inactiveColor: AppTheme.border,
+                    inactiveColor: th.border,
                     onChanged: (v) {
                       ref.read(wardriveProvider).markerDistanceM = v;
-                      ref.read(wardriveProvider).notifyListeners();
                     },
                   ),
                 ),
@@ -397,17 +442,17 @@ class _IdleControls extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppTheme.surface,
+                  color: th.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.border),
+                  border: Border.all(color: th.border),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.history, size: 14, color: AppTheme.textSecondary),
-                    SizedBox(width: 6),
+                    Icon(Icons.history, size: 14, color: th.textSecondary),
+                    const SizedBox(width: 6),
                     Text('SESSIONS', style: TextStyle(
-                      color: AppTheme.textSecondary, fontSize: 11,
+                      color: th.textSecondary, fontSize: 11,
                       fontWeight: FontWeight.w700, letterSpacing: 1,
                     )),
                   ],
@@ -435,6 +480,7 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -443,8 +489,8 @@ class _Pill extends StatelessWidget {
           color: color,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(label, style: const TextStyle(
-          color: AppTheme.background, fontSize: 13,
+        child: Text(label, style: TextStyle(
+          color: t.background, fontSize: 13,
           fontWeight: FontWeight.w700, letterSpacing: 1.5,
         )),
       ),
@@ -452,14 +498,9 @@ class _Pill extends StatelessWidget {
   }
 }
 
-class _ToggleBtn extends StatelessWidget {
-  const _ToggleBtn({
-    required this.label, required this.icon,
-    required this.active, required this.color, required this.onTap,
-  });
+class _OutlinePill extends StatelessWidget {
+  const _OutlinePill({required this.label, required this.color, required this.onTap});
   final String label;
-  final IconData icon;
-  final bool active;
   final Color color;
   final VoidCallback onTap;
 
@@ -468,46 +509,45 @@ class _ToggleBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
         decoration: BoxDecoration(
-          color: active
-              ? color.withValues(alpha: 0.2)
-              : AppTheme.surface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: active ? color.withValues(alpha: 0.5) : AppTheme.border,
-          ),
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 14, color: active ? color : AppTheme.textDim),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(
-            color: active ? color : AppTheme.textDim,
-            fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 1,
-          )),
-        ]),
+        child: Text(label, style: TextStyle(
+          color: color, fontSize: 13,
+          fontWeight: FontWeight.w700, letterSpacing: 1.5,
+        )),
       ),
     );
   }
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.onTap});
+  const _IconBtn({required this.icon, required this.onTap, this.active = false});
   final IconData icon;
   final VoidCallback onTap;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: AppTheme.surface.withValues(alpha: 0.9),
+          color: active
+              ? AppTheme.accent.withValues(alpha: 0.15)
+              : t.surface.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppTheme.border),
+          border: Border.all(
+            color: active ? AppTheme.accent.withValues(alpha: 0.6) : t.border,
+          ),
         ),
-        child: Icon(icon, size: 16, color: AppTheme.textSecondary),
+        child: Icon(icon, size: 16,
+            color: active ? AppTheme.accent : t.textSecondary),
       ),
     );
   }
@@ -519,6 +559,7 @@ class _DetectionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     if (detections.isEmpty) return const SizedBox.shrink();
 
     final grouped = <String, List<Detection>>{};
@@ -530,9 +571,9 @@ class _DetectionList extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(maxHeight: 100),
       decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.92),
+        color: t.background.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: t.border),
       ),
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -571,6 +612,7 @@ class _DetListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
     final label = d.ssid.isNotEmpty
@@ -589,8 +631,8 @@ class _DetListRow extends StatelessWidget {
           ),
           const SizedBox(width: 5),
           Text(d.macAddress.toUpperCase(),
-            style: const TextStyle(
-              color: AppTheme.textPrimary, fontSize: 9,
+            style: TextStyle(
+              color: t.textPrimary, fontSize: 9,
               fontFamily: 'monospace', fontWeight: FontWeight.w500,
             ),
           ),
@@ -598,7 +640,7 @@ class _DetListRow extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(child: Text(label,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 9),
+              style: TextStyle(color: t.textSecondary, fontSize: 9),
             )),
           ] else
             const Spacer(),
@@ -606,8 +648,8 @@ class _DetListRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(right: 4),
               child: Text('\u00d7${d.count}',
-                style: const TextStyle(
-                  color: AppTheme.textDim, fontSize: 8,
+                style: TextStyle(
+                  color: t.textDim, fontSize: 8,
                   fontFamily: 'monospace', fontWeight: FontWeight.w600,
                 ),
               ),
@@ -631,6 +673,7 @@ class _MarkerDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final isFlock = engine == Engine.flockBle || engine == Engine.flockWifi;
     final isDrone = engine == Engine.skySpy;
     final showIcon = isFlock || isDrone;
@@ -665,7 +708,7 @@ class _MarkerDot extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
-                color: AppTheme.background,
+                color: t.background,
                 shape: BoxShape.circle,
                 border: Border.all(color: engine.color, width: 0.5),
               ),
@@ -683,18 +726,20 @@ class _MarkerDot extends StatelessWidget {
   }
 }
 
-class _CompletedSessionBar extends StatelessWidget {
+class _CompletedSessionBar extends ConsumerWidget {
   const _CompletedSessionBar({required this.wd, required this.ref});
   final WardriveController wd;
   final WidgetRef ref;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef wRef) {
+    final t = AppTheme.of(context);
+    final units = wRef.watch(unitSystemProvider);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.85),
-        border: const Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+        color: t.background.withValues(alpha: 0.85),
+        border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: Row(
         children: [
@@ -702,9 +747,9 @@ class _CompletedSessionBar extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${wd.distanceKm.toStringAsFixed(1)} km',
-              style: const TextStyle(
-                color: AppTheme.textSecondary, fontSize: 10,
+              '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${UnitFormatter.distance(wd.distanceKm, units)}',
+              style: TextStyle(
+                color: t.textSecondary, fontSize: 10,
                 fontFamily: 'monospace', fontWeight: FontWeight.w500,
               ),
             ),
@@ -733,12 +778,8 @@ class _CompletedSessionBar extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           GestureDetector(
-            onTap: () {
-              wd.detections.clear();
-              wd.routePoints.clear();
-              wd.notifyListeners();
-            },
-            child: const Icon(Icons.close, size: 14, color: AppTheme.textDim),
+            onTap: () => wd.clearMapData(),
+            child: Icon(Icons.close, size: 14, color: t.textDim),
           ),
         ],
       ),
@@ -766,6 +807,7 @@ class _SessionHistorySheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
     final db = ref.watch(databaseProvider);
 
     return DraggableScrollableSheet(
@@ -774,10 +816,10 @@ class _SessionHistorySheet extends ConsumerWidget {
       maxChildSize: 0.85,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: AppTheme.background,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-            border: Border(top: BorderSide(color: AppTheme.border)),
+          decoration: BoxDecoration(
+            color: t.background,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border(top: BorderSide(color: t.border)),
           ),
           child: Column(
             children: [
@@ -785,11 +827,11 @@ class _SessionHistorySheet extends ConsumerWidget {
               Container(
                 width: 32, height: 3,
                 decoration: BoxDecoration(
-                  color: AppTheme.textDim, borderRadius: BorderRadius.circular(2)),
+                  color: t.textDim, borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 12),
-              const Text('WARDRIVE SESSIONS', style: TextStyle(
-                color: AppTheme.textPrimary, fontSize: 12,
+              Text('WARDRIVE SESSIONS', style: TextStyle(
+                color: t.textPrimary, fontSize: 12,
                 fontWeight: FontWeight.w700, letterSpacing: 1.5,
               )),
               const SizedBox(height: 8),
@@ -805,9 +847,9 @@ class _SessionHistorySheet extends ConsumerWidget {
                         .where((s) => s.endedAt != null)
                         .toList();
                     if (sessions.isEmpty) {
-                      return const Center(child: Text(
+                      return Center(child: Text(
                         'No completed sessions',
-                        style: TextStyle(color: AppTheme.textDim, fontSize: 12),
+                        style: TextStyle(color: t.textDim, fontSize: 12),
                       ));
                     }
                     return ListView.builder(
@@ -848,14 +890,16 @@ class _SessionHistorySheet extends ConsumerWidget {
   }
 }
 
-class _SessionRow extends StatelessWidget {
-  const _SessionRow({required this.session, required this.onTap, required this.onShare});
+class _SessionRow extends ConsumerWidget {
+  const _SessionRow({super.key, required this.session, required this.onTap, required this.onShare});
   final Session session;
   final VoidCallback onTap;
   final VoidCallback onShare;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final units = ref.watch(unitSystemProvider);
     final start = DateTime.fromMillisecondsSinceEpoch(session.startedAt);
     final dateStr = DateFormat('MMM d, yyyy  HH:mm').format(start);
     final duration = session.endedAt != null
@@ -869,9 +913,9 @@ class _SessionRow extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: AppTheme.surface,
+          color: t.surface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.border),
+          border: Border.all(color: t.border),
         ),
         child: Row(
           children: [
@@ -881,15 +925,15 @@ class _SessionRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(dateStr, style: const TextStyle(
-                    color: AppTheme.textPrimary, fontSize: 11,
+                  Text(dateStr, style: TextStyle(
+                    color: t.textPrimary, fontSize: 11,
                     fontFamily: 'monospace', fontWeight: FontWeight.w500,
                   )),
                   const SizedBox(height: 2),
                   Text(
-                    '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${session.distanceKm.toStringAsFixed(1)} km',
-                    style: const TextStyle(
-                      color: AppTheme.textDim, fontSize: 9,
+                    '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
+                    style: TextStyle(
+                      color: t.textDim, fontSize: 9,
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -900,7 +944,7 @@ class _SessionRow extends StatelessWidget {
               onTap: onShare,
               child: Container(
                 padding: const EdgeInsets.all(6),
-                child: const Icon(Icons.ios_share, size: 14, color: AppTheme.textDim),
+                child: Icon(Icons.ios_share, size: 14, color: t.textDim),
               ),
             ),
           ],
@@ -916,10 +960,11 @@ class _FoxhuntBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.9),
+        color: t.surface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.foxhunter.withValues(alpha: 0.5)),
       ),

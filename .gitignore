@@ -1,8 +1,57 @@
+# PlatformIO
 .pio/
+
+# IDE
 .vscode/
+.idea/
+*.iml
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Build artifacts
 *.o
 *.d
-# firmware/*.bin
+
+# Python
 __pycache__/
 .venv/
+*.pyc
+
+# Secrets / signing — NEVER commit
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.cer
+*.mobileprovision
+*.provisionprofile
+key.properties
+.env
+.env.*
+
+# Release binaries
+dist/
+
+# Flutter / Dart build output
+companion/build/
+companion/.dart_tool/
+companion/.packages
+
+# iOS/macOS generated
+companion/ios/Pods/
+companion/macos/Pods/
+companion/ios/.symlinks/
+companion/macos/.symlinks/
+companion/ios/Flutter/Flutter.framework
+companion/ios/Flutter/Flutter.podspec
+companion/macos/Flutter/Flutter.framework
+companion/macos/Flutter/Flutter.podspec
+companion/ios/Flutter/Generated.xcconfig
+companion/macos/Flutter/Generated.xcconfig
+companion/ios/Flutter/flutter_export_environment.sh
+companion/macos/Flutter/flutter_export_environment.sh
+companion/ios/Runner/GeneratedPluginRegistrant.*
+companion/macos/Flutter/GeneratedPluginRegistrant.swift

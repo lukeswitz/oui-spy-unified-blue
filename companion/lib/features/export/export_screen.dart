@@ -14,11 +14,12 @@ class ExportScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final count = state.recentDetections.length;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       appBar: AppBar(title: const Text('EXPORT')),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -29,18 +30,18 @@ class ExportScreen extends ConsumerWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.surface,
+                color: t.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.border),
+                border: Border.all(color: t.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('$count detections in current session',
-                      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      style: TextStyle(color: t.textPrimary, fontSize: 14)),
                   const SizedBox(height: 4),
                   Text('${state.recentDetections.where((d) => d.latitude != null).length} with GPS coordinates',
-                      style: const TextStyle(color: AppTheme.textDim, fontSize: 12)),
+                      style: TextStyle(color: t.textDim, fontSize: 12)),
                 ],
               ),
             ),
@@ -126,33 +127,34 @@ class _ExportButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final enabled = onTap != null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: OutlinedButton(
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
-          foregroundColor: enabled ? AppTheme.textPrimary : AppTheme.textDim,
-          side: BorderSide(color: enabled ? AppTheme.border : AppTheme.border.withValues(alpha: 0.3)),
+          foregroundColor: enabled ? t.textPrimary : t.textDim,
+          side: BorderSide(color: enabled ? t.border : t.border.withValues(alpha: 0.3)),
           padding: const EdgeInsets.all(16),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: enabled ? AppTheme.accent : AppTheme.textDim),
+            Icon(icon, size: 20, color: enabled ? AppTheme.accent : t.textDim),
             const SizedBox(width: 16),
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1,
-                  color: enabled ? AppTheme.textPrimary : AppTheme.textDim,
+                  color: enabled ? t.textPrimary : t.textDim,
                 )),
                 Text(description, style: TextStyle(
-                  fontSize: 11, color: enabled ? AppTheme.textDim : AppTheme.textDim.withValues(alpha: 0.5),
+                  fontSize: 11, color: enabled ? t.textDim : t.textDim.withValues(alpha: 0.5),
                 )),
               ],
             )),
-            Icon(Icons.ios_share, size: 16, color: enabled ? AppTheme.textDim : AppTheme.textDim.withValues(alpha: 0.3)),
+            Icon(Icons.ios_share, size: 16, color: enabled ? t.textDim : t.textDim.withValues(alpha: 0.3)),
           ],
         ),
       ),

@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 
-/// Provides continuous phone GPS and pushes to BLE device.
 class GpsProvider {
   GpsProvider(this._bleManager);
 
@@ -19,32 +20,78 @@ class GpsProvider {
   Stream<GpsPosition> get positionStream => _positionController.stream;
   GpsPosition? get lastPosition => _lastPosition;
 
-  /// Start GPS tracking and BLE push.
+  bool _hasAlwaysPermission = false;
+  bool get hasAlwaysPermission => _hasAlwaysPermission;
+
   Future<bool> start() async {
-    final permission = await Geolocator.checkPermission();
+    var permission = await Geolocator.checkPermission();
+
     if (permission == LocationPermission.denied) {
-      final result = await Geolocator.requestPermission();
-      if (result == LocationPermission.denied ||
-          result == LocationPermission.deniedForever) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        DebugLog.log('GPS: permission denied');
         return false;
       }
     }
 
-    if (permission == LocationPermission.deniedForever) return false;
+    if (permission == LocationPermission.deniedForever) {
+      DebugLog.log('GPS: permission denied forever');
+      return false;
+    }
+
+    _hasAlwaysPermission = permission == LocationPermission.always;
+
+    if (permission == LocationPermission.whileInUse) {
+      DebugLog.log('GPS: have whenInUse, requesting always');
+      if (Platform.isAndroid) {
+        await Geolocator.openAppSettings();
+      } else {
+        final upgraded = await Geolocator.requestPermission();
+        _hasAlwaysPermission = upgraded == LocationPermission.always;
+      }
+    }
 
     _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 1,
-      ),
+      locationSettings: _platformSettings(),
     ).listen(_onPosition);
 
-    // Push GPS to device every 2 seconds
     _pushTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _pushToDevice();
     });
 
+    DebugLog.log('GPS: started (always=$_hasAlwaysPermission)');
     return true;
+  }
+
+  LocationSettings _platformSettings() {
+    if (Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 1,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'OUI-SPY Active',
+          notificationText: 'GPS tracking for wardrive session',
+          enableWakeLock: true,
+        ),
+      );
+    }
+
+    if (Platform.isIOS || Platform.isMacOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 1,
+        activityType: ActivityType.automotiveNavigation,
+        pauseLocationUpdatesAutomatically: false,
+        showBackgroundLocationIndicator: true,
+        allowBackgroundLocationUpdates: true,
+      );
+    }
+
+    return const LocationSettings(
+      accuracy: LocationAccuracy.best,
+      distanceFilter: 1,
+    );
   }
 
   void stop() {
@@ -67,7 +114,7 @@ class GpsProvider {
       speed: pos.speed,
       heading: pos.heading,
       accuracy: pos.accuracy,
-      satelliteCount: pos.isMocked ? 0 : -1, // Platform doesn't expose sat count
+      satelliteCount: pos.isMocked ? 0 : -1,
       timestamp: pos.timestamp,
     );
     _positionController.add(_lastPosition!);

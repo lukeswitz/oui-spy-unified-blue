@@ -89,10 +89,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final sorted = _results.values.toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       appBar: AppBar(
         title: const Text('CONNECT'),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/home')),
@@ -124,19 +125,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             const SizedBox(height: 8),
 
             if (_scanning)
-              const LinearProgressIndicator(color: AppTheme.accent, backgroundColor: AppTheme.border),
+              LinearProgressIndicator(color: AppTheme.accent, backgroundColor: t.border),
 
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text('${sorted.length} device${sorted.length == 1 ? '' : 's'} found',
-                  style: const TextStyle(color: AppTheme.textDim, fontSize: 11)),
+                  style: TextStyle(color: t.textDim, fontSize: 11)),
             ),
 
             Expanded(
               child: sorted.isEmpty
                   ? Center(child: Text(
                       _scanning ? 'SEARCHING...' : 'TAP SCAN TO FIND DEVICES',
-                      style: const TextStyle(color: AppTheme.textDim, letterSpacing: 1, fontSize: 11),
+                      style: TextStyle(color: t.textDim, letterSpacing: 1, fontSize: 11),
                     ))
                   : ListView.builder(
                       itemCount: sorted.length,
@@ -162,7 +163,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                     Text(r.device.platformName,
                                         style: const TextStyle(color: AppTheme.accent, fontSize: 14, fontWeight: FontWeight.w600)),
                                     Text(r.device.remoteId.toString(),
-                                        style: const TextStyle(color: AppTheme.textDim, fontSize: 11, fontFamily: 'monospace')),
+                                        style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
                                   ],
                                 )),
                                 Text('${r.rssi} dBm', style: TextStyle(

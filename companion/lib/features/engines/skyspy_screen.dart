@@ -10,6 +10,7 @@ class SkySpyScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final drones = <String, Detection>{};
     for (final d in state.recentDetections) {
@@ -19,11 +20,11 @@ class SkySpyScreen extends ConsumerWidget {
       ..sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       appBar: AppBar(title: const Text('SKY SPY')),
       body: droneList.isEmpty
-          ? const Center(child: Text('NO DRONES DETECTED',
-              style: TextStyle(color: AppTheme.textDim, letterSpacing: 2, fontSize: 12)))
+          ? Center(child: Text('NO DRONES DETECTED',
+              style: TextStyle(color: t.textDim, letterSpacing: 2, fontSize: 12)))
           : ListView.builder(
               itemCount: droneList.length,
               itemBuilder: (context, index) => _DroneRow(detection: droneList[index]),
@@ -38,6 +39,7 @@ class _DroneRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final odid = detection.odid;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
 
@@ -45,7 +47,7 @@ class _DroneRow extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: t.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.skySpy.withValues(alpha: 0.3)),
       ),
@@ -61,10 +63,10 @@ class _DroneRow extends StatelessWidget {
                 style: const TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'monospace'),
               )),
               Text('${detection.rssi} dBm',
-                  style: const TextStyle(color: AppTheme.textDim, fontSize: 11, fontFamily: 'monospace')),
+                  style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
               const SizedBox(width: 8),
               Text('${timeDiff.inSeconds}s ago',
-                  style: const TextStyle(color: AppTheme.textDim, fontSize: 10)),
+                  style: TextStyle(color: t.textDim, fontSize: 10)),
             ],
           ),
           if (odid != null) ...[
@@ -89,7 +91,7 @@ class _DroneRow extends StatelessWidget {
           ],
           const SizedBox(height: 4),
           Text(detection.macAddress.toUpperCase(),
-              style: const TextStyle(color: AppTheme.textDim, fontSize: 10, fontFamily: 'monospace')),
+              style: TextStyle(color: t.textDim, fontSize: 10, fontFamily: 'monospace')),
         ],
       ),
     );
@@ -103,11 +105,12 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(right: 12),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text('$label ', style: const TextStyle(color: AppTheme.textDim, fontSize: 9, letterSpacing: 0.5)),
-        Text(value, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 11, fontFamily: 'monospace')),
+        Text('$label ', style: TextStyle(color: t.textDim, fontSize: 9, letterSpacing: 0.5)),
+        Text(value, style: TextStyle(color: t.textPrimary, fontSize: 11, fontFamily: 'monospace')),
       ]),
     );
   }

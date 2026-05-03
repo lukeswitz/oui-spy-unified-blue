@@ -19,7 +19,7 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   final MapController _mapController = MapController();
-  final List<Detection> _detections = [];
+  final Map<String, Detection> _dedupedDetections = {}; // MAC|engine → latest
   final List<LatLng> _routePoints = [];
   GpsPosition? _currentPosition;
   StreamSubscription<Detection>? _detSub;
@@ -32,7 +32,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final ble = ref.read(bleManagerProvider);
     _detSub = ble.detections.listen((d) {
       if (!mounted) return;
-      setState(() => _detections.add(d));
+      final key = '${d.macAddress}|${d.engine.name}';
+      setState(() => _dedupedDetections[key] = d);
     });
     final gps = ref.read(gpsProvider);
 
@@ -47,12 +48,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final ll = LatLng(pos.latitude, pos.longitude);
       setState(() {
         _currentPosition = pos;
-        _routePoints.add(ll);
+        // Only add route point if moved at least 2m from last point
+        if (_routePoints.isEmpty || _distanceM(_routePoints.last, ll) > 2) {
+          _routePoints.add(ll);
+        }
       });
       if (_followUser) {
         _mapController.move(ll, _mapController.camera.zoom);
       }
     });
+  }
+
+  double _distanceM(LatLng a, LatLng b) {
+    final dx = (a.latitude - b.latitude) * 111320;
+    final dy = (a.longitude - b.longitude) * 111320 * 0.85; // rough cos
+    return (dx * dx + dy * dy).abs();
   }
 
   @override
@@ -68,8 +78,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
         : const LatLng(38.627, -90.199);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final t = AppTheme.of(context);
+    final tileUrl = isDark
+        ? 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
+        : 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png';
+
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       body: Stack(
         children: [
           // Map
@@ -78,16 +94,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             options: MapOptions(
               initialCenter: center,
               initialZoom: 15,
-              backgroundColor: const Color(0xFF0A0A0A),
+              backgroundColor: isDark ? const Color(0xFF0A0A0F) : const Color(0xFFE8E8EE),
               onPositionChanged: (pos, hasGesture) {
                 if (hasGesture) _followUser = false;
               },
             ),
             children: [
-              // Dark tile layer (CartoDB dark matter)
               TileLayer(
-                urlTemplate:
-                    'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+                urlTemplate: tileUrl,
                 userAgentPackageName: 'tech.colonelpanic.ouispy',
                 maxZoom: 19,
               ),
@@ -102,9 +116,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   ],
                 ),
-              // Detection markers
+              // Detection markers (deduplicated by MAC+engine)
               MarkerLayer(
-                markers: _detections
+                markers: _dedupedDetections.values
                     .where((d) => d.latitude != null && d.longitude != null)
                     .map((d) => Marker(
                           point: LatLng(d.latitude!, d.longitude!),
@@ -166,7 +180,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               bottom: 50,
               right: 16,
               child: FloatingActionButton.small(
-                backgroundColor: AppTheme.surface,
+                backgroundColor: t.surface,
                 foregroundColor: AppTheme.accent,
                 onPressed: () {
                   _followUser = true;
@@ -185,19 +199,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           // Detection count overlay
           Positioned(
-            top: 12,
+            top: MediaQuery.of(context).padding.top + 48,
             right: 12,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.background.withValues(alpha: 0.85),
+                color: t.background.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppTheme.border, width: 0.5),
+                border: Border.all(color: t.border, width: 0.5),
               ),
               child: Text(
-                '${_detections.length} detections',
-                style: const TextStyle(
-                  color: AppTheme.textPrimary,
+                '${_dedupedDetections.length} detections',
+                style: TextStyle(
+                  color: t.textPrimary,
                   fontSize: 11,
                   fontFamily: 'monospace',
                 ),
@@ -210,18 +224,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
-class _GpsInfoBar extends StatelessWidget {
+class _GpsInfoBar extends ConsumerWidget {
   const _GpsInfoBar({required this.position});
   final GpsPosition position;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final units = ref.watch(unitSystemProvider);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.92),
-        border: const Border(
-          top: BorderSide(color: AppTheme.border, width: 0.5),
+        color: t.background.withValues(alpha: 0.92),
+        border: Border(
+          top: BorderSide(color: t.border, width: 0.5),
         ),
       ),
       child: Row(
@@ -229,8 +245,8 @@ class _GpsInfoBar extends StatelessWidget {
         children: [
           _InfoChip('LAT', position.latitude.toStringAsFixed(6)),
           _InfoChip('LON', position.longitude.toStringAsFixed(6)),
-          _InfoChip('ALT', '${position.altitude.toStringAsFixed(0)}m'),
-          _InfoChip('SPD', '${position.speedKmh.toStringAsFixed(0)}km/h'),
+          _InfoChip('ALT', UnitFormatter.altitude(position.altitude, units)),
+          _InfoChip('SPD', UnitFormatter.speed(position.speedKmh, units)),
           _InfoChip('ACC', '${position.accuracy.toStringAsFixed(0)}m'),
         ],
       ),
@@ -245,13 +261,14 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           value,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
+          style: TextStyle(
+            color: t.textPrimary,
             fontSize: 11,
             fontFamily: 'monospace',
             fontWeight: FontWeight.w500,
@@ -259,8 +276,8 @@ class _InfoChip extends StatelessWidget {
         ),
         Text(
           label,
-          style: const TextStyle(
-            color: AppTheme.textDim,
+          style: TextStyle(
+            color: t.textDim,
             fontSize: 8,
             letterSpacing: 1,
           ),

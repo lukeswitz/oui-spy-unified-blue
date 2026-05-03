@@ -116,15 +116,16 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
   }
 
   Future<void> _renameNode(Node node) async {
+    final t = AppTheme.of(context);
     final controller = TextEditingController(text: node.name);
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: const Text('Rename Node', style: TextStyle(color: AppTheme.textPrimary)),
+        backgroundColor: t.surface,
+        title: Text('Rename Node', style: TextStyle(color: t.textPrimary)),
         content: TextField(
           controller: controller,
-          style: const TextStyle(color: AppTheme.textPrimary),
+          style: TextStyle(color: t.textPrimary),
           decoration: const InputDecoration(labelText: 'Name'),
           autofocus: true,
         ),
@@ -145,12 +146,13 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
   }
 
   Future<void> _deleteNode(Node node) async {
+    final t = AppTheme.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        title: const Text('Remove Node', style: TextStyle(color: AppTheme.textPrimary)),
-        content: Text('Remove ${node.name}?', style: const TextStyle(color: AppTheme.textSecondary)),
+        backgroundColor: t.surface,
+        title: Text('Remove Node', style: TextStyle(color: t.textPrimary)),
+        content: Text('Remove ${node.name}?', style: TextStyle(color: t.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
           ElevatedButton(
@@ -170,6 +172,7 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final ble = ref.read(bleManagerProvider);
     final connectedId = ble.connectedDeviceId;
     final appState = ref.watch(appStateProvider);
@@ -177,7 +180,7 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
     final visibleNodes = _nodes.where((n) => n.id != connectedId).toList();
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       appBar: AppBar(title: const Text('NODES')),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -193,7 +196,7 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
                       Text(
                         'MESH',
                         style: TextStyle(
-                          color: appState.meshEnabled ? AppTheme.accent : AppTheme.textDim,
+                          color: appState.meshEnabled ? AppTheme.accent : t.textDim,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 1,
@@ -260,7 +263,7 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
           ),
           if (_scanning) ...[
             const SizedBox(height: 8),
-            const LinearProgressIndicator(color: AppTheme.accent, backgroundColor: AppTheme.border),
+            LinearProgressIndicator(color: AppTheme.accent, backgroundColor: t.border),
           ],
           if (_scanResults.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -281,8 +284,9 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(
-      color: AppTheme.textDim, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2,
+    final t = AppTheme.of(context);
+    return Text(text, style: TextStyle(
+      color: t.textDim, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2,
     ));
   }
 }
@@ -296,13 +300,14 @@ class _NodeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isActive ? AppTheme.accent.withValues(alpha: 0.08) : AppTheme.surface,
+        color: isActive ? AppTheme.accent.withValues(alpha: 0.08) : t.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isActive ? AppTheme.accent.withValues(alpha: 0.5) : AppTheme.border,
+          color: isActive ? AppTheme.accent.withValues(alpha: 0.5) : t.border,
           width: isActive ? 1 : 0.5,
         ),
       ),
@@ -310,26 +315,26 @@ class _NodeTile extends StatelessWidget {
         dense: true,
         leading: Icon(
           isActive ? Icons.hub : Icons.bluetooth,
-          color: isActive ? AppTheme.accent : AppTheme.textDim,
+          color: isActive ? AppTheme.accent : t.textDim,
           size: 20,
         ),
         title: Text(node.name, style: TextStyle(
-          color: isActive ? AppTheme.accent : AppTheme.textPrimary, fontSize: 14,
+          color: isActive ? AppTheme.accent : t.textPrimary, fontSize: 14,
         )),
         subtitle: Text(
           isActive ? 'Mesh peer' : 'Last seen: ${_timeAgo(node.lastSeen)}',
           style: TextStyle(
-            color: isActive ? AppTheme.success : AppTheme.textDim, fontSize: 11,
+            color: isActive ? AppTheme.success : t.textDim, fontSize: 11,
           ),
         ),
         trailing: PopupMenuButton<String>(
-          color: AppTheme.surface,
+          color: t.surface,
           onSelected: (v) {
             if (v == 'rename') onRename();
             if (v == 'delete') onDelete();
           },
           itemBuilder: (ctx) => [
-            const PopupMenuItem(value: 'rename', child: Text('Rename', style: TextStyle(color: AppTheme.textPrimary))),
+            PopupMenuItem(value: 'rename', child: Text('Rename', style: TextStyle(color: t.textPrimary))),
             const PopupMenuItem(value: 'delete', child: Text('Remove', style: TextStyle(color: AppTheme.error))),
           ],
         ),
@@ -354,6 +359,7 @@ class _DiscoveredTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -370,10 +376,10 @@ class _DiscoveredTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(result.device.platformName, style: const TextStyle(color: AppTheme.success, fontSize: 14, fontWeight: FontWeight.w600)),
-              Text(result.device.remoteId.toString(), style: const TextStyle(color: AppTheme.textDim, fontSize: 11, fontFamily: 'monospace')),
+              Text(result.device.remoteId.toString(), style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
             ],
           )),
-          Text('${result.rssi} dBm', style: const TextStyle(color: AppTheme.textDim, fontSize: 11, fontFamily: 'monospace')),
+          Text('${result.rssi} dBm', style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
           const SizedBox(width: 12),
           ElevatedButton(
             onPressed: onAdd,

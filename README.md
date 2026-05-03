@@ -270,6 +270,100 @@ cp .pio/build/seeed_xiao_esp32s3/firmware.bin firmware/oui-spy-unified-blue.bin
 
 ---
 
+## Companion App
+
+Native mobile/desktop companion app for real-time control, wardriving, and data export. Connects to OUI-SPY hardware over BLE.
+
+**Features:**
+
+- **Live engine control** -- enable/disable any scan engine (Flock, Detector, Wardrive, Sky Spy, Foxhunter, UniPwn) from your phone
+- **Wardriving** -- GPS-tagged detection sessions with real-time map, route trace, density markers, and distance/speed stats
+- **Radio selection** -- choose WiFi, BLE, or both per scan mode (firmware-controlled, not just display filtering)
+- **WiGLE CSV export** -- auto-saves WiGLE-compatible CSV on session stop, share/upload directly from the app
+- **Session history** -- browse, reload, and export past wardrive sessions
+- **Foxhunter** -- RSSI proximity tracking with live signal strength display
+- **Detection feed** -- real-time deduplicated detection list across all engines
+- **Dark map** -- CartoDB dark matter tiles with engine-colored markers and density clustering
+
+**Platforms:** Android, iOS, macOS
+
+### Installing
+
+| Platform | Install | Link |
+|----------|---------|------|
+| **Android** | Download APK, tap to install (enable "Install unknown apps" in Settings) | [Latest Release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
+| **iOS** | Join TestFlight beta | [TestFlight Link](https://testflight.apple.com/join/XXXX) |
+| **macOS** | Download zip, extract, run `.app` (signed with Developer ID) | [Latest Release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
+
+### Building the Companion App
+
+Requires [Flutter](https://flutter.dev/docs/get-started/install) (3.32+).
+
+```bash
+cd companion
+flutter pub get
+```
+
+**Android:**
+
+```bash
+flutter build apk --release
+# Install to connected device:
+adb install build/app/outputs/flutter-apk/app-release.apk
+```
+
+**iOS:**
+
+```bash
+flutter build ipa --release
+# Open archive in Xcode Organizer to distribute:
+open build/ios/archive/Runner.xcarchive
+```
+
+**macOS:**
+
+```bash
+flutter build macos --release
+# Output: build/macos/Build/Products/Release/oui_spy.app
+```
+
+### Releasing
+
+Firmware builds automatically via GitHub Actions on tag push. Companion app binaries are built and signed locally, then attached to the draft release.
+
+**Cut a release:**
+
+```bash
+# 1. Tag and push — CI builds firmware, creates draft release
+git tag v1.0.0
+git push origin v1.0.0
+
+# 2. Build signed companion app locally
+cd companion
+flutter build apk --release
+flutter build macos --release
+flutter build ipa --release
+
+# 3. Package
+mkdir -p ../dist
+cp build/app/outputs/flutter-apk/app-release.apk ../dist/oui-spy-v1.0.0.apk
+cd build/macos/Build/Products/Release && ditto -c -k --keepParent oui_spy.app ../../../../../dist/oui-spy-macos-v1.0.0.zip && cd ../../../../..
+
+# 4. Upload iOS via Xcode Organizer → TestFlight
+open build/ios/archive/Runner.xcarchive
+
+# 5. Attach APK + macOS zip to the draft release on GitHub, publish
+```
+
+### Companion App Requirements
+
+- OUI-SPY hardware running unified firmware (this repo)
+- Bluetooth LE for device communication
+- GPS/Location services for wardriving
+- Internet for map tiles and WiGLE upload
+
+---
+
 ## Acknowledgments
 
 **Will Greenberg** ([@wgreenberg](https://github.com/wgreenberg)) — His [flock-you](https://github.com/wgreenberg/flock-you) fork was instrumental in improving the Flock Safety detection heuristics. The BLE manufacturer company ID detection method (`0x09C8` XUNTONG) was sourced directly from his work, along with structured pattern management approaches that informed the detection architecture. Thank you for the research and for making it open.

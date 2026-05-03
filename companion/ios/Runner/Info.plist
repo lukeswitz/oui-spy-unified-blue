@@ -8,6 +8,8 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>OUI-SPY</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,29 +28,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-
-	<!-- BLE permissions -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>OUI-SPY uses Bluetooth to communicate with your detection hardware.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>OUI-SPY uses Bluetooth to communicate with your detection hardware.</string>
-
-	<!-- GPS / Location permissions -->
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>OUI-SPY needs your location to tag detections with GPS coordinates for wardriving.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>OUI-SPY needs background location access for geofence alerts and continuous wardriving sessions.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>OUI-SPY needs background location access for geofence alerts and continuous wardriving sessions.</string>
-
-	<!-- Background modes -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>bluetooth-central</string>
-		<string>location</string>
-		<string>fetch</string>
-	</array>
-
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>OUI-SPY needs your location to tag detections with GPS coordinates for wardriving.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -72,6 +61,12 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

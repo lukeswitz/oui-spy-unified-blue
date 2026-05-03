@@ -1,18 +1,77 @@
 #include "wardrive.h"
 #include "../protocol.h"
+#include "flock_oui.h"
+#include "detector.h"
+#include "foxhunter.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
+
+static const char* flockNamePatterns[] = {
+    "FS Ext Battery", "Penguin", "Flock", "Pigvision"
+};
+static const int flockNamePatternCount = sizeof(flockNamePatterns) / sizeof(flockNamePatterns[0]);
+
+static const uint16_t flockMfgIds[] = { 0x09C8 }; // XUNTONG
+static const int flockMfgIdCount = sizeof(flockMfgIds) / sizeof(flockMfgIds[0]);
+
+static const char* ravenUuids[] = {
+    "0000180a-0000-1000-8000-00805f9b34fb",
+    "00003100-0000-1000-8000-00805f9b34fb",
+    "00003200-0000-1000-8000-00805f9b34fb",
+    "00003300-0000-1000-8000-00805f9b34fb",
+    "00003400-0000-1000-8000-00805f9b34fb",
+    "00003500-0000-1000-8000-00805f9b34fb",
+    "00001809-0000-1000-8000-00805f9b34fb",
+    "00001819-0000-1000-8000-00805f9b34fb",
+};
+static const int ravenUuidCount = sizeof(ravenUuids) / sizeof(ravenUuids[0]);
+
+static bool flockMatchName(const char* name) {
+    if (!name || !name[0]) return false;
+    for (int i = 0; i < flockNamePatternCount; i++) {
+        if (strcasestr(name, flockNamePatterns[i])) return true;
+    }
+    return false;
+}
+
+static bool flockMatchMfgId(NimBLEAdvertisedDevice* dev) {
+    if (!dev->haveManufacturerData()) return false;
+    std::string data = dev->getManufacturerData();
+    if (data.size() < 2) return false;
+    uint16_t code = ((uint16_t)(uint8_t)data[1] << 8) | (uint16_t)(uint8_t)data[0];
+    for (int i = 0; i < flockMfgIdCount; i++) {
+        if (flockMfgIds[i] == code) return true;
+    }
+    return false;
+}
+
+static bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev) {
+    if (!dev->haveServiceUUID()) return false;
+    int count = dev->getServiceUUIDCount();
+    for (int i = 0; i < count; i++) {
+        std::string str = dev->getServiceUUID(i).toString();
+        for (int j = 0; j < ravenUuidCount; j++) {
+            if (strcasecmp(str.c_str(), ravenUuids[j]) == 0) return true;
+        }
+    }
+    return false;
+}
 
 static volatile bool wardriveActive = false;
 static unsigned long lastWifiScan = 0;
 static unsigned long lastBleScan = 0;
 static volatile bool wifiScanInProgress = false;
 
-#define WIFI_SCAN_INTERVAL_MS  3000
-#define BLE_SCAN_DURATION_MS   2000
-#define BLE_SCAN_INTERVAL_MS   3000
+static volatile uint8_t wardriveRadio = 0x03;
+
+// Scan timing — configurable via BLE config
+static uint16_t wifiScanIntervalMs = 1200;  // gap between WiFi scans
+static uint16_t wifiDwellPerChMs   = 250;   // per-channel dwell time
+static uint16_t bleScanDurationMs  = 1500;  // BLE scan window
+static uint16_t bleScanIntervalMs  = 2000;  // gap between BLE scans
+
 #define WARDRIVE_DEDUP_SIZE    150
 #define WARDRIVE_DEDUP_COOL_MS 10000
 
@@ -57,22 +116,21 @@ static uint8_t mapAuthMode(wifi_auth_mode_t mode) {
     }
 }
 
-// Called from wardriveLoop to kick off an async WiFi scan
+// ============================================================================
+// WiFi — async scan, harvest in loop. Non-blocking.
+// ============================================================================
+
 static void wardriveWifiScanStart(void) {
-    if (!wardriveActive) return;
-    if (wifiScanInProgress) return;
-    WiFi.scanNetworks(true, true, false, 200);  // async=true
+    if (!wardriveActive || wifiScanInProgress) return;
+    // async=true, show_hidden=true, passive=false, dwell per channel
+    WiFi.scanNetworks(true, true, false, wifiDwellPerChMs);
     wifiScanInProgress = true;
 }
 
-// Called from wardriveLoop to harvest async WiFi scan results
 static void wardriveWifiScanHarvest(void) {
     int n = WiFi.scanComplete();
-    if (n == WIFI_SCAN_RUNNING) return;  // still scanning
-    if (n == WIFI_SCAN_FAILED) {
-        wifiScanInProgress = false;
-        return;
-    }
+    if (n == WIFI_SCAN_RUNNING) return;
+    if (n == WIFI_SCAN_FAILED) { wifiScanInProgress = false; return; }
     wifiScanInProgress = false;
 
     for (int i = 0; i < n; i++) {
@@ -95,12 +153,27 @@ static void wardriveWifiScanHarvest(void) {
         evt.ext.wardrive.ssid[32] = '\0';
         evt.ext.wardrive.auth_mode = mapAuthMode(WiFi.encryptionType(i));
         memset(evt.ext.wardrive.device_name, 0, 21);
-
         pushDetection(&evt);
-    }
 
+        if (flockMatchOui(bssid)) {
+            DetectionEvent fEvt = {};
+            fEvt.engine_id = ENGINE_FLOCK_WIFI;
+            memcpy(fEvt.mac, bssid, 6);
+            fEvt.rssi = evt.rssi;
+            fEvt.channel = evt.channel;
+            fEvt.timestamp_ms = evt.timestamp_ms;
+            fEvt.method = METHOD_OUI_ADDR2;
+            memset(fEvt.source_node_id, 0, MESH_NODE_ID_LEN);
+            memset(&fEvt.ext, 0, sizeof(fEvt.ext));
+            pushDetection(&fEvt);
+        }
+    }
     WiFi.scanDelete();
 }
+
+// ============================================================================
+// BLE — timed scans via callback. NimBLE 1.4 API.
+// ============================================================================
 
 static NimBLEScan* pWardriveScan = nullptr;
 
@@ -120,18 +193,73 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         evt.timestamp_ms = millis();
         evt.method = METHOD_BLE_ADV;
         memset(evt.source_node_id, 0, MESH_NODE_ID_LEN);
-
         memset(evt.ext.wardrive.ssid, 0, 33);
         evt.ext.wardrive.auth_mode = 0;
         std::string name = dev->getName();
         strncpy(evt.ext.wardrive.device_name, name.c_str(), 20);
         evt.ext.wardrive.device_name[20] = '\0';
-
         pushDetection(&evt);
+
+        // Full flock detection: OUI, name, mfg ID, Raven UUID
+        bool isFlock = false;
+        uint8_t flockMethod = 0;
+        bool isRaven = false;
+
+        if (flockMatchOui(mac)) {
+            isFlock = true;
+            flockMethod = METHOD_OUI_MATCH;
+        }
+        if (!isFlock && name.length() > 0 && flockMatchName(name.c_str())) {
+            isFlock = true;
+            flockMethod = METHOD_NAME_MATCH;
+        }
+        if (!isFlock && flockMatchMfgId(dev)) {
+            isFlock = true;
+            flockMethod = METHOD_MFG_ID;
+        }
+        if (!isFlock && flockMatchRavenUuid(dev)) {
+            isFlock = true;
+            flockMethod = METHOD_RAVEN_UUID;
+            isRaven = true;
+        }
+
+        if (isFlock) {
+            DetectionEvent fEvt = {};
+            fEvt.engine_id = ENGINE_FLOCK_BLE;
+            memcpy(fEvt.mac, mac, 6);
+            fEvt.rssi = evt.rssi;
+            fEvt.channel = 0;
+            fEvt.timestamp_ms = evt.timestamp_ms;
+            fEvt.method = flockMethod;
+            memset(fEvt.source_node_id, 0, MESH_NODE_ID_LEN);
+            memset(&fEvt.ext, 0, sizeof(fEvt.ext));
+            fEvt.ext.flock.is_raven = isRaven ? 1 : 0;
+            memset(fEvt.ext.flock.raven_fw, 0, sizeof(fEvt.ext.flock.raven_fw));
+            pushDetection(&fEvt);
+        }
+
+        // Dispatch to other active engines that went passive
+        if (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) {
+            detectorCheckBleDevice(mac, evt.rssi);
+        }
+        if (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) {
+            foxhunterCheckBleDevice(mac, evt.rssi);
+        }
     }
 };
 
+// Scan-complete callback — auto-restarts scan if still active
+static void wardriveBleOnComplete(NimBLEScanResults results) {
+    if (pWardriveScan && wardriveActive) {
+        pWardriveScan->clearResults();
+    }
+}
+
 static WardriveAdvCallbacks wardriveBleCallbacks;
+
+// ============================================================================
+// Lifecycle
+// ============================================================================
 
 static void wardriveInit(void) {
     wardriveDedupHead = 0;
@@ -143,49 +271,59 @@ static void wardriveStart(void) {
     wardriveActive = true;
     lastWifiScan = 0;
     lastBleScan = 0;
+    wifiScanInProgress = false;
     wardriveDedupHead = 0;
     wardriveDedupCount = 0;
 
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
+    // Init WiFi first — coex manager needs WiFi registered before BLE scan
+    if (wardriveRadio & 0x01) {
+        WiFi.mode(WIFI_STA);
+        WiFi.disconnect();
+    }
 
-    pWardriveScan = NimBLEDevice::getScan();
-    pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
-    pWardriveScan->setActiveScan(true);
-    pWardriveScan->setInterval(100);
-    pWardriveScan->setWindow(99);
+    // Init BLE scanner
+    if (wardriveRadio & 0x02) {
+        pWardriveScan = NimBLEDevice::getScan();
+        pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
+        pWardriveScan->setActiveScan(true);
+        pWardriveScan->setInterval(80);
+        pWardriveScan->setWindow(79);
+    }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_SCANNING);
-    Serial.println("[WARDRIVE] Started — scanning all WiFi + BLE");
+    Serial.printf("[WARDRIVE] Started (radio=0x%02X wifi=%d/%d ble=%d/%d)\n",
+        wardriveRadio, wifiScanIntervalMs, wifiDwellPerChMs,
+        bleScanDurationMs, bleScanIntervalMs);
 }
 
 static void wardriveStop(void) {
     Serial.println("[WARDRIVE] Stopping...");
-    wardriveActive = false;  // volatile — visible to BLE callbacks immediately
 
-    // Stop BLE scan first (runs on NimBLE host task)
+    // 1. Flag off — callbacks will early-return
+    wardriveActive = false;
+
+    // 2. Stop BLE scan FIRST, then delay, then clear callbacks
     if (pWardriveScan != nullptr) {
         if (pWardriveScan->isScanning()) {
             pWardriveScan->stop();
         }
-        // Give NimBLE host task time to finish any in-flight callback
-        vTaskDelay(pdMS_TO_TICKS(100));
-        pWardriveScan->clearResults();
+        vTaskDelay(pdMS_TO_TICKS(200));
         pWardriveScan->setAdvertisedDeviceCallbacks(nullptr, false);
+        pWardriveScan->clearResults();
         pWardriveScan = nullptr;
     }
 
-    // Wait for any async WiFi scan to finish before killing radio
+    // 3. Wait for any in-flight WiFi scan to finish
     if (wifiScanInProgress) {
-        unsigned long deadline = millis() + 2000;
+        unsigned long deadline = millis() + 3000;
         while (WiFi.scanComplete() == WIFI_SCAN_RUNNING && millis() < deadline) {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         wifiScanInProgress = false;
     }
 
+    // 4. Clean up WiFi
     WiFi.scanDelete();
-    esp_wifi_set_promiscuous(false);
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
 
@@ -197,30 +335,61 @@ static void wardriveLoop(void) {
     if (!wardriveActive) return;
     unsigned long now = millis();
 
-    // Always try to harvest completed WiFi scan results
-    if (wifiScanInProgress) {
-        wardriveWifiScanHarvest();
+    // WiFi: kick off async scan, harvest results when ready
+    if (wardriveRadio & 0x01) {
+        if (wifiScanInProgress) {
+            wardriveWifiScanHarvest();
+        }
+        if (!wifiScanInProgress && now - lastWifiScan >= wifiScanIntervalMs) {
+            lastWifiScan = now;
+            wardriveWifiScanStart();
+        }
     }
 
-    // Kick off new async WiFi scan at interval
-    if (!wifiScanInProgress && now - lastWifiScan >= WIFI_SCAN_INTERVAL_MS) {
-        lastWifiScan = now;
-        wardriveWifiScanStart();
-    }
-
-    // BLE scan at interval
-    if (now - lastBleScan >= BLE_SCAN_INTERVAL_MS) {
-        lastBleScan = now;
-        if (pWardriveScan != nullptr && !pWardriveScan->isScanning()) {
-            pWardriveScan->start(BLE_SCAN_DURATION_MS / 1000, false);
+    // BLE: timed scans with explicit duration (never 0 = continuous)
+    if (wardriveRadio & 0x02) {
+        if (now - lastBleScan >= bleScanIntervalMs) {
+            lastBleScan = now;
+            if (pWardriveScan != nullptr && !pWardriveScan->isScanning()) {
+                // NimBLE 1.4: start(seconds, callback, is_continue)
+                // Duration must be >= 1 to avoid continuous mode
+                int durSec = bleScanDurationMs / 1000;
+                if (durSec < 1) durSec = 1;
+                pWardriveScan->start(durSec, wardriveBleOnComplete, false);
+            }
         }
     }
 }
 
+static void wardriveConfig(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    uint8_t newRadio = payload[0] & 0x03;
+    if (newRadio == 0) newRadio = 0x03;
+    wardriveRadio = newRadio;
+
+    if (len >= 5) {
+        wifiScanIntervalMs = payload[1] | (payload[2] << 8);
+        wifiDwellPerChMs   = payload[3] | (payload[4] << 8);
+        if (wifiScanIntervalMs < 500) wifiScanIntervalMs = 500;
+        if (wifiDwellPerChMs < 110) wifiDwellPerChMs = 110;
+    }
+    if (len >= 9) {
+        bleScanDurationMs = payload[5] | (payload[6] << 8);
+        bleScanIntervalMs = payload[7] | (payload[8] << 8);
+        if (bleScanDurationMs < 500) bleScanDurationMs = 500;
+        if (bleScanIntervalMs < 1000) bleScanIntervalMs = 1000;
+    }
+
+    Serial.printf("[WARDRIVE] Config: radio=0x%02X wifi=%d/%d ble=%d/%d\n",
+        wardriveRadio, wifiScanIntervalMs, wifiDwellPerChMs,
+        bleScanDurationMs, bleScanIntervalMs);
+}
+
 const EngineCallbacks wardriveCallbacks = {
-    .init  = wardriveInit,
-    .start = wardriveStart,
-    .stop  = wardriveStop,
-    .loop  = wardriveLoop,
-    .name  = "Wardrive",
+    .init   = wardriveInit,
+    .start  = wardriveStart,
+    .stop   = wardriveStop,
+    .loop   = wardriveLoop,
+    .config = wardriveConfig,
+    .name   = "Wardrive",
 };

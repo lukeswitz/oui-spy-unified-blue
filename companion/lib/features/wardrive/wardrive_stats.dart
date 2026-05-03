@@ -1,87 +1,81 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/models/session.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
-class WardriveStats extends StatelessWidget {
+class WardriveStats extends ConsumerWidget {
   const WardriveStats({super.key, required this.stats});
   final SessionStats stats;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final units = ref.watch(unitSystemProvider);
+
+    final gpsColor = stats.gpsAccuracy <= 0
+        ? AppTheme.gpsNone
+        : stats.gpsAccuracy <= 10
+            ? AppTheme.gpsGood
+            : stats.gpsAccuracy <= 50
+                ? AppTheme.gpsFair
+                : AppTheme.gpsPoor;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.background.withValues(alpha: 0.85),
-        border:
-            const Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+        color: t.background.withValues(alpha: 0.88),
+        border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Primary stats row
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _StatCell(
-                value: _formatDuration(stats.duration),
-                label: 'TIME',
+              Expanded(
+                flex: 3,
+                child: _HeroCount(
+                  icon: Icons.wifi,
+                  unique: stats.wifiDetections,
+                  total: stats.wifiTotal,
+                  color: AppTheme.accent,
+                  fontSize: 44,
+                ),
               ),
-              _StatCell(
-                value: stats.distanceKm.toStringAsFixed(1),
-                label: 'KM',
-              ),
-              _StatCell(
-                value: stats.speedKmh.toStringAsFixed(0),
-                label: 'KM/H',
-              ),
-              _StatCell(
-                value: '${stats.totalDetections}',
-                label: 'TOTAL',
-                color: AppTheme.accent,
-              ),
-              _StatCell(
-                value: '${stats.uniqueMacs}',
-                label: 'UNIQUE',
+              if (stats.flockCount > 0)
+                Expanded(
+                  flex: 2,
+                  child: _HeroCount(
+                    icon: Icons.videocam,
+                    unique: stats.flockCount,
+                    total: null,
+                    color: AppTheme.flockBle,
+                    fontSize: 30,
+                  ),
+                ),
+              Expanded(
+                flex: 2,
+                child: _HeroCount(
+                  icon: Icons.bluetooth,
+                  unique: stats.bleDetections,
+                  total: stats.bleTotal,
+                  color: t.textSecondary,
+                  fontSize: 30,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          // Secondary stats row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
-              _StatCell(
-                value: '${stats.newMacs}',
-                label: 'NEW',
-                color: AppTheme.success,
-              ),
-              _StatCell(
-                value: '${stats.wifiDetections}',
-                label: 'WIFI',
-              ),
-              _StatCell(
-                value: '${stats.bleDetections}',
-                label: 'BLE',
-              ),
-              if (stats.flockCount > 0)
-                _StatCell(
-                  value: '${stats.flockCount}',
-                  label: 'FLOCK',
-                  color: AppTheme.flockBle,
-                ),
-              if (stats.droneCount > 0)
-                _StatCell(
-                  value: '${stats.droneCount}',
-                  label: 'DRONE',
-                  color: AppTheme.skySpy,
-                ),
-              _StatCell(
-                value: stats.detectionsPerKm.toStringAsFixed(0),
-                label: 'DET/KM',
-              ),
-              _GpsCell(
-                accuracy: stats.gpsAccuracy,
-                satellites: stats.satelliteCount,
-              ),
+              _InfoChip(Icons.timer_outlined, _formatDuration(stats.duration), t.textDim, t),
+              _InfoChip(Icons.straighten, UnitFormatter.distance(stats.distanceKm, units), t.textDim, t),
+              _InfoChip(Icons.speed, UnitFormatter.speed(stats.speedKmh, units), t.textDim, t),
+              _InfoChip(null, '${UnitFormatter.detPerDist(stats.detectionsPerKm, units)} ${UnitFormatter.detPerDistLabel(units).toLowerCase()}', t.textDim, t),
+              _GpsChip(accuracy: stats.gpsAccuracy, color: gpsColor, t: t),
             ],
           ),
         ],
@@ -97,37 +91,45 @@ class WardriveStats extends StatelessWidget {
   }
 }
 
-class _StatCell extends StatelessWidget {
-  const _StatCell({
-    required this.value,
-    required this.label,
-    this.color,
+class _HeroCount extends StatelessWidget {
+  const _HeroCount({
+    required this.icon,
+    required this.unique,
+    required this.total,
+    required this.color,
+    required this.fontSize,
   });
-  final String value;
-  final String label;
-  final Color? color;
+  final IconData icon;
+  final int unique;
+  final int? total;
+  final Color color;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        Icon(icon, size: fontSize * 0.4, color: color.withValues(alpha: 0.6)),
+        const SizedBox(height: 2),
         Text(
-          value,
+          '$unique',
           style: TextStyle(
-            color: color ?? AppTheme.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
+            color: color,
+            fontSize: fontSize,
+            fontWeight: FontWeight.w300,
             fontFamily: 'monospace',
+            height: 1,
           ),
         ),
+        const SizedBox(height: 2),
         Text(
-          label,
-          style: const TextStyle(
-            color: AppTheme.textDim,
-            fontSize: 8,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 1,
+          total != null ? '$total total' : 'unique',
+          style: TextStyle(
+            color: t.textDim,
+            fontSize: 10,
+            fontFamily: 'monospace',
           ),
         ),
       ],
@@ -135,54 +137,78 @@ class _StatCell extends StatelessWidget {
   }
 }
 
-class _GpsCell extends StatelessWidget {
-  const _GpsCell({required this.accuracy, required this.satellites});
-  final double accuracy;
-  final int satellites;
+class _InfoChip extends StatelessWidget {
+  const _InfoChip(this.icon, this.value, this.color, this.t);
+  final IconData? icon;
+  final String value;
+  final Color color;
+  final ResolvedTheme t;
 
   @override
   Widget build(BuildContext context) {
-    final color = accuracy <= 0
-        ? AppTheme.gpsNone
-        : accuracy <= 10
-            ? AppTheme.gpsGood
-            : accuracy <= 50
-                ? AppTheme.gpsFair
-                : AppTheme.gpsPoor;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 3),
-            Text(
-              accuracy > 0 ? '${accuracy.toStringAsFixed(0)}m' : '--',
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'monospace',
-              ),
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: color),
+            const SizedBox(width: 4),
           ],
-        ),
-        Text(
-          'GPS',
-          style: const TextStyle(
-            color: AppTheme.textDim,
-            fontSize: 8,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 1,
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              fontFamily: 'monospace',
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GpsChip extends StatelessWidget {
+  const _GpsChip({required this.accuracy, required this.color, required this.t});
+  final double accuracy;
+  final Color color;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7, height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            accuracy > 0 ? '${accuracy.toStringAsFixed(0)}m' : '--',
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

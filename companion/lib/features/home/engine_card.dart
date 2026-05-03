@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+
+enum CardSize { hero, medium, compact }
 
 class EngineCard extends ConsumerStatefulWidget {
   const EngineCard({
@@ -15,41 +19,77 @@ class EngineCard extends ConsumerStatefulWidget {
     this.detectionCount = 0,
     this.isActive = false,
     this.engineState = EngineState.disabled,
+    this.lastDetection,
+    this.rate = 0,
+    this.size = CardSize.medium,
   });
 
   final Engine engine;
   final int detectionCount;
   final bool isActive;
   final EngineState engineState;
+  final DateTime? lastDetection;
+  final int rate;
+  final CardSize size;
 
   @override
   ConsumerState<EngineCard> createState() => _EngineCardState();
 }
 
-class _EngineCardState extends ConsumerState<EngineCard> {
-  /// Optimistic override — holds toggled value until firmware confirms or timeout.
+class _EngineCardState extends ConsumerState<EngineCard>
+    with SingleTickerProviderStateMixin {
   bool? _optimisticValue;
   Timer? _optimisticTimer;
+  late final AnimationController _pulse;
 
   bool get _displayActive => _optimisticValue ?? widget.isActive;
 
   @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    if (widget.rate > 0 && widget.isActive) {
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  @override
   void didUpdateWidget(EngineCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Firmware confirmed the state we optimistically set — clear override
     if (_optimisticValue != null && widget.isActive == _optimisticValue) {
       _optimisticValue = null;
       _optimisticTimer?.cancel();
+    }
+    final shouldPulse = widget.rate > 0 && widget.isActive;
+    if (shouldPulse && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!shouldPulse && _pulse.isAnimating) {
+      _pulse.stop();
+      _pulse.value = 0;
     }
   }
 
   @override
   void dispose() {
     _optimisticTimer?.cancel();
+    _pulse.dispose();
     super.dispose();
   }
 
   void _toggleEngine(bool value) {
+    if (widget.engine == Engine.wardrive) {
+      final wd = ref.read(wardriveProvider);
+      if (value) {
+        wd.startSession();
+      } else {
+        wd.stopSession();
+      }
+      return;
+    }
+
     final ble = ref.read(bleManagerProvider);
     if (value) {
       ble.enableEngine(widget.engine);
@@ -57,14 +97,46 @@ class _EngineCardState extends ConsumerState<EngineCard> {
       ble.disableEngine(widget.engine);
     }
     DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value');
-
-    // Optimistic update — hold for 3s max, then revert to firmware truth
     setState(() => _optimisticValue = value);
     _optimisticTimer?.cancel();
     _optimisticTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _optimisticValue = null);
     });
   }
+
+  void _cycleRadio() {
+    // Don't allow radio change while engine is active
+    if (widget.isActive || _displayActive) return;
+    if (widget.engine == Engine.wardrive && ref.read(wardriveProvider).isActive) return;
+
+    final appState = ref.read(appStateProvider);
+    final current = appState.engineRadio[widget.engine] ?? 0x03;
+    final next = switch (current) {
+      0x01 => 0x02,
+      0x02 => 0x03,
+      _ => 0x01,
+    };
+    appState.setEngineRadio(widget.engine, next);
+    if (widget.engine == Engine.wardrive) {
+      ref.read(wardriveProvider).setRadio(switch (next) {
+        0x01 => WardriveRadio.wifi,
+        0x02 => WardriveRadio.ble,
+        _ => WardriveRadio.both,
+      });
+    }
+  }
+
+  String _radioLabel(int radio) => switch (radio) {
+    0x01 => 'WiFi',
+    0x02 => 'BLE',
+    _ => 'W+B',
+  };
+
+  IconData _radioIcon(int radio) => switch (radio) {
+    0x01 => Icons.wifi,
+    0x02 => Icons.bluetooth,
+    _ => Icons.sensors,
+  };
 
   void _navigateToEngine() {
     final route = switch (widget.engine) {
@@ -78,14 +150,23 @@ class _EngineCardState extends ConsumerState<EngineCard> {
     if (route != null) context.push(route);
   }
 
-  Color _stateColor(bool active) {
+  String get _engineDescription {
+    if (widget.engine == Engine.wardrive) {
+      final wd = ref.read(wardriveProvider);
+      if (wd.isActive) {
+        return '${wd.target.label} \u2022 ${wd.radio.label}';
+      }
+    }
+    return widget.engine.description;
+  }
+
+  Color _stateColor(bool active, ResolvedTheme t) {
     if (_optimisticValue != null && _optimisticValue != widget.isActive) {
-      // Pending state change — show amber
       return AppTheme.warning;
     }
     return switch (widget.engineState) {
-      EngineState.disabled => AppTheme.textDim,
-      EngineState.idle => AppTheme.textSecondary,
+      EngineState.disabled => t.textDim,
+      EngineState.idle => t.textSecondary,
       EngineState.scanning => widget.engine.color,
       EngineState.active => AppTheme.success,
       EngineState.alerting => AppTheme.warning,
@@ -96,93 +177,236 @@ class _EngineCardState extends ConsumerState<EngineCard> {
 
   String get _stateLabel {
     if (_optimisticValue != null && _optimisticValue != widget.isActive) {
-      return _optimisticValue! ? 'STARTING...' : 'STOPPING...';
+      return _optimisticValue! ? 'START' : 'STOP';
     }
     return switch (widget.engineState) {
       EngineState.disabled => 'OFF',
       EngineState.idle => 'IDLE',
-      EngineState.scanning => 'SCANNING',
+      EngineState.scanning => 'SCAN',
       EngineState.active => 'ACTIVE',
       EngineState.alerting => 'ALERT',
-      EngineState.targetSelected => 'TARGET SET',
-      EngineState.connecting => 'CONNECTING',
-      EngineState.exploiting => 'EXPLOITING',
+      EngineState.targetSelected => 'TARGET',
+      EngineState.connecting => 'LINK',
+      EngineState.exploiting => 'EXPLOIT',
       EngineState.complete => 'DONE',
     };
   }
 
+  String _formatLastSeen(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 5) return 'just now';
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    return '${diff.inHours}h ago';
+  }
+
   @override
   Widget build(BuildContext context) {
+    return switch (widget.size) {
+      CardSize.hero => _buildHero(context),
+      CardSize.medium => _buildMedium(context),
+      CardSize.compact => _buildCompact(context),
+    };
+  }
+
+  Widget _buildHero(BuildContext context) {
+    final t = AppTheme.of(context);
     final color = widget.engine.color;
     final active = _displayActive;
+    final hasActivity = widget.rate > 0 && active;
 
     return GestureDetector(
       onTap: _navigateToEngine,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 160;
-          final iconSize = compact ? 24.0 : 28.0;
-          final iconInner = compact ? 14.0 : 16.0;
-          final pad = compact ? 10.0 : 14.0;
-          final labelSize = compact ? 10.0 : 11.0;
-          final countSize = compact ? 22.0 : 28.0;
-
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, child) {
+          final glow = hasActivity ? _pulse.value * 0.15 : 0.0;
           return AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color:
-                  active ? color.withValues(alpha: 0.06) : AppTheme.surface,
-              borderRadius: BorderRadius.circular(12),
+              color: active
+                  ? color.withValues(alpha: 0.06 + glow)
+                  : t.surface,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: active
-                    ? color.withValues(alpha: 0.4)
-                    : AppTheme.border,
+                color: active ? color.withValues(alpha: 0.35) : t.border,
                 width: active ? 1.0 : 0.5,
               ),
+              boxShadow: hasActivity
+                  ? [BoxShadow(color: color.withValues(alpha: 0.08 + glow), blurRadius: 20, spreadRadius: -2)]
+                  : null,
             ),
-            padding: EdgeInsets.all(pad),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: active
+                        ? color.withValues(alpha: 0.15 + glow)
+                        : t.border.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: hasActivity
+                        ? [BoxShadow(color: color.withValues(alpha: 0.15 + glow), blurRadius: 12)]
+                        : null,
+                  ),
+                  child: Icon(widget.engine.icon, color: active ? color : t.textDim, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.engine.label.toUpperCase(),
+                        style: TextStyle(
+                          color: active ? color : t.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _engineDescription,
+                        style: TextStyle(color: t.textSecondary, fontSize: 11),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text(
+                            '${widget.detectionCount}',
+                            style: TextStyle(
+                              color: active && widget.detectionCount > 0
+                                  ? t.textPrimary : t.textSecondary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w200,
+                              fontFamily: 'monospace',
+                              height: 1,
+                            ),
+                          ),
+                          if (widget.rate > 0) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '${widget.rate}/min',
+                              style: TextStyle(
+                                color: color.withValues(alpha: 0.8),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          _stateBadge(active, t),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Transform.scale(
+                      scale: 0.65,
+                      child: Switch(
+                        value: active,
+                        onChanged: _toggleEngine,
+                        activeTrackColor: color.withValues(alpha: 0.25),
+                        activeThumbColor: color,
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 16,
+                        color: active ? color.withValues(alpha: 0.5) : t.textDim),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMedium(BuildContext context) {
+    final t = AppTheme.of(context);
+    final color = widget.engine.color;
+    final active = _displayActive;
+    final hasActivity = widget.rate > 0 && active;
+
+    return GestureDetector(
+      onTap: _navigateToEngine,
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, child) {
+          final glow = hasActivity ? _pulse.value * 0.15 : 0.0;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: active
+                  ? color.withValues(alpha: 0.04 + glow)
+                  : t.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: active ? color.withValues(alpha: 0.3) : t.border,
+                width: active ? 1.0 : 0.5,
+              ),
+              boxShadow: hasActivity
+                  ? [BoxShadow(color: color.withValues(alpha: 0.06 + glow), blurRadius: 16, spreadRadius: -2)]
+                  : null,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      width: iconSize,
-                      height: iconSize,
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
                         color: active
-                            ? color.withValues(alpha: 0.15)
-                            : AppTheme.border.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(6),
+                            ? color.withValues(alpha: 0.12 + glow)
+                            : t.border.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: hasActivity
+                            ? [BoxShadow(color: color.withValues(alpha: 0.12 + glow), blurRadius: 8)]
+                            : null,
                       ),
-                      child: Icon(widget.engine.icon,
-                          color: active ? color : AppTheme.textDim,
-                          size: iconInner),
+                      child: Icon(widget.engine.icon, color: active ? color : t.textDim, size: 18),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.engine.label.toUpperCase(),
-                        style: TextStyle(
-                          color:
-                              active ? color : AppTheme.textSecondary,
-                          fontSize: labelSize,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    const Spacer(),
                     Transform.scale(
-                      scale: compact ? 0.6 : 0.7,
+                      scale: 0.55,
                       child: Switch(
                         value: active,
                         onChanged: _toggleEngine,
-                        activeTrackColor: color.withValues(alpha: 0.3),
+                        activeTrackColor: color.withValues(alpha: 0.25),
                         activeThumbColor: color,
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  widget.engine.label.toUpperCase(),
+                  style: TextStyle(
+                    color: active ? color : t.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.engine.description,
+                  style: TextStyle(color: t.textSecondary, fontSize: 10),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const Spacer(),
                 Row(
@@ -191,33 +415,31 @@ class _EngineCardState extends ConsumerState<EngineCard> {
                     Text(
                       '${widget.detectionCount}',
                       style: TextStyle(
-                        color: active
-                            ? AppTheme.textPrimary
-                            : AppTheme.textDim,
-                        fontSize: countSize,
-                        fontWeight: FontWeight.w300,
+                        color: active && widget.detectionCount > 0
+                            ? t.textPrimary : t.textSecondary,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w200,
                         fontFamily: 'monospace',
                         height: 1,
                       ),
                     ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: _stateColor(active).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        _stateLabel,
-                        style: TextStyle(
-                          color: _stateColor(active),
-                          fontSize: compact ? 8 : 9,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
+                    if (widget.rate > 0) ...[
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          '${widget.rate}/min',
+                          style: TextStyle(
+                            color: color.withValues(alpha: 0.8),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'monospace',
+                          ),
                         ),
                       ),
-                    ),
+                    ],
+                    const Spacer(),
+                    _stateBadge(active, t),
                   ],
                 ),
               ],
@@ -225,6 +447,185 @@ class _EngineCardState extends ConsumerState<EngineCard> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildCompact(BuildContext context) {
+    final t = AppTheme.of(context);
+    final color = widget.engine.color;
+    final active = _displayActive;
+    final hasActivity = widget.rate > 0 && active;
+
+    return GestureDetector(
+      onTap: _navigateToEngine,
+      child: AnimatedBuilder(
+        animation: _pulse,
+        builder: (context, child) {
+          final glow = hasActivity ? _pulse.value * 0.15 : 0.0;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: active
+                  ? color.withValues(alpha: 0.04 + glow)
+                  : t.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active ? color.withValues(alpha: 0.3) : t.border,
+                width: active ? 1.0 : 0.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: active
+                        ? color.withValues(alpha: 0.12 + glow)
+                        : t.border.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(widget.engine.icon, color: active ? color : t.textDim, size: 14),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        widget.engine.label.toUpperCase(),
+                        style: TextStyle(
+                          color: active ? color : t.textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      Text(
+                        widget.engine.description,
+                        style: TextStyle(color: t.textSecondary, fontSize: 9),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.detectionCount > 0) ...[
+                  Text(
+                    '${widget.detectionCount}',
+                    style: TextStyle(
+                      color: active ? t.textPrimary : t.textSecondary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w300,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                _stateBadge(active, t),
+                const SizedBox(width: 4),
+                Transform.scale(
+                  scale: 0.5,
+                  child: Switch(
+                    value: active,
+                    onChanged: _toggleEngine,
+                    activeTrackColor: color.withValues(alpha: 0.25),
+                    activeThumbColor: color,
+                  ),
+                ),
+                Icon(Icons.chevron_right, size: 14,
+                    color: active ? color.withValues(alpha: 0.5) : t.textDim),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _stateBadge(bool active, ResolvedTheme t) {
+    final appState = ref.watch(appStateProvider);
+    final wd = ref.watch(wardriveProvider);
+    final radio = (widget.engine == Engine.wardrive && wd.isActive)
+        ? wd.radioBitmask
+        : appState.engineRadio[widget.engine] ?? 0x03;
+
+    final isLocked = active || (widget.engine == Engine.wardrive && wd.isActive);
+    final chipColor = isLocked ? t.textDim : widget.engine.color;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.engine.isDualRadio) ...[
+          GestureDetector(
+            onTap: isLocked ? null : _cycleRadio,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: chipColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: chipColor.withValues(alpha: 0.3),
+                  width: 0.5,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isLocked)
+                    Icon(Icons.lock, size: 10, color: chipColor)
+                  else
+                    Icon(_radioIcon(radio), size: 14, color: chipColor),
+                  const SizedBox(width: 4),
+                  Text(
+                    _radioLabel(radio),
+                    style: TextStyle(
+                      color: chipColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: _stateColor(active, t).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(
+              color: _stateColor(active, t).withValues(alpha: 0.2),
+              width: 0.5,
+            ),
+          ),
+          child: Text(
+            _stateLabel,
+            style: TextStyle(
+              color: _stateColor(active, t),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+        if (widget.lastDetection != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            _formatLastSeen(widget.lastDetection!),
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 10,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

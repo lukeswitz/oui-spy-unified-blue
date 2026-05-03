@@ -147,6 +147,15 @@ class BleProtocol {
     return Uint8List.fromList([0x0F, 0x00]);
   }
 
+  /// Encode engine config update command.
+  /// action[1]=0x10 engine_id[1] payload[N]
+  static Uint8List encodeEngineConfig({
+    required Engine engine,
+    required Uint8List payload,
+  }) {
+    return Uint8List.fromList([0x10, engine.index, ...payload]);
+  }
+
   /// Decode engine control status.
   /// available[1] active[1] states[6]
   static ({int available, int active, List<EngineState> states}) decodeEngineStatus(
@@ -163,16 +172,18 @@ class BleProtocol {
 
   // -- Hardware config --
 
-  /// Encode hardware config: buzzer[1] led[1] neopixel_brightness[1]
+  /// Encode hardware config: buzzer[1] led[1] neopixel_brightness[1] buzzer_volume[1]
   static Uint8List encodeHardwareConfig({
     required bool buzzer,
     required bool led,
     required int neopixelBrightness,
+    required int buzzerVolume,
   }) {
     return Uint8List.fromList([
       buzzer ? 1 : 0,
       led ? 1 : 0,
       neopixelBrightness.clamp(0, 255),
+      buzzerVolume.clamp(0, 255),
     ]);
   }
 

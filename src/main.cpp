@@ -60,19 +60,20 @@ static void saveAPConfig(const String& ssid, const String& pass) {
 
 // ============================================================================
 // Buzzer Config Storage (NVS) — shared across all modes
+// Uses "ouispy-hw"/"buzzer" to match BLE GATT HardwareConfig characteristic
 // ============================================================================
 static void loadBuzzerConfig() {
     Preferences bzPrefs;
-    bzPrefs.begin("ouispy-bz", true);
-    buzzerEnabled = bzPrefs.getBool("on", true);
+    bzPrefs.begin("ouispy-hw", true);
+    buzzerEnabled = bzPrefs.getBool("buzzer", true);
     bzPrefs.end();
     Serial.printf("[OUI-SPY] Buzzer: %s\n", buzzerEnabled ? "ON" : "OFF");
 }
 
 static void saveBuzzerConfig(bool enabled) {
     Preferences bzPrefs;
-    bzPrefs.begin("ouispy-bz", false);
-    bzPrefs.putBool("on", enabled);
+    bzPrefs.begin("ouispy-hw", false);
+    bzPrefs.putBool("buzzer", enabled);
     bzPrefs.end();
     buzzerEnabled = enabled;
     Serial.printf("[OUI-SPY] Buzzer saved: %s\n", enabled ? "ON" : "OFF");

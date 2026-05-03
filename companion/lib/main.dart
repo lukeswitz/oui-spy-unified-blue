@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/app.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
@@ -14,16 +15,20 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DebugLog.init();
 
+  // System UI overlay adapts per-theme in MaterialApp; set transparent here.
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF111111),
-      systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
 
   final container = ProviderContainer();
+
+  // Force AppState to initialize before auto-connect so it catches
+  // the connection state stream events (prevents race condition where
+  // auto-connect completes before AppState subscribes).
+  container.read(appStateProvider);
+
   _autoConnect(container);
 
   runApp(UncontrolledProviderScope(

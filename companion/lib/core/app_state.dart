@@ -33,9 +33,50 @@ class AppState extends ChangeNotifier {
   int activeEngines = 0;
   List<EngineState> engineStates = List.filled(Engine.values.length, EngineState.disabled);
 
+  // Per-engine radio config: 0x01=WiFi, 0x02=BLE, 0x03=both
+  final Map<Engine, int> engineRadio = {
+    Engine.detector: 0x03,
+    Engine.foxhunter: 0x03,
+    Engine.wardrive: 0x03,
+  };
+
+  void setEngineRadio(Engine engine, int radio) {
+    engineRadio[engine] = radio;
+    if (isEngineActive(engine)) {
+      _ble.sendEngineConfig(engine, Uint8List.fromList([radio]));
+    }
+    notifyListeners();
+  }
+
+  // Session timing
+  DateTime? sessionStartTime;
+  Duration get sessionUptime =>
+      sessionStartTime != null ? DateTime.now().difference(sessionStartTime!) : Duration.zero;
+
   // Detection counts per engine — unique MACs, not raw event count
   final Map<Engine, Set<String>> _uniqueMacsPerEngine = {};
   int get totalDetections => _uniqueMacsPerEngine.values.fold(0, (a, b) => a + b.length);
+
+  // Per-engine last detection time
+  final Map<Engine, DateTime> lastDetectionTime = {};
+
+  // Per-engine detection rate (events in last 60s)
+  final Map<Engine, List<DateTime>> _recentDetectionTimes = {};
+  int detectionRate(Engine engine) {
+    final times = _recentDetectionTimes[engine];
+    if (times == null || times.isEmpty) return 0;
+    final cutoff = DateTime.now().subtract(const Duration(seconds: 60));
+    times.removeWhere((t) => t.isBefore(cutoff));
+    return times.length;
+  }
+
+  int get totalRate {
+    int sum = 0;
+    for (final engine in Engine.values) {
+      sum += detectionRate(engine);
+    }
+    return sum;
+  }
 
   // Recent detections ring buffer (feed), deduped by MAC+engine
   final List<Detection> recentDetections = [];
@@ -45,6 +86,20 @@ class AppState extends ChangeNotifier {
   // Foxhunter
   int foxhunterRssi = -100;
   int foxhunterIntervalMs = 3000;
+  String? foxhunterTarget;
+
+  void setFoxhunterTarget(String mac) {
+    foxhunterTarget = mac;
+    _ble.enableEngine(Engine.foxhunter, radio: engineRadio[Engine.foxhunter] ?? 0x03);
+    _ble.setFoxhunterTarget(mac);
+    notifyListeners();
+  }
+
+  void clearFoxhunterTarget() {
+    foxhunterTarget = null;
+    _ble.disableEngine(Engine.foxhunter);
+    notifyListeners();
+  }
 
   // Mesh
   bool meshEnabled = false;
@@ -71,6 +126,7 @@ class AppState extends ChangeNotifier {
       connectionState = state;
       if (state == NodeConnectionState.ready) {
         nodeId = _ble.nodeId;
+        sessionStartTime = DateTime.now();
         _gps.start();
       }
       if (state == NodeConnectionState.disconnected ||
@@ -78,6 +134,7 @@ class AppState extends ChangeNotifier {
         // Reset engine UI to all-disabled — firmware state unknown until next read
         activeEngines = 0;
         engineStates = List.filled(Engine.values.length, EngineState.disabled);
+        sessionStartTime = null;
       }
       notifyListeners();
     }));
@@ -96,6 +153,8 @@ class AppState extends ChangeNotifier {
     // Detections — track unique MACs per engine + deduplicated ring buffer
     _subs.add(_ble.detections.listen((det) {
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
+      lastDetectionTime[det.engine] = DateTime.now();
+      (_recentDetectionTimes[det.engine] ??= []).add(DateTime.now());
       _upsertDetection(det);
       notifyListeners();
     }));

@@ -267,9 +267,8 @@ class BleManager {
 
   // -- Engine control --
 
-  Future<void> enableEngine(Engine engine) async {
+  Future<void> enableEngine(Engine engine, {int? radio}) async {
     if (_engineControl == null) return;
-    // WiFi engines are mutually exclusive — disable any running WiFi engine first
     if (engine.isWifi) {
       for (final conflict in Engine.values.where((e) => e.isWifi && e != engine)) {
         await _engineControl!.write(
@@ -278,10 +277,18 @@ class BleManager {
       }
       await Future.delayed(const Duration(milliseconds: 200));
     }
+    if (radio != null) {
+      await _engineControl!.write(
+        BleProtocol.encodeEngineConfig(
+          engine: engine,
+          payload: Uint8List.fromList([radio]),
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
     await _engineControl!.write(
       BleProtocol.encodeEngineControl(engine: engine, enable: true),
     );
-    // Read back state — notifications get dropped under detection flood
     await _refreshEngineState();
   }
 
@@ -293,7 +300,13 @@ class BleManager {
     await _refreshEngineState();
   }
 
-  /// Disable ALL engines on firmware — single BLE write.
+  Future<void> sendEngineConfig(Engine engine, Uint8List payload) async {
+    if (_engineControl == null) return;
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(engine: engine, payload: payload),
+    );
+  }
+
   Future<void> disableAllEngines() async {
     if (_engineControl == null) return;
     await _engineControl!.write(BleProtocol.encodeDisableAll());
@@ -352,6 +365,7 @@ class BleManager {
     required bool buzzer,
     required bool led,
     required int neopixelBrightness,
+    required int buzzerVolume,
   }) async {
     if (_hardwareConfig == null) return;
     await _hardwareConfig!.write(
@@ -359,6 +373,7 @@ class BleManager {
         buzzer: buzzer,
         led: led,
         neopixelBrightness: neopixelBrightness,
+        buzzerVolume: buzzerVolume,
       ),
     );
   }
@@ -426,6 +441,7 @@ class BleManager {
   // -- Disconnect --
 
   Future<void> disconnect() async {
+    await disableAllEngines();
     for (final sub in _subscriptions) {
       await sub.cancel();
     }

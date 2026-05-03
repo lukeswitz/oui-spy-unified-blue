@@ -33,7 +33,9 @@ class SessionStats {
     required this.uniqueMacs,
     required this.newMacs,
     required this.wifiDetections,
+    required this.wifiTotal,
     required this.bleDetections,
+    required this.bleTotal,
     required this.flockCount,
     required this.droneCount,
     required this.detectionsPerKm,
@@ -48,7 +50,9 @@ class SessionStats {
   final int uniqueMacs;
   final int newMacs;
   final int wifiDetections;
+  final int wifiTotal;
   final int bleDetections;
+  final int bleTotal;
   final int flockCount;
   final int droneCount;
   final double detectionsPerKm;

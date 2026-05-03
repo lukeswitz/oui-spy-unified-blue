@@ -18,6 +18,7 @@ class _FlockPanelState extends State<FlockPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final count = widget.detections.length;
 
     return Column(
@@ -31,24 +32,24 @@ class _FlockPanelState extends State<FlockPanel> {
             decoration: BoxDecoration(
               color: count > 0
                   ? AppTheme.flockBle.withValues(alpha: 0.2)
-                  : AppTheme.surface.withValues(alpha: 0.9),
+                  : t.surface.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: count > 0
                     ? AppTheme.flockBle.withValues(alpha: 0.5)
-                    : AppTheme.border,
+                    : t.border,
               ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.videocam, size: 11,
-                    color: count > 0 ? AppTheme.flockBle : AppTheme.textDim),
+                    color: count > 0 ? AppTheme.flockBle : t.textDim),
                 const SizedBox(width: 4),
                 Text(
                   '$count',
                   style: TextStyle(
-                    color: count > 0 ? AppTheme.flockBle : AppTheme.textDim,
+                    color: count > 0 ? AppTheme.flockBle : t.textDim,
                     fontSize: 11, fontWeight: FontWeight.w700,
                     fontFamily: 'monospace',
                   ),
@@ -69,7 +70,7 @@ class _FlockPanelState extends State<FlockPanel> {
             margin: const EdgeInsets.only(top: 4),
             constraints: const BoxConstraints(maxHeight: 140, maxWidth: 240),
             decoration: BoxDecoration(
-              color: AppTheme.background.withValues(alpha: 0.95),
+              color: t.background.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: AppTheme.flockBle.withValues(alpha: 0.3)),
             ),
@@ -91,6 +92,7 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final isBle = d.engine == Engine.flockBle;
     final color = isBle ? AppTheme.flockBle : AppTheme.flockWifi;
     final isRaven = d.flock?.isRaven ?? false;
@@ -110,8 +112,8 @@ class _Row extends StatelessWidget {
             child: Row(children: [
               Text(
                 d.macAddress.toUpperCase(),
-                style: const TextStyle(
-                  color: AppTheme.textPrimary, fontSize: 9,
+                style: TextStyle(
+                  color: t.textPrimary, fontSize: 9,
                   fontFamily: 'monospace', fontWeight: FontWeight.w500,
                 ),
               ),

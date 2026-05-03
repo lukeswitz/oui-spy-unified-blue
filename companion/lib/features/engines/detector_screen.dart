@@ -16,12 +16,13 @@ class DetectorScreen extends ConsumerStatefulWidget {
 class _DetectorScreenState extends ConsumerState<DetectorScreen> {
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final watchlist = ref.watch(watchlistProvider);
     final detections = state.detectionsForEngine(Engine.detector);
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: t.background,
       appBar: AppBar(
         title: const Text('DETECTOR'),
         actions: [
@@ -34,16 +35,16 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            color: AppTheme.surface,
+            color: t.surface,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('WATCHLIST', style: TextStyle(
+                Text('WATCHLIST', style: TextStyle(
                   color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2,
                 )),
                 const SizedBox(height: 8),
                 if (watchlist.entries.isEmpty)
-                  const Text('No targets. Tap + to add.', style: TextStyle(color: AppTheme.textDim, fontSize: 12))
+                  Text('No targets. Tap + to add.', style: TextStyle(color: t.textDim, fontSize: 12))
                 else
                   Wrap(
                     spacing: 6, runSpacing: 6,
@@ -61,11 +62,11 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Row(
               children: [
-                const Text('DETECTIONS', style: TextStyle(
-                  color: AppTheme.textDim, fontSize: 10, letterSpacing: 2,
+                Text('DETECTIONS', style: TextStyle(
+                  color: t.textDim, fontSize: 10, letterSpacing: 2,
                 )),
                 const Spacer(),
-                Text('${detections.length}', style: const TextStyle(
+                Text('${detections.length}', style: TextStyle(
                   color: AppTheme.detector, fontSize: 11, fontFamily: 'monospace',
                 )),
               ],
@@ -73,8 +74,8 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
           ),
           Expanded(
             child: detections.isEmpty
-                ? const Center(child: Text('No detections yet',
-                    style: TextStyle(color: AppTheme.textDim, fontSize: 12)))
+                ? Center(child: Text('No detections yet',
+                    style: TextStyle(color: t.textDim, fontSize: 12)))
                 : ListView.builder(
                     itemCount: detections.length,
                     itemBuilder: (context, index) {
@@ -89,6 +90,7 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
   }
 
   void _showAddDialog() {
+    final t = AppTheme.of(context);
     final idController = TextEditingController();
     final descController = TextEditingController();
     bool isFullMAC = false;
@@ -97,14 +99,14 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: AppTheme.surface,
-          title: const Text('Add Target', style: TextStyle(color: AppTheme.textPrimary)),
+          backgroundColor: t.surface,
+          title: Text('Add Target', style: TextStyle(color: t.textPrimary)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: idController,
-                style: const TextStyle(color: AppTheme.textPrimary, fontFamily: 'monospace'),
+                style: TextStyle(color: t.textPrimary, fontFamily: 'monospace'),
                 decoration: InputDecoration(
                   hintText: isFullMAC ? 'AA:BB:CC:DD:EE:FF' : 'AA:BB:CC',
                   labelText: isFullMAC ? 'Full MAC address' : 'OUI prefix (first 3 bytes)',
@@ -113,7 +115,7 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: descController,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: t.textPrimary),
                 decoration: const InputDecoration(
                   hintText: 'e.g. Flock Safety, My tracker',
                   labelText: 'Description',
@@ -122,7 +124,7 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Text('Match full MAC address', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                  Text('Match full MAC address', style: TextStyle(color: t.textSecondary, fontSize: 12)),
                   const Spacer(),
                   Switch(value: isFullMAC, onChanged: (v) => setDialogState(() => isFullMAC = v)),
                 ],
@@ -158,6 +160,7 @@ class _WatchlistChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -178,12 +181,12 @@ class _WatchlistChip extends StatelessWidget {
           if (entry.description.isNotEmpty) ...[
             const SizedBox(width: 4),
             Text(entry.description,
-                style: const TextStyle(color: AppTheme.textDim, fontSize: 9)),
+                style: TextStyle(color: t.textDim, fontSize: 9)),
           ],
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onDelete,
-            child: const Icon(Icons.close, size: 12, color: AppTheme.textDim),
+            child: Icon(Icons.close, size: 12, color: t.textDim),
           ),
         ],
       ),
@@ -197,29 +200,30 @@ class _DetectionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     final desc = detection.detector?.filterDescription ?? '';
     final isMAC = detection.detector?.isFullMac ?? false;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
 
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: ListTile(
         dense: true,
         leading: Icon(isMAC ? Icons.fingerprint : Icons.radar,
             color: AppTheme.detector, size: 18),
         title: Text(detection.macAddress.toUpperCase(),
-            style: const TextStyle(color: AppTheme.textPrimary, fontFamily: 'monospace', fontSize: 13)),
+            style: TextStyle(color: t.textPrimary, fontFamily: 'monospace', fontSize: 13)),
         subtitle: Text(desc.isNotEmpty ? desc : (isMAC ? 'Full MAC match' : 'OUI prefix match'),
-            style: const TextStyle(color: AppTheme.textDim, fontSize: 11)),
+            style: TextStyle(color: t.textDim, fontSize: 11)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text('${detection.rssi} dBm',
-                style: const TextStyle(color: AppTheme.textSecondary, fontFamily: 'monospace', fontSize: 11)),
-            Text('${timeDiff.inSeconds}s', style: const TextStyle(color: AppTheme.textDim, fontSize: 9)),
+                style: TextStyle(color: t.textSecondary, fontFamily: 'monospace', fontSize: 11)),
+            Text('${timeDiff.inSeconds}s', style: TextStyle(color: t.textDim, fontSize: 9)),
           ],
         ),
       ),

@@ -24,6 +24,8 @@ class FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
@@ -32,91 +34,110 @@ class FilterBar extends StatelessWidget {
             height: 32,
             child: TextField(
               onChanged: onSearchChanged,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+              style: TextStyle(fontSize: 12, color: t.textPrimary),
               decoration: InputDecoration(
                 hintText: 'MAC, name, method...',
                 prefixIcon: const Icon(Icons.search, size: 16),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppTheme.border),
+                  borderSide: BorderSide(color: t.border),
                 ),
               ),
             ),
           ),
           const SizedBox(height: 6),
-          SizedBox(
-            height: 24,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                ...Engine.values.map((engine) {
-                  final active = activeFilters.contains(engine);
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: GestureDetector(
-                      onTap: () {
-                        final newFilters = Set<Engine>.from(activeFilters);
-                        if (active) {
-                          newFilters.remove(engine);
-                        } else {
-                          newFilters.add(engine);
-                        }
-                        onFiltersChanged(newFilters);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: active
-                              ? engine.color.withValues(alpha: 0.2)
-                              : AppTheme.surface,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: active
-                                ? engine.color.withValues(alpha: 0.5)
-                                : AppTheme.border,
-                            width: 0.5,
-                          ),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              ...Engine.values.map((engine) {
+                final active = activeFilters.contains(engine);
+                final chipBg = isLight
+                    ? (active ? engine.color : const Color(0xFF2A2D3A))
+                    : (active
+                        ? engine.color.withValues(alpha: 0.2)
+                        : t.surface);
+                final chipBorder = isLight
+                    ? (active ? engine.color : const Color(0xFF2A2D3A))
+                    : (active
+                        ? engine.color.withValues(alpha: 0.6)
+                        : t.border);
+                final chipText = isLight
+                    ? Colors.white
+                    : (active ? engine.color : t.textSecondary);
+                final chipIcon = isLight
+                    ? Colors.white
+                    : (active ? engine.color : t.textSecondary);
+                return GestureDetector(
+                  onTap: () {
+                    final newFilters = Set<Engine>.from(activeFilters);
+                    if (active) {
+                      newFilters.remove(engine);
+                    } else {
+                      newFilters.add(engine);
+                    }
+                    onFiltersChanged(newFilters);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: chipBg,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: chipBorder,
+                        width: active ? 1.0 : 0.5,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          engine.icon,
+                          size: 10,
+                          color: chipIcon,
                         ),
-                        child: Text(
+                        const SizedBox(width: 4),
+                        Text(
                           engine.label.toUpperCase(),
                           style: TextStyle(
-                            color: active ? engine.color : AppTheme.textDim,
+                            color: chipText,
                             fontSize: 9,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.5,
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  );
-                }),
-                if (sourceNodes.isNotEmpty && onNodeChanged != null) ...[
-                  Container(
-                    width: 1,
-                    height: 16,
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                    color: AppTheme.border,
                   ),
-                  _NodeFilterChip(
-                    label: 'ALL',
-                    active: selectedNode == null,
-                    onTap: () => onNodeChanged!(null),
-                  ),
-                  _NodeFilterChip(
-                    label: 'LOCAL',
-                    active: selectedNode == '',
-                    onTap: () => onNodeChanged!(''),
-                  ),
-                  ...sourceNodes.map((nodeId) => _NodeFilterChip(
-                    label: nodeId,
-                    active: selectedNode == nodeId,
-                    onTap: () => onNodeChanged!(nodeId),
-                  )),
-                ],
+                );
+              }),
+              if (sourceNodes.isNotEmpty && onNodeChanged != null) ...[
+                Container(
+                  width: 1,
+                  height: 16,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  color: t.border,
+                ),
+                _NodeFilterChip(
+                  label: 'ALL',
+                  active: selectedNode == null,
+                  onTap: () => onNodeChanged!(null),
+                ),
+                _NodeFilterChip(
+                  label: 'LOCAL',
+                  active: selectedNode == '',
+                  onTap: () => onNodeChanged!(''),
+                ),
+                ...sourceNodes.map((nodeId) => _NodeFilterChip(
+                  label: nodeId,
+                  active: selectedNode == nodeId,
+                  onTap: () => onNodeChanged!(nodeId),
+                )),
               ],
-            ),
+            ],
           ),
         ],
       ),
@@ -132,6 +153,17 @@ class _NodeFilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final chipBg = isLight
+        ? (active ? AppTheme.warning : const Color(0xFF2A2D3A))
+        : (active ? AppTheme.warning.withValues(alpha: 0.2) : t.surface);
+    final chipBorder = isLight
+        ? (active ? AppTheme.warning : const Color(0xFF2A2D3A))
+        : (active ? AppTheme.warning.withValues(alpha: 0.5) : t.border);
+    final chipText = isLight
+        ? Colors.white
+        : (active ? AppTheme.warning : t.textDim);
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: GestureDetector(
@@ -139,14 +171,10 @@ class _NodeFilterChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: active
-                ? AppTheme.warning.withValues(alpha: 0.2)
-                : AppTheme.surface,
+            color: chipBg,
             borderRadius: BorderRadius.circular(4),
             border: Border.all(
-              color: active
-                  ? AppTheme.warning.withValues(alpha: 0.5)
-                  : AppTheme.border,
+              color: chipBorder,
               width: 0.5,
             ),
           ),
@@ -154,14 +182,14 @@ class _NodeFilterChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (label != 'ALL' && label != 'LOCAL')
-                const Padding(
-                  padding: EdgeInsets.only(right: 3),
-                  child: Icon(Icons.hub, size: 8, color: AppTheme.warning),
+                Padding(
+                  padding: const EdgeInsets.only(right: 3),
+                  child: Icon(Icons.hub, size: 8, color: chipText),
                 ),
               Text(
                 label,
                 style: TextStyle(
-                  color: active ? AppTheme.warning : AppTheme.textDim,
+                  color: chipText,
                   fontSize: 9,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.5,

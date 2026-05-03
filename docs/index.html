@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OUI SPY // FLASH</title>
+  <style>
+    :root {
+      --bg: #08090E;
+      --surface: #0F1117;
+      --surface-light: #161822;
+      --border: #232736;
+      --text-primary: #F0F1F5;
+      --text-secondary: #B0B5C8;
+      --text-dim: #8890A8;
+      --accent: #6B8AFF;
+      --error: #E65A6B;
+      --success: #5AE6A1;
+      --warning: #E6A85A;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: background 1.2s ease;
+      overflow: hidden;
+    }
+
+    body.flash-complete {
+      background: #050608;
+    }
+
+    /* PCB trace background - shown after flash */
+    .pcb-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      opacity: 0;
+      transition: opacity 2s ease;
+      pointer-events: none;
+    }
+
+    body.flash-complete .pcb-canvas {
+      opacity: 1;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 480px;
+      padding: 2rem;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: var(--text-primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .header .subtitle {
+      font-size: 0.7rem;
+      letter-spacing: 3px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+
+    .header .version {
+      font-size: 0.65rem;
+      color: var(--accent);
+      letter-spacing: 2px;
+      margin-top: 0.25rem;
+      opacity: 0.7;
+    }
+
+    .flash-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .status-dot.flashing {
+      background: var(--warning);
+      box-shadow: 0 0 8px var(--warning);
+      animation: pulse 1s infinite;
+    }
+
+    .status-dot.error {
+      background: var(--error);
+      box-shadow: 0 0 8px var(--error);
+    }
+
+    .status-dot.done {
+      background: var(--success);
+      box-shadow: 0 0 12px var(--success);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .flash-btn {
+      width: 100%;
+      padding: 1rem;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .flash-btn:hover:not(:disabled) {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    .flash-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .progress-container {
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    .progress-container.active {
+      display: block;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      overflow: hidden;
+      margin-bottom: 0.75rem;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s;
+      border-radius: 1px;
+    }
+
+    .progress-fill.complete {
+      background: var(--success);
+    }
+
+    .progress-text {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    .log {
+      margin-top: 1.5rem;
+      max-height: 160px;
+      overflow-y: auto;
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      line-height: 1.8;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+    }
+
+    .log-entry {
+      opacity: 0;
+      animation: fadeIn 0.3s forwards;
+    }
+
+    .log-entry.error {
+      color: var(--error);
+    }
+
+    .log-entry.success {
+      color: var(--success);
+    }
+
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+
+    .unsupported {
+      text-align: center;
+      color: var(--error);
+      font-size: 0.75rem;
+      letter-spacing: 1px;
+    }
+
+    .unsupported a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      letter-spacing: 2px;
+      opacity: 0.5;
+    }
+
+    /* Complete state */
+    .complete-msg {
+      display: none;
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
+      color: var(--success);
+      letter-spacing: 2px;
+    }
+
+    .complete-msg.visible {
+      display: block;
+      animation: fadeIn 0.5s forwards;
+    }
+
+    /* Scrollbar */
+    .log::-webkit-scrollbar { width: 3px; }
+    .log::-webkit-scrollbar-track { background: transparent; }
+    .log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <canvas class="pcb-canvas" id="pcbCanvas"></canvas>
+
+  <div class="container">
+    <div class="header">
+      <h1>OUI SPY</h1>
+      <div class="subtitle">firmware flasher</div>
+      <div class="version">v3.0 // app-controlled</div>
+    </div>
+
+    <div class="flash-card" id="flashCard">
+      <div class="status-line">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">AWAITING CONNECTION</span>
+      </div>
+
+      <div id="mainContent">
+        <button class="flash-btn" id="flashBtn" onclick="startFlash()">
+          CONNECT &amp; FLASH
+        </button>
+      </div>
+
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">PREPARING...</div>
+      </div>
+
+      <div class="complete-msg" id="completeMsg">
+        FIRMWARE DEPLOYED // DEVICE READY
+      </div>
+
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="footer">
+      XIAO ESP32-S3 // WEB SERIAL
+    </div>
+  </div>
+
+  <div class="container unsupported" id="unsupported" style="display:none;">
+    <p>WEB SERIAL NOT SUPPORTED</p>
+    <p style="margin-top:0.5rem;color:var(--text-dim);">
+      Use <a href="https://www.google.com/chrome/">Chrome</a> or Edge 89+
+    </p>
+  </div>
+
+  <script type="module">
+    import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.5.4/bundle.js';
+
+    const FLASH_CONFIG = [
+      { name: 'bootloader.bin',  offset: 0x0000  },
+      { name: 'partitions.bin',  offset: 0x8000  },
+      { name: 'boot_app0.bin',   offset: 0xe000  },
+      { name: 'firmware.bin',    offset: 0x10000 },
+    ];
+
+    const FIRMWARE_BASE = './firmware/';
+
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const flashBtn = document.getElementById('flashBtn');
+    const logEl = document.getElementById('log');
+    const completeMsg = document.getElementById('completeMsg');
+
+    function log(msg, type = '') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `> ${msg}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text, state) {
+      statusText.textContent = text;
+      statusDot.className = `status-dot ${state}`;
+    }
+
+    function setProgress(pct, text) {
+      progressFill.style.width = `${pct}%`;
+      if (text) progressText.textContent = text;
+    }
+
+    async function fetchFirmware(name) {
+      const resp = await fetch(`${FIRMWARE_BASE}${name}`);
+      if (!resp.ok) throw new Error(`Failed to fetch ${name}: ${resp.status}`);
+      const blob = await resp.arrayBuffer();
+      return new Uint8Array(blob);
+    }
+
+    window.startFlash = async function() {
+      if (!('serial' in navigator)) return;
+
+      flashBtn.disabled = true;
+      flashBtn.textContent = 'FLASHING...';
+      logEl.innerHTML = '';
+
+      try {
+        log('Requesting serial port...');
+        const port = await navigator.serial.requestPort();
+
+        setStatus('CONNECTED', 'connected');
+        log('Port selected');
+
+        const transport = new Transport(port, true);
+        const esploader = new ESPLoader({
+          transport,
+          baudrate: 921600,
+          romBaudrate: 115200,
+          terminal: {
+            clean() {},
+            writeLine(data) { log(data.trim()); },
+            write(data) {}
+          }
+        });
+
+        log('Connecting to ESP32-S3...');
+        const chip = await esploader.main();
+        log(`Chip: ${chip}`, 'success');
+        setStatus('FLASHING', 'flashing');
+
+        progressContainer.classList.add('active');
+
+        log('Downloading firmware binaries...');
+        setProgress(0, 'DOWNLOADING BINARIES...');
+
+        const flashFiles = [];
+        for (let i = 0; i < FLASH_CONFIG.length; i++) {
+          const cfg = FLASH_CONFIG[i];
+          const data = await fetchFirmware(cfg.name);
+          flashFiles.push({ data: binaryToStr(data), address: cfg.offset });
+          log(`  ${cfg.name} (${(data.length / 1024).toFixed(1)} KB)`);
+          setProgress(((i + 1) / FLASH_CONFIG.length) * 20, `DOWNLOADED ${cfg.name}`);
+        }
+
+        log('Erasing and writing flash...');
+        setProgress(25, 'WRITING FLASH...');
+
+        await esploader.writeFlash({
+          fileArray: flashFiles,
+          flashSize: '8MB',
+          flashMode: 'qio',
+          flashFreq: '80m',
+          eraseAll: false,
+          compress: true,
+          reportProgress: (fileIndex, written, total) => {
+            const filePct = written / total;
+            const overallPct = 25 + ((fileIndex + filePct) / flashFiles.length) * 70;
+            setProgress(overallPct, `WRITING ${FLASH_CONFIG[fileIndex].name} ${(filePct * 100).toFixed(0)}%`);
+          }
+        });
+
+        setProgress(100, 'COMPLETE');
+        progressFill.classList.add('complete');
+        setStatus('FLASH COMPLETE', 'done');
+        log('Flash complete. Resetting device...', 'success');
+
+        await esploader.hardReset();
+        await transport.disconnect();
+
+        flashBtn.textContent = 'DONE';
+        completeMsg.classList.add('visible');
+
+        // Trigger PCB background
+        document.body.classList.add('flash-complete');
+        initPCB();
+
+      } catch (err) {
+        setStatus('ERROR', 'error');
+        log(err.message || String(err), 'error');
+        flashBtn.disabled = false;
+        flashBtn.textContent = 'RETRY';
+      }
+    };
+
+    function binaryToStr(u8arr) {
+      let str = '';
+      for (let i = 0; i < u8arr.length; i++) {
+        str += String.fromCharCode(u8arr[i]);
+      }
+      return str;
+    }
+
+    // -------------------------------------------------------------------------
+    // PCB Trace Funk Geometry — generative circuit board art
+    // -------------------------------------------------------------------------
+    function initPCB() {
+      const canvas = document.getElementById('pcbCanvas');
+      const ctx = canvas.getContext('2d');
+      let w, h;
+
+      function resize() {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+        draw();
+      }
+
+      const palette = [
+        '#6B8AFF33', '#9B6BFF33', '#5AE6A133', '#E66B9B33',
+        '#5AE6D633', '#E6895A33', '#6B8AFF55', '#5AE6A155'
+      ];
+
+      const padColor = '#6B8AFF22';
+      const viaColor = '#5AE6A144';
+      const traceHigh = '#6B8AFF44';
+      const traceLow = '#9B6BFF22';
+
+      function rand(min, max) { return Math.random() * (max - min) + min; }
+      function randInt(min, max) { return Math.floor(rand(min, max)); }
+
+      function draw() {
+        ctx.clearRect(0, 0, w, h);
+
+        // Grid of pads
+        const gridSize = 40;
+        const padRadius = 2;
+
+        for (let x = gridSize; x < w; x += gridSize) {
+          for (let y = gridSize; y < h; y += gridSize) {
+            if (Math.random() > 0.6) {
+              ctx.beginPath();
+              ctx.arc(x, y, padRadius, 0, Math.PI * 2);
+              ctx.fillStyle = padColor;
+              ctx.fill();
+            }
+          }
+        }
+
+        // Traces — orthogonal paths with 45-degree corners
+        const traceCount = Math.floor((w * h) / 8000);
+        for (let i = 0; i < traceCount; i++) {
+          drawTrace(ctx);
+        }
+
+        // Vias — larger filled circles at intersections
+        const viaCount = Math.floor(traceCount / 4);
+        for (let i = 0; i < viaCount; i++) {
+          const x = randInt(2, Math.floor(w / gridSize) - 1) * gridSize;
+          const y = randInt(2, Math.floor(h / gridSize) - 1) * gridSize;
+          ctx.beginPath();
+          ctx.arc(x, y, rand(3, 6), 0, Math.PI * 2);
+          ctx.fillStyle = viaColor;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(x, y, rand(1, 2.5), 0, Math.PI * 2);
+          ctx.fillStyle = '#08090E';
+          ctx.fill();
+        }
+
+        // IC pads — rectangular clusters
+        const icCount = randInt(3, 7);
+        for (let i = 0; i < icCount; i++) {
+          drawIC(ctx);
+        }
+
+        // Funk geometry — angular shapes overlaid
+        const funkCount = randInt(4, 10);
+        for (let i = 0; i < funkCount; i++) {
+          drawFunkShape(ctx);
+        }
+      }
+
+      function drawTrace(ctx) {
+        const gridSize = 40;
+        let x = randInt(0, Math.floor(w / gridSize)) * gridSize;
+        let y = randInt(0, Math.floor(h / gridSize)) * gridSize;
+        const segments = randInt(3, 12);
+        const thickness = rand(0.5, 2);
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.strokeStyle = Math.random() > 0.5 ? traceHigh : traceLow;
+        ctx.lineWidth = thickness;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (let s = 0; s < segments; s++) {
+          const dir = randInt(0, 8);
+          const len = randInt(1, 6) * gridSize;
+
+          switch (dir) {
+            case 0: x += len; break;
+            case 1: x -= len; break;
+            case 2: y += len; break;
+            case 3: y -= len; break;
+            case 4: x += len * 0.707; y += len * 0.707; break;
+            case 5: x -= len * 0.707; y -= len * 0.707; break;
+            case 6: x += len * 0.707; y -= len * 0.707; break;
+            case 7: x -= len * 0.707; y += len * 0.707; break;
+          }
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      function drawIC(ctx) {
+        const gridSize = 40;
+        const cx = randInt(4, Math.floor(w / gridSize) - 4) * gridSize;
+        const cy = randInt(4, Math.floor(h / gridSize) - 4) * gridSize;
+        const pins = randInt(4, 12);
+        const icW = pins * 6;
+        const icH = rand(16, 30);
+
+        ctx.strokeStyle = '#232736';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - icW / 2, cy - icH / 2, icW, icH);
+
+        // Pins on top and bottom
+        for (let p = 0; p < pins; p++) {
+          const px = cx - icW / 2 + p * 6 + 3;
+          ctx.fillStyle = padColor;
+          ctx.fillRect(px - 1.5, cy - icH / 2 - 4, 3, 4);
+          ctx.fillRect(px - 1.5, cy + icH / 2, 3, 4);
+        }
+      }
+
+      function drawFunkShape(ctx) {
+        const cx = rand(0, w);
+        const cy = rand(0, h);
+        const sides = randInt(3, 8);
+        const radius = rand(30, 120);
+        const rotation = rand(0, Math.PI * 2);
+
+        ctx.beginPath();
+        for (let i = 0; i <= sides; i++) {
+          const angle = rotation + (i / sides) * Math.PI * 2;
+          const r = radius * (0.7 + Math.random() * 0.6);
+          const px = cx + Math.cos(angle) * r;
+          const py = cy + Math.sin(angle) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = palette[randInt(0, palette.length)];
+        ctx.lineWidth = rand(0.5, 1.5);
+        ctx.stroke();
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+
+      // Slow ambient redraw
+      setInterval(() => { draw(); }, 8000);
+    }
+
+    // Check browser support
+    if (!('serial' in navigator)) {
+      document.getElementById('flashCard').style.display = 'none';
+      document.querySelector('.header').style.display = 'none';
+      document.querySelector('.footer').style.display = 'none';
+      document.getElementById('unsupported').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
