@@ -217,20 +217,29 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
 
 static uint8_t localStaMac[6] = {};
 static bool autoJoinListening = false;
+static volatile bool pendingInvite = false;
+static MeshInvitePacket pendingInviteData = {};
 
 static void handleInvitePacket(const uint8_t* data, size_t len) {
     if (len < sizeof(MeshInvitePacket)) return;
-    if (meshCurrentConfig.enabled) return; // Already in mesh
+    if (pendingInvite) return;
+    if (meshCurrentConfig.enabled) return;
 
     MeshInvitePacket invite;
     memcpy(&invite, data, sizeof(MeshInvitePacket));
-
-    // Don't accept our own invite
     if (memcmp(invite.source_node_id, localNodeId, 4) == 0) return;
 
-    Serial.printf("[MESH] Invite from %s — auto-joining\n", invite.source_node_id);
+    memcpy(&pendingInviteData, &invite, sizeof(MeshInvitePacket));
+    pendingInvite = true;
+}
 
-    // Build mesh config from invite
+void meshProcessPendingInvite(void) {
+    if (!pendingInvite) return;
+    pendingInvite = false;
+
+    MeshInvitePacket invite;
+    memcpy(&invite, &pendingInviteData, sizeof(MeshInvitePacket));
+
     MeshConfig cfg = {};
     cfg.enabled = 1;
     cfg.encryption_enabled = invite.encryption_enabled;
@@ -240,9 +249,7 @@ static void handleInvitePacket(const uint8_t* data, size_t len) {
     cfg.peer_count = 1;
     memcpy(cfg.peers[0], invite.primary_mac, 6);
 
-    // Stop passive listener before enabling full mesh
     autoJoinListening = false;
-
     meshEnable(&cfg);
     Serial.printf("[MESH] Auto-joined mesh from %s\n", invite.source_node_id);
 }
@@ -264,7 +271,7 @@ void meshInit(void) {
 
     // Start passive ESP-NOW listener for mesh invites
     // This allows peers to auto-join without phone configuration
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
     if (esp_now_init() == ESP_OK) {
         esp_now_register_recv_cb(onEspNowRecv);
@@ -307,7 +314,7 @@ void meshEnable(const MeshConfig* cfg) {
 
     txCounter = 0;
 
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 
     if (esp_now_init() != ESP_OK) {

@@ -216,7 +216,7 @@ static void skyspyInit(void) {
 
 static void skyspyStart(void) {
     // Start WiFi promiscuous for NAN/Beacon ODID
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(wifiCallback);
     esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);

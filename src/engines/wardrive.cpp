@@ -288,7 +288,7 @@ static void wardriveStart(void) {
     // Init WiFi — mesh may already have it in STA mode for ESP-NOW.
     // WiFi.mode(WIFI_STA) is safe to call when already in STA.
     if (wardriveRadio & 0x01) {
-        WiFi.mode(WIFI_STA);
+        WiFi.mode(WIFI_AP_STA);
         WiFi.disconnect(false);  // false = don't erase saved AP config
     }
 

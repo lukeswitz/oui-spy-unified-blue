@@ -127,7 +127,7 @@ static void flockWifiInit(void) {
 }
 
 static void flockWifiStart(void) {
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
     esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);

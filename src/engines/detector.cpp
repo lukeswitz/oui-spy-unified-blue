@@ -202,7 +202,7 @@ static void detectorStart(void) {
 
     // WiFi promiscuous — only if radio allows and wardrive doesn't own
     if ((detectorRadio & 0x01) && !wardriveOwns) {
-        WiFi.mode(WIFI_STA);
+        WiFi.mode(WIFI_AP_STA);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
         esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);

@@ -10,6 +10,7 @@ void meshBroadcastDetection(const DetectionEvent* evt);
 void meshBroadcastCommand(const MeshCommandPacket* cmd);
 void meshBroadcastStatus(void);
 void meshBroadcastInvite(void);
+void meshProcessPendingInvite(void);
 bool meshIsEnabled(void);
 MeshStatus meshGetStatus(void);
 const char* meshGetLocalNodeId(void);
