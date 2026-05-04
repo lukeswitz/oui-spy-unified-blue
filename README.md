@@ -1,8 +1,22 @@
-# OUI SPY Unified & Companion
+
+
+<div align="center">
+<h1>OUI SPY Unified & Companion</h1> 
+ 
+
+
+[![Version](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases) [![Join TestFlight Beta](https://img.shields.io/badge/TestFlight-Join-blue.svg?style=f&logo=apple)](https://testflight.apple.com/join/5RCKgnJ2) ![Platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
+![Dart](https://img.shields.io/badge/Dart-Flutter%20App-0175C2)
+![C++](https://img.shields.io/badge/C%2B%2B-ESP32%20FW-ff6600)
+
+
+<img width="500" alt="ouispy_appicon" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
+
+</div>
 
 **About this fork:** 
 
-Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
+Unified multi-engine surveillance detection firmware for the XIAO ESP32-C5. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
 
 Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
 
@@ -138,7 +152,7 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 | Platform | Method |
 |----------|--------|
 | **Android** | [APK from latest release](https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest) — enable "Install unknown apps" |
-| **iOS** | TestFlight beta |
+| **iOS** | [Join TestFlight beta](https://testflight.apple.com/join/5RCKgnJ2) |
 | **macOS** | [Signed .app from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
 
 ---
