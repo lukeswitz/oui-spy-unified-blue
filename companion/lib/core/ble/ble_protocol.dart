@@ -399,4 +399,81 @@ class BleProtocol {
     final trimmed = nullIndex >= 0 ? slice.sublist(0, nullIndex) : slice;
     return String.fromCharCodes(trimmed);
   }
+
+  // -- Orchestration --
+
+  /// Encode orchestration command: command[1] engineId[1] payloadLen[1] payload[N]
+  static Uint8List encodeOrchestrationCommand({
+    required int command,
+    required int engineId,
+    Uint8List? payload,
+  }) {
+    final payloadLen = payload?.length ?? 0;
+    final buf = Uint8List(3 + payloadLen);
+    buf[0] = command;
+    buf[1] = engineId;
+    buf[2] = payloadLen;
+    if (payload != null && payloadLen > 0) {
+      buf.setRange(3, 3 + payloadLen, payload);
+    }
+    return buf;
+  }
+
+  /// Decode peer status notification from orchestration characteristic.
+  /// Format: pkt_type[1] source_node_id[5] active_mask[1] states[7]
+  ///         detection_count[4] uptime_sec[4] free_heap_kb[1]
+  static PeerNodeStatus? decodePeerStatus(List<int> data) {
+    if (data.length < 23) return null;
+    final bytes = Uint8List.fromList(data);
+    final view = ByteData.sublistView(bytes);
+
+    final pktType = bytes[0];
+    if (pktType != 0x03) return null; // Only process status packets
+
+    final nodeId = _extractString(bytes, 1, 5);
+    final activeMask = bytes[6];
+    final states = List<EngineState>.generate(
+      7,
+      (i) => EngineState.values[bytes[7 + i].clamp(0, EngineState.values.length - 1)],
+    );
+    final detectionCount = view.getUint32(14, Endian.little);
+    final uptimeSec = view.getUint32(18, Endian.little);
+    final freeHeapKb = bytes[22].toSigned(8);
+
+    return PeerNodeStatus(
+      nodeId: nodeId,
+      activeEngineMask: activeMask,
+      engineStates: states,
+      detectionCount: detectionCount,
+      uptimeSec: uptimeSec,
+      freeHeapKb: freeHeapKb,
+      lastSeen: DateTime.now(),
+    );
+  }
+}
+
+/// Status of a peer node received via orchestration notifications.
+class PeerNodeStatus {
+  PeerNodeStatus({
+    required this.nodeId,
+    required this.activeEngineMask,
+    required this.engineStates,
+    required this.detectionCount,
+    required this.uptimeSec,
+    required this.freeHeapKb,
+    required this.lastSeen,
+  });
+
+  final String nodeId;
+  final int activeEngineMask;
+  final List<EngineState> engineStates;
+  final int detectionCount;
+  final int uptimeSec;
+  final int freeHeapKb;
+  final DateTime lastSeen;
+
+  bool get isStale => DateTime.now().difference(lastSeen).inSeconds > 15;
+
+  bool isEngineActive(Engine engine) =>
+      (activeEngineMask & (1 << engine.index)) != 0;
 }

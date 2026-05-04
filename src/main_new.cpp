@@ -232,6 +232,16 @@ static void statusHeartbeatTask(void* param) {
             bleGattNotifyEngineState();
             if (meshIsEnabled()) {
                 bleGattNotifyMeshStatus();
+
+                // Broadcast our status to peers
+                meshBroadcastStatus();
+
+                // Forward any queued peer status packets to companion app
+                MeshStatusPacket peerPkt;
+                while (peerStatusQueue != NULL &&
+                       xQueueReceive(peerStatusQueue, &peerPkt, 0) == pdTRUE) {
+                    bleGattNotifyPeerStatus(&peerPkt);
+                }
             }
         }
 

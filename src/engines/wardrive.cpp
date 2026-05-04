@@ -66,6 +66,10 @@ static volatile bool wifiScanInProgress = false;
 
 static volatile uint8_t wardriveRadio = 0x03;
 
+// Channel range for orchestrated scanning (1-14 default = all)
+static uint8_t wardriveChanStart = 1;
+static uint8_t wardriveChanEnd   = 14;
+
 // Scan timing — configurable via BLE config
 static uint16_t wifiScanIntervalMs = 1200;  // gap between WiFi scans
 static uint16_t wifiDwellPerChMs   = 250;   // per-channel dwell time
@@ -137,6 +141,11 @@ static void wardriveWifiScanHarvest(void) {
         if (!wardriveActive) break;
         uint8_t* bssid = WiFi.BSSID(i);
         if (bssid == NULL) continue;
+
+        // Channel range filter for orchestrated scanning
+        uint8_t ch = (uint8_t)WiFi.channel(i);
+        if (ch < wardriveChanStart || ch > wardriveChanEnd) continue;
+
         if (wardriveIsDedupCooldown(bssid)) continue;
 
         DetectionEvent evt = {};
@@ -380,9 +389,19 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
         if (bleScanIntervalMs < 1000) bleScanIntervalMs = 1000;
     }
 
-    Serial.printf("[WARDRIVE] Config: radio=0x%02X wifi=%d/%d ble=%d/%d\n",
+    // Channel range for orchestrated multi-node scanning (bytes 9-10)
+    if (len >= 11) {
+        uint8_t chStart = payload[9];
+        uint8_t chEnd   = payload[10];
+        if (chStart >= 1 && chStart <= 14 && chEnd >= chStart && chEnd <= 14) {
+            wardriveChanStart = chStart;
+            wardriveChanEnd   = chEnd;
+        }
+    }
+
+    Serial.printf("[WARDRIVE] Config: radio=0x%02X wifi=%d/%d ble=%d/%d ch=%d-%d\n",
         wardriveRadio, wifiScanIntervalMs, wifiDwellPerChMs,
-        bleScanDurationMs, bleScanIntervalMs);
+        bleScanDurationMs, bleScanIntervalMs, wardriveChanStart, wardriveChanEnd);
 }
 
 const EngineCallbacks wardriveCallbacks = {

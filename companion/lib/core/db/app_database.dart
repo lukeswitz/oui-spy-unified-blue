@@ -87,6 +87,11 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(s) => OrderingTerm.desc(s.startedAt)]))
           .watch();
 
+  Future<void> deleteSession(String id) async {
+    await (delete(detections)..where((d) => d.sessionId.equals(id))).go();
+    await (delete(sessions)..where((s) => s.id.equals(id))).go();
+  }
+
   // -- Detection operations --
 
   Future<void> insertDetection(DetectionsCompanion detection) =>

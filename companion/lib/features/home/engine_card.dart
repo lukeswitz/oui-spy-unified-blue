@@ -7,6 +7,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/orchestrator.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -22,6 +23,7 @@ class EngineCard extends ConsumerStatefulWidget {
     this.lastDetection,
     this.rate = 0,
     this.size = CardSize.medium,
+    this.nodeCount = 0,
   });
 
   final Engine engine;
@@ -31,6 +33,7 @@ class EngineCard extends ConsumerStatefulWidget {
   final DateTime? lastDetection;
   final int rate;
   final CardSize size;
+  final int nodeCount;
 
   @override
   ConsumerState<EngineCard> createState() => _EngineCardState();
@@ -84,8 +87,11 @@ class _EngineCardState extends ConsumerState<EngineCard>
       final wd = ref.read(wardriveProvider);
       if (value) {
         wd.startSession();
+        // Sync wardrive to peers with channel split
+        _syncToPeers(value);
       } else {
         wd.stopSession();
+        _syncToPeers(value);
       }
       return;
     }
@@ -96,12 +102,31 @@ class _EngineCardState extends ConsumerState<EngineCard>
     } else {
       ble.disableEngine(widget.engine);
     }
+    _syncToPeers(value);
     DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value');
     setState(() => _optimisticValue = value);
     _optimisticTimer?.cancel();
     _optimisticTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _optimisticValue = null);
     });
+  }
+
+  void _syncToPeers(bool enable) {
+    final appState = ref.read(appStateProvider);
+    if (!appState.meshEnabled) return;
+
+    final orchestrator = ref.read(orchestratorProvider);
+    if (enable) {
+      orchestrator.syncEngineEnable(widget.engine);
+      // Apply channel split for wardrive after a short delay (peers need to start first)
+      if (widget.engine == Engine.wardrive) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          orchestrator.applyChannelSplit();
+        });
+      }
+    } else {
+      orchestrator.syncEngineDisable(widget.engine);
+    }
   }
 
   void _cycleRadio() {
@@ -614,6 +639,32 @@ class _EngineCardState extends ConsumerState<EngineCard>
             ),
           ),
         ),
+        if (widget.nodeCount > 0) ...[
+          const SizedBox(height: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppTheme.flockBle.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.hub, size: 8, color: AppTheme.flockBle.withValues(alpha: 0.8)),
+                const SizedBox(width: 3),
+                Text(
+                  '+${widget.nodeCount}',
+                  style: TextStyle(
+                    color: AppTheme.flockBle,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (widget.lastDetection != null) ...[
           const SizedBox(height: 3),
           Text(

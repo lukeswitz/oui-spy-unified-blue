@@ -253,16 +253,51 @@ typedef struct __attribute__((packed)) {
 } MeshDetectionPacket;
 
 // ============================================================================
+// Mesh Packet Types — discriminator for ESP-NOW payloads
+// ============================================================================
+enum MeshPacketType : uint8_t {
+    MESH_PKT_DETECTION = 0x01,
+    MESH_PKT_COMMAND   = 0x02,
+    MESH_PKT_STATUS    = 0x03,
+};
+
+// Command relay: primary node -> peers (via ESP-NOW)
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_COMMAND
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  command;               // 0x01=enable, 0x00=disable, 0x0F=disable_all, 0x10=config
+    uint8_t  engine_id;
+    uint8_t  payload[32];
+    uint8_t  payload_len;
+} MeshCommandPacket;
+
+// Status heartbeat: each node -> all peers (every 5s)
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_STATUS
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  active_engine_mask;    // Bitmask: bit N = engine N active
+    uint8_t  engine_states[ENGINE_COUNT];
+    uint32_t detection_count;       // Total since mesh enabled
+    uint32_t uptime_sec;            // Seconds since mesh enabled
+    int8_t   free_heap_kb;          // ESP.getFreeHeap() / 1024
+} MeshStatusPacket;
+
+// ============================================================================
 // GATT UUIDs — Mesh
 // ============================================================================
 #define CHR_MESH_CONFIG      "00000060-" UUID_BASE
 #define CHR_MESH_STATUS      "00000061-" UUID_BASE
+#define CHR_ORCHESTRATION    "00000070-" UUID_BASE
 
 // ============================================================================
 // Mesh globals (extern, managed by mesh_espnow.cpp)
 // ============================================================================
 extern volatile MeshConfig meshCurrentConfig;
 extern volatile MeshStatus meshCurrentStatus;
+
+// Ring buffer for peer status notifications (forwarded to BLE)
+#define MESH_PEER_STATUS_QUEUE_DEPTH 4
+extern QueueHandle_t peerStatusQueue;  // MeshStatusPacket, depth 4
 
 // ============================================================================
 // Helper: push detection onto queue (ISR-safe variant available)

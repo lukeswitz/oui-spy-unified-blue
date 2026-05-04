@@ -10,6 +10,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/orchestrator.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -165,6 +166,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                     ],
                   ],
                 ),
+              ),
+
+            // Active: node stats overlay (top-left, below stats)
+            if (wd.isActive && ref.watch(appStateProvider).meshEnabled)
+              Positioned(
+                top: 130, left: 12,
+                child: _NodeStatsOverlay(ref: ref),
               ),
 
             // Active: pause/stop controls + flock panel below
@@ -863,6 +871,7 @@ class _SessionHistorySheet extends ConsumerWidget {
                           ref.read(wardriveProvider).loadSession(sessions[i].id);
                         },
                         onShare: () => _shareSession(context, ref, sessions[i].id),
+                        onDelete: () => _deleteSession(context, ref, sessions[i]),
                       ),
                     );
                   },
@@ -873,6 +882,41 @@ class _SessionHistorySheet extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _deleteSession(BuildContext context, WidgetRef ref, Session session) async {
+    final t = AppTheme.of(context);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.background,
+        title: Text('Delete Session', style: TextStyle(color: t.textPrimary)),
+        content: Text(
+          'Delete this session and all its ${session.detectionCount} detections? This cannot be undone.',
+          style: TextStyle(color: t.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('DELETE'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final db = ref.read(databaseProvider);
+      await db.deleteSession(session.id);
+      // Clear loaded session if it was the deleted one
+      final wd = ref.read(wardriveProvider);
+      if (wd.loadedSessionId == session.id) {
+        wd.clearLoadedSession();
+      }
+    }
   }
 
   Future<void> _shareSession(BuildContext context, WidgetRef ref, String sid) async {
@@ -891,10 +935,11 @@ class _SessionHistorySheet extends ConsumerWidget {
 }
 
 class _SessionRow extends ConsumerWidget {
-  const _SessionRow({super.key, required this.session, required this.onTap, required this.onShare});
+  const _SessionRow({super.key, required this.session, required this.onTap, required this.onShare, required this.onDelete});
   final Session session;
   final VoidCallback onTap;
   final VoidCallback onShare;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -947,6 +992,13 @@ class _SessionRow extends ConsumerWidget {
                 child: Icon(Icons.ios_share, size: 14, color: t.textDim),
               ),
             ),
+            GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                child: Icon(Icons.delete_outline, size: 14, color: AppTheme.error.withValues(alpha: 0.6)),
+              ),
+            ),
           ],
         ),
       ),
@@ -978,6 +1030,126 @@ class _FoxhuntBadge extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Node Stats Overlay — shows peer nodes + their detection counts
+// ---------------------------------------------------------------------------
+
+class _NodeStatsOverlay extends ConsumerWidget {
+  const _NodeStatsOverlay({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final orchestrator = ref.watch(orchestratorProvider);
+    final appState = ref.watch(appStateProvider);
+    final peers = orchestrator.activePeers;
+
+    if (peers.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(maxWidth: 160),
+      decoration: BoxDecoration(
+        color: t.background.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.hub, size: 10, color: AppTheme.accent),
+              const SizedBox(width: 4),
+              Text(
+                '${peers.length + 1} NODES',
+                style: TextStyle(
+                  color: AppTheme.accent,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // Self
+          _NodeRow(
+            name: appState.nodeId.isNotEmpty ? appState.nodeId : 'LOCAL',
+            count: appState.countForEngine(Engine.wardrive),
+            isSelf: true,
+            t: t,
+          ),
+          // Peers
+          ...peers.map((p) => _NodeRow(
+            name: p.name ?? p.nodeId,
+            count: p.detectionCount,
+            isSelf: false,
+            t: t,
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+class _NodeRow extends StatelessWidget {
+  const _NodeRow({
+    required this.name,
+    required this.count,
+    required this.isSelf,
+    required this.t,
+  });
+  final String name;
+  final int count;
+  final bool isSelf;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 5, height: 5,
+            decoration: BoxDecoration(
+              color: isSelf ? AppTheme.accent : AppTheme.flockBle,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              name,
+              style: TextStyle(
+                color: isSelf ? AppTheme.accent : t.textSecondary,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$count',
+            style: TextStyle(
+              color: t.textPrimary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

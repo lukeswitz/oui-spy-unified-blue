@@ -288,6 +288,12 @@ class WardriveController extends ChangeNotifier {
   String? _lastCompletedSessionId;
   String? get lastCompletedSessionId => _lastCompletedSessionId;
 
+  /// ID of the currently loaded (viewed) session on the map.
+  String? get loadedSessionId => !isActive ? _lastCompletedSessionId : null;
+
+  /// Clear the loaded session from the map (e.g., after deletion).
+  void clearLoadedSession() => clearMapData();
+
   /// Whether we have map data from a completed/loaded session.
   bool get hasSessionData =>
       routePoints.isNotEmpty || detections.isNotEmpty;

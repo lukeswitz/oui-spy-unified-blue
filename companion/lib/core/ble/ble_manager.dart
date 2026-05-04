@@ -10,6 +10,8 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/models/node.dart';
 
+export 'package:oui_spy/core/ble/ble_protocol.dart' show PeerNodeStatus;
+
 /// Central BLE manager. Handles scanning, connection, GATT operations,
 /// and detection stream from the OUI-SPY device.
 class BleManager {
@@ -29,12 +31,14 @@ class BleManager {
   BluetoothCharacteristic? _foxhunterConfig;
   BluetoothCharacteristic? _meshConfig;
   BluetoothCharacteristic? _meshStatus;
+  BluetoothCharacteristic? _orchestration;
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
   final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})>.broadcast();
+  final _peerStatusStream = StreamController<PeerNodeStatus>.broadcast();
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -53,6 +57,7 @@ class BleManager {
       _engineStates.stream;
   Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})> get meshStatusUpdates =>
       _meshStatusStream.stream;
+  Stream<PeerNodeStatus> get peerStatusUpdates => _peerStatusStream.stream;
 
   NodeConnectionState _currentState = NodeConnectionState.disconnected;
 
@@ -208,6 +213,7 @@ class BleManager {
       if (c.uuid == GattUuids.foxhunterConfig) _foxhunterConfig = c;
       if (c.uuid == GattUuids.meshConfig) _meshConfig = c;
       if (c.uuid == GattUuids.meshStatus) _meshStatus = c;
+      if (c.uuid == GattUuids.orchestration) _orchestration = c;
     }
 
     // Read device info to get node ID
@@ -258,6 +264,17 @@ class BleManager {
       _subscriptions.add(
         _meshStatus!.onValueReceived.listen((data) {
           _meshStatusStream.add(BleProtocol.decodeMeshStatus(data));
+        }),
+      );
+    }
+
+    // Subscribe to orchestration (peer status notifications)
+    if (_orchestration != null) {
+      await _orchestration!.setNotifyValue(true);
+      _subscriptions.add(
+        _orchestration!.onValueReceived.listen((data) {
+          final status = BleProtocol.decodePeerStatus(data);
+          if (status != null) _peerStatusStream.add(status);
         }),
       );
     }
@@ -419,6 +436,23 @@ class BleManager {
     );
   }
 
+  // -- Orchestration --
+
+  Future<void> sendOrchestrationCommand({
+    required int command,
+    required int engineId,
+    Uint8List? payload,
+  }) async {
+    if (_orchestration == null) return;
+    await _orchestration!.write(
+      BleProtocol.encodeOrchestrationCommand(
+        command: command,
+        engineId: engineId,
+        payload: payload,
+      ),
+    );
+  }
+
   // -- Mesh --
 
   Future<void> writeMeshConfig({
@@ -458,6 +492,7 @@ class BleManager {
     _foxhunterRssiStream.close();
     _engineStates.close();
     _meshStatusStream.close();
+    _peerStatusStream.close();
   }
 
   // -- Private --

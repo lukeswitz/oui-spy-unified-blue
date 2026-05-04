@@ -25,4 +25,7 @@ bool bleGattIsConnected(void);
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);
 
+// Forward peer status packet to companion app via orchestration characteristic
+void bleGattNotifyPeerStatus(const MeshStatusPacket* peerStatus);
+
 #endif // BLE_GATT_H

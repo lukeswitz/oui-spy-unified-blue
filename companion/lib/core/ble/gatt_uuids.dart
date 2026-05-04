@@ -81,4 +81,7 @@ class GattUuids {
 
   /// READ, NOTIFY: Mesh status (peers, packet counts)
   static final meshStatus = Guid('00000061-$_base');
+
+  /// WRITE, NOTIFY: Orchestration — relay commands to peers, receive peer status
+  static final orchestration = Guid('00000070-$_base');
 }

@@ -1,4 +1,5 @@
 #include "mesh_espnow.h"
+#include "engine_registry.h"
 #include <Arduino.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
@@ -8,6 +9,10 @@
 
 volatile MeshConfig meshCurrentConfig = {};
 volatile MeshStatus meshCurrentStatus = {};
+QueueHandle_t peerStatusQueue = NULL;
+
+static uint32_t meshDetectionCount = 0;
+static uint32_t meshEnableTime = 0;
 
 static mbedtls_gcm_context gcmCtx;
 static bool gcmReady = false;
@@ -88,23 +93,7 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
     return true;
 }
 
-static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
-    if (!meshCurrentConfig.enabled) return;
-
-    uint8_t plainBuf[256];
-    size_t plainLen = 0;
-
-    if (!decryptPacket(data, (size_t)len, plainBuf, &plainLen)) {
-        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            MeshStatus s;
-            memcpy(&s, (void*)&meshCurrentStatus, sizeof(MeshStatus));
-            s.rx_errors++;
-            memcpy((void*)&meshCurrentStatus, &s, sizeof(MeshStatus));
-            xSemaphoreGive(meshMutex);
-        }
-        return;
-    }
-
+static void handleDetectionPacket(const uint8_t* plainBuf, size_t plainLen) {
     if (plainLen < sizeof(MeshDetectionPacket)) return;
 
     MeshDetectionPacket pkt;
@@ -124,6 +113,83 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
     }
 
     pushDetection(&evt);
+}
+
+static void handleCommandPacket(const uint8_t* plainBuf, size_t plainLen) {
+    if (plainLen < sizeof(MeshCommandPacket)) return;
+
+    MeshCommandPacket cmd;
+    memcpy(&cmd, plainBuf, sizeof(MeshCommandPacket));
+
+    // Don't execute commands we originated
+    if (memcmp(cmd.source_node_id, localNodeId, 4) == 0) return;
+
+    // Route to engine command queue
+    EngineCommand ecmd = {};
+    ecmd.command = cmd.command;
+    ecmd.engine_id = cmd.engine_id;
+    if (cmd.payload_len > 0 && cmd.payload_len <= sizeof(ecmd.payload)) {
+        memcpy(ecmd.payload, cmd.payload, cmd.payload_len);
+        ecmd.payload_len = cmd.payload_len;
+    }
+
+    xQueueSend(engineCmdQueue, &ecmd, pdMS_TO_TICKS(10));
+    Serial.printf("[MESH] Relay cmd: engine=%d cmd=0x%02X from=%s\n",
+                  cmd.engine_id, cmd.command, cmd.source_node_id);
+}
+
+static void handleStatusPacket(const uint8_t* plainBuf, size_t plainLen) {
+    if (plainLen < sizeof(MeshStatusPacket)) return;
+
+    MeshStatusPacket status;
+    memcpy(&status, plainBuf, sizeof(MeshStatusPacket));
+
+    // Don't process our own status
+    if (memcmp(status.source_node_id, localNodeId, 4) == 0) return;
+
+    // Forward to BLE notification queue for companion app
+    if (peerStatusQueue != NULL) {
+        xQueueSend(peerStatusQueue, &status, pdMS_TO_TICKS(5));
+    }
+}
+
+static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
+    if (!meshCurrentConfig.enabled) return;
+
+    uint8_t plainBuf[256];
+    size_t plainLen = 0;
+
+    if (!decryptPacket(data, (size_t)len, plainBuf, &plainLen)) {
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            MeshStatus s;
+            memcpy(&s, (void*)&meshCurrentStatus, sizeof(MeshStatus));
+            s.rx_errors++;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(MeshStatus));
+            xSemaphoreGive(meshMutex);
+        }
+        return;
+    }
+
+    if (plainLen < 1) return;
+
+    // Dispatch by packet type (first byte)
+    uint8_t pktType = plainBuf[0];
+
+    // Backward compat: legacy packets start with ASCII node ID (>= 0x30)
+    // New packets have pkt_type 0x01-0x03 as first byte
+    if (pktType == MESH_PKT_COMMAND) {
+        handleCommandPacket(plainBuf, plainLen);
+    } else if (pktType == MESH_PKT_STATUS) {
+        handleStatusPacket(plainBuf, plainLen);
+    } else {
+        // Detection packet (legacy format or MESH_PKT_DETECTION prefix)
+        if (pktType == MESH_PKT_DETECTION) {
+            handleDetectionPacket(plainBuf + 1, plainLen - 1);
+        } else {
+            // Legacy format: no type prefix, starts with source_node_id
+            handleDetectionPacket(plainBuf, plainLen);
+        }
+    }
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         MeshStatus s;
@@ -144,6 +210,8 @@ void meshInit(void) {
     mbedtls_gcm_init(&gcmCtx);
     memset((void*)&meshCurrentConfig, 0, sizeof(MeshConfig));
     memset((void*)&meshCurrentStatus, 0, sizeof(MeshStatus));
+
+    peerStatusQueue = xQueueCreate(MESH_PEER_STATUS_QUEUE_DEPTH, sizeof(MeshStatusPacket));
 
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_BT);
@@ -208,6 +276,9 @@ void meshEnable(const MeshConfig* cfg) {
                           cfg->peers[i][3], cfg->peers[i][4], cfg->peers[i][5]);
         }
     }
+
+    meshEnableTime = millis() / 1000;
+    meshDetectionCount = 0;
 
     Serial.printf("[MESH] Enabled with %d peers\n", cfg->peer_count);
 }
@@ -276,6 +347,7 @@ void meshBroadcastDetection(const DetectionEvent* evt) {
     esp_err_t result = esp_now_send(NULL, encrypted, encLen);
 
     if (result == ESP_OK) {
+        meshDetectionCount++;
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             MeshStatus s;
             memcpy(&s, (void*)&meshCurrentStatus, sizeof(MeshStatus));
@@ -284,6 +356,63 @@ void meshBroadcastDetection(const DetectionEvent* evt) {
             xSemaphoreGive(meshMutex);
         }
     }
+}
+
+void meshBroadcastCommand(const MeshCommandPacket* cmd) {
+    if (!meshCurrentConfig.enabled) return;
+
+    // Fill source node ID if not already set
+    MeshCommandPacket pkt;
+    memcpy(&pkt, cmd, sizeof(MeshCommandPacket));
+    pkt.pkt_type = MESH_PKT_COMMAND;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+
+    uint8_t encrypted[256];
+    size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket),
+                       encrypted, &encLen)) {
+        return;
+    }
+
+    esp_err_t result = esp_now_send(NULL, encrypted, encLen);
+    if (result == ESP_OK) {
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            MeshStatus s;
+            memcpy(&s, (void*)&meshCurrentStatus, sizeof(MeshStatus));
+            s.tx_count++;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(MeshStatus));
+            xSemaphoreGive(meshMutex);
+        }
+        Serial.printf("[MESH] Broadcast cmd: engine=%d cmd=0x%02X\n",
+                      pkt.engine_id, pkt.command);
+    }
+}
+
+void meshBroadcastStatus(void) {
+    if (!meshCurrentConfig.enabled) return;
+
+    MeshStatusPacket pkt = {};
+    pkt.pkt_type = MESH_PKT_STATUS;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+
+    // Build active engine mask from engine registry
+    pkt.active_engine_mask = engineGetActiveMask();
+    for (uint8_t i = 0; i < ENGINE_COUNT; i++) {
+        pkt.engine_states[i] = engineGetState((EngineId)i);
+    }
+
+    pkt.detection_count = meshDetectionCount;
+    pkt.uptime_sec = (millis() / 1000) - meshEnableTime;
+    pkt.free_heap_kb = (int8_t)(ESP.getFreeHeap() / 1024);
+
+    uint8_t encrypted[256];
+    size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, sizeof(MeshStatusPacket),
+                       encrypted, &encLen)) {
+        return;
+    }
+
+    esp_now_send(NULL, encrypted, encLen);
 }
 
 bool meshIsEnabled(void) {
@@ -299,4 +428,8 @@ MeshStatus meshGetStatus(void) {
         memcpy(&s, (void*)&meshCurrentStatus, sizeof(MeshStatus));
     }
     return s;
+}
+
+const char* meshGetLocalNodeId(void) {
+    return localNodeId;
 }

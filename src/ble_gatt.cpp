@@ -32,6 +32,7 @@ static NimBLECharacteristic* chrFoxhunterConfig = nullptr;
 static NimBLECharacteristic* chrUnipwnCommand = nullptr;
 static NimBLECharacteristic* chrMeshConfig = nullptr;
 static NimBLECharacteristic* chrMeshStatus = nullptr;
+static NimBLECharacteristic* chrOrchestration = nullptr;
 
 static bool phoneConnected = false;
 
@@ -284,6 +285,32 @@ class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 // ============================================================================
+// Orchestration Callbacks — relay commands to mesh peers
+// ============================================================================
+class OrchestrationCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.length() < 3) return;  // minimum: command + engine_id + payload_len
+
+        MeshCommandPacket cmd = {};
+        cmd.pkt_type = MESH_PKT_COMMAND;
+        cmd.command = (uint8_t)val[0];
+        cmd.engine_id = (uint8_t)val[1];
+        cmd.payload_len = (uint8_t)val[2];
+
+        if (cmd.payload_len > 0 && val.length() >= (size_t)(3 + cmd.payload_len)) {
+            size_t copyLen = cmd.payload_len > 32 ? 32 : cmd.payload_len;
+            memcpy(cmd.payload, val.data() + 3, copyLen);
+            cmd.payload_len = (uint8_t)copyLen;
+        }
+
+        meshBroadcastCommand(&cmd);
+        Serial.printf("[BLE] Orchestration relay: cmd=0x%02X engine=%d payload=%d\n",
+                      cmd.command, cmd.engine_id, cmd.payload_len);
+    }
+};
+
+// ============================================================================
 // Static callback instances
 // ============================================================================
 static ServerCallbacks serverCb;
@@ -294,6 +321,7 @@ static GpsReceiveCallbacks gpsReceiveCb;
 static HardwareConfigCallbacks hwConfigCb;
 static AlertConfigCallbacks alertConfigCb;
 static MeshConfigCallbacks meshConfigCb;
+static OrchestrationCallbacks orchestrationCb;
 
 // ============================================================================
 // Init
@@ -398,6 +426,13 @@ void bleGattInit(void) {
         CHR_MESH_STATUS,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
+
+    // -- Orchestration (WRITE, NOTIFY) — relay commands to peers, notify peer status --
+    chrOrchestration = svc->createCharacteristic(
+        CHR_ORCHESTRATION,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+    );
+    chrOrchestration->setCallbacks(&orchestrationCb);
 
     svc->start();
 
@@ -519,4 +554,11 @@ void bleGattNotifyMeshStatus(void) {
 
     chrMeshStatus->setValue(buf, 11);
     chrMeshStatus->notify();
+}
+
+void bleGattNotifyPeerStatus(const MeshStatusPacket* peerStatus) {
+    if (!phoneConnected || chrOrchestration == nullptr) return;
+
+    chrOrchestration->setValue((const uint8_t*)peerStatus, sizeof(MeshStatusPacket));
+    chrOrchestration->notify();
 }

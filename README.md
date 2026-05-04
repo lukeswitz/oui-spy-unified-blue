@@ -68,7 +68,7 @@ The firmware runs an **engine registry** on FreeRTOS. Each engine registers init
 
 ---
 
-## ESP-NOW Mesh
+## ESP-NOW Mesh & Node Orchestration
 
 Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any node relay to all peers and appear on every connected phone.
 
@@ -78,6 +78,24 @@ Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any
 - **Bidirectional** — detections flow both ways, tx/rx counters tracked
 - **No infrastructure required** — ESP-NOW peer-to-peer, no router or internet needed
 
+### Node Orchestration
+
+The companion app acts as a central coordinator for all mesh nodes. When you enable an engine on the primary node, the orchestrator automatically syncs the command to all peers via ESP-NOW relay.
+
+- **Engine sync** — enable/disable any engine and all connected nodes follow
+- **Channel splitting** — wardrive mode automatically divides WiFi channels across nodes (e.g., node A scans 1-7, node B scans 8-14) for maximum coverage with zero overlap
+- **Health monitoring** — 5-second heartbeat from each peer reports active engines, detection count, uptime, and free heap. Peers marked stale after 15s of silence
+- **Command relay** — phone sends orchestration commands via BLE to primary node, which broadcasts to all peers over ESP-NOW. Three mesh packet types: detection (existing), command (new), and status (new)
+
+```
+ Phone ──BLE──► Primary Node ──ESP-NOW──► Peer 1
+                     │                     Peer 2
+                     │                     Peer 3
+                     ▼
+              Local execution
+              (same command)
+```
+
 ---
 
 ## Companion App
@@ -86,13 +104,13 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 
 ### Screens
 
-**Home** — Connection status with pulsing radar animation. Once connected: engine cards showing live state (disabled/scanning/alerting). Tap any card to enable/disable. Status bar shows connected node, firmware version, GPS quality, active engine count.
+**Home** — Connection status with pulsing radar animation. Once connected: engine cards showing live state (disabled/scanning/alerting). Tap any card to enable/disable — mesh peers auto-sync. Status bar shows connected node, GPS quality, active engine count, and active node count. Each engine card shows a "+N nodes" badge when mesh peers are running that engine.
 
 **Map** — Full-screen map with CartoDB tiles (dark theme or light theme depending on your preference). Engine-colored markers for geotagged detections. Route trace polyline. Auto-follow mode centers on your position. Deduplicated by MAC+engine.
 
 **Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Filter bar to show/hide specific engines. Detections arrive as binary GATT notifications and decode in real time.
 
-**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Session auto-saves to SQLite. WiGLE CSV export with share sheet on stop.
+**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Session auto-saves to SQLite. WiGLE CSV export with share sheet on stop. Session history with delete support.
 
 **Config** — Five tabs: Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing), Debug Log (raw BLE traffic viewer).
 
@@ -102,10 +120,11 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 - **Metric and imperial units** — km/mi, km/h/mph, m/ft throughout the app
 - **GPS relay** — phone GPS streams to firmware over BLE for detection geotagging
 - **WiGLE CSV export** — auto-generates on session stop, compatible with WiGLE upload
-- **Session history** — browse, replay, and re-export past wardrive sessions from SQLite
+- **Session history** — browse, replay, delete, and re-export past wardrive sessions from SQLite
 - **Chunked BLE transfer** — large payloads (watchlists, mesh configs) split across multiple writes
 - **Onboarding** — BLE scan screen finds nearby OUI-SPY devices, one-tap connect
 - **Node management** — view mesh peers, connection state, rx/tx stats
+- **Node orchestration** — automatic engine sync to mesh peers, channel splitting for wardrive, per-peer health monitoring with stale detection
 
 ### Engine-Specific Screens
 
@@ -214,6 +233,7 @@ Single GATT service (`00000001-0a15-4b70-ba00-c010ae1ba01c`). Binary packed stru
 | UniPwn Command | `0151` | Write | Target selection, exploit trigger |
 | Mesh Config | `0060` | Read/Write | Enable, encryption, key, peer MACs |
 | Mesh Status | `0061` | Read/Notify | Peer count, connected count, rx/tx/errors |
+| Orchestration | `0070` | Write/Notify | Relay engine commands to mesh peers; receive peer status heartbeats |
 
 ---
 
