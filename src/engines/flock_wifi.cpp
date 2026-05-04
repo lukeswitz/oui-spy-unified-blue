@@ -6,6 +6,7 @@
 #include "flock_wifi.h"
 #include "protocol.h"
 #include "flock_oui.h"
+#include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -139,8 +140,13 @@ static void flockWifiStop(void) {
     scanning = false;  // volatile — ISR callback checks this
     esp_wifi_set_promiscuous_rx_cb(NULL);
     esp_wifi_set_promiscuous(false);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    if (meshIsEnabled()) {
+        WiFi.disconnect(false);
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    } else {
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+    }
     Serial.println("[FLOCK-WIFI] Stopped");
 }
 

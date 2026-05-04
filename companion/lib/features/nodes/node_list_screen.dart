@@ -23,15 +23,20 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
   final Map<String, ScanResult> _scanResults = {};
   bool _scanning = false;
   StreamSubscription<List<ScanResult>>? _scanSub;
+  StreamSubscription<List<Node>>? _nodesSub;
 
   @override
   void initState() {
     super.initState();
-    _loadNodes();
+    final db = ref.read(databaseProvider);
+    _nodesSub = db.watchAllNodes().listen((nodes) {
+      if (mounted) setState(() => _nodes = nodes);
+    });
   }
 
   @override
   void dispose() {
+    _nodesSub?.cancel();
     _scanSub?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
@@ -93,25 +98,37 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
     _loadNodes();
   }
 
-  Future<void> _toggleNodeMesh(Node node, bool enabled) async {
+  Future<void> _toggleNodeMesh(bool enabled) async {
     final appState = ref.read(appStateProvider);
-    if (enabled) {
-      final db = ref.read(databaseProvider);
-      final nodes = await db.getAllNodes();
-      final ble = ref.read(bleManagerProvider);
-      final connectedId = ble.connectedDeviceId;
-      final peerNodes = nodes.where((n) => n.id != connectedId).toList();
+    try {
+      if (enabled) {
+        final db = ref.read(databaseProvider);
+        final nodes = await db.getAllNodes();
+        final ble = ref.read(bleManagerProvider);
+        final connectedId = ble.connectedDeviceId;
+        final peerNodes = nodes.where((n) => n.id != connectedId).toList();
 
-      final peerMacs = peerNodes.map((n) {
-        return BleProtocol.parseMacToBytes(n.macAddress);
-      }).toList();
+        final peerMacs = peerNodes.map((n) {
+          return BleProtocol.parseMacToBytes(n.macAddress);
+        }).toList();
 
-      await appState.enableMesh(
-        encryption: appState.meshEncryption,
-        peerMacs: peerMacs,
-      );
-    } else {
-      await appState.disableMesh();
+        await appState.enableMesh(
+          encryption: appState.meshEncryption,
+          peerMacs: peerMacs,
+        );
+      } else {
+        await appState.disableMesh();
+      }
+    } catch (e) {
+      DebugLog.log('Mesh toggle error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Mesh error: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
     }
   }
 
@@ -185,64 +202,64 @@ class _NodeListScreenState extends ConsumerState<NodeListScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (visibleNodes.isNotEmpty) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const _Label('SAVED NODES'),
-                if (visibleNodes.isNotEmpty)
-                  Row(
-                    children: [
-                      Text(
-                        'MESH',
-                        style: TextStyle(
-                          color: appState.meshEnabled ? AppTheme.accent : t.textDim,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      SizedBox(
-                        height: 24,
-                        child: Switch(
-                          value: appState.meshEnabled,
-                          onChanged: (v) {
-                            if (visibleNodes.isNotEmpty) {
-                              _toggleNodeMesh(visibleNodes.first, v);
-                            }
-                          },
-                        ),
-                      ),
-                    ],
+          // Mesh toggle — always visible when connected
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const _Label('MESH NETWORK'),
+              Row(
+                children: [
+                  Text(
+                    appState.meshEnabled ? 'ACTIVE' : 'OFF',
+                    style: TextStyle(
+                      color: appState.meshEnabled ? AppTheme.accent : t.textDim,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1,
+                    ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (appState.meshEnabled) ...[
-              Container(
-                padding: const EdgeInsets.all(8),
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.hub, color: AppTheme.accent, size: 14),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Mesh active \u2022 ${appState.meshPeerCount} peers \u2022 '
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    height: 24,
+                    child: Switch(
+                      value: appState.meshEnabled,
+                      onChanged: _toggleNodeMesh,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (appState.meshEnabled) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.hub, color: AppTheme.accent, size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${appState.meshPeerCount} peers \u2022 '
                       'RX:${appState.meshRxCount} TX:${appState.meshTxCount}',
                       style: const TextStyle(
                         color: AppTheme.accent, fontSize: 11, fontFamily: 'monospace',
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
+          ],
+          if (visibleNodes.isNotEmpty) ...[
+            const _Label('SAVED NODES'),
+            const SizedBox(height: 8),
             ...visibleNodes.map((n) => _NodeTile(
               node: n,
               isActive: appState.meshEnabled,

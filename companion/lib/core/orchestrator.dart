@@ -15,6 +15,8 @@ class PeerNodeState {
     this.activeEngineMask = 0,
     this.engineStates = const [],
     this.detectionCount = 0,
+    this.wifiCount = 0,
+    this.bleCount = 0,
     this.uptimeSec = 0,
     this.freeHeapKb = 0,
     DateTime? lastSeen,
@@ -25,6 +27,8 @@ class PeerNodeState {
   int activeEngineMask;
   List<EngineState> engineStates;
   int detectionCount;
+  int wifiCount;
+  int bleCount;
   int uptimeSec;
   int freeHeapKb;
   DateTime lastSeen;
@@ -76,6 +80,17 @@ class Orchestrator extends ChangeNotifier {
   /// Map of nodeId -> detection count for UI display.
   Map<String, int> get nodeDetectionCounts =>
       {for (final p in peers.entries) p.key: p.value.detectionCount};
+
+  /// Record a detection from a peer node, incrementing WiFi/BLE counts.
+  void recordPeerDetection(String sourceNodeId, {required bool isBle}) {
+    final peer = peers[sourceNodeId];
+    if (peer == null) return;
+    if (isBle) {
+      peer.bleCount++;
+    } else {
+      peer.wifiCount++;
+    }
+  }
 
   /// Sync engine enable to all peers via orchestration relay.
   Future<void> syncEngineEnable(Engine engine, {Uint8List? config}) async {

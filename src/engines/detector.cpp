@@ -1,5 +1,6 @@
 #include "detector.h"
 #include "protocol.h"
+#include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -22,6 +23,7 @@ static const int SCAN_DURATION_S = 2;
 
 // WiFi promiscuous — scan all 2.4GHz channels to maximize watchlist hit rate
 static volatile bool wifiActive = false;
+static volatile uint8_t detectorRadio = 0x03; // 0x01=WiFi, 0x02=BLE, 0x03=both
 static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
 static const int channelCount = 14;
 static int channelIdx = 0;
@@ -185,10 +187,11 @@ static void detectorInit(void) {
 static void detectorStart(void) {
     scanning = true;
 
-    // If wardrive owns the BLE scan, go passive for BLE
+    // If wardrive owns scans, go passive (receive via callbacks)
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
 
-    if (!wardriveOwns) {
+    // BLE scan — only if radio allows and wardrive doesn't own
+    if ((detectorRadio & 0x02) && !wardriveOwns) {
         bleScan = NimBLEDevice::getScan();
         bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
         bleScan->setActiveScan(true);
@@ -197,8 +200,8 @@ static void detectorStart(void) {
         lastScanStart = 0;
     }
 
-    // WiFi promiscuous only when wardrive doesn't own WiFi
-    if (!wardriveOwns) {
+    // WiFi promiscuous — only if radio allows and wardrive doesn't own
+    if ((detectorRadio & 0x01) && !wardriveOwns) {
         WiFi.mode(WIFI_STA);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
@@ -207,7 +210,12 @@ static void detectorStart(void) {
         wifiActive = true;
     }
 
-    Serial.printf("[DETECTOR] Started (%s)\n", wardriveOwns ? "passive — wardrive feeds" : "WiFi+BLE");
+    const char* radioStr = (detectorRadio == 0x01) ? "WiFi only"
+                         : (detectorRadio == 0x02) ? "BLE only"
+                         : "WiFi+BLE";
+    Serial.printf("[DETECTOR] Started (%s%s)\n",
+                  wardriveOwns ? "passive — wardrive feeds" : radioStr,
+                  wardriveOwns ? "" : "");
 }
 
 static void detectorStop(void) {
@@ -217,8 +225,13 @@ static void detectorStop(void) {
         wifiActive = false;
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        if (meshIsEnabled()) {
+            WiFi.disconnect(false);
+            esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        } else {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
+        }
     }
 
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
@@ -250,11 +263,19 @@ static void detectorLoop(void) {
     }
 }
 
+static void detectorConfig(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    uint8_t newRadio = payload[0] & 0x03;
+    if (newRadio == 0) newRadio = 0x03;
+    detectorRadio = newRadio;
+    Serial.printf("[DETECTOR] Config: radio=0x%02X\n", detectorRadio);
+}
+
 const EngineCallbacks detectorCallbacks = {
     .init   = detectorInit,
     .start  = detectorStart,
     .stop   = detectorStop,
     .loop   = detectorLoop,
-    .config = NULL,
+    .config = detectorConfig,
     .name   = "Detector"
 };

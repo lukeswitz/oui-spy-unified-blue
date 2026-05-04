@@ -19,6 +19,7 @@ static bool gcmReady = false;
 static uint64_t txCounter = 0;
 static char localNodeId[MESH_NODE_ID_LEN] = {};
 static SemaphoreHandle_t meshMutex = NULL;
+static bool espNowInitialized = false;
 
 static void deriveNonce(uint8_t nonce[MESH_NONCE_LEN], uint64_t counter) {
     memcpy(nonce, localNodeId, 4);
@@ -93,6 +94,8 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
     return true;
 }
 
+static void handleInvitePacket(const uint8_t* data, size_t len);
+
 static void handleDetectionPacket(const uint8_t* plainBuf, size_t plainLen) {
     if (plainLen < sizeof(MeshDetectionPacket)) return;
 
@@ -154,6 +157,15 @@ static void handleStatusPacket(const uint8_t* plainBuf, size_t plainLen) {
 }
 
 static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
+    if (len < 1) return;
+
+    // Check for unencrypted invite packets FIRST (before mesh is enabled)
+    // Invite packets are always plaintext with MESH_PKT_INVITE as first byte
+    if (data[0] == MESH_PKT_INVITE && !meshCurrentConfig.enabled) {
+        handleInvitePacket(data, (size_t)len);
+        return;
+    }
+
     if (!meshCurrentConfig.enabled) return;
 
     uint8_t plainBuf[256];
@@ -175,18 +187,16 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
     // Dispatch by packet type (first byte)
     uint8_t pktType = plainBuf[0];
 
-    // Backward compat: legacy packets start with ASCII node ID (>= 0x30)
-    // New packets have pkt_type 0x01-0x03 as first byte
     if (pktType == MESH_PKT_COMMAND) {
         handleCommandPacket(plainBuf, plainLen);
     } else if (pktType == MESH_PKT_STATUS) {
         handleStatusPacket(plainBuf, plainLen);
+    } else if (pktType == MESH_PKT_INVITE) {
+        // Already in mesh, ignore duplicate invites
     } else {
-        // Detection packet (legacy format or MESH_PKT_DETECTION prefix)
         if (pktType == MESH_PKT_DETECTION) {
             handleDetectionPacket(plainBuf + 1, plainLen - 1);
         } else {
-            // Legacy format: no type prefix, starts with source_node_id
             handleDetectionPacket(plainBuf, plainLen);
         }
     }
@@ -205,6 +215,38 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
     (void)status;
 }
 
+static uint8_t localStaMac[6] = {};
+static bool autoJoinListening = false;
+
+static void handleInvitePacket(const uint8_t* data, size_t len) {
+    if (len < sizeof(MeshInvitePacket)) return;
+    if (meshCurrentConfig.enabled) return; // Already in mesh
+
+    MeshInvitePacket invite;
+    memcpy(&invite, data, sizeof(MeshInvitePacket));
+
+    // Don't accept our own invite
+    if (memcmp(invite.source_node_id, localNodeId, 4) == 0) return;
+
+    Serial.printf("[MESH] Invite from %s — auto-joining\n", invite.source_node_id);
+
+    // Build mesh config from invite
+    MeshConfig cfg = {};
+    cfg.enabled = 1;
+    cfg.encryption_enabled = invite.encryption_enabled;
+    if (invite.encryption_enabled) {
+        memcpy(cfg.key, invite.key, MESH_KEY_LEN);
+    }
+    cfg.peer_count = 1;
+    memcpy(cfg.peers[0], invite.primary_mac, 6);
+
+    // Stop passive listener before enabling full mesh
+    autoJoinListening = false;
+
+    meshEnable(&cfg);
+    Serial.printf("[MESH] Auto-joined mesh from %s\n", invite.source_node_id);
+}
+
 void meshInit(void) {
     meshMutex = xSemaphoreCreateMutex();
     mbedtls_gcm_init(&gcmCtx);
@@ -216,6 +258,20 @@ void meshInit(void) {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_BT);
     snprintf(localNodeId, MESH_NODE_ID_LEN, "%02X%02X", mac[4], mac[5]);
+
+    // Store STA MAC for invite packets
+    esp_read_mac(localStaMac, ESP_MAC_WIFI_STA);
+
+    // Start passive ESP-NOW listener for mesh invites
+    // This allows peers to auto-join without phone configuration
+    WiFi.mode(WIFI_STA);
+    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    if (esp_now_init() == ESP_OK) {
+        esp_now_register_recv_cb(onEspNowRecv);
+        espNowInitialized = true;
+        autoJoinListening = true;
+        Serial.println("[MESH] Passive listener started (awaiting invite)");
+    }
 
     Serial.printf("[MESH] Initialized, localNodeId=%s\n", localNodeId);
 }
@@ -258,6 +314,7 @@ void meshEnable(const MeshConfig* cfg) {
         Serial.println("[MESH] ESP-NOW init failed");
         return;
     }
+    espNowInitialized = true;
 
     esp_now_register_recv_cb(onEspNowRecv);
     esp_now_register_send_cb(onEspNowSend);
@@ -284,9 +341,12 @@ void meshEnable(const MeshConfig* cfg) {
 }
 
 void meshDisable(void) {
-    esp_now_unregister_recv_cb();
-    esp_now_unregister_send_cb();
-    esp_now_deinit();
+    if (espNowInitialized) {
+        esp_now_unregister_recv_cb();
+        esp_now_unregister_send_cb();
+        esp_now_deinit();
+        espNowInitialized = false;
+    }
 
     xSemaphoreTake(meshMutex, portMAX_DELAY);
     MeshConfig cfg = {};
@@ -413,6 +473,37 @@ void meshBroadcastStatus(void) {
     }
 
     esp_now_send(NULL, encrypted, encLen);
+}
+
+void meshBroadcastInvite(void) {
+    if (!meshCurrentConfig.enabled || !espNowInitialized) return;
+
+    MeshInvitePacket invite = {};
+    invite.pkt_type = MESH_PKT_INVITE;
+    memcpy(invite.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    memcpy(invite.primary_mac, localStaMac, 6);
+    invite.encryption_enabled = meshCurrentConfig.encryption_enabled;
+    if (meshCurrentConfig.encryption_enabled) {
+        memcpy(invite.key, (const void*)meshCurrentConfig.key, MESH_KEY_LEN);
+    }
+    invite.channel = 1;
+
+    // Invite is sent UNENCRYPTED so passive listeners can receive it
+    // Must add broadcast peer temporarily if not already added
+    static bool broadcastPeerAdded = false;
+    if (!broadcastPeerAdded) {
+        esp_now_peer_info_t bcast = {};
+        memset(bcast.peer_addr, 0xFF, 6);
+        bcast.channel = 0;
+        bcast.encrypt = false;
+        esp_now_add_peer(&bcast);
+        broadcastPeerAdded = true;
+    }
+
+    uint8_t bcastAddr[6];
+    memset(bcastAddr, 0xFF, 6);
+    esp_now_send(bcastAddr, (const uint8_t*)&invite, sizeof(MeshInvitePacket));
+    Serial.println("[MESH] Broadcast invite sent");
 }
 
 bool meshIsEnabled(void) {

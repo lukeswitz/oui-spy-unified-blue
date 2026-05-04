@@ -838,10 +838,31 @@ class _SessionHistorySheet extends ConsumerWidget {
                   color: t.textDim, borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 12),
-              Text('WARDRIVE SESSIONS', style: TextStyle(
-                color: t.textPrimary, fontSize: 12,
-                fontWeight: FontWeight.w700, letterSpacing: 1.5,
-              )),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('WARDRIVE SESSIONS', style: TextStyle(
+                    color: t.textPrimary, fontSize: 12,
+                    fontWeight: FontWeight.w700, letterSpacing: 1.5,
+                  )),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () => _clearAllSessions(context, ref),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+                      ),
+                      child: Text('CLEAR ALL', style: TextStyle(
+                        color: AppTheme.error.withValues(alpha: 0.8),
+                        fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                      )),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               Expanded(
                 child: StreamBuilder<List<Session>>(
@@ -882,6 +903,43 @@ class _SessionHistorySheet extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _clearAllSessions(BuildContext context, WidgetRef ref) async {
+    final t = AppTheme.of(context);
+    final db = ref.read(databaseProvider);
+    final sessions = await db.getWardriveSessions();
+    final completed = sessions.where((s) => s.endedAt != null).toList();
+    if (completed.isEmpty) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.background,
+        title: Text('Clear All Sessions', style: TextStyle(color: t.textPrimary)),
+        content: Text(
+          'Delete all ${completed.length} wardrive sessions and their detections? This cannot be undone.',
+          style: TextStyle(color: t.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('DELETE ALL'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      for (final s in completed) {
+        await db.deleteSession(s.id);
+      }
+      ref.read(wardriveProvider).clearMapData();
+    }
   }
 
   Future<void> _deleteSession(BuildContext context, WidgetRef ref, Session session) async {
@@ -1048,12 +1106,11 @@ class _NodeStatsOverlay extends ConsumerWidget {
     final orchestrator = ref.watch(orchestratorProvider);
     final appState = ref.watch(appStateProvider);
     final peers = orchestrator.activePeers;
-
-    if (peers.isEmpty) return const SizedBox.shrink();
+    final peerCount = appState.meshPeerCount;
 
     return Container(
       padding: const EdgeInsets.all(8),
-      constraints: const BoxConstraints(maxWidth: 160),
+      constraints: const BoxConstraints(maxWidth: 180),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(8),
@@ -1066,34 +1123,41 @@ class _NodeStatsOverlay extends ConsumerWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.hub, size: 10, color: AppTheme.accent),
+              Icon(Icons.hub, size: 10,
+                color: peers.isNotEmpty ? AppTheme.accent : AppTheme.warning),
               const SizedBox(width: 4),
               Text(
-                '${peers.length + 1} NODES',
+                '$peerCount PEER${peerCount != 1 ? 'S' : ''}',
                 style: TextStyle(
-                  color: AppTheme.accent,
+                  color: peers.isNotEmpty ? AppTheme.accent : AppTheme.warning,
                   fontSize: 9,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1,
                 ),
               ),
+              const SizedBox(width: 4),
+              Text(
+                peers.isNotEmpty ? 'LINKED' : 'WAITING',
+                style: TextStyle(
+                  color: peers.isNotEmpty
+                      ? AppTheme.success.withValues(alpha: 0.8)
+                      : t.textDim,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 4),
-          // Self
-          _NodeRow(
-            name: appState.nodeId.isNotEmpty ? appState.nodeId : 'LOCAL',
-            count: appState.countForEngine(Engine.wardrive),
-            isSelf: true,
-            t: t,
-          ),
-          // Peers
-          ...peers.map((p) => _NodeRow(
-            name: p.name ?? p.nodeId,
-            count: p.detectionCount,
-            isSelf: false,
-            t: t,
-          )),
+          if (peers.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            // Peers — shown as they send heartbeats
+            ...peers.map((p) => _NodeRow(
+              name: p.name ?? p.nodeId,
+              count: p.detectionCount,
+              isSelf: false,
+              t: t,
+            )),
+          ],
         ],
       ),
     );
@@ -1122,7 +1186,7 @@ class _NodeRow extends StatelessWidget {
           Container(
             width: 5, height: 5,
             decoration: BoxDecoration(
-              color: isSelf ? AppTheme.accent : AppTheme.flockBle,
+              color: AppTheme.flockBle,
               shape: BoxShape.circle,
             ),
           ),
@@ -1131,7 +1195,7 @@ class _NodeRow extends StatelessWidget {
             child: Text(
               name,
               style: TextStyle(
-                color: isSelf ? AppTheme.accent : t.textSecondary,
+                color: t.textSecondary,
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
                 overflow: TextOverflow.ellipsis,

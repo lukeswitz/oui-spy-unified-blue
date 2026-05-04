@@ -349,7 +349,7 @@ class _ConnectedView extends ConsumerWidget {
             lastDetection: state.lastDetectionTime[Engine.wardrive],
             rate: state.detectionRate(Engine.wardrive),
             size: CardSize.hero,
-            nodeCount: state.meshEnabled ? orchestrator.nodesRunningEngine(Engine.wardrive) : 0,
+            nodeCount: state.meshEnabled ? _peerCount(orchestrator, state, Engine.wardrive) : 0,
           ),
 
           SizedBox(height: pad),
@@ -438,8 +438,16 @@ class _ConnectedView extends ConsumerWidget {
       lastDetection: state.lastDetectionTime[e],
       rate: state.detectionRate(e),
       size: size,
-      nodeCount: state.meshEnabled ? orchestrator.nodesRunningEngine(e) : 0,
+      nodeCount: state.meshEnabled ? _peerCount(orchestrator, state, e) : 0,
     );
+  }
+
+  /// Peer count for an engine: live heartbeating peers if available,
+  /// otherwise configured peer count (they exist but haven't reported yet).
+  int _peerCount(Orchestrator orchestrator, AppState state, Engine engine) {
+    final live = orchestrator.nodesRunningEngine(engine);
+    if (live > 0) return live;
+    return state.meshPeerCount;
   }
 }
 
@@ -517,11 +525,15 @@ class _SummaryStrip extends ConsumerWidget {
           if (state.meshEnabled) ...[
             _divider(t),
             _StatItem(
-              value: '${orchestrator.activeNodeCount}',
-              label: 'NODES',
+              value: '${state.meshPeerCount}',
+              label: orchestrator.activeNodeCount > 0
+                  ? '${orchestrator.activeNodeCount} LIVE'
+                  : 'NODES',
               color: orchestrator.activeNodeCount > 0
                   ? AppTheme.flockBle
-                  : t.textDim,
+                  : state.meshPeerCount > 0
+                      ? AppTheme.warning
+                      : t.textDim,
             ),
           ],
         ],

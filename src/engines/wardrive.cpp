@@ -1,5 +1,6 @@
 #include "wardrive.h"
 #include "../protocol.h"
+#include "../mesh_espnow.h"
 #include "flock_oui.h"
 #include "detector.h"
 #include "foxhunter.h"
@@ -284,10 +285,11 @@ static void wardriveStart(void) {
     wardriveDedupHead = 0;
     wardriveDedupCount = 0;
 
-    // Init WiFi first — coex manager needs WiFi registered before BLE scan
+    // Init WiFi — mesh may already have it in STA mode for ESP-NOW.
+    // WiFi.mode(WIFI_STA) is safe to call when already in STA.
     if (wardriveRadio & 0x01) {
         WiFi.mode(WIFI_STA);
-        WiFi.disconnect();
+        WiFi.disconnect(false);  // false = don't erase saved AP config
     }
 
     // Init BLE scanner
@@ -331,10 +333,17 @@ static void wardriveStop(void) {
         wifiScanInProgress = false;
     }
 
-    // 4. Clean up WiFi
+    // 4. Clean up WiFi — but keep STA mode alive if mesh needs ESP-NOW
     WiFi.scanDelete();
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    if (meshIsEnabled()) {
+        WiFi.disconnect(false);
+        // Re-set channel 1 for ESP-NOW (wardrive scanning changes channels)
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        Serial.println("[WARDRIVE] WiFi kept alive for mesh ESP-NOW");
+    } else {
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+    }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_DISABLED);
     Serial.println("[WARDRIVE] Stopped");

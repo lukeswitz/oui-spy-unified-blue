@@ -88,6 +88,8 @@ class WardriveController extends ChangeNotifier {
     _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 200;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 2500;
+    _channelStart = p.getInt('wd_channelStart') ?? 1;
+    _channelEnd = p.getInt('wd_channelEnd') ?? 14;
     notifyListeners();
   }
 
@@ -99,6 +101,8 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
     p.setInt('wd_bleScanDuration', _bleScanDuration);
     p.setInt('wd_bleScanInterval', _bleScanInterval);
+    p.setInt('wd_channelStart', _channelStart);
+    p.setInt('wd_channelEnd', _channelEnd);
   }
 
   final BleManager _ble;
@@ -135,6 +139,15 @@ class WardriveController extends ChangeNotifier {
   int _bleScanInterval = 2500;
   int get bleScanInterval => _bleScanInterval;
   set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); }
+
+  int _channelStart = 1;
+  int get channelStart => _channelStart;
+  set channelStart(int v) { _channelStart = v.clamp(1, 14); notifyListeners(); _savePrefs(); }
+
+  int _channelEnd = 14;
+  int get channelEnd => _channelEnd;
+  set channelEnd(int v) { _channelEnd = v.clamp(_channelStart, 14); notifyListeners(); _savePrefs(); }
+
   double get markerDistanceM => _markerDistanceM;
   set markerDistanceM(double v) {
     _markerDistanceM = v;
@@ -144,7 +157,17 @@ class WardriveController extends ChangeNotifier {
   int rawWifiCount = 0;
   int rawBleCount = 0;
 
+  /// Per-source-node WiFi/BLE detection counts for overlay display.
+  final Map<String, int> nodeWifiCounts = {};
+  final Map<String, int> nodeBleCount = {};
+
   List<Engine> get activeEngines => target.engines(radio);
+
+  /// Local-only WiFi/BLE counts (excludes peer detections).
+  int get localWifiCount =>
+      rawWifiCount - nodeWifiCounts.values.fold(0, (a, b) => a + b);
+  int get localBleCount =>
+      rawBleCount - nodeBleCount.values.fold(0, (a, b) => a + b);
   String? foxhuntTarget;
   String sessionId = '';
 
@@ -212,6 +235,8 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
+    nodeWifiCounts.clear();
+    nodeBleCount.clear();
     uniqueMacs.clear();
     _flockMacs.clear();
     routePoints.clear();
@@ -306,6 +331,8 @@ class WardriveController extends ChangeNotifier {
     uniqueMacs.clear();
     _flockMacs.clear();
     rawDetectionCount = 0;
+    nodeWifiCounts.clear();
+    nodeBleCount.clear();
     distanceKm = 0;
     droneCount = 0;
     _lastCompletedSessionId = null;
@@ -322,6 +349,8 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
+    nodeWifiCounts.clear();
+    nodeBleCount.clear();
     uniqueMacs.clear();
     _flockMacs.clear();
     routePoints.clear();
@@ -498,6 +527,10 @@ class WardriveController extends ChangeNotifier {
             radioBitmask,
             wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
             wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
+            bleScanDuration & 0xFF, (bleScanDuration >> 8) & 0xFF,
+            bleScanInterval & 0xFF, (bleScanInterval >> 8) & 0xFF,
+            channelStart,
+            channelEnd,
           ]),
         );
         await Future.delayed(const Duration(milliseconds: 100));
@@ -554,6 +587,16 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount++;
     final isBle = detection.method == 'ble_adv' || detection.engine.isBle;
     if (isBle) { rawBleCount++; } else { rawWifiCount++; }
+
+    // Track per-source-node WiFi/BLE counts
+    final src = detection.sourceNodeId;
+    if (src.isNotEmpty) {
+      if (isBle) {
+        nodeBleCount[src] = (nodeBleCount[src] ?? 0) + 1;
+      } else {
+        nodeWifiCounts[src] = (nodeWifiCounts[src] ?? 0) + 1;
+      }
+    }
     uniqueMacs.add(detection.macAddress);
     if (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi) {
       _flockMacs.add(detection.macAddress);

@@ -259,6 +259,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_DETECTION = 0x01,
     MESH_PKT_COMMAND   = 0x02,
     MESH_PKT_STATUS    = 0x03,
+    MESH_PKT_INVITE    = 0x04,  // Unencrypted broadcast to recruit peers
 };
 
 // Command relay: primary node -> peers (via ESP-NOW)
@@ -281,6 +282,16 @@ typedef struct __attribute__((packed)) {
     uint32_t uptime_sec;            // Seconds since mesh enabled
     int8_t   free_heap_kb;          // ESP.getFreeHeap() / 1024
 } MeshStatusPacket;
+
+// Mesh invite: primary -> broadcast (unencrypted, recruits peers)
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_INVITE
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  primary_mac[6];        // Primary node's WiFi STA MAC
+    uint8_t  encryption_enabled;
+    uint8_t  key[MESH_KEY_LEN];     // Encryption key (plaintext in invite)
+    uint8_t  channel;               // ESP-NOW channel
+} MeshInvitePacket;
 
 // ============================================================================
 // GATT UUIDs — Mesh

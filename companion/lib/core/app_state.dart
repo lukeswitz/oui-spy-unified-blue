@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -256,11 +257,13 @@ class AppState extends ChangeNotifier {
       peerMacs: peerMacs,
     );
     notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setBool('meshAutoEnable', true));
     DebugLog.log('AppState: mesh enabled, peers=${peerMacs.length}');
   }
 
   Future<void> disableMesh() async {
     meshEnabled = false;
+    SharedPreferences.getInstance().then((p) => p.setBool('meshAutoEnable', false));
     await _ble.writeMeshConfig(
       enabled: false,
       encryption: false,

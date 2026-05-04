@@ -619,52 +619,57 @@ class _EngineCardState extends ConsumerState<EngineCard>
           ),
           const SizedBox(height: 4),
         ],
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: _stateColor(active, t).withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(
-              color: _stateColor(active, t).withValues(alpha: 0.2),
-              width: 0.5,
-            ),
-          ),
-          child: Text(
-            _stateLabel,
-            style: TextStyle(
-              color: _stateColor(active, t),
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ),
-        if (widget.nodeCount > 0) ...[
-          const SizedBox(height: 3),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: AppTheme.flockBle.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.hub, size: 8, color: AppTheme.flockBle.withValues(alpha: 0.8)),
-                const SizedBox(width: 3),
-                Text(
-                  '+${widget.nodeCount}',
-                  style: TextStyle(
-                    color: AppTheme.flockBle,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'monospace',
-                  ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: _stateColor(active, t).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: _stateColor(active, t).withValues(alpha: 0.2),
+                  width: 0.5,
                 ),
-              ],
+              ),
+              child: Text(
+                _stateLabel,
+                style: TextStyle(
+                  color: _stateColor(active, t),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
             ),
-          ),
-        ],
+            if (widget.nodeCount > 0) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.flockBle.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.hub, size: 8, color: AppTheme.flockBle.withValues(alpha: 0.8)),
+                    const SizedBox(width: 3),
+                    Text(
+                      '+${widget.nodeCount}',
+                      style: const TextStyle(
+                        color: AppTheme.flockBle,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
         if (widget.lastDetection != null) ...[
           const SizedBox(height: 3),
           Text(

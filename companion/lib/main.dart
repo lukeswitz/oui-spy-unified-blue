@@ -8,7 +8,9 @@ import 'package:oui_spy/app.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 void main() async {
@@ -49,6 +51,9 @@ Future<void> _autoConnect(ProviderContainer container) async {
       return;
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final lastPrimaryId = prefs.getString('lastPrimaryDeviceId');
+
     final connected = FlutterBluePlus.connectedDevices;
     for (final device in connected) {
       if (device.platformName.contains('OUI-SPY')) {
@@ -56,7 +61,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
         final ble = container.read(bleManagerProvider);
         await ble.connect(device, sessionId: const Uuid().v4());
         ble.markAsPrimary();
-        _cleanupPrimaryNode(container, device.remoteId.toString());
+        await _onConnected(container, device.remoteId.toString());
         return;
       }
     }
@@ -64,17 +69,24 @@ Future<void> _autoConnect(ProviderContainer container) async {
     DebugLog.log('AUTO: scanning (no filter, 8s)...');
 
     final completer = Completer<BluetoothDevice?>();
+    BluetoothDevice? preferredDevice;
 
     final sub = FlutterBluePlus.onScanResults.listen((results) {
       for (final r in results) {
         final name = r.device.platformName;
-        DebugLog.log('AUTO: saw device: "$name" ${r.device.remoteId}');
+        final id = r.device.remoteId.toString();
+        DebugLog.log('AUTO: saw device: "$name" $id');
         if (name.contains('OUI-SPY') || name.contains('OUI')) {
-          if (!completer.isCompleted) {
-            DebugLog.log('AUTO: MATCH: $name');
+          // Prefer last known primary device
+          if (lastPrimaryId != null && id == lastPrimaryId) {
+            DebugLog.log('AUTO: PREFERRED MATCH: $name');
             FlutterBluePlus.stopScan();
-            completer.complete(r.device);
+            if (!completer.isCompleted) completer.complete(r.device);
+            return;
           }
+          // Remember first match as fallback
+          preferredDevice ??= r.device;
+          DebugLog.log('AUTO: MATCH: $name (fallback)');
         }
       }
     });
@@ -82,7 +94,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
     FlutterBluePlus.startScan(timeout: const Duration(seconds: 8));
 
     final found = await completer.future
-        .timeout(const Duration(seconds: 10), onTimeout: () => null);
+        .timeout(const Duration(seconds: 10), onTimeout: () => preferredDevice);
 
     await sub.cancel();
     await FlutterBluePlus.stopScan();
@@ -92,7 +104,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
       final ble = container.read(bleManagerProvider);
       await ble.connect(found, sessionId: const Uuid().v4());
       ble.markAsPrimary();
-      _cleanupPrimaryNode(container, found.remoteId.toString());
+      await _onConnected(container, found.remoteId.toString());
       DebugLog.log('AUTO: connected');
     } else {
       DebugLog.log('AUTO: no OUI-SPY found after scan');
@@ -102,9 +114,33 @@ Future<void> _autoConnect(ProviderContainer container) async {
   }
 }
 
-void _cleanupPrimaryNode(ProviderContainer container, String deviceId) {
-  final db = container.read(databaseProvider);
-  db.deleteNode(deviceId);
-  DebugLog.log('AUTO: cleaned up primary device from nodes table');
+Future<void> _onConnected(ProviderContainer container, String deviceId) async {
+  // Save as last connected for preferred auto-connect
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('lastPrimaryDeviceId', deviceId);
+
+  // Auto-enable mesh if was previously enabled
+  final meshWasEnabled = prefs.getBool('meshAutoEnable') ?? false;
+  if (meshWasEnabled) {
+    try {
+      final appState = container.read(appStateProvider);
+      final db = container.read(databaseProvider);
+      final nodes = await db.getAllNodes();
+      final peerNodes = nodes.where((n) => n.id != deviceId).toList();
+      if (peerNodes.isNotEmpty) {
+        final peerMacs = peerNodes.map((n) {
+          return BleProtocol.parseMacToBytes(n.macAddress);
+        }).toList();
+        await appState.loadMeshKey();
+        await appState.enableMesh(
+          encryption: appState.meshEncryption,
+          peerMacs: peerMacs,
+        );
+        DebugLog.log('AUTO: mesh re-enabled with ${peerMacs.length} peers');
+      }
+    } catch (e) {
+      DebugLog.log('AUTO: mesh re-enable failed: $e');
+    }
+  }
 }
 

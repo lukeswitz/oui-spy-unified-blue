@@ -52,8 +52,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
     void onDisconnect(NimBLEServer* server) override {
         phoneConnected = false;
+        delay(5);
         Serial.println("[BLE] Phone disconnected — disabling all engines");
         engineDisableAll();
+        delay(10);
         NimBLEDevice::startAdvertising();
         Serial.println("[BLE] Advertising restarted");
     }
@@ -267,9 +269,13 @@ class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
 
         if (cfg.enabled) {
             meshEnable(&cfg);
+            meshBroadcastInvite();
         } else {
             meshDisable();
         }
+
+        // Immediate status notification so app confirms mesh state
+        bleGattNotifyMeshStatus();
 
         Serial.printf("[BLE] Mesh config: enabled=%d enc=%d peers=%d\n",
                       cfg.enabled, cfg.encryption_enabled, cfg.peer_count);

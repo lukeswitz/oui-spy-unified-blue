@@ -280,6 +280,21 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
         const SizedBox(height: 8),
         const _ScanTimingSliders(),
+        const SizedBox(height: 16),
+        Text(
+          'CHANNEL RANGE',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                letterSpacing: 2,
+                color: t.textDim,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'WiFi channels to scan. Narrower range = faster per-channel coverage.',
+          style: TextStyle(color: t.textDim, fontSize: 11),
+        ),
+        const SizedBox(height: 8),
+        const _ChannelRangeSlider(),
         const SizedBox(height: 24),
         const Divider(),
         const SizedBox(height: 12),
@@ -444,36 +459,32 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   Future<void> _toggleMesh(bool enabled) async {
     final appState = ref.read(appStateProvider);
-    if (enabled) {
-      await appState.loadMeshKey();
-      final db = ref.read(databaseProvider);
-      final nodes = await db.getAllNodes();
-      final ble = ref.read(bleManagerProvider);
-      final connectedId = ble.connectedDeviceId;
-      final peerNodes = nodes.where((n) => n.id != connectedId).toList();
+    try {
+      if (enabled) {
+        await appState.loadMeshKey();
+        final db = ref.read(databaseProvider);
+        final nodes = await db.getAllNodes();
+        final ble = ref.read(bleManagerProvider);
+        final connectedId = ble.connectedDeviceId;
+        final peerNodes = nodes.where((n) => n.id != connectedId).toList();
 
-      if (peerNodes.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Add nodes first before enabling mesh'),
-              backgroundColor: AppTheme.warning,
-            ),
-          );
-        }
-        return;
+        final peerMacs = peerNodes.map((n) {
+          return BleProtocol.parseMacToBytes(n.macAddress);
+        }).toList();
+
+        await appState.enableMesh(
+          encryption: appState.meshEncryption,
+          peerMacs: peerMacs,
+        );
+      } else {
+        await appState.disableMesh();
       }
-
-      final peerMacs = peerNodes.map((n) {
-        return BleProtocol.parseMacToBytes(n.macAddress);
-      }).toList();
-
-      await appState.enableMesh(
-        encryption: appState.meshEncryption,
-        peerMacs: peerMacs,
-      );
-    } else {
-      await appState.disableMesh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Mesh error: $e'), backgroundColor: AppTheme.error),
+        );
+      }
     }
   }
 
@@ -792,6 +803,61 @@ class _ScanTimingSliders extends ConsumerWidget {
         row('BLE interval', Icons.bluetooth, wd.bleScanInterval, (v) {
           ref.read(wardriveProvider).bleScanInterval = v;
         }),
+      ],
+    );
+  }
+}
+
+class _ChannelRangeSlider extends ConsumerWidget {
+  const _ChannelRangeSlider();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final wd = ref.watch(wardriveProvider);
+
+    return Row(
+      children: [
+        Icon(Icons.cell_tower, size: 14, color: t.textSecondary),
+        const SizedBox(width: 6),
+        Text('CH', style: TextStyle(color: t.textSecondary, fontSize: 12)),
+        Expanded(
+          child: SliderTheme(
+            data: SliderThemeData(overlayShape: SliderComponentShape.noOverlay),
+            child: RangeSlider(
+              values: RangeValues(
+                wd.channelStart.toDouble(),
+                wd.channelEnd.toDouble(),
+              ),
+              min: 1,
+              max: 14,
+              divisions: 13,
+              activeColor: AppTheme.accent,
+              inactiveColor: t.border,
+              labels: RangeLabels(
+                '${wd.channelStart}',
+                '${wd.channelEnd}',
+              ),
+              onChanged: (values) {
+                ref.read(wardriveProvider).channelStart = values.start.round();
+                ref.read(wardriveProvider).channelEnd = values.end.round();
+              },
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 55,
+          child: Text(
+            '${wd.channelStart}-${wd.channelEnd}',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: AppTheme.accent,
+              fontSize: 11,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       ],
     );
   }

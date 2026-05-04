@@ -297,15 +297,29 @@ class BleProtocol {
 
   static Uint8List parseMacToBytes(String mac) {
     final cleaned = mac.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    // Standard 6-byte MAC (12 hex chars)
     if (cleaned.length == 12) {
       return Uint8List.fromList(
         List.generate(6, (i) => int.parse(cleaned.substring(i * 2, i * 2 + 2), radix: 16)),
       );
     }
+    // Colon-separated MAC (AA:BB:CC:DD:EE:FF)
     final parts = mac.split(':');
-    return Uint8List.fromList(
-      parts.map((p) => int.parse(p, radix: 16)).toList(),
-    );
+    if (parts.length == 6) {
+      return Uint8List.fromList(
+        parts.map((p) => int.parse(p, radix: 16)).toList(),
+      );
+    }
+    // macOS CoreBluetooth UUID (32 hex chars) — derive 6-byte pseudo-MAC
+    // from last 12 hex chars, same derivation firmware uses for node ID
+    if (cleaned.length >= 12) {
+      final tail = cleaned.substring(cleaned.length - 12);
+      return Uint8List.fromList(
+        List.generate(6, (i) => int.parse(tail.substring(i * 2, i * 2 + 2), radix: 16)),
+      );
+    }
+    // Fallback: zero MAC
+    return Uint8List(6);
   }
 
   static String _decodeMethod(Engine engine, int method) {

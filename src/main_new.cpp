@@ -236,6 +236,13 @@ static void statusHeartbeatTask(void* param) {
                 // Broadcast our status to peers
                 meshBroadcastStatus();
 
+                // Re-broadcast invite every 15s for late-joining peers
+                static uint8_t inviteCounter = 0;
+                if (++inviteCounter >= 3) {
+                    meshBroadcastInvite();
+                    inviteCounter = 0;
+                }
+
                 // Forward any queued peer status packets to companion app
                 MeshStatusPacket peerPkt;
                 while (peerStatusQueue != NULL &&
