@@ -84,6 +84,8 @@ The firmware runs an **engine registry** on FreeRTOS. Each engine registers init
 
 ## ESP-NOW Mesh & Node Orchestration
 
+> Not stable, coming in v0.0.4
+
 Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any node relay to all peers and appear on every connected phone.
 
 - **Up to 6 peers** per node
