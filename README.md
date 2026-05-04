@@ -131,7 +131,7 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 | Platform | Method |
 |----------|--------|
 | **Android** | [APK from latest release](https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest) — enable "Install unknown apps" |
-| **iOS** | TestFlight beta |
+| **iOS** | [Join TestFlight beta](https://testflight.apple.com/join/5RCKgnJ2) |
 | **macOS** | [Signed .app from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
 
 ---
