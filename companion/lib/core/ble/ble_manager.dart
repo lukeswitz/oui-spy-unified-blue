@@ -8,9 +8,16 @@ import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/models/node.dart';
-
-export 'package:oui_spy/core/ble/ble_protocol.dart' show PeerNodeStatus;
+/// BLE connection state.
+enum NodeConnectionState {
+  disconnected,
+  scanning,
+  connecting,
+  negotiating,
+  syncing,
+  ready,
+  reconnecting,
+}
 
 /// Central BLE manager. Handles scanning, connection, GATT operations,
 /// and detection stream from the OUI-SPY device.
@@ -38,7 +45,6 @@ class BleManager {
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
   final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})>.broadcast();
-  final _peerStatusStream = StreamController<PeerNodeStatus>.broadcast();
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -57,7 +63,6 @@ class BleManager {
       _engineStates.stream;
   Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})> get meshStatusUpdates =>
       _meshStatusStream.stream;
-  Stream<PeerNodeStatus> get peerStatusUpdates => _peerStatusStream.stream;
 
   NodeConnectionState _currentState = NodeConnectionState.disconnected;
 
@@ -268,16 +273,6 @@ class BleManager {
       );
     }
 
-    // Subscribe to orchestration (peer status notifications)
-    if (_orchestration != null) {
-      await _orchestration!.setNotifyValue(true);
-      _subscriptions.add(
-        _orchestration!.onValueReceived.listen((data) {
-          final status = BleProtocol.decodePeerStatus(data);
-          if (status != null) _peerStatusStream.add(status);
-        }),
-      );
-    }
 
     _currentState = NodeConnectionState.ready; _connectionState.add(NodeConnectionState.ready);
   }
@@ -436,23 +431,6 @@ class BleManager {
     );
   }
 
-  // -- Orchestration --
-
-  Future<void> sendOrchestrationCommand({
-    required int command,
-    required int engineId,
-    Uint8List? payload,
-  }) async {
-    if (_orchestration == null) return;
-    await _orchestration!.write(
-      BleProtocol.encodeOrchestrationCommand(
-        command: command,
-        engineId: engineId,
-        payload: payload,
-      ),
-    );
-  }
-
   // -- Mesh --
 
   Future<void> writeMeshConfig({
@@ -492,7 +470,6 @@ class BleManager {
     _foxhunterRssiStream.close();
     _engineStates.close();
     _meshStatusStream.close();
-    _peerStatusStream.close();
   }
 
   // -- Private --

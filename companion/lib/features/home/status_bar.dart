@@ -8,7 +8,7 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
-import 'package:oui_spy/core/models/node.dart';
+
 import 'package:oui_spy/theme/app_theme.dart';
 
 class StatusBar extends ConsumerStatefulWidget {
@@ -21,7 +21,6 @@ class StatusBar extends ConsumerStatefulWidget {
 class _StatusBarState extends ConsumerState<StatusBar> {
   GpsPosition? _gpsPosition;
   StreamSubscription<GpsPosition>? _gpsSub;
-  int _nodeCount = 0;
   Timer? _uptimeTimer;
 
   @override
@@ -32,21 +31,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     _gpsSub = gps.positionStream.listen((pos) {
       if (mounted) setState(() => _gpsPosition = pos);
     });
-    _loadNodeCount();
     _uptimeTimer = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
         if (mounted) setState(() {});
       },
     );
-  }
-
-  Future<void> _loadNodeCount() async {
-    final db = ref.read(databaseProvider);
-    final connectedId = ref.read(bleManagerProvider).connectedDeviceId;
-    final nodes = await db.getAllNodes();
-    final count = nodes.where((n) => n.id != connectedId).length;
-    if (mounted) setState(() => _nodeCount = count);
   }
 
   @override
@@ -89,62 +79,25 @@ class _StatusBarState extends ConsumerState<StatusBar> {
             label: _gpsLabel,
             color: _gpsColor,
           ),
-          if (state.meshEnabled) ...[
-            const SizedBox(width: 10),
-            _InfoChip(
-              icon: Icons.hub,
-              label: '${state.meshConnectedPeers}/${state.meshPeerCount}',
-              color: state.meshConnectedPeers > 0
-                  ? AppTheme.flockBle
-                  : t.textDim,
-            ),
-          ],
           const Spacer(),
           // Device name + node count
-          GestureDetector(
-            onTap: () async {
-              await context.push('/nodes');
-              _loadNodeCount();
-            },
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 2,
-                    fontFamily: 'monospace',
-                    color: state.isConnected
-                        ? AppTheme.accent
-                        : t.textDim,
-                  ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 2,
+                  fontFamily: 'monospace',
+                  color: state.isConnected
+                      ? AppTheme.accent
+                      : t.textDim,
                 ),
-                if (_nodeCount > 0) ...[
-                  const SizedBox(width: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '+$_nodeCount',
-                      style: const TextStyle(
-                        color: AppTheme.accent,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(width: 4),
-                Icon(
+              ),
+              const SizedBox(width: 4),
+              Icon(
                   Icons.devices,
                   size: 12,
                   color: state.isConnected
@@ -153,7 +106,6 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                 ),
               ],
             ),
-          ),
         ],
       ),
     );

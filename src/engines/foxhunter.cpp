@@ -1,6 +1,5 @@
 #include "foxhunter.h"
 #include "protocol.h"
-#include "../mesh_espnow.h"
 #include "ble_gatt.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -20,7 +19,6 @@ static unsigned long lastBeepTime = 0;
 
 // WiFi promiscuous — scan all channels to find target regardless of channel
 static volatile bool wifiActive = false;
-static volatile uint8_t foxhunterRadio = 0x03; // 0x01=WiFi, 0x02=BLE, 0x03=both
 static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
 static const int channelCount = 14;
 static int channelIdx = 0;
@@ -150,8 +148,7 @@ static void foxhunterStart(void) {
 
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
 
-    // BLE scan — only if radio allows and wardrive doesn't own
-    if ((foxhunterRadio & 0x02) && !wardriveOwns) {
+    if (!wardriveOwns) {
         bleScan = NimBLEDevice::getScan();
         bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
         bleScan->setActiveScan(true);
@@ -160,9 +157,9 @@ static void foxhunterStart(void) {
         lastScanStart = 0;
     }
 
-    // WiFi promiscuous — only if radio allows and wardrive doesn't own
-    if ((foxhunterRadio & 0x01) && !wardriveOwns) {
-        WiFi.mode(WIFI_AP_STA);
+    // WiFi promiscuous only when wardrive doesn't own WiFi
+    if (!wardriveOwns) {
+        WiFi.mode(WIFI_STA);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
         esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
@@ -170,11 +167,7 @@ static void foxhunterStart(void) {
         wifiActive = true;
     }
 
-    const char* radioStr = (foxhunterRadio == 0x01) ? "WiFi only"
-                         : (foxhunterRadio == 0x02) ? "BLE only"
-                         : "WiFi+BLE";
-    Serial.printf("[FOXHUNTER] Started (%s)\n",
-                  wardriveOwns ? "passive — wardrive feeds" : radioStr);
+    Serial.printf("[FOXHUNTER] Started (%s)\n", wardriveOwns ? "passive — wardrive feeds" : "WiFi+BLE");
 }
 
 static void foxhunterStop(void) {
@@ -184,13 +177,8 @@ static void foxhunterStop(void) {
         wifiActive = false;
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
-        if (meshIsEnabled()) {
-            WiFi.disconnect(false);
-            esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
-        } else {
-            WiFi.disconnect(true);
-            WiFi.mode(WIFI_OFF);
-        }
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
     }
 
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
@@ -243,19 +231,11 @@ static void foxhunterLoop(void) {
     }
 }
 
-static void foxhunterConfig(const uint8_t* payload, uint8_t len) {
-    if (len < 1) return;
-    uint8_t newRadio = payload[0] & 0x03;
-    if (newRadio == 0) newRadio = 0x03;
-    foxhunterRadio = newRadio;
-    Serial.printf("[FOXHUNTER] Config: radio=0x%02X\n", foxhunterRadio);
-}
-
 const EngineCallbacks foxhunterCallbacks = {
     .init   = foxhunterInit,
     .start  = foxhunterStart,
     .stop   = foxhunterStop,
     .loop   = foxhunterLoop,
-    .config = foxhunterConfig,
+    .config = NULL,
     .name   = "Foxhunter"
 };

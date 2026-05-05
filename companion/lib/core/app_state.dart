@@ -11,7 +11,6 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/models/node.dart';
 
 /// App-wide state that survives navigation. Single source of truth.
 /// All screens read from here instead of creating their own subscriptions.

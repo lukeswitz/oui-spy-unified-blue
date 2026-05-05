@@ -7,7 +7,7 @@
 #include "flock_ble.h"
 #include "protocol.h"
 #include "flock_oui.h"
-#include "ble_gatt.h"
+#include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 

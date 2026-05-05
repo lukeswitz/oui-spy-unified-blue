@@ -10,7 +10,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/orchestrator.dart';
+
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -1103,9 +1103,7 @@ class _NodeStatsOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
-    final orchestrator = ref.watch(orchestratorProvider);
     final appState = ref.watch(appStateProvider);
-    final peers = orchestrator.activePeers;
     final peerCount = appState.meshPeerCount;
 
     return Container(
@@ -1116,48 +1114,20 @@ class _NodeStatsOverlay extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: t.border, width: 0.5),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.hub, size: 10,
-                color: peers.isNotEmpty ? AppTheme.accent : AppTheme.warning),
-              const SizedBox(width: 4),
-              Text(
-                '$peerCount PEER${peerCount != 1 ? 'S' : ''}',
-                style: TextStyle(
-                  color: peers.isNotEmpty ? AppTheme.accent : AppTheme.warning,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                peers.isNotEmpty ? 'LINKED' : 'WAITING',
-                style: TextStyle(
-                  color: peers.isNotEmpty
-                      ? AppTheme.success.withValues(alpha: 0.8)
-                      : t.textDim,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+          Icon(Icons.hub, size: 10, color: AppTheme.warning),
+          const SizedBox(width: 4),
+          Text(
+            '$peerCount PEER${peerCount != 1 ? 'S' : ''}',
+            style: TextStyle(
+              color: AppTheme.warning,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
           ),
-          if (peers.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            // Peers — shown as they send heartbeats
-            ...peers.map((p) => _NodeRow(
-              name: p.name ?? p.nodeId,
-              count: p.detectionCount,
-              isSelf: false,
-              t: t,
-            )),
-          ],
         ],
       ),
     );

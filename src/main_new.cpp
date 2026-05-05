@@ -228,29 +228,10 @@ static void statusHeartbeatTask(void* param) {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(5000));  // Every 5 seconds
 
-        // Mesh status broadcast — all nodes, phone or not
-        if (meshIsEnabled()) {
-            meshBroadcastStatus();
-            // Only primary sends invites
-            if (bleGattIsConnected()) {
-                static uint8_t inviteCounter = 0;
-                if (++inviteCounter >= 3) {
-                    meshBroadcastInvite();
-                    inviteCounter = 0;
-                }
-            }
-        }
-
-        // BLE notifications — only when phone connected
         if (bleGattIsConnected()) {
             bleGattNotifyEngineState();
             if (meshIsEnabled()) {
                 bleGattNotifyMeshStatus();
-                MeshStatusPacket peerPkt;
-                while (peerStatusQueue != NULL &&
-                       xQueueReceive(peerStatusQueue, &peerPkt, 0) == pdTRUE) {
-                    bleGattNotifyPeerStatus(&peerPkt);
-                }
             }
         }
 
@@ -339,7 +320,9 @@ void setup() {
 // Arduino Loop
 // ============================================================================
 void loop() {
-    meshProcessPendingInvite();
+    // Run all active engine loops
     engineLoopAll();
+
+    // Small yield to prevent watchdog
     delay(1);
 }

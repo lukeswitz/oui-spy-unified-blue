@@ -259,7 +259,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_DETECTION = 0x01,
     MESH_PKT_COMMAND   = 0x02,
     MESH_PKT_STATUS    = 0x03,
-    MESH_PKT_INVITE    = 0x04,  // Unencrypted broadcast to recruit peers
+    MESH_PKT_INVITE    = 0x04,
 };
 
 // Command relay: primary node -> peers (via ESP-NOW)

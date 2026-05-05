@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/models/node.dart';
-import 'package:oui_spy/core/orchestrator.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/home/engine_card.dart';
 import 'package:oui_spy/features/home/status_bar.dart';
@@ -328,7 +327,7 @@ class _ConnectedView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final wd = ref.watch(wardriveProvider);
-    final orchestrator = ref.watch(orchestratorProvider);
+    
     final pad = 12.0;
 
     return SingleChildScrollView(
@@ -349,7 +348,7 @@ class _ConnectedView extends ConsumerWidget {
             lastDetection: state.lastDetectionTime[Engine.wardrive],
             rate: state.detectionRate(Engine.wardrive),
             size: CardSize.hero,
-            nodeCount: state.meshEnabled ? _peerCount(orchestrator, state, Engine.wardrive) : 0,
+            nodeCount: 0,
           ),
 
           SizedBox(height: pad),
@@ -362,11 +361,11 @@ class _ConnectedView extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: _sizedCard(Engine.flockBle, CardSize.medium, state, wd, orchestrator),
+                  child: _sizedCard(Engine.flockBle, CardSize.medium, state, wd),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _sizedCard(Engine.flockWifi, CardSize.medium, state, wd, orchestrator),
+                  child: _sizedCard(Engine.flockWifi, CardSize.medium, state, wd),
                 ),
               ],
             ),
@@ -382,11 +381,11 @@ class _ConnectedView extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(
-                  child: _sizedCard(Engine.detector, CardSize.medium, state, wd, orchestrator),
+                  child: _sizedCard(Engine.detector, CardSize.medium, state, wd),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _sizedCard(Engine.foxhunter, CardSize.medium, state, wd, orchestrator),
+                  child: _sizedCard(Engine.foxhunter, CardSize.medium, state, wd),
                 ),
               ],
             ),
@@ -396,9 +395,9 @@ class _ConnectedView extends ConsumerWidget {
 
           _SectionLabel(label: 'SPECIALTY', color: AppTheme.skySpy),
           const SizedBox(height: 6),
-          _sizedCard(Engine.skySpy, CardSize.compact, state, wd, orchestrator),
+          _sizedCard(Engine.skySpy, CardSize.compact, state, wd),
           const SizedBox(height: 6),
-          _sizedCard(Engine.uniPwn, CardSize.compact, state, wd, orchestrator),
+          _sizedCard(Engine.uniPwn, CardSize.compact, state, wd),
 
           SizedBox(height: pad),
 
@@ -429,7 +428,7 @@ class _ConnectedView extends ConsumerWidget {
     return state.isEngineActive(engine);
   }
 
-  Widget _sizedCard(Engine e, CardSize size, AppState state, WardriveController wd, Orchestrator orchestrator) {
+  Widget _sizedCard(Engine e, CardSize size, AppState state, WardriveController wd) {
     return EngineCard(
       engine: e,
       detectionCount: state.countForEngine(e),
@@ -438,16 +437,8 @@ class _ConnectedView extends ConsumerWidget {
       lastDetection: state.lastDetectionTime[e],
       rate: state.detectionRate(e),
       size: size,
-      nodeCount: state.meshEnabled ? _peerCount(orchestrator, state, e) : 0,
+      nodeCount: 0,
     );
-  }
-
-  /// Peer count for an engine: live heartbeating peers if available,
-  /// otherwise configured peer count (they exist but haven't reported yet).
-  int _peerCount(Orchestrator orchestrator, AppState state, Engine engine) {
-    final live = orchestrator.nodesRunningEngine(engine);
-    if (live > 0) return live;
-    return state.meshPeerCount;
   }
 }
 
@@ -491,7 +482,7 @@ class _SummaryStrip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
-    final orchestrator = ref.watch(orchestratorProvider);
+    
     final activeCount =
         Engine.values.where((e) => state.isEngineActive(e)).length;
 
@@ -526,14 +517,8 @@ class _SummaryStrip extends ConsumerWidget {
             _divider(t),
             _StatItem(
               value: '${state.meshPeerCount}',
-              label: orchestrator.activeNodeCount > 0
-                  ? '${orchestrator.activeNodeCount} LIVE'
-                  : 'NODES',
-              color: orchestrator.activeNodeCount > 0
-                  ? AppTheme.flockBle
-                  : state.meshPeerCount > 0
-                      ? AppTheme.warning
-                      : t.textDim,
+              label: 'MESH',
+              color: state.meshPeerCount > 0 ? AppTheme.warning : t.textDim,
             ),
           ],
         ],

@@ -1,6 +1,5 @@
 #include "wardrive.h"
 #include "../protocol.h"
-#include "../mesh_espnow.h"
 #include "flock_oui.h"
 #include "detector.h"
 #include "foxhunter.h"
@@ -66,10 +65,6 @@ static unsigned long lastBleScan = 0;
 static volatile bool wifiScanInProgress = false;
 
 static volatile uint8_t wardriveRadio = 0x03;
-
-// Channel range for orchestrated scanning (1-14 default = all)
-static uint8_t wardriveChanStart = 1;
-static uint8_t wardriveChanEnd   = 14;
 
 // Scan timing — configurable via BLE config
 static uint16_t wifiScanIntervalMs = 1200;  // gap between WiFi scans
@@ -142,11 +137,6 @@ static void wardriveWifiScanHarvest(void) {
         if (!wardriveActive) break;
         uint8_t* bssid = WiFi.BSSID(i);
         if (bssid == NULL) continue;
-
-        // Channel range filter for orchestrated scanning
-        uint8_t ch = (uint8_t)WiFi.channel(i);
-        if (ch < wardriveChanStart || ch > wardriveChanEnd) continue;
-
         if (wardriveIsDedupCooldown(bssid)) continue;
 
         DetectionEvent evt = {};
@@ -285,11 +275,10 @@ static void wardriveStart(void) {
     wardriveDedupHead = 0;
     wardriveDedupCount = 0;
 
-    // Init WiFi — mesh may already have it in STA mode for ESP-NOW.
-    // WiFi.mode(WIFI_STA) is safe to call when already in STA.
+    // Init WiFi first — coex manager needs WiFi registered before BLE scan
     if (wardriveRadio & 0x01) {
-        WiFi.mode(WIFI_AP_STA);
-        WiFi.disconnect(false);  // false = don't erase saved AP config
+        WiFi.mode(WIFI_STA);
+        WiFi.disconnect();
     }
 
     // Init BLE scanner
@@ -333,17 +322,10 @@ static void wardriveStop(void) {
         wifiScanInProgress = false;
     }
 
-    // 4. Clean up WiFi — but keep STA mode alive if mesh needs ESP-NOW
+    // 4. Clean up WiFi
     WiFi.scanDelete();
-    if (meshIsEnabled()) {
-        WiFi.disconnect(false);
-        // Re-set channel 1 for ESP-NOW (wardrive scanning changes channels)
-        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
-        Serial.println("[WARDRIVE] WiFi kept alive for mesh ESP-NOW");
-    } else {
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
-    }
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_DISABLED);
     Serial.println("[WARDRIVE] Stopped");
@@ -398,19 +380,9 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
         if (bleScanIntervalMs < 1000) bleScanIntervalMs = 1000;
     }
 
-    // Channel range for orchestrated multi-node scanning (bytes 9-10)
-    if (len >= 11) {
-        uint8_t chStart = payload[9];
-        uint8_t chEnd   = payload[10];
-        if (chStart >= 1 && chStart <= 14 && chEnd >= chStart && chEnd <= 14) {
-            wardriveChanStart = chStart;
-            wardriveChanEnd   = chEnd;
-        }
-    }
-
-    Serial.printf("[WARDRIVE] Config: radio=0x%02X wifi=%d/%d ble=%d/%d ch=%d-%d\n",
+    Serial.printf("[WARDRIVE] Config: radio=0x%02X wifi=%d/%d ble=%d/%d\n",
         wardriveRadio, wifiScanIntervalMs, wifiDwellPerChMs,
-        bleScanDurationMs, bleScanIntervalMs, wardriveChanStart, wardriveChanEnd);
+        bleScanDurationMs, bleScanIntervalMs);
 }
 
 const EngineCallbacks wardriveCallbacks = {

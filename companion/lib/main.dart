@@ -8,7 +8,6 @@ import 'package:oui_spy/app.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart';
-import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -74,19 +73,32 @@ Future<void> _autoConnect(ProviderContainer container) async {
     final sub = FlutterBluePlus.onScanResults.listen((results) {
       for (final r in results) {
         final name = r.device.platformName;
+        final advName = r.advertisementData.advName;
         final id = r.device.remoteId.toString();
-        DebugLog.log('AUTO: saw device: "$name" $id');
-        if (name.contains('OUI-SPY') || name.contains('OUI')) {
-          // Prefer last known primary device
+        final serviceUuids = r.advertisementData.serviceUuids;
+
+        // Match by name or by service UUID
+        final nameMatch = name.contains('OUI-SPY') ||
+            name.contains('OUI') ||
+            advName.contains('OUI-SPY') ||
+            advName.contains('OUI');
+        final uuidMatch = serviceUuids.any(
+            (u) => u.toString().endsWith('0a15-4b70-ba00-c010ae1ba01c'));
+        final isOuiSpy = nameMatch || uuidMatch;
+
+        if (name.isNotEmpty || advName.isNotEmpty || uuidMatch) {
+          DebugLog.log('AUTO: saw "$name"/"$advName" $id uuids=$serviceUuids');
+        }
+
+        if (isOuiSpy) {
           if (lastPrimaryId != null && id == lastPrimaryId) {
-            DebugLog.log('AUTO: PREFERRED MATCH: $name');
+            DebugLog.log('AUTO: PREFERRED MATCH: $name/$advName');
             FlutterBluePlus.stopScan();
             if (!completer.isCompleted) completer.complete(r.device);
             return;
           }
-          // Remember first match as fallback
           preferredDevice ??= r.device;
-          DebugLog.log('AUTO: MATCH: $name (fallback)');
+          DebugLog.log('AUTO: MATCH: $name/$advName (fallback)');
         }
       }
     });
@@ -115,32 +127,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
 }
 
 Future<void> _onConnected(ProviderContainer container, String deviceId) async {
-  // Save as last connected for preferred auto-connect
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString('lastPrimaryDeviceId', deviceId);
-
-  // Auto-enable mesh if was previously enabled
-  final meshWasEnabled = prefs.getBool('meshAutoEnable') ?? false;
-  if (meshWasEnabled) {
-    try {
-      final appState = container.read(appStateProvider);
-      final db = container.read(databaseProvider);
-      final nodes = await db.getAllNodes();
-      final peerNodes = nodes.where((n) => n.id != deviceId).toList();
-      if (peerNodes.isNotEmpty) {
-        final peerMacs = peerNodes.map((n) {
-          return BleProtocol.parseMacToBytes(n.macAddress);
-        }).toList();
-        await appState.loadMeshKey();
-        await appState.enableMesh(
-          encryption: appState.meshEncryption,
-          peerMacs: peerMacs,
-        );
-        DebugLog.log('AUTO: mesh re-enabled with ${peerMacs.length} peers');
-      }
-    } catch (e) {
-      DebugLog.log('AUTO: mesh re-enable failed: $e');
-    }
-  }
 }
 

@@ -7,7 +7,6 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/orchestrator.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -112,21 +111,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
   }
 
   void _syncToPeers(bool enable) {
-    final appState = ref.read(appStateProvider);
-    if (!appState.meshEnabled) return;
-
-    final orchestrator = ref.read(orchestratorProvider);
-    if (enable) {
-      orchestrator.syncEngineEnable(widget.engine);
-      // Apply channel split for wardrive after a short delay (peers need to start first)
-      if (widget.engine == Engine.wardrive) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          orchestrator.applyChannelSplit();
-        });
-      }
-    } else {
-      orchestrator.syncEngineDisable(widget.engine);
-    }
+    // Mesh orchestration removed — single node only for now
   }
 
   void _cycleRadio() {
