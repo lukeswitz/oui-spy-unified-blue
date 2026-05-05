@@ -26,11 +26,46 @@ class WardriveScreen extends ConsumerStatefulWidget {
 class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   final _mapController = MapController();
   bool _followMode = true;
+  String? _fittedSessionId;
 
   @override
   void dispose() {
     _mapController.dispose();
     super.dispose();
+  }
+
+  void _fitToSessionBounds(WardriveController wd) {
+    final points = <LatLng>[
+      ...wd.routePoints,
+      ...wd.dedupedDetections
+          .where((d) => d.latitude != null && d.longitude != null)
+          .map((d) => LatLng(d.latitude!, d.longitude!)),
+    ];
+    if (points.length < 2) {
+      if (points.length == 1) {
+        _mapController.move(points.first, 16);
+      }
+      return;
+    }
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLon = points.first.longitude;
+    var maxLon = points.first.longitude;
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLon) minLon = p.longitude;
+      if (p.longitude > maxLon) maxLon = p.longitude;
+    }
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds(
+          LatLng(minLat, minLon),
+          LatLng(maxLat, maxLon),
+        ),
+        padding: const EdgeInsets.all(48),
+      ),
+    );
   }
 
   void _focusMap(WardriveController wd) {
@@ -54,6 +89,19 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
         : gpsPos != null
             ? LatLng(gpsPos.latitude, gpsPos.longitude)
             : const LatLng(38.627, -90.199);
+
+    // Fit to session bounds when a saved session is loaded
+    final loadedId = wd.loadedSessionId;
+    if (loadedId != null && loadedId != _fittedSessionId && wd.hasSessionData) {
+      _fittedSessionId = loadedId;
+      _followMode = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _fitToSessionBounds(wd);
+      });
+    } else if (loadedId == null) {
+      _fittedSessionId = null;
+    }
 
     // Auto-follow: keep map centered on current position while moving
     if (_followMode && wd.isActive && wd.currentPosition != null) {

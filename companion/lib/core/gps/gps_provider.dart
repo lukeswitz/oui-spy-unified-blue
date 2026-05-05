@@ -6,9 +6,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class GpsProvider {
-  GpsProvider(this._bleManager);
+  GpsProvider(this._bleManager) {
+    _restoreLastPosition();
+  }
 
   final BleManager _bleManager;
 
@@ -19,6 +22,33 @@ class GpsProvider {
 
   Stream<GpsPosition> get positionStream => _positionController.stream;
   GpsPosition? get lastPosition => _lastPosition;
+
+  Future<void> _restoreLastPosition() async {
+    final p = await SharedPreferences.getInstance();
+    final lat = p.getDouble('gps_last_lat');
+    final lon = p.getDouble('gps_last_lon');
+    if (lat != null && lon != null && _lastPosition == null) {
+      _lastPosition = GpsPosition(
+        latitude: lat,
+        longitude: lon,
+        altitude: p.getDouble('gps_last_alt') ?? 0,
+        speed: 0,
+        heading: 0,
+        accuracy: p.getDouble('gps_last_acc') ?? 50,
+        satelliteCount: 0,
+        timestamp: DateTime.now(),
+      );
+      DebugLog.log('GPS: restored last position $lat, $lon');
+    }
+  }
+
+  Future<void> _persistPosition(double lat, double lon, double alt, double acc) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setDouble('gps_last_lat', lat);
+    await p.setDouble('gps_last_lon', lon);
+    await p.setDouble('gps_last_alt', alt);
+    await p.setDouble('gps_last_acc', acc);
+  }
 
   bool _hasAlwaysPermission = false;
   bool get hasAlwaysPermission => _hasAlwaysPermission;
@@ -118,6 +148,7 @@ class GpsProvider {
       timestamp: pos.timestamp,
     );
     _positionController.add(_lastPosition!);
+    _persistPosition(pos.latitude, pos.longitude, pos.altitude, pos.accuracy);
     _bleManager.updateGps(
       latitude: pos.latitude,
       longitude: pos.longitude,
