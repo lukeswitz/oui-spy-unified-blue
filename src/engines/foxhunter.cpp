@@ -17,13 +17,14 @@ static volatile unsigned long lastTargetSeen = 0;
 static volatile bool targetInRange = false;
 static unsigned long lastBeepTime = 0;
 
-// WiFi promiscuous — scan all channels to find target regardless of channel
+// WiFi promiscuous — scan all channels 1-14.
+// Channel hint from feed = start channel + extra dwell (priority), not a lock.
 static volatile bool wifiActive = false;
-static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
-static const int channelCount = 14;
-static int channelIdx = 0;
+static uint8_t hintChannel = 0;           // 0 = no hint, 1-14 = priority channel
+static uint8_t currentChannel = 1;
 static unsigned long lastChannelHop = 0;
-static const unsigned long DWELL_MS = 100;
+static const uint16_t NORMAL_DWELL_MS  = 120;  // regular channels
+static const uint16_t PRIORITY_DWELL_MS = 350;  // hint channel + 1/6/11
 
 static int calculateBeepInterval(int rssi) {
     if (rssi >= -35) return 15;
@@ -86,6 +87,11 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     lastTargetSeen = millis();
     targetInRange = true;
 
+    // Auto-hint: remember channel where target was found for priority dwell
+    if (hintChannel == 0 && pkt->rx_ctrl.channel >= 1 && pkt->rx_ctrl.channel <= 14) {
+        hintChannel = pkt->rx_ctrl.channel;
+    }
+
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_FOXHUNTER;
     memcpy(evt.mac, matchMac, 6);
@@ -96,13 +102,17 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     pushDetectionFromISR(&evt);
 }
 
-void foxhunterSetTarget(const uint8_t* mac) {
+void foxhunterSetTarget(const uint8_t* mac, uint8_t channel) {
     memcpy(targetMac, mac, 6);
     hasTarget = true;
     targetInRange = false;
     currentRssi = -100;
-    Serial.printf("[FOXHUNTER] Target set: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    hintChannel = (channel >= 1 && channel <= 14) ? channel : 0;
+    // Start scanning from hint channel if provided
+    if (hintChannel > 0) currentChannel = hintChannel;
+    Serial.printf("[FOXHUNTER] Target set: %02x:%02x:%02x:%02x:%02x:%02x hint_ch=%d\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                  hintChannel);
 }
 
 // Exported: check a MAC from wardrive's BLE callback
@@ -127,10 +137,60 @@ void foxhunterCheckBleDevice(const uint8_t* mac, int rssi) {
     pushDetection(&evt);
 }
 
+// ISR-safe: check 3 802.11 address fields from promiscuous callback
+void IRAM_ATTR foxhunterCheckWifiDeviceISR(
+    const uint8_t* addr1, const uint8_t* addr2, const uint8_t* addr3,
+    int rssi, uint8_t channel) {
+    if (!scanning || !hasTarget) return;
+
+    const uint8_t* matchMac = NULL;
+    if (memcmp(addr2, targetMac, 6) == 0) matchMac = addr2;
+    else if (memcmp(addr1, targetMac, 6) == 0) matchMac = addr1;
+    else if (memcmp(addr3, targetMac, 6) == 0) matchMac = addr3;
+    if (!matchMac) return;
+
+    currentRssi = rssi;
+    lastTargetSeen = millis();
+    targetInRange = true;
+
+    DetectionEvent evt;
+    memset(&evt, 0, sizeof(evt));
+    evt.engine_id = ENGINE_FOXHUNTER;
+    memcpy(evt.mac, matchMac, 6);
+    evt.rssi = rssi;
+    evt.channel = channel;
+    evt.timestamp_ms = millis();
+    evt.method = 1;
+    pushDetectionFromISR(&evt);
+}
+
+// Exported: check a MAC from wardrive's WiFi scan harvest
+void foxhunterCheckWifiDevice(const uint8_t* mac, int rssi, uint8_t channel) {
+    if (!scanning || !hasTarget) return;
+    if (memcmp(mac, targetMac, 6) != 0) return;
+
+    currentRssi = rssi;
+    lastTargetSeen = millis();
+    targetInRange = true;
+
+    int interval = calculateBeepInterval(rssi);
+    bleGattNotifyFoxhunterRssi(rssi, interval);
+
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_FOXHUNTER;
+    memcpy(evt.mac, mac, 6);
+    evt.rssi = rssi;
+    evt.channel = channel;
+    evt.timestamp_ms = millis();
+    evt.method = 1;  // WiFi method
+    pushDetection(&evt);
+}
+
 static void foxhunterInit(void) {
     Preferences p;
     p.begin("tracker", true);
     String mac = p.getString("targetMAC", "");
+    uint8_t ch = p.getUChar("targetCh", 0);  // stored hint channel
     p.end();
     if (mac.length() == 17) {
         unsigned int m[6];
@@ -138,7 +198,7 @@ static void foxhunterInit(void) {
                &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]);
         uint8_t bytes[6] = {(uint8_t)m[0], (uint8_t)m[1], (uint8_t)m[2],
                             (uint8_t)m[3], (uint8_t)m[4], (uint8_t)m[5]};
-        foxhunterSetTarget(bytes);
+        foxhunterSetTarget(bytes, ch);
     }
     Serial.println("[FOXHUNTER] Initialized");
 }
@@ -162,12 +222,16 @@ static void foxhunterStart(void) {
         WiFi.mode(WIFI_STA);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
-        esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
+        uint8_t startCh = (hintChannel > 0) ? hintChannel : 1;
+        currentChannel = startCh;
+        esp_wifi_set_channel(startCh, WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
         wifiActive = true;
     }
 
-    Serial.printf("[FOXHUNTER] Started (%s)\n", wardriveOwns ? "passive — wardrive feeds" : "WiFi+BLE");
+    Serial.printf("[FOXHUNTER] Started (%s hint_ch=%d)\n",
+        wardriveOwns ? "passive — wardrive feeds" : "WiFi+BLE ch1-14",
+        hintChannel);
 }
 
 static void foxhunterStop(void) {
@@ -205,6 +269,7 @@ static void foxhunterLoop(void) {
 
     if (targetInRange && millis() - lastTargetSeen > 7000) {
         targetInRange = false;
+        bleGattNotifyFoxhunterRssi(currentRssi, 0);
         Serial.println("[FOXHUNTER] Target lost");
     }
 
@@ -217,10 +282,17 @@ static void foxhunterLoop(void) {
         }
     }
 
-    if (wifiActive && millis() - lastChannelHop >= DWELL_MS) {
-        channelIdx = (channelIdx + 1) % channelCount;
-        esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
-        lastChannelHop = millis();
+    // Channel hop — all channels 1-14, priority dwell on hint + 1/6/11
+    if (wifiActive) {
+        bool isPriority = (currentChannel == hintChannel) ||
+                          currentChannel == 1 || currentChannel == 6 || currentChannel == 11;
+        uint16_t dwell = isPriority ? PRIORITY_DWELL_MS : NORMAL_DWELL_MS;
+        if (millis() - lastChannelHop >= dwell) {
+            currentChannel++;
+            if (currentChannel > 14) currentChannel = 1;
+            esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+            lastChannelHop = millis();
+        }
     }
 
     if (bleScan && millis() - lastScanStart >= 1500) {

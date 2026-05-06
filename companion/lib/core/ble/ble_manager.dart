@@ -409,9 +409,11 @@ class BleManager {
 
   // -- Foxhunter --
 
-  Future<void> setFoxhunterTarget(String mac) async {
+  Future<void> setFoxhunterTarget(String mac, {int channel = 0}) async {
     if (_foxhunterConfig == null) return;
-    await _foxhunterConfig!.write(BleProtocol.encodeFoxhunterTarget(mac));
+    await _foxhunterConfig!.write(
+      BleProtocol.encodeFoxhunterTarget(mac, channel: channel),
+    );
   }
 
   // -- UniPwn --

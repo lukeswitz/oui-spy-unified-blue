@@ -83,8 +83,8 @@ class WardriveController extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
-    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 150;
-    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 200;
+    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
+    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 2500;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
@@ -256,10 +256,11 @@ class WardriveController extends ChangeNotifier {
 
     await _enableEnginesSequentially(activeEngines);
 
+    // Use cached GPS only for initial map centering — don't add to route.
+    // Route starts from first live GPS update to avoid stale-position diagonal lines.
     final cached = _gps.lastPosition;
     if (cached != null) {
       currentPosition = cached;
-      routePoints.add(LatLng(cached.latitude, cached.longitude));
     }
 
     _detSub = _ble.detections.listen(_onDetection);
@@ -499,9 +500,9 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setFoxhuntTarget(String mac) {
+  void setFoxhuntTarget(String mac, {int channel = 0}) {
     _ble.enableEngine(Engine.foxhunter);
-    _ble.setFoxhunterTarget(mac);
+    _ble.setFoxhunterTarget(mac, channel: channel);
     foxhuntTarget = mac;
     notifyListeners();
   }
@@ -575,7 +576,9 @@ class WardriveController extends ChangeNotifier {
       bleTotal: rawBleCount,
       flockCount: _flockMacs.length,
       droneCount: droneCount,
-      detectionsPerKm: distanceKm > 0 ? rawDetectionCount / distanceKm : 0,
+      detectionsPerKm: distanceKm > 0 && distanceKm.isFinite 
+          ? rawDetectionCount / distanceKm 
+          : 0,
       gpsAccuracy: currentPosition?.accuracy ?? 0,
       satelliteCount: currentPosition?.satelliteCount ?? 0,
     );
@@ -643,16 +646,40 @@ class WardriveController extends ChangeNotifier {
   }
 
   void _onGpsUpdate(GpsPosition pos) {
+    // Validate GPS position before using
+    if (!pos.latitude.isFinite || !pos.longitude.isFinite) {
+      DebugLog.log('WARDRIVE: invalid GPS position, skipping');
+      return;
+    }
+
     currentPosition = pos;
     final ll = LatLng(pos.latitude, pos.longitude);
 
     if (state == WardriveState.running) {
+      // Guard against GPS jumps (stale restore, satellite reacquisition)
+      if (routePoints.isNotEmpty) {
+        final last = routePoints.last;
+        final jumpKm = _haversineKm(
+          last.latitude, last.longitude, pos.latitude, pos.longitude,
+        );
+        if (jumpKm.isFinite && jumpKm > 0.5) {
+          // >500m jump — likely stale position or GPS glitch, skip route point
+          DebugLog.log('WARDRIVE: GPS jump ${(jumpKm * 1000).round()}m, skipping route point');
+          lastGpsForDistance = pos;
+          notifyListeners();
+          return;
+        }
+      }
+
       routePoints.add(ll);
       if (lastGpsForDistance != null) {
-        distanceKm += _haversineKm(
+        final km = _haversineKm(
           lastGpsForDistance!.latitude, lastGpsForDistance!.longitude,
           pos.latitude, pos.longitude,
         );
+        if (km.isFinite) {
+          distanceKm += km;
+        }
       }
       lastGpsForDistance = pos;
     }
@@ -676,12 +703,11 @@ class WardriveController extends ChangeNotifier {
         math.cos(lat1 * math.pi / 180) *
             math.cos(lat2 * math.pi / 180) *
             math.pow(math.sin(dLon / 2), 2);
-    return r * 2 * math.asin(math.sqrt(a));
+    final sqrtVal = math.sqrt(a.clamp(0.0, 1.0));
+    return r * 2 * math.asin(sqrtVal);
   }
 }
 
-/// Keep wardrive alive across tab switches — session must not die
-/// when user checks home or feed tab.
 final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   ref.keepAlive();
   final ble = ref.watch(bleManagerProvider);

@@ -27,22 +27,34 @@ class GpsProvider {
     final p = await SharedPreferences.getInstance();
     final lat = p.getDouble('gps_last_lat');
     final lon = p.getDouble('gps_last_lon');
-    if (lat != null && lon != null && _lastPosition == null) {
-      _lastPosition = GpsPosition(
-        latitude: lat,
-        longitude: lon,
-        altitude: p.getDouble('gps_last_alt') ?? 0,
-        speed: 0,
-        heading: 0,
-        accuracy: p.getDouble('gps_last_acc') ?? 50,
-        satelliteCount: 0,
-        timestamp: DateTime.now(),
-      );
-      DebugLog.log('GPS: restored last position $lat, $lon');
+    
+    if (lat != null && lon != null && 
+        lat.isFinite && lon.isFinite && 
+        _lastPosition == null) {
+      final alt = p.getDouble('gps_last_alt') ?? 0;
+      final acc = p.getDouble('gps_last_acc') ?? 50;
+      
+      if (alt.isFinite && acc.isFinite && acc > 0 && acc < 10000) {
+        _lastPosition = GpsPosition(
+          latitude: lat,
+          longitude: lon,
+          altitude: alt,
+          speed: 0,
+          heading: 0,
+          accuracy: acc,
+          satelliteCount: 0,
+          timestamp: DateTime.now(),
+        );
+        DebugLog.log('GPS: restored last position $lat, $lon');
+      }
     }
   }
 
   Future<void> _persistPosition(double lat, double lon, double alt, double acc) async {
+    if (!lat.isFinite || !lon.isFinite || !alt.isFinite || !acc.isFinite) {
+      DebugLog.log('GPS: rejecting invalid position for persistence');
+      return;
+    }
     final p = await SharedPreferences.getInstance();
     await p.setDouble('gps_last_lat', lat);
     await p.setDouble('gps_last_lon', lon);

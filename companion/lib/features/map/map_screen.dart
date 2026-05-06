@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -25,6 +26,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   StreamSubscription<Detection>? _detSub;
   StreamSubscription<GpsPosition>? _gpsSub;
   bool _followUser = true;
+  Timer? _detDebounce;
+  bool _detDirty = false;
 
   @override
   void initState() {
@@ -33,22 +36,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _detSub = ble.detections.listen((d) {
       if (!mounted) return;
       final key = '${d.macAddress}|${d.engine.name}';
-      setState(() => _dedupedDetections[key] = d);
+      _dedupedDetections[key] = d;
+      _detDirty = true;
+      _detDebounce ??= Timer.periodic(const Duration(milliseconds: 500), (_) {
+        if (_detDirty && mounted) {
+          _detDirty = false;
+          setState(() {});
+        }
+      });
     });
     final gps = ref.read(gpsProvider);
 
+    // Use cached GPS only for initial map centering — don't add to route.
     final cached = gps.lastPosition;
     if (cached != null) {
       _currentPosition = cached;
-      _routePoints.add(LatLng(cached.latitude, cached.longitude));
     }
 
     _gpsSub = gps.positionStream.listen((pos) {
       if (!mounted) return;
+      if (!pos.latitude.isFinite || !pos.longitude.isFinite) return;
       final ll = LatLng(pos.latitude, pos.longitude);
+      // Skip GPS jumps >500m (stale restore, satellite reacquisition)
+      if (_routePoints.isNotEmpty && _distanceM(_routePoints.last, ll) > 500) {
+        setState(() => _currentPosition = pos);
+        return;
+      }
       setState(() {
         _currentPosition = pos;
-        // Only add route point if moved at least 2m from last point
         if (_routePoints.isEmpty || _distanceM(_routePoints.last, ll) > 2) {
           _routePoints.add(ll);
         }
@@ -62,13 +77,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _distanceM(LatLng a, LatLng b) {
     final dx = (a.latitude - b.latitude) * 111320;
     final dy = (a.longitude - b.longitude) * 111320 * 0.85; // rough cos
-    return (dx * dx + dy * dy).abs();
+    return sqrt(dx * dx + dy * dy);
   }
 
   @override
   void dispose() {
     _detSub?.cancel();
     _gpsSub?.cancel();
+    _detDebounce?.cancel();
     super.dispose();
   }
 

@@ -88,15 +88,25 @@ class AppState extends ChangeNotifier {
   int foxhunterIntervalMs = 3000;
   String? foxhunterTarget;
 
-  void setFoxhunterTarget(String mac) {
+  int foxhunterChannel = 0;
+
+  void setFoxhunterTarget(String mac, {int channel = 0}) {
     foxhunterTarget = mac;
-    _ble.enableEngine(Engine.foxhunter, radio: engineRadio[Engine.foxhunter] ?? 0x03);
-    _ble.setFoxhunterTarget(mac);
+    foxhunterChannel = channel;
+    // Only enable engine if not already running — avoid DISABLE/ENABLE spam
+    if (!isEngineActive(Engine.foxhunter)) {
+      _ble.enableEngine(Engine.foxhunter, radio: engineRadio[Engine.foxhunter] ?? 0x03);
+    }
+    // Always send target (even if already running — updates MAC + channel hint)
+    _ble.setFoxhunterTarget(mac, channel: channel);
     notifyListeners();
   }
 
   void clearFoxhunterTarget() {
     foxhunterTarget = null;
+    foxhunterChannel = 0;
+    foxhunterRssi = -100;
+    foxhunterIntervalMs = 3000;
     _ble.disableEngine(Engine.foxhunter);
     notifyListeners();
   }

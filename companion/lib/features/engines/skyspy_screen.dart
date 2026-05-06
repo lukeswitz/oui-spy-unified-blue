@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -12,6 +13,7 @@ class SkySpyScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
+    final isActive = state.isEngineActive(Engine.skySpy);
     final drones = <String, Detection>{};
     for (final d in state.recentDetections) {
       if (d.engine == Engine.skySpy) drones[d.macAddress] = d;
@@ -21,9 +23,30 @@ class SkySpyScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(title: const Text('SKY SPY')),
+      appBar: AppBar(
+        title: const Text('SKY SPY'),
+        actions: [
+          Transform.scale(
+            scale: 0.7,
+            child: Switch(
+              value: isActive,
+              onChanged: (enable) {
+                final ble = ref.read(bleManagerProvider);
+                if (enable) {
+                  ble.enableEngine(Engine.skySpy);
+                } else {
+                  ble.disableEngine(Engine.skySpy);
+                }
+              },
+              activeTrackColor: AppTheme.skySpy.withValues(alpha: 0.3),
+              activeColor: AppTheme.skySpy,
+            ),
+          ),
+        ],
+      ),
       body: droneList.isEmpty
-          ? Center(child: Text('NO DRONES DETECTED',
+          ? Center(child: Text(
+              isActive ? 'SCANNING FOR DRONES...' : 'ENABLE TO START SCANNING',
               style: TextStyle(color: t.textDim, letterSpacing: 2, fontSize: 12)))
           : ListView.builder(
               itemCount: droneList.length,

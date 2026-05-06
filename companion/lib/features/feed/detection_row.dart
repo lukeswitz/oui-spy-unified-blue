@@ -172,7 +172,10 @@ class DetectionRow extends ConsumerWidget {
   }
 
   void _startFoxhunt(BuildContext context, WidgetRef ref) {
-    ref.read(appStateProvider).setFoxhunterTarget(detection.macAddress);
+    ref.read(appStateProvider).setFoxhunterTarget(
+      detection.macAddress,
+      channel: detection.channel,
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Foxhunting ${detection.macAddress.toUpperCase().substring(0, 8)}...'),

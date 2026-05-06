@@ -95,6 +95,15 @@ class _EngineCardState extends ConsumerState<EngineCard>
       return;
     }
 
+    // Foxhunter: block enable without a target set
+    if (widget.engine == Engine.foxhunter && value) {
+      final appState = ref.read(appStateProvider);
+      if (appState.foxhunterTarget == null) {
+        _navigateToEngine();
+        return;
+      }
+    }
+
     final ble = ref.read(bleManagerProvider);
     if (value) {
       ble.enableEngine(widget.engine);
@@ -166,6 +175,15 @@ class _EngineCardState extends ConsumerState<EngineCard>
       if (wd.isActive) {
         return '${wd.target.label} \u2022 ${wd.radio.label}';
       }
+    }
+    if (widget.engine == Engine.foxhunter) {
+      final appState = ref.read(appStateProvider);
+      final target = appState.foxhunterTarget;
+      if (target != null) {
+        final ch = appState.foxhunterChannel;
+        return '${target.toUpperCase().substring(0, 8)}... ${ch > 0 ? 'ch$ch' : ''}';
+      }
+      return 'Set target to enable';
     }
     return widget.engine.description;
   }

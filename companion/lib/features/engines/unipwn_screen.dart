@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -30,6 +31,15 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
     });
   }
 
+  void _toggleEngine(bool enable) {
+    final ble = ref.read(bleManagerProvider);
+    if (enable) {
+      ble.enableEngine(Engine.uniPwn);
+    } else {
+      ble.disableEngine(Engine.uniPwn);
+    }
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
@@ -50,12 +60,27 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
+    final state = ref.watch(appStateProvider);
+    final isActive = state.isEngineActive(Engine.uniPwn);
     final robots = _robots.values.toList()
       ..sort((a, b) => b.rssi.compareTo(a.rssi));
 
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(title: const Text('UNIPWN')),
+      appBar: AppBar(
+        title: const Text('UNIPWN'),
+        actions: [
+          Transform.scale(
+            scale: 0.7,
+            child: Switch(
+              value: isActive,
+              onChanged: _toggleEngine,
+              activeTrackColor: AppTheme.uniPwn.withValues(alpha: 0.3),
+              activeColor: AppTheme.uniPwn,
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           // Robot list
@@ -64,7 +89,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
             child: robots.isEmpty
                 ? Center(
                     child: Text(
-                      'SCANNING FOR UNITREE ROBOTS...',
+                      isActive ? 'SCANNING FOR UNITREE ROBOTS...' : 'ENABLE TO START SCANNING',
                       style: TextStyle(color: t.textDim, letterSpacing: 1, fontSize: 11),
                     ),
                   )

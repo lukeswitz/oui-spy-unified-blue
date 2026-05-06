@@ -204,14 +204,15 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
 // ============================================================================
 // Foxhunter Config Callback — receive target MAC from app
 // ============================================================================
-extern void foxhunterSetTarget(const uint8_t* mac);
+extern void foxhunterSetTarget(const uint8_t* mac, uint8_t channel);
 
 class FoxhunterConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
         if (val.length() < 6) return;
-        foxhunterSetTarget((const uint8_t*)val.data());
-        Serial.printf("[BLE] Foxhunter target set via app\n");
+        uint8_t channel = val.length() >= 7 ? (uint8_t)val[6] : 0;
+        foxhunterSetTarget((const uint8_t*)val.data(), channel);
+        Serial.printf("[BLE] Foxhunter target set via app (ch=%d)\n", channel);
     }
 };
 

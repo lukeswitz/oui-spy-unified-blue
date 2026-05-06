@@ -1,5 +1,5 @@
 import 'dart:math';
-
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,27 +36,38 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
 
   void _fitToSessionBounds(WardriveController wd) {
     final points = <LatLng>[
-      ...wd.routePoints,
+      ...wd.routePoints.where((p) => p.latitude.isFinite && p.longitude.isFinite),
       ...wd.dedupedDetections
-          .where((d) => d.latitude != null && d.longitude != null)
+          .where((d) => d.latitude != null && d.longitude != null &&
+              d.latitude!.isFinite && d.longitude!.isFinite)
           .map((d) => LatLng(d.latitude!, d.longitude!)),
     ];
+    
     if (points.length < 2) {
       if (points.length == 1) {
         _mapController.move(points.first, 16);
       }
       return;
     }
+
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
     var minLon = points.first.longitude;
     var maxLon = points.first.longitude;
+
     for (final p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLon) minLon = p.longitude;
-      if (p.longitude > maxLon) maxLon = p.longitude;
+      minLat = math.min(minLat, p.latitude);
+      maxLat = math.max(maxLat, p.latitude);
+      minLon = math.min(minLon, p.longitude);
+      maxLon = math.max(maxLon, p.longitude);
     }
+
+    if (minLat >= maxLat || minLon >= maxLon || 
+        !minLat.isFinite || !maxLat.isFinite || 
+        !minLon.isFinite || !maxLon.isFinite) {
+      return;
+    }
+
     _mapController.fitCamera(
       CameraFit.bounds(
         bounds: LatLngBounds(
