@@ -575,7 +575,9 @@ class WardriveController extends ChangeNotifier {
       bleTotal: rawBleCount,
       flockCount: _flockMacs.length,
       droneCount: droneCount,
-      detectionsPerKm: distanceKm > 0 ? rawDetectionCount / distanceKm : 0,
+      detectionsPerKm: distanceKm > 0 && distanceKm.isFinite 
+          ? rawDetectionCount / distanceKm 
+          : 0,
       gpsAccuracy: currentPosition?.accuracy ?? 0,
       satelliteCount: currentPosition?.satelliteCount ?? 0,
     );
@@ -643,16 +645,25 @@ class WardriveController extends ChangeNotifier {
   }
 
   void _onGpsUpdate(GpsPosition pos) {
+    // Validate GPS position before using
+    if (!pos.latitude.isFinite || !pos.longitude.isFinite) {
+      DebugLog.log('WARDRIVE: invalid GPS position, skipping');
+      return;
+    }
+
     currentPosition = pos;
     final ll = LatLng(pos.latitude, pos.longitude);
 
     if (state == WardriveState.running) {
       routePoints.add(ll);
       if (lastGpsForDistance != null) {
-        distanceKm += _haversineKm(
+        final km = _haversineKm(
           lastGpsForDistance!.latitude, lastGpsForDistance!.longitude,
           pos.latitude, pos.longitude,
         );
+        if (km.isFinite) {
+          distanceKm += km;
+        }
       }
       lastGpsForDistance = pos;
     }
@@ -676,12 +687,11 @@ class WardriveController extends ChangeNotifier {
         math.cos(lat1 * math.pi / 180) *
             math.cos(lat2 * math.pi / 180) *
             math.pow(math.sin(dLon / 2), 2);
-    return r * 2 * math.asin(math.sqrt(a));
+    final sqrtVal = math.sqrt(a.clamp(0.0, 1.0));
+    return r * 2 * math.asin(sqrtVal);
   }
 }
 
-/// Keep wardrive alive across tab switches — session must not die
-/// when user checks home or feed tab.
 final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   ref.keepAlive();
   final ble = ref.watch(bleManagerProvider);
