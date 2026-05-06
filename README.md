@@ -38,21 +38,42 @@ All engines can run concurrently.
 
 ---
 
-## Dual Radio
+## Radio Architecture
 
-Each engine runs on both WiFi and BLE. The user selects radio mode (WiFi, BLE, or both) per engine from the companion app:
+ESP32-S3 has one WiFi radio and one BLE radio. Multiple engines need both. Here's how they share:
 
-- **Detector** — WiFi promiscuous (all 14 channels, 120ms dwell, matches watchlist against frame addresses) + BLE scan
-- **Foxhunter** — WiFi promiscuous (all 14 channels, 100ms dwell, hunts target MAC across addr1/2/3) + BLE scan
-- **Flock-WiFi** — WiFi promiscuous (channels 1/6/11, 350ms dwell — Flock cameras use standard AP channels)
-- **Flock-BLE** — BLE scan (OUI, name, manufacturer ID, Raven service UUIDs)
-- **Sky Spy** — WiFi promiscuous (channel 6, ODID NAN + Beacon frames) + BLE scan (ODID advertisements)
-- **Wardrive** — WiFi station-mode AP scan + BLE advertisement capture
-- **UniPwn** — BLE only (discovery + GATT connection for exploitation)
+### WiFi Radio (exclusive — one owner at a time)
 
-**WiFi mutual exclusion:** Only one engine owns the WiFi radio at a time (hardware limit). The engine registry auto-stops conflicting WiFi engines when you enable another. Three engines are registered as WiFi-exclusive: Wardrive, Sky Spy, Flock-WiFi.
+Five engines use WiFi. Only one can own the radio:
 
-**Passive mode:** When wardrive is active, Detector and Foxhunter skip their own scans and receive results via callbacks from wardrive's scan loop instead. Wardrive does inline Flock OUI matching on WiFi results and dispatches BLE advertisements to Detector, Foxhunter, and Flock-BLE.
+| Engine | WiFi Mode | Channels | Dwell |
+|--------|-----------|----------|-------|
+| **Wardrive** | Station-mode AP scan | All | Per scan cycle |
+| **Flock-WiFi** | Promiscuous | 1, 6, 11 | 350ms |
+| **Sky Spy** | Promiscuous | 6 (ODID NAN + Beacon) | Fixed |
+| **Detector** | Promiscuous | 1-14 | 120ms |
+| **Foxhunter** | Promiscuous | 1-14 (priority dwell on hint + 1/6/11) | 120ms normal, 350ms priority |
+
+**Automatic handoff:** The engine registry auto-stops conflicting WiFi engines when you enable another. Wardrive, Sky Spy, and Flock-WiFi are registered as WiFi-exclusive in the registry. Foxhunter additionally pauses Detector, Flock-WiFi, and Sky Spy on start since it needs exclusive promiscuous access to hunt a target across all channels.
+
+### BLE Radio (shared)
+
+BLE is shared across all engines concurrently. NimBLE handles interleaved scanning and GATT server duties.
+
+- **Flock-BLE** — OUI prefix, device name, manufacturer ID `0x09C8`, Raven service UUIDs
+- **Foxhunter** — BLE scan for target MAC (when not fed by wardrive)
+- **Detector** — BLE scan for watchlist matches
+- **Sky Spy** — ODID BLE advertisements
+- **Wardrive** — BLE advertisement capture for wardriving database
+- **UniPwn** — BLE discovery + GATT connection for Unitree robot exploitation
+
+### Passive Feeding (wardrive active)
+
+When wardrive owns WiFi, Detector and Foxhunter don't start their own scans. Instead wardrive feeds them via callbacks:
+
+- Wardrive WiFi scan results dispatch to `foxhunterCheckWifiDevice()` and detector's watchlist matcher
+- Wardrive BLE advertisements dispatch to Foxhunter, Detector, and Flock-BLE
+- Foxhunter auto-learns hint channel from first WiFi match for priority dwell when it next runs standalone
 
 ---
 
@@ -61,23 +82,27 @@ Each engine runs on both WiFi and BLE. The user selects radio mode (WiFi, BLE, o
 The firmware runs an **engine registry** on FreeRTOS. Each engine registers init/start/stop/loop/config callbacks. The companion app sends enable/disable commands over BLE GATT using bitmasks. Detections flow through a shared queue (depth 64) and get pushed to the app as packed binary notifications.
 
 ```
- Your Phone/Laptop                           OUISPY (ESP32S3)
-┌──────────────────┐                 ┌──────────────────────────────-┐
-│  Companion App   │                 │  Engine Registry (7 engines)  │
-│                  │◄── BLE GATT ──► │                               │
-│  Enable engines  │                 │  WiFi radio (exclusive):      │
-│  Stream GPS      │  DetectionEvent │    → Wardrive                 │
-│  Receive dets    │◄───────────────┤│    → Sky Spy                  │
-│  Wardrive map    │                 │    → Flock-WiFi               │
-│  Export WiGLE    │                 │    → Detector*                │
-│  Mesh management │                 │    → Foxhunter*               │
-│                  │                 │       *when wardrive inactive │
-└──────────────────┘                 │                               │
-                                     │  BLE radio (shared):          │
-                                     │    → All engines concurrent   │
-                                     │                               │
-                                     │  ESP-NOW Mesh (encrypted)     │
-                                     └──────────────────────────────-┘
+ Phone/Laptop                              OUISPY (ESP32-S3)
+┌──────────────────┐                ┌─────────────────────────────────┐
+│  Companion App   │                │  Engine Registry (7 engines)    │
+│                  │◄─ BLE GATT ──►│                                 │
+│  Enable engines  │                │  WiFi radio (one owner):        │
+│  Stream GPS      │  DetectionEvent│    Wardrive ─┐                  │
+│  Receive dets    │◄──────────────┤│    Flock-WiFi │ registry-       │
+│  Wardrive map    │                │    Sky Spy  ──┘ exclusive       │
+│  Export WiGLE    │                │    Detector ──┐ foxhunter       │
+│  Foxhunter RSSI │                │    Foxhunter ─┘ pauses these    │
+│  Mesh management │                │                                 │
+└──────────────────┘                │  BLE radio (shared):            │
+                                    │    All engines scan concurrently│
+                                    │                                 │
+                                    │  Passive feeding (wardrive up): │
+                                    │    wardrive ──► Detector        │
+                                    │             ──► Foxhunter       │
+                                    │             ──► Flock-BLE       │
+                                    │                                 │
+                                    │  ESP-NOW Mesh (AES-GCM)        │
+                                    └─────────────────────────────────┘
 ```
 
 ---
