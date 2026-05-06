@@ -208,6 +208,22 @@ static void foxhunterStart(void) {
 
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
 
+    // Foxhunter needs exclusive WiFi — pause any other WiFi engine
+    if (!wardriveOwns) {
+        static const EngineId wifiEngines[] = {
+            ENGINE_DETECTOR, ENGINE_FLOCK_WIFI, ENGINE_SKYSPY
+        };
+        bool paused = false;
+        for (auto eid : wifiEngines) {
+            if (engineGetState(eid) != ESTATE_DISABLED) {
+                engineDisable(eid);
+                Serial.printf("[FOXHUNTER] Paused engine %d (foxhunter owns WiFi)\n", eid);
+                paused = true;
+            }
+        }
+        if (paused) bleGattNotifyEngineState();
+    }
+
     if (!wardriveOwns) {
         bleScan = NimBLEDevice::getScan();
         bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
