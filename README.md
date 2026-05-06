@@ -1,19 +1,17 @@
-
-
 <div align="center">
 <h1>OUI SPY Unified & Companion</h1> 
  
-
-
 [![Version](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases) [![Join TestFlight Beta](https://img.shields.io/badge/TestFlight-Join-blue.svg?style=f&logo=apple)](https://testflight.apple.com/join/5RCKgnJ2) ![Platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
 ![Dart](https://img.shields.io/badge/Dart-Flutter%20App-0175C2)
 ![C++](https://img.shields.io/badge/C%2B%2B-ESP32%20FW-ff6600)
 
-
 <img width="500" alt="ouispy_appicon" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
+
+[Features](#what-it-detects) | [Get the App](#install) | [Flash Firmware](#flash-it)
 
 </div>
 
+---
 **About this fork:** 
 
 Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
@@ -34,7 +32,7 @@ Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Sp
 | **WiFi Infrastructure** | Station-mode AP scan — SSID, BSSID, channel, auth mode, signal |
 | **All BLE Devices** | Advertisement capture with name, manufacturer data, service UUIDs |
 
-All engines can run concurrently.
+All engines can run concurrently, with some limitations.
 
 ---
 
@@ -42,9 +40,9 @@ All engines can run concurrently.
 
 ESP32-S3 has one WiFi radio and one BLE radio. Multiple engines need both. Here's how they share:
 
-### WiFi Radio (exclusive — one owner at a time)
+### WiFi Radio
 
-Five engines use WiFi. Only one can own the radio:
+Five engines use WiFi. Only one can **own** the radio:
 
 | Engine | WiFi Mode | Channels | Dwell |
 |--------|-----------|----------|-------|
@@ -81,30 +79,6 @@ When wardrive owns WiFi, Detector and Foxhunter don't start their own scans. Ins
 
 The firmware runs an **engine registry** on FreeRTOS. Each engine registers init/start/stop/loop/config callbacks. The companion app sends enable/disable commands over BLE GATT using bitmasks. Detections flow through a shared queue (depth 64) and get pushed to the app as packed binary notifications.
 
-```
- Phone/Laptop                              OUISPY (ESP32-S3)
-┌──────────────────┐                ┌─────────────────────────────────┐
-│  Companion App   │                │  Engine Registry (7 engines)    │
-│                  │◄─ BLE GATT ──►│                                 │
-│  Enable engines  │                │  WiFi radio (one owner):        │
-│  Stream GPS      │  DetectionEvent│    Wardrive ─┐                  │
-│  Receive dets    │◄──────────────┤│    Flock-WiFi │ registry-       │
-│  Wardrive map    │                │    Sky Spy  ──┘ exclusive       │
-│  Export WiGLE    │                │    Detector ──┐ foxhunter       │
-│  Foxhunter RSSI │                │    Foxhunter ─┘ pauses these    │
-│  Mesh management │                │                                 │
-└──────────────────┘                │  BLE radio (shared):            │
-                                    │    All engines scan concurrently│
-                                    │                                 │
-                                    │  Passive feeding (wardrive up): │
-                                    │    wardrive ──► Detector        │
-                                    │             ──► Foxhunter       │
-                                    │             ──► Flock-BLE       │
-                                    │                                 │
-                                    │  ESP-NOW Mesh (AES-GCM)        │
-                                    └─────────────────────────────────┘
-```
-
 ---
 
 ## ESP-NOW Mesh & Node Orchestration
@@ -129,7 +103,7 @@ The companion app acts as a central coordinator for all mesh nodes. When you ena
 - **Command relay** — phone sends orchestration commands via BLE to primary node, which broadcasts to all peers over ESP-NOW. Three mesh packet types: detection (existing), command (new), and status (new)
 
 ```
- Phone ──BLE──► Primary Node ──ESP-NOW──► Peer 1
+ Phone ──BLE──► Primary Node ──ESP-NOW──►  Peer 1
                      │                     Peer 2
                      │                     Peer 3
                      ▼
