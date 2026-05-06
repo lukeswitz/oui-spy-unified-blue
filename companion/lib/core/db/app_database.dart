@@ -163,6 +163,20 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.read(mac)!).toList();
   }
 
+  // -- WiGLE upload operations --
+
+  Future<void> insertWigleUpload(WigleUploadsCompanion upload) =>
+      into(wigleUploads).insert(upload);
+
+  Future<List<WigleUpload>> getWigleUploads() =>
+      (select(wigleUploads)
+            ..orderBy([(u) => OrderingTerm.desc(u.uploadedAt)]))
+          .get();
+
+  Future<WigleUpload?> getWigleUploadForSession(String sessionId) =>
+      (select(wigleUploads)..where((u) => u.sessionId.equals(sessionId)))
+          .getSingleOrNull();
+
   // -- Baseline operations --
 
   Future<void> insertBaseline(BaselinesCompanion baseline) =>

@@ -2,7 +2,8 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
-/// Generates Wigle-compatible CSV (format 1.6).
+/// Generate WiGLE-compatible CSV (format 1.6)
+/// Spec: https://api.wigle.net/csvFormat.html
 class WigleCsv {
   const WigleCsv._();
 
@@ -12,16 +13,19 @@ class WigleCsv {
   static String generate(List<Detection> detections) {
     final buffer = StringBuffer();
 
-    // Pre-header (line 1)
+    // Pre-header 
     buffer.writeln(
       'WigleWifi-1.6,'
       'appRelease=$_version,'
-      'model=oui-spy,'
+      'model=OUI-SPY,'
       'release=$_version,'
       'device=ESP32-S3,'
-      'display=companion-app,'
+      'display=companion,'
       'board=XIAO,'
-      'brand=colonelpanic',
+      'brand=colonelpanic,'
+      'star=Sol,'
+      'body=3,'
+      'subBody=0',
     );
 
     // Column headers (line 2)
@@ -33,61 +37,64 @@ class WigleCsv {
 
     // Data rows
     for (final d in detections) {
-      // Skip detections without GPS (Wigle rejects ungeolocated data)
       if (d.latitude == null || d.longitude == null) continue;
 
       final mac = d.macAddress;
       final ssid = _escapeCsv(d.engine == Engine.skySpy
           ? (d.odid?.uavId ?? d.deviceName)
           : (d.ssid.isNotEmpty ? d.ssid : d.deviceName));
-      final authMode = _authMode(d);
-      final firstSeen = _dateFormat.format(d.appTimestamp);
+      final authMode = _capabilities(d);
+      final firstSeen = _dateFormat.format(d.appTimestamp.toUtc());
       final channel = d.channel;
       final frequency = _frequency(d);
       final rssi = d.rssi;
-      final lat = d.latitude!.toStringAsFixed(8);
-      final lon = d.longitude!.toStringAsFixed(8);
-      final alt = (d.altitude ?? 0).toStringAsFixed(0);
-      final acc = (d.accuracy ?? 0).toStringAsFixed(1);
-      final rcois = ''; // Not applicable for our use
-      final mfgrId = _mfgrId(d);
-      final type = d.engine.isWifi ? 'WIFI' : 'BLE';
+      final lat = d.latitude!;
+      final lon = d.longitude!;
+      final alt = d.altitude ?? 0.0;
+      final acc = d.accuracy ?? 0.0;
+      final type = _type(d);
 
       buffer.writeln(
-        '$mac,$ssid,$authMode,$firstSeen,$channel,$frequency,$rssi,'
-        '$lat,$lon,$alt,$acc,$rcois,$mfgrId,$type',
+        '$mac,$ssid,$authMode,$firstSeen,$channel,'
+        '$frequency,$rssi,$lat,$lon,$alt,$acc,,,${type}',
       );
     }
 
     return buffer.toString();
   }
 
-  static String _authMode(Detection d) {
-    final method = d.method;
-    if (d.engine.isBle) {
-      return '$method [LE]';
-    }
-    return method;
+  /// WiGLE capabilities from firmware auth_mode byte.
+  /// Firmware values: 0=OPEN, 1=WEP, 2=WPA, 3=WPA2, 4=WPA_WPA2, 5=WPA2_ENT, 6=WPA3
+  static String _capabilities(Detection d) {
+    if (d.engine.isBle) return '[LE]';
+    final auth = d.wardrive?.authMode ?? 3;
+    return switch (auth) {
+      0 => '[OPEN]',
+      1 => '[WEP]',
+      2 => '[WPA_PSK]',
+      3 => '[WPA2_PSK]',
+      4 => '[WPA_WPA2_PSK]',
+      5 => '[WPA2_EAP]',
+      6 => '[WPA3_SAE]',
+      _ => '[WPA2_PSK]',
+    };
   }
 
-  static int _frequency(Detection d) {
-    if (d.engine.isWifi && d.channel > 0 && d.channel <= 14) {
-      // 2.4 GHz channel to frequency
-      if (d.channel == 14) return 2484;
-      return 2407 + d.channel * 5;
+  /// Channel to center frequency in MHz. BLE = 0 (matches Biscuit format).
+  static String _frequency(Detection d) {
+    if (d.engine.isBle) return '0';
+    if (d.channel >= 1 && d.channel <= 13) return '${2407 + d.channel * 5}';
+    if (d.channel == 14) return '2484';
+    if (d.channel >= 36 && d.channel <= 177) {
+      return '${5000 + d.channel * 5}';
     }
-    if (d.engine.isBle) {
-      return 7936; // BT device type code for generic BLE
-    }
-    return 0;
+    return '0';
   }
 
-  static String _mfgrId(Detection d) {
-    // Flock-BLE detections via manufacturer ID
-    if (d.engine == Engine.flockBle && d.method == 'mfg_id') {
-      return '2504'; // 0x09C8 in decimal
-    }
-    return '';
+  /// WiGLE type field.
+  static String _type(Detection d) {
+    if (d.engine.isBle) return 'BLE';
+    return 'WIFI';
   }
 
   static String _escapeCsv(String value) {

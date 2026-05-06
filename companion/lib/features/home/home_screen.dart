@@ -5,6 +5,8 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/wigle/wigle_api.dart';
+import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/features/home/engine_card.dart';
 import 'package:oui_spy/features/home/status_bar.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -330,12 +332,18 @@ class _ConnectedView extends ConsumerWidget {
     
     final pad = 12.0;
 
+    final wigle = ref.watch(wigleProvider);
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(pad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SummaryStrip(state: state),
+          if (wigle.isLoggedIn && wigle.stats != null) ...[
+            SizedBox(height: pad),
+            _WigleStandingsCard(stats: wigle.stats!),
+          ],
           SizedBox(height: pad),
 
           _SectionLabel(label: 'WARDRIVE', color: Engine.wardrive.color),
@@ -714,5 +722,152 @@ class _RecentActivity extends StatelessWidget {
     if (rssi > -50) return AppTheme.success;
     if (rssi > -70) return AppTheme.warning;
     return AppTheme.textDim;
+  }
+}
+
+class _WigleStandingsCard extends StatelessWidget {
+  const _WigleStandingsCard({required this.stats});
+  final WigleUserStats stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.warning.withValues(alpha: 0.06),
+            AppTheme.accent.withValues(alpha: 0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.warning.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.language, size: 16, color: AppTheme.warning),
+              const SizedBox(width: 6),
+              Text('WIGLE', style: TextStyle(
+                color: t.textSecondary, fontSize: 10,
+                fontWeight: FontWeight.w700, letterSpacing: 2,
+              )),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.emoji_events, size: 12, color: AppTheme.accent),
+                    const SizedBox(width: 4),
+                    Text('#${stats.rank}', style: const TextStyle(
+                      color: AppTheme.accent, fontSize: 13,
+                      fontWeight: FontWeight.w700, fontFamily: 'monospace',
+                    )),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _WigleStatCol(
+                icon: Icons.wifi, label: 'WiFi',
+                value: _fmt(stats.discoveredWiFi),
+                color: AppTheme.accent,
+              )),
+              Container(width: 0.5, height: 32, color: t.border),
+              Expanded(child: _WigleStatCol(
+                icon: Icons.bluetooth, label: 'Bluetooth',
+                value: _fmt(stats.discoveredBt),
+                color: const Color(0xFF4A9EFF),
+              )),
+              Container(width: 0.5, height: 32, color: t.border),
+              Expanded(child: _WigleStatCol(
+                icon: Icons.cell_tower, label: 'Cellular',
+                value: _fmt(stats.discoveredCell),
+                color: AppTheme.success,
+              )),
+              Container(width: 0.5, height: 32, color: t.border),
+              Expanded(child: _WigleStatCol(
+                icon: Icons.calendar_month, label: 'Month Rank',
+                value: '#${stats.monthRank}',
+                color: AppTheme.warning,
+              )),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.person, size: 12, color: t.textDim),
+              const SizedBox(width: 4),
+              Text(stats.userName, style: TextStyle(
+                color: t.textDim, fontSize: 10,
+                fontWeight: FontWeight.w500,
+              )),
+              const Spacer(),
+              Text(
+                '${_fmt(stats.totalDiscovered)} discovered',
+                style: TextStyle(
+                  color: t.textDim, fontSize: 10,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(int count) {
+    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    return '$count';
+  }
+}
+
+class _WigleStatCol extends StatelessWidget {
+  const _WigleStatCol({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Column(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(
+          color: t.textPrimary, fontSize: 13,
+          fontWeight: FontWeight.w700, fontFamily: 'monospace',
+        )),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(
+          color: t.textDim, fontSize: 8,
+          fontWeight: FontWeight.w600, letterSpacing: 0.5,
+        )),
+      ],
+    );
   }
 }

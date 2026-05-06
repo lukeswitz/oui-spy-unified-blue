@@ -137,7 +137,9 @@ class AppState extends ChangeNotifier {
       if (state == NodeConnectionState.ready) {
         nodeId = _ble.nodeId;
         sessionStartTime = DateTime.now();
-        _gps.start();
+        _gps.start().catchError((e) {
+          DebugLog.log('GPS: start failed from BLE connect: $e');
+        });
       }
       if (state == NodeConnectionState.disconnected ||
           state == NodeConnectionState.reconnecting) {

@@ -225,7 +225,10 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> startSession() async {
-    _gps.start();
+    final gpsOk = await _gps.start();
+    if (!gpsOk) {
+      DebugLog.log('WARDRIVE: GPS failed to start — check permissions/services');
+    }
 
     startTime = DateTime.now();
     sessionId = const Uuid().v4();
@@ -444,7 +447,8 @@ class WardriveController extends ChangeNotifier {
     if (dets.isEmpty) return null;
     try {
       final dir = await _wardriveDir();
-      final file = File(path.join(dir.path, '$sid.csv'));
+      final filename = await _csvFilename(sid);
+      final file = File(path.join(dir.path, filename));
       final csv = WigleCsv.generate(dets);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV saved ${file.path}');
@@ -455,12 +459,50 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  /// Get CSV file for a session (null if not yet saved).
+  /// Get CSV file for a session. Always regenerates from DB to ensure
+  /// latest WiGLE format. Uses human-readable filename based on session date.
   Future<File?> getCsvFile(String sid) async {
     final dir = await _wardriveDir();
-    final file = File(path.join(dir.path, '$sid.csv'));
-    if (await file.exists()) return file;
+    final filename = await _csvFilename(sid);
+    final file = File(path.join(dir.path, filename));
+    final regenerated = await _regenerateCsvFromDb(sid, file);
+    if (regenerated != null) return regenerated;
+    // Fallback: check old UUID-named file
+    final legacyFile = File(path.join(dir.path, '$sid.csv'));
+    if (await legacyFile.exists()) return legacyFile;
     return null;
+  }
+
+  /// Build a human-readable CSV filename from session start time.
+  Future<String> _csvFilename(String sid) async {
+    final session = await _db.getSessionById(sid);
+    if (session != null) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(
+        (session as dynamic).startedAt as int,
+      );
+      final stamp = '${dt.year}${_pad(dt.month)}${_pad(dt.day)}_'
+          '${_pad(dt.hour)}${_pad(dt.minute)}${_pad(dt.second)}';
+      return 'ouispy_wardrive_$stamp.csv';
+    }
+    return 'ouispy_wardrive_$sid.csv';
+  }
+
+  static String _pad(int n) => n.toString().padLeft(2, '0');
+
+  /// Regenerate CSV from database detections when file is missing.
+  Future<File?> _regenerateCsvFromDb(String sid, File file) async {
+    try {
+      final dbRows = await _db.getDetectionMapsForSession(sid);
+      if (dbRows.isEmpty) return null;
+      final dets = dbRows.map(_detectionFromDb).toList();
+      final csv = WigleCsv.generate(dets);
+      await file.writeAsString(csv);
+      DebugLog.log('WARDRIVE: CSV regenerated from DB for $sid (${dets.length} det)');
+      return file;
+    } catch (e) {
+      DebugLog.log('WARDRIVE: CSV regeneration failed: $e');
+      return null;
+    }
   }
 
   /// List all saved CSV files.

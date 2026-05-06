@@ -10,6 +10,8 @@ import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/wigle/wigle_api.dart';
+import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DeviceConfigScreen extends ConsumerStatefulWidget {
@@ -252,19 +254,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           style: TextStyle(color: t.textDim, fontSize: 11),
         ),
         const SizedBox(height: 12),
-        _WardriveRssiSlider(
-          label: 'WiFi re-log',
-          icon: Icons.wifi,
-          min: 10,
-          max: 60,
-        ),
-        _WardriveRssiSlider(
-          label: 'BLE re-log',
-          icon: Icons.bluetooth,
-          min: 10,
-          max: 50,
-          isBle: true,
-        ),
+        const _WardriveRssiRow(isBle: false),
+        const _WardriveRssiRow(isBle: true),
         const SizedBox(height: 16),
         Text(
           'SCAN TIMING',
@@ -295,6 +286,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
         const SizedBox(height: 8),
         const _ChannelRangeSlider(),
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 12),
+        const _WigleSection(),
         const SizedBox(height: 24),
         const Divider(),
         const SizedBox(height: 12),
@@ -637,80 +632,131 @@ class _ScanTimingSliders extends ConsumerWidget {
 
   static const _steps = [50, 100, 150, 200, 250, 300, 350, 400, 500, 800, 1000, 1500, 2000, 3000, 5000];
 
-  String _label(int ms) => '${ms}ms';
-
-  int _nearest(int ms) {
-    int best = _steps[0];
-    for (final s in _steps) {
-      if ((s - ms).abs() < (best - ms).abs()) best = s;
+  int _prevStep(int current) {
+    for (int i = _steps.length - 1; i >= 0; i--) {
+      if (_steps[i] < current) return _steps[i];
     }
-    return best;
+    return _steps.first;
   }
 
-  double _toSlider(int ms) => _steps.indexOf(_nearest(ms)).toDouble();
-  int _fromSlider(double v) => _steps[v.round().clamp(0, _steps.length - 1)];
+  int _nextStep(int current) {
+    for (final s in _steps) {
+      if (s > current) return s;
+    }
+    return _steps.last;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final wd = ref.watch(wardriveProvider);
 
-    Widget row(String label, IconData icon, int value, ValueChanged<int> onChanged) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Icon(icon, size: 14, color: t.textSecondary),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: 90,
-              child: Text(label, style: TextStyle(color: t.textSecondary, fontSize: 12)),
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderThemeData(overlayShape: SliderComponentShape.noOverlay),
-                child: Slider(
-                  value: _toSlider(value),
-                  min: 0,
-                  max: (_steps.length - 1).toDouble(),
-                  divisions: _steps.length - 1,
-                  activeColor: AppTheme.accent,
-                  inactiveColor: t.border,
-                  onChanged: (v) => onChanged(_fromSlider(v)),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 70,
-              child: Text(
-                _label(value),
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  color: AppTheme.accent, fontSize: 11,
-                  fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Column(
       children: [
-        row('Ch 1/6/11 dwell', Icons.wifi, wd.wifiScanInterval, (v) {
-          ref.read(wardriveProvider).wifiScanInterval = v;
-        }),
-        row('Other ch dwell', Icons.wifi, wd.wifiDwellPerCh, (v) {
-          ref.read(wardriveProvider).wifiDwellPerCh = v;
-        }),
-        row('BLE duration', Icons.bluetooth, wd.bleScanDuration, (v) {
-          ref.read(wardriveProvider).bleScanDuration = v;
-        }),
-        row('BLE interval', Icons.bluetooth, wd.bleScanInterval, (v) {
-          ref.read(wardriveProvider).bleScanInterval = v;
-        }),
+        _TimingRow(
+          icon: Icons.wifi, label: 'Ch 1/6/11 dwell',
+          value: wd.wifiScanInterval,
+          onDown: () => ref.read(wardriveProvider).wifiScanInterval = _prevStep(wd.wifiScanInterval),
+          onUp: () => ref.read(wardriveProvider).wifiScanInterval = _nextStep(wd.wifiScanInterval),
+        ),
+        _TimingRow(
+          icon: Icons.wifi, label: 'Other ch dwell',
+          value: wd.wifiDwellPerCh,
+          onDown: () => ref.read(wardriveProvider).wifiDwellPerCh = _prevStep(wd.wifiDwellPerCh),
+          onUp: () => ref.read(wardriveProvider).wifiDwellPerCh = _nextStep(wd.wifiDwellPerCh),
+        ),
+        _TimingRow(
+          icon: Icons.bluetooth, label: 'BLE duration',
+          value: wd.bleScanDuration,
+          onDown: () => ref.read(wardriveProvider).bleScanDuration = _prevStep(wd.bleScanDuration),
+          onUp: () => ref.read(wardriveProvider).bleScanDuration = _nextStep(wd.bleScanDuration),
+        ),
+        _TimingRow(
+          icon: Icons.bluetooth, label: 'BLE interval',
+          value: wd.bleScanInterval,
+          onDown: () => ref.read(wardriveProvider).bleScanInterval = _prevStep(wd.bleScanInterval),
+          onUp: () => ref.read(wardriveProvider).bleScanInterval = _nextStep(wd.bleScanInterval),
+        ),
       ],
+    );
+  }
+}
+
+class _TimingRow extends StatelessWidget {
+  const _TimingRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onDown,
+    required this.onUp,
+    this.suffix = 'ms',
+  });
+  final IconData icon;
+  final String label;
+  final int value;
+  final VoidCallback onDown;
+  final VoidCallback onUp;
+  final String suffix;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: t.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(label, style: TextStyle(
+              color: t.textSecondary, fontSize: 12,
+            )),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onDown,
+            child: Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
+              ),
+              child: const Icon(Icons.remove, size: 16, color: AppTheme.accent),
+            ),
+          ),
+          Container(
+            width: 64,
+            alignment: Alignment.center,
+            child: Text(
+              '$value$suffix',
+              style: const TextStyle(
+                color: AppTheme.accent, fontSize: 12,
+                fontFamily: 'monospace', fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onUp,
+            child: Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
+              ),
+              child: const Icon(Icons.add, size: 16, color: AppTheme.accent),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -720,49 +766,29 @@ class _ChannelRangeSlider extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final wd = ref.watch(wardriveProvider);
 
     return Row(
       children: [
-        Icon(Icons.cell_tower, size: 14, color: t.textSecondary),
-        const SizedBox(width: 6),
-        Text('CH', style: TextStyle(color: t.textSecondary, fontSize: 12)),
         Expanded(
-          child: SliderTheme(
-            data: SliderThemeData(overlayShape: SliderComponentShape.noOverlay),
-            child: RangeSlider(
-              values: RangeValues(
-                wd.channelStart.toDouble(),
-                wd.channelEnd.toDouble(),
-              ),
-              min: 1,
-              max: 14,
-              divisions: 13,
-              activeColor: AppTheme.accent,
-              inactiveColor: t.border,
-              labels: RangeLabels(
-                '${wd.channelStart}',
-                '${wd.channelEnd}',
-              ),
-              onChanged: (values) {
-                ref.read(wardriveProvider).channelStart = values.start.round();
-                ref.read(wardriveProvider).channelEnd = values.end.round();
-              },
-            ),
+          child: _TimingRow(
+            icon: Icons.cell_tower,
+            label: 'Start CH',
+            value: wd.channelStart,
+            suffix: '',
+            onDown: () => ref.read(wardriveProvider).channelStart = wd.channelStart - 1,
+            onUp: () => ref.read(wardriveProvider).channelStart = wd.channelStart + 1,
           ),
         ),
-        SizedBox(
-          width: 55,
-          child: Text(
-            '${wd.channelStart}-${wd.channelEnd}',
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: AppTheme.accent,
-              fontSize: 11,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w600,
-            ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _TimingRow(
+            icon: Icons.cell_tower,
+            label: 'End CH',
+            value: wd.channelEnd,
+            suffix: '',
+            onDown: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd - 1,
+            onUp: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd + 1,
           ),
         ),
       ],
@@ -770,59 +796,470 @@ class _ChannelRangeSlider extends ConsumerWidget {
   }
 }
 
-class _WardriveRssiSlider extends ConsumerWidget {
-  const _WardriveRssiSlider({
-    required this.label,
-    required this.icon,
-    required this.min,
-    required this.max,
-    this.isBle = false,
-  });
-  final String label;
-  final IconData icon;
-  final int min;
-  final int max;
+class _WardriveRssiRow extends ConsumerWidget {
+  const _WardriveRssiRow({required this.isBle});
   final bool isBle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final wd = ref.watch(wardriveProvider);
     final value = isBle ? wd.bleRssiRelogDb : wd.wifiRssiRelogDb;
+    final min = isBle ? 10 : 10;
+    final max = isBle ? 50 : 60;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    return _TimingRow(
+      icon: isBle ? Icons.bluetooth : Icons.wifi,
+      label: isBle ? 'BLE re-log' : 'WiFi re-log',
+      value: value,
+      suffix: 'dB',
+      onDown: () {
+        final next = (value - 5).clamp(min, max);
+        if (isBle) {
+          ref.read(wardriveProvider).bleRssiRelogDb = next;
+        } else {
+          ref.read(wardriveProvider).wifiRssiRelogDb = next;
+        }
+      },
+      onUp: () {
+        final next = (value + 5).clamp(min, max);
+        if (isBle) {
+          ref.read(wardriveProvider).bleRssiRelogDb = next;
+        } else {
+          ref.read(wardriveProvider).wifiRssiRelogDb = next;
+        }
+      },
+    );
+  }
+}
+
+class _WigleSection extends ConsumerStatefulWidget {
+  const _WigleSection();
+
+  @override
+  ConsumerState<_WigleSection> createState() => _WigleSectionState();
+}
+
+class _WigleSectionState extends ConsumerState<_WigleSection> {
+  final _nameController = TextEditingController();
+  final _tokenController = TextEditingController();
+  bool _obscureToken = true;
+  bool _testing = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _tokenController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final wigle = ref.watch(wigleProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.language, size: 16, color: AppTheme.warning),
+            const SizedBox(width: 6),
+            Text(
+              'WIGLE',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    letterSpacing: 2,
+                    color: t.textDim,
+                  ),
+            ),
+            const Spacer(),
+            if (wigle.isLoggedIn)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppTheme.success.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.check_circle, size: 10, color: AppTheme.success),
+                    const SizedBox(width: 4),
+                    Text('LINKED', style: TextStyle(
+                      color: AppTheme.success, fontSize: 8,
+                      fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                    )),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Link your WiGLE account to upload wardrive data and track your rank.',
+          style: TextStyle(color: t.textDim, fontSize: 11),
+        ),
+        const SizedBox(height: 12),
+
+        if (wigle.isLoggedIn) ...[
+          _WigleStatsCard(stats: wigle.stats),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => ref.read(wigleProvider).refreshStats(),
+                  icon: const Icon(Icons.refresh, size: 14),
+                  label: const Text('REFRESH', style: TextStyle(fontSize: 10, letterSpacing: 1)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accent,
+                    side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.3)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _confirmLogout(context),
+                  icon: const Icon(Icons.logout, size: 14),
+                  label: const Text('UNLINK', style: TextStyle(fontSize: 10, letterSpacing: 1)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.error,
+                    side: BorderSide(color: AppTheme.error.withValues(alpha: 0.3)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: t.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: t.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.key, size: 14, color: AppTheme.warning),
+                    const SizedBox(width: 6),
+                    Text('API Credentials', style: TextStyle(
+                      color: t.textPrimary, fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    )),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Get your API Name and Token from wigle.net/account',
+                  style: TextStyle(color: t.textDim, fontSize: 10),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _nameController,
+                  style: TextStyle(color: t.textPrimary, fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: 'API Name',
+                    labelStyle: TextStyle(color: t.textDim, fontSize: 12),
+                    prefixIcon: Icon(Icons.person_outline, size: 16, color: t.textDim),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: t.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: t.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(color: AppTheme.accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _tokenController,
+                  obscureText: _obscureToken,
+                  style: TextStyle(color: t.textPrimary, fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: 'API Token',
+                    labelStyle: TextStyle(color: t.textDim, fontSize: 12),
+                    prefixIcon: Icon(Icons.vpn_key_outlined, size: 16, color: t.textDim),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureToken ? Icons.visibility_off : Icons.visibility,
+                        size: 16, color: t.textDim,
+                      ),
+                      onPressed: () => setState(() => _obscureToken = !_obscureToken),
+                    ),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: t.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: t.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(color: AppTheme.accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _testing || wigle.isLoading ? null : _testAndLogin,
+                    icon: _testing || wigle.isLoading
+                        ? const SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                          )
+                        : const Icon(Icons.rocket_launch, size: 16),
+                    label: Text(
+                      _testing || wigle.isLoading ? 'TESTING...' : 'TEST & LINK',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                  ),
+                ),
+                if (wigle.error != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, size: 14, color: AppTheme.error),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            wigle.error!,
+                            style: const TextStyle(color: AppTheme.error, fontSize: 10),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _testAndLogin() async {
+    final name = _nameController.text.trim();
+    final token = _tokenController.text.trim();
+    if (name.isEmpty || token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter both API Name and Token')),
+      );
+      return;
+    }
+
+    setState(() => _testing = true);
+    final success = await ref.read(wigleProvider).login(name, token);
+    if (mounted) {
+      setState(() => _testing = false);
+      if (success) {
+        final stats = ref.read(wigleProvider).stats;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppTheme.success,
+            content: Text('Linked as ${stats?.userName ?? name} (rank #${stats?.rank ?? '?'})'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _confirmLogout(BuildContext context) {
+    final t = AppTheme.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.background,
+        title: Text('Unlink WiGLE?', style: TextStyle(color: t.textPrimary)),
+        content: Text(
+          'This removes stored credentials. You can re-link anytime.',
+          style: TextStyle(color: t.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(wigleProvider).logout();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('UNLINK'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WigleStatsCard extends StatelessWidget {
+  const _WigleStatsCard({this.stats});
+  final WigleUserStats? stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final s = stats;
+    if (s == null) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: t.border),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 14, height: 14,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.accent)),
+            const SizedBox(width: 8),
+            Text('Loading stats...', style: TextStyle(color: t.textDim, fontSize: 11)),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
         children: [
-          Icon(icon, size: 16, color: t.textSecondary),
-          const SizedBox(width: 8),
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          Expanded(
-            child: Slider(
-              value: value.toDouble(),
-              min: min.toDouble(),
-              max: max.toDouble(),
-              activeColor: AppTheme.accent,
-              inactiveColor: t.border,
-              onChanged: (v) {
-                final wd = ref.read(wardriveProvider);
-                if (isBle) {
-                  wd.bleRssiRelogDb = v.round();
-                } else {
-                  wd.wifiRssiRelogDb = v.round();
-                }
-              },
-            ),
+          Row(
+            children: [
+              Icon(Icons.account_circle, size: 20, color: AppTheme.warning),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  s.userName,
+                  style: TextStyle(
+                    color: t.textPrimary, fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.emoji_events, size: 12, color: AppTheme.accent),
+                    const SizedBox(width: 4),
+                    Text('#${s.rank}', style: const TextStyle(
+                      color: AppTheme.accent, fontSize: 12,
+                      fontWeight: FontWeight.w700, fontFamily: 'monospace',
+                    )),
+                  ],
+                ),
+              ),
+            ],
           ),
-          Text(
-            '${value}dB',
-            style: const TextStyle(
-              color: AppTheme.accent,
-              fontFamily: 'monospace',
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _WigleStat(
+                icon: Icons.wifi, label: 'WiFi',
+                value: _formatCount(s.discoveredWiFi),
+                color: AppTheme.accent,
+              ),
+              _WigleStat(
+                icon: Icons.bluetooth, label: 'BT',
+                value: _formatCount(s.discoveredBt),
+                color: const Color(0xFF4A9EFF),
+              ),
+              _WigleStat(
+                icon: Icons.cell_tower, label: 'Cell',
+                value: _formatCount(s.discoveredCell),
+                color: AppTheme.success,
+              ),
+              _WigleStat(
+                icon: Icons.trending_up, label: 'Month',
+                value: '#${s.monthRank}',
+                color: AppTheme.warning,
+              ),
+            ],
           ),
+        ],
+      ),
+    );
+  }
+
+  String _formatCount(int count) {
+    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    return '$count';
+  }
+}
+
+class _WigleStat extends StatelessWidget {
+  const _WigleStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(height: 2),
+          Text(value, style: TextStyle(
+            color: t.textPrimary, fontSize: 11,
+            fontWeight: FontWeight.w700, fontFamily: 'monospace',
+          )),
+          Text(label, style: TextStyle(
+            color: t.textDim, fontSize: 8,
+            fontWeight: FontWeight.w600, letterSpacing: 0.5,
+          )),
         ],
       ),
     );

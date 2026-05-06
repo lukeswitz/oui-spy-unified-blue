@@ -12,6 +12,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
@@ -802,6 +803,11 @@ class _CompletedSessionBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef wRef) {
     final t = AppTheme.of(context);
     final units = wRef.watch(unitSystemProvider);
+    final wigle = wRef.watch(wigleProvider);
+    final sid = wd.lastCompletedSessionId ?? wd.sessionId;
+    final isUploaded = wigle.isUploaded(sid);
+    final isUploading = wigle.isUploading(sid);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -822,8 +828,10 @@ class _CompletedSessionBar extends ConsumerWidget {
             ),
           ),
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _shareCsv(context),
             child: Container(
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: AppTheme.accent.withValues(alpha: 0.15),
@@ -833,7 +841,7 @@ class _CompletedSessionBar extends ConsumerWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.upload, size: 12, color: AppTheme.accent),
+                  Icon(Icons.file_download_outlined, size: 14, color: AppTheme.accent),
                   SizedBox(width: 4),
                   Text('CSV', style: TextStyle(
                     color: AppTheme.accent, fontSize: 9,
@@ -843,10 +851,64 @@ class _CompletedSessionBar extends ConsumerWidget {
               ),
             ),
           ),
+          if (wigle.isLoggedIn) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: isUploaded || isUploading
+                  ? null
+                  : () => _uploadToWigle(context, wRef, sid),
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (isUploaded ? AppTheme.success : AppTheme.warning)
+                      .withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: (isUploaded ? AppTheme.success : AppTheme.warning)
+                        .withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isUploading)
+                      const SizedBox(
+                        width: 12, height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5, color: AppTheme.warning,
+                        ),
+                      )
+                    else
+                      Icon(
+                        isUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
+                        size: 14,
+                        color: isUploaded ? AppTheme.success : AppTheme.warning,
+                      ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isUploaded ? 'SENT' : 'WIGLE',
+                      style: TextStyle(
+                        color: isUploaded ? AppTheme.success : AppTheme.warning,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(width: 6),
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => wd.clearMapData(),
-            child: Icon(Icons.close, size: 14, color: t.textDim),
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              alignment: Alignment.center,
+              child: Icon(Icons.close, size: 14, color: t.textDim),
+            ),
           ),
         ],
       ),
@@ -860,12 +922,45 @@ class _CompletedSessionBar extends ConsumerWidget {
     if (file == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No CSV file found for this session')),
+          const SnackBar(content: Text('No detection data found for this session')),
         );
       }
       return;
     }
-    await Share.shareXFiles([XFile(file.path)], subject: 'OUI-SPY WiGLE CSV');
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : const Rect.fromLTWH(0, 0, 100, 100);
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      subject: 'OUI-SPY WiGLE CSV',
+      sharePositionOrigin: origin,
+    );
+  }
+
+  Future<void> _uploadToWigle(BuildContext context, WidgetRef wRef, String sid) async {
+    if (sid.isEmpty) return;
+    final wigle = wRef.read(wigleProvider);
+    final result = await wigle.uploadSession(sid, wd);
+    if (!context.mounted) return;
+
+    if (result != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppTheme.success,
+          content: Text(
+            'Queued for WiGLE processing',
+          ),
+        ),
+      );
+    } else if (wigle.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppTheme.error,
+          content: Text('Upload failed: ${wigle.error}'),
+        ),
+      );
+    }
   }
 }
 
@@ -940,19 +1035,27 @@ class _SessionHistorySheet extends ConsumerWidget {
                         style: TextStyle(color: t.textDim, fontSize: 12),
                       ));
                     }
+                    final wigle = ref.watch(wigleProvider);
                     return ListView.builder(
                       controller: scrollController,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       itemCount: sessions.length,
-                      itemBuilder: (_, i) => _SessionRow(
-                        session: sessions[i],
-                        onTap: () {
-                          Navigator.pop(context);
-                          ref.read(wardriveProvider).loadSession(sessions[i].id);
-                        },
-                        onShare: () => _shareSession(context, ref, sessions[i].id),
-                        onDelete: () => _deleteSession(context, ref, sessions[i]),
-                      ),
+                      itemBuilder: (_, i) {
+                        final sid = sessions[i].id;
+                        return _SessionRow(
+                          session: sessions[i],
+                          onTap: () {
+                            Navigator.pop(context);
+                            ref.read(wardriveProvider).loadSession(sid);
+                          },
+                          onShare: () => _shareSession(context, ref, sid),
+                          onDelete: () => _deleteSession(context, ref, sessions[i]),
+                          onUploadWigle: wigle.isLoggedIn
+                              ? () => _uploadToWigle(context, ref, sid)
+                              : null,
+                          wigleUploaded: wigle.isUploaded(sid),
+                        );
+                      },
                     );
                   },
                 ),
@@ -1040,23 +1143,69 @@ class _SessionHistorySheet extends ConsumerWidget {
     final wd = ref.read(wardriveProvider);
     final file = await wd.getCsvFile(sid);
     if (file != null) {
-      await Share.shareXFiles([XFile(file.path)], subject: 'OUI-SPY WiGLE CSV');
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 100, 100);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'OUI-SPY WiGLE CSV',
+        sharePositionOrigin: origin,
+      );
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CSV not found \u2014 session may predate auto-save')),
+          const SnackBar(content: Text('No detection data found for this session')),
         );
       }
+    }
+  }
+
+  Future<void> _uploadToWigle(BuildContext context, WidgetRef ref, String sid) async {
+    final wigle = ref.read(wigleProvider);
+    final wd = ref.read(wardriveProvider);
+
+    if (wigle.isUploading(sid)) return;
+
+    final result = await wigle.uploadSession(sid, wd);
+    if (!context.mounted) return;
+
+    if (result != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppTheme.success,
+          content: Text(
+            'Queued for WiGLE processing',
+          ),
+        ),
+      );
+    } else if (wigle.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppTheme.error,
+          content: Text('Upload failed: ${wigle.error}'),
+        ),
+      );
     }
   }
 }
 
 class _SessionRow extends ConsumerWidget {
-  const _SessionRow({super.key, required this.session, required this.onTap, required this.onShare, required this.onDelete});
+  const _SessionRow({
+    super.key,
+    required this.session,
+    required this.onTap,
+    required this.onShare,
+    required this.onDelete,
+    this.onUploadWigle,
+    this.wigleUploaded = false,
+  });
   final Session session;
   final VoidCallback onTap;
   final VoidCallback onShare;
   final VoidCallback onDelete;
+  final VoidCallback? onUploadWigle;
+  final bool wigleUploaded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1073,49 +1222,109 @@ class _SessionRow extends ConsumerWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: t.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: t.border),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.route, size: 16, color: AppTheme.accent),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(dateStr, style: TextStyle(
-                    color: t.textPrimary, fontSize: 11,
-                    fontFamily: 'monospace', fontWeight: FontWeight.w500,
-                  )),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
-                    style: TextStyle(
-                      color: t.textDim, fontSize: 9,
-                      fontFamily: 'monospace',
-                    ),
+            Row(
+              children: [
+                const Icon(Icons.route, size: 16, color: AppTheme.accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(dateStr, style: TextStyle(
+                        color: t.textPrimary, fontSize: 11,
+                        fontFamily: 'monospace', fontWeight: FontWeight.w500,
+                      )),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
+                        style: TextStyle(
+                          color: t.textDim, fontSize: 9,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            GestureDetector(
-              onTap: onShare,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                child: Icon(Icons.ios_share, size: 14, color: t.textDim),
-              ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                _SessionActionBtn(
+                  icon: Icons.file_download_outlined,
+                  label: 'CSV',
+                  color: AppTheme.accent,
+                  onTap: onShare,
+                ),
+                const SizedBox(width: 6),
+                if (onUploadWigle != null)
+                  _SessionActionBtn(
+                    icon: wigleUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
+                    label: wigleUploaded ? 'SENT' : 'WIGLE',
+                    color: wigleUploaded ? AppTheme.success : AppTheme.warning,
+                    onTap: wigleUploaded ? null : onUploadWigle,
+                  ),
+                const Spacer(),
+                _SessionActionBtn(
+                  icon: Icons.delete_forever_outlined,
+                  label: 'DEL',
+                  color: AppTheme.error,
+                  onTap: onDelete,
+                ),
+              ],
             ),
-            GestureDetector(
-              onTap: onDelete,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                child: Icon(Icons.delete_outline, size: 14, color: AppTheme.error.withValues(alpha: 0.6)),
-              ),
-            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SessionActionBtn extends StatelessWidget {
+  const _SessionActionBtn({
+    required this.icon,
+    required this.label,
+    required this.color,
+    this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final c = enabled ? color : color.withValues(alpha: 0.4);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 56, minHeight: 36),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: c.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: c),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(
+              color: c, fontSize: 9,
+              fontWeight: FontWeight.w700, letterSpacing: 0.5,
+            )),
           ],
         ),
       ),

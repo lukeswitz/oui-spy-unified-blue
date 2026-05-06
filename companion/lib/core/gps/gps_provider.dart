@@ -66,6 +66,11 @@ class GpsProvider {
   bool get hasAlwaysPermission => _hasAlwaysPermission;
 
   Future<bool> start() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      DebugLog.log('GPS: location services disabled');
+      return false;
+    }
+
     var permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
@@ -84,26 +89,41 @@ class GpsProvider {
 
     _hasAlwaysPermission = permission == LocationPermission.always;
 
-    if (permission == LocationPermission.whileInUse) {
-      DebugLog.log('GPS: have whenInUse, requesting always');
-      if (Platform.isAndroid) {
-        await Geolocator.openAppSettings();
-      } else {
-        final upgraded = await Geolocator.requestPermission();
-        _hasAlwaysPermission = upgraded == LocationPermission.always;
-      }
-    }
-
+    // Start stream immediately with whatever permission we have.
+    // whileInUse is enough for foreground GPS — don't block on background upgrade.
+    _positionSub?.cancel();
     _positionSub = Geolocator.getPositionStream(
       locationSettings: _platformSettings(),
-    ).listen(_onPosition);
+    ).listen(_onPosition, onError: (e) {
+      DebugLog.log('GPS: stream error $e');
+    });
 
+    _pushTimer?.cancel();
     _pushTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _pushToDevice();
     });
 
     DebugLog.log('GPS: started (always=$_hasAlwaysPermission)');
+
+    // Request background upgrade async — don't block stream startup
+    if (permission == LocationPermission.whileInUse) {
+      _requestBackgroundUpgrade();
+    }
+
     return true;
+  }
+
+  Future<void> _requestBackgroundUpgrade() async {
+    DebugLog.log('GPS: requesting background permission upgrade');
+    if (Platform.isAndroid) {
+      // On Android 11+, background location must be granted in app settings.
+      // Opening settings is advisory — GPS stream already running with whileInUse.
+      await Geolocator.openAppSettings();
+    } else {
+      final upgraded = await Geolocator.requestPermission();
+      _hasAlwaysPermission = upgraded == LocationPermission.always;
+      DebugLog.log('GPS: background upgrade result=$upgraded');
+    }
   }
 
   LocationSettings _platformSettings() {
