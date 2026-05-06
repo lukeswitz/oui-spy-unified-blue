@@ -635,9 +635,9 @@ class _ConfigField extends StatelessWidget {
 class _ScanTimingSliders extends ConsumerWidget {
   const _ScanTimingSliders();
 
-  static const _steps = [0, 150, 300, 500, 800, 1000, 1500, 2000, 2500, 3000, 4000, 5000];
+  static const _steps = [50, 100, 150, 200, 250, 300, 350, 400, 500, 800, 1000, 1500, 2000, 3000, 5000];
 
-  String _label(int ms) => ms == 0 ? 'NON-STOP' : '${ms}ms';
+  String _label(int ms) => '${ms}ms';
 
   int _nearest(int ms) {
     int best = _steps[0];
@@ -698,10 +698,10 @@ class _ScanTimingSliders extends ConsumerWidget {
 
     return Column(
       children: [
-        row('WiFi interval', Icons.wifi, wd.wifiScanInterval, (v) {
+        row('Ch 1/6/11 dwell', Icons.wifi, wd.wifiScanInterval, (v) {
           ref.read(wardriveProvider).wifiScanInterval = v;
         }),
-        row('WiFi dwell/ch', Icons.wifi, wd.wifiDwellPerCh, (v) {
+        row('Other ch dwell', Icons.wifi, wd.wifiDwellPerCh, (v) {
           ref.read(wardriveProvider).wifiDwellPerCh = v;
         }),
         row('BLE duration', Icons.bluetooth, wd.bleScanDuration, (v) {

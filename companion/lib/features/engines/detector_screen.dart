@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -14,18 +15,37 @@ class DetectorScreen extends ConsumerStatefulWidget {
 }
 
 class _DetectorScreenState extends ConsumerState<DetectorScreen> {
+  void _toggleEngine(bool enable) {
+    final ble = ref.read(bleManagerProvider);
+    if (enable) {
+      ble.enableEngine(Engine.detector);
+    } else {
+      ble.disableEngine(Engine.detector);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final watchlist = ref.watch(watchlistProvider);
     final detections = state.detectionsForEngine(Engine.detector);
+    final isActive = state.isEngineActive(Engine.detector);
 
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
         title: const Text('DETECTOR'),
         actions: [
+          Transform.scale(
+            scale: 0.7,
+            child: Switch(
+              value: isActive,
+              onChanged: _toggleEngine,
+              activeTrackColor: AppTheme.detector.withValues(alpha: 0.3),
+              activeColor: AppTheme.detector,
+            ),
+          ),
           IconButton(icon: const Icon(Icons.add), onPressed: _showAddDialog, tooltip: 'Add target'),
         ],
       ),

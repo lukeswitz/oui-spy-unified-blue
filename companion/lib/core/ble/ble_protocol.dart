@@ -204,9 +204,14 @@ class BleProtocol {
 
   // -- Foxhunter --
 
-  /// Encode foxhunter target MAC.
-  static Uint8List encodeFoxhunterTarget(String mac) {
-    return _encodeMac(mac);
+  /// Encode foxhunter target MAC + optional channel hint.
+  /// MAC[6] + channel[1]. Channel 0 = hop ch1/6/11, 1-14 = lock to channel.
+  static Uint8List encodeFoxhunterTarget(String mac, {int channel = 0}) {
+    final macBytes = _encodeMac(mac);
+    final result = Uint8List(7);
+    result.setRange(0, 6, macBytes);
+    result[6] = channel.clamp(0, 14);
+    return result;
   }
 
   /// Decode foxhunter RSSI notification: rssi[1] interval_ms[2]
