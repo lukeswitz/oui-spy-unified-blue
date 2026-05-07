@@ -768,28 +768,23 @@ class _ChannelRangeSlider extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final wd = ref.watch(wardriveProvider);
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _TimingRow(
-            icon: Icons.cell_tower,
-            label: 'Start CH',
-            value: wd.channelStart,
-            suffix: '',
-            onDown: () => ref.read(wardriveProvider).channelStart = wd.channelStart - 1,
-            onUp: () => ref.read(wardriveProvider).channelStart = wd.channelStart + 1,
-          ),
+        _TimingRow(
+          icon: Icons.cell_tower,
+          label: 'Start CH',
+          value: wd.channelStart,
+          suffix: '',
+          onDown: () => ref.read(wardriveProvider).channelStart = wd.channelStart - 1,
+          onUp: () => ref.read(wardriveProvider).channelStart = wd.channelStart + 1,
         ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _TimingRow(
-            icon: Icons.cell_tower,
-            label: 'End CH',
-            value: wd.channelEnd,
-            suffix: '',
-            onDown: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd - 1,
-            onUp: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd + 1,
-          ),
+        _TimingRow(
+          icon: Icons.cell_tower,
+          label: 'End CH',
+          value: wd.channelEnd,
+          suffix: '',
+          onDown: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd - 1,
+          onUp: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd + 1,
         ),
       ],
     );

@@ -86,7 +86,7 @@ class WardriveController extends ChangeNotifier {
     _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
     _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
-    _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 2500;
+    _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
     _channelEnd = p.getInt('wd_channelEnd') ?? 14;
     notifyListeners();
@@ -123,11 +123,11 @@ class WardriveController extends ChangeNotifier {
   int get bleRssiRelogDb => _bleRssiRelogDb;
   set bleRssiRelogDb(int v) { _bleRssiRelogDb = v; notifyListeners(); _savePrefs(); }
 
-  int _wifiScanInterval = 150;
+  int _wifiScanInterval = 350;
   int get wifiScanInterval => _wifiScanInterval;
   set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); }
 
-  int _wifiDwellPerCh = 200;
+  int _wifiDwellPerCh = 150;
   int get wifiDwellPerCh => _wifiDwellPerCh;
   set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); }
 
@@ -135,7 +135,7 @@ class WardriveController extends ChangeNotifier {
   int get bleScanDuration => _bleScanDuration;
   set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); }
 
-  int _bleScanInterval = 2500;
+  int _bleScanInterval = 3000;
   int get bleScanInterval => _bleScanInterval;
   set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); }
 

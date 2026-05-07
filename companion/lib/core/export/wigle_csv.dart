@@ -40,9 +40,21 @@ class WigleCsv {
       if (d.latitude == null || d.longitude == null) continue;
 
       final mac = d.macAddress;
-      final ssid = _escapeCsv(d.engine == Engine.skySpy
-          ? (d.odid?.uavId ?? d.deviceName)
-          : (d.ssid.isNotEmpty ? d.ssid : d.deviceName));
+      // SSID field rules per WiGLE CSV spec:
+      // - WiFi APs: use SSID from beacon. Hidden networks = empty field (WiGLE indexes by BSSID).
+      //   Do NOT fall back to deviceName — that would inject a fake SSID into WiGLE's database.
+      // - BLE: use deviceName (BLE devices don't have SSIDs).
+      // - SkySpy: use UAV ID or deviceName.
+      final String rawSsid;
+      if (d.engine == Engine.skySpy) {
+        rawSsid = d.odid?.uavId ?? d.deviceName;
+      } else if (d.engine.isBle) {
+        rawSsid = d.deviceName;
+      } else {
+        // WiFi AP: SSID only. Empty = hidden network (correct per WiGLE spec).
+        rawSsid = d.ssid;
+      }
+      final ssid = _escapeCsv(rawSsid);
       final authMode = _capabilities(d);
       final firstSeen = _dateFormat.format(d.appTimestamp.toUtc());
       final channel = d.channel;

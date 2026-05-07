@@ -683,11 +683,15 @@ class _DetListRow extends StatelessWidget {
     final t = AppTheme.of(context);
     final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
-    final label = d.ssid.isNotEmpty
-        ? d.ssid
-        : d.deviceName.isNotEmpty
-            ? d.deviceName
-            : '';
+    final bool isWifiAp = d.method == 'wifi_ap' || (!d.engine.isBle && d.method != 'ble_adv');
+    final bool isHidden = isWifiAp && d.ssid.isEmpty && d.deviceName.isEmpty;
+    final label = isHidden
+        ? '<hidden>'
+        : d.ssid.isNotEmpty
+            ? d.ssid
+            : d.deviceName.isNotEmpty
+                ? d.deviceName
+                : '';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

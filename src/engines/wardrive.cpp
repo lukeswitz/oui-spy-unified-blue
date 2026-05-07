@@ -73,7 +73,7 @@ static volatile uint8_t wardriveRadio = 0x03;
 
 // Channel hopping — configurable per-channel dwell
 static uint8_t channelStart = 1;
-static uint8_t channelEnd   = 11;
+static uint8_t channelEnd   = 14;
 static uint8_t currentChannel = 1;
 static unsigned long lastChannelHop = 0;
 
@@ -87,12 +87,15 @@ static uint16_t timePerChannel[14] = {
 };
 static volatile uint8_t beaconsThisHop = 0;  // count beacons on current channel
 
-// BLE scan timing
-static uint16_t bleScanDurationMs  = 1500;
-static uint16_t bleScanIntervalMs  = 2000;
+// BLE scan timing — conservative to avoid starving WiFi promisc on shared radio.
+// ESP32 single 2.4GHz radio uses TDM: BLE active = WiFi capture drops 30-60%.
+// 800ms scan every 3000ms = ~27% BLE duty (was 75% at 1500/2000).
+static uint16_t bleScanDurationMs  = 800;
+static uint16_t bleScanIntervalMs  = 3000;
 
-// Dedup ring — shared by WiFi promisc + BLE callbacks
-#define WARDRIVE_DEDUP_SIZE    200
+// Dedup ring — shared by WiFi promisc + BLE callbacks.
+// 512 entries handles dense urban (200+ BSSIDs per sweep) without premature eviction.
+#define WARDRIVE_DEDUP_SIZE    512
 #define WARDRIVE_DEDUP_COOL_MS 10000
 
 static struct {
@@ -180,32 +183,133 @@ static void updateAdaptiveDwell(uint8_t ch, uint8_t beaconCount) {
 // Auth mode mapping from 802.11 RSN/WPA IE to our compact enum
 // ============================================================================
 
+// AKM suite selectors (OUI 00-0F-AC):
+// 1 = 802.1X (WPA2-Enterprise)
+// 2 = PSK (WPA2-Personal)
+// 6 = SAE (WPA3-Personal)
+// 8 = SAE (WPA3-Personal, FT)
+// 12 = SAE-EXT (WPA3-Enterprise 192-bit)
+#define AKM_OUI_00   0x00
+#define AKM_OUI_0F   0x0F
+#define AKM_OUI_AC   0xAC
+#define AKM_SUITE_EAP     1
+#define AKM_SUITE_PSK     2
+#define AKM_SUITE_SAE     8
+#define AKM_SUITE_FT_SAE  9
+#define AKM_SUITE_SAE_EXT 12
+
 static uint8_t IRAM_ATTR parseAuthFromFrame(const uint8_t* p, int len) {
     // Walk tagged parameters starting after fixed fields
     // Beacon: 24-byte header + 12 bytes fixed (timestamp[8]+interval[2]+capability[2])
     int offset = 36;
     bool hasRSN = false;
     bool hasWPA = false;
+    bool hasWPA3 = false;
+    bool hasEAP = false;
 
     while (offset + 2 <= len) {
         uint8_t tagId = p[offset];
         uint8_t tagLen = p[offset + 1];
         if (offset + 2 + tagLen > len) break;
 
-        if (tagId == 48) hasRSN = true;       // RSN (WPA2/WPA3)
+        if (tagId == 48 && tagLen >= 2) {
+            // RSN Information Element — parse AKM suite list
+            hasRSN = true;
+            // RSN IE: version[2] + group_cipher[4] + pairwise_count[2] + pairwise_suites[n*4] + akm_count[2] + akm_suites[n*4]
+            int rsnOff = offset + 2;
+            int rsnEnd = offset + 2 + tagLen;
+            // Skip version (2 bytes)
+            rsnOff += 2;
+            if (rsnOff + 4 > rsnEnd) goto next_tag;
+            // Skip group cipher suite (4 bytes)
+            rsnOff += 4;
+            if (rsnOff + 2 > rsnEnd) goto next_tag;
+            // Pairwise cipher count + suites
+            uint16_t pairCount = p[rsnOff] | (p[rsnOff + 1] << 8);
+            rsnOff += 2 + pairCount * 4;
+            if (rsnOff + 2 > rsnEnd) goto next_tag;
+            // AKM suite count + suites
+            uint16_t akmCount = p[rsnOff] | (p[rsnOff + 1] << 8);
+            rsnOff += 2;
+            for (uint16_t i = 0; i < akmCount && rsnOff + 4 <= rsnEnd; i++) {
+                // AKM suite: OUI[3] + type[1]
+                uint8_t akmType = p[rsnOff + 3];
+                if (p[rsnOff] == 0x00 && p[rsnOff + 1] == 0x0F && p[rsnOff + 2] == 0xAC) {
+                    if (akmType == 8 || akmType == 9 || akmType == 12) {
+                        hasWPA3 = true;
+                    }
+                    if (akmType == 1 || akmType == 5) {
+                        hasEAP = true;
+                    }
+                }
+                rsnOff += 4;
+            }
+        }
+
         if (tagId == 221 && tagLen >= 4) {     // Vendor-specific (WPA1)
             if (p[offset+2]==0x00 && p[offset+3]==0x50 &&
                 p[offset+4]==0xF2 && p[offset+5]==0x01) {
                 hasWPA = true;
             }
         }
+
+        next_tag:
         offset += 2 + tagLen;
     }
 
-    if (hasRSN && hasWPA) return 4;  // WPA_WPA2
-    if (hasRSN) return 3;            // WPA2
-    if (hasWPA) return 2;            // WPA
-    return 0;                         // Open
+    if (hasWPA3)            return 6;  // WPA3
+    if (hasEAP && hasRSN)   return 5;  // WPA2_ENT
+    if (hasRSN && hasWPA)   return 4;  // WPA_WPA2
+    if (hasRSN)             return 3;  // WPA2
+    if (hasWPA)             return 2;  // WPA
+    return 0;                           // Open
+}
+
+// ============================================================================
+// Check if SSID bytes are all zeroes (hidden network variant: tagLen > 0 but null-filled)
+// ============================================================================
+
+static bool IRAM_ATTR isNullSsid(const uint8_t* ssidBytes, uint8_t ssidLen) {
+    for (uint8_t i = 0; i < ssidLen; i++) {
+        if (ssidBytes[i] != 0) return false;
+    }
+    return true;
+}
+
+// ============================================================================
+// Wildcard probe request — stimulates APs to respond immediately on channel hop.
+// GhostESP technique: send broadcast probe with empty SSID after each hop.
+// APs respond with probe response instead of waiting for next beacon (102.4ms).
+// ============================================================================
+
+static const uint8_t wildcardProbeTemplate[] = {
+    // Frame control: probe request (type 0, subtype 4)
+    0x40, 0x00,
+    // Duration
+    0x00, 0x00,
+    // Destination: broadcast
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    // Source: random (filled at runtime)
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // BSSID: broadcast
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    // Sequence number
+    0x00, 0x00,
+    // SSID parameter set: tag 0, length 0 (wildcard)
+    0x00, 0x00,
+    // Supported rates: 1, 2, 5.5, 11 Mbps
+    0x01, 0x04, 0x82, 0x84, 0x8B, 0x96,
+};
+
+static void sendWildcardProbe(void) {
+    uint8_t probe[sizeof(wildcardProbeTemplate)];
+    memcpy(probe, wildcardProbeTemplate, sizeof(probe));
+    // Randomize source MAC (locally administered)
+    probe[10] = 0x02 | (esp_random() & 0xFE);
+    for (int i = 11; i < 16; i++) {
+        probe[i] = esp_random() & 0xFF;
+    }
+    esp_wifi_80211_tx(WIFI_IF_STA, probe, sizeof(probe), false);
 }
 
 // ============================================================================
@@ -285,9 +389,15 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
             uint8_t tagId = p[tagOffset];
             uint8_t tagLen = p[tagOffset + 1];
             if (tagId == 0 && tagLen > 0 && tagLen <= 32 && tagOffset + 2 + tagLen <= len) {
-                memcpy(ssid, &p[tagOffset + 2], tagLen);
-                ssid[tagLen] = '\0';
+                // Check for null-filled SSID (hidden network variant:
+                // some APs broadcast tagLen=32 with all 0x00 bytes)
+                if (!isNullSsid(&p[tagOffset + 2], tagLen)) {
+                    memcpy(ssid, &p[tagOffset + 2], tagLen);
+                    ssid[tagLen] = '\0';
+                }
+                // else: ssid stays empty — hidden network
             }
+            // tagLen == 0: standard hidden network — ssid stays empty
         }
 
         uint8_t authMode = parseAuthFromFrame(p, len);
@@ -426,9 +536,28 @@ static void wardriveStart(void) {
     if (wardriveRadio & 0x01) {
         WiFi.mode(WIFI_STA);
         WiFi.disconnect();
+
+        // Set country to allow channels 1-14 (manual policy = user controls range)
+        wifi_country_t country = {
+            .cc = "JP",     // JP allows widest range (1-14)
+            .schan = 1,
+            .nchan = 14,
+            .policy = WIFI_COUNTRY_POLICY_MANUAL
+        };
+        esp_wifi_set_country(&country);
+
+        // Promiscuous filter: MGMT (beacons/probe resp) + DATA (flock OUI on data frames)
+        wifi_promiscuous_filter_t filter = {
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA
+        };
+        esp_wifi_set_promiscuous_filter(&filter);
+
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wardriveWifiCb);
         esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+
+        // Send wildcard probe on first channel to stimulate immediate AP responses
+        sendWildcardProbe();
     }
 
     // BLE scanner
@@ -436,6 +565,8 @@ static void wardriveStart(void) {
         pWardriveScan = NimBLEDevice::getScan();
         pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
         pWardriveScan->setActiveScan(true);
+        // Interval == window: Espressif recommendation for WiFi/BLE coexistence.
+        // Continuous BLE within its TDM slot, no wasted RF gaps.
         pWardriveScan->setInterval(80);
         pWardriveScan->setWindow(79);
     }
@@ -486,6 +617,10 @@ static void wardriveLoop(void) {
             if (currentChannel > channelEnd) currentChannel = channelStart;
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = now;
+
+            // Wildcard probe on each hop — APs respond immediately instead of
+            // waiting up to 102.4ms for next beacon interval. Free speed boost.
+            sendWildcardProbe();
         }
     }
 
