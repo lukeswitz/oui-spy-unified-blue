@@ -40,18 +40,17 @@ class WigleCsv {
       if (d.latitude == null || d.longitude == null) continue;
 
       final mac = d.macAddress;
+      final isBleDevice = d.method == 'ble_adv' || d.engine.isBle;
       // SSID field rules per WiGLE CSV spec:
-      // - WiFi APs: use SSID from beacon. Hidden networks = empty field (WiGLE indexes by BSSID).
-      //   Do NOT fall back to deviceName — that would inject a fake SSID into WiGLE's database.
-      // - BLE: use deviceName (BLE devices don't have SSIDs).
+      // - WiFi APs: use SSID from beacon. Hidden = empty field.
+      // - BLE: use deviceName (BLE has no SSID).
       // - SkySpy: use UAV ID or deviceName.
       final String rawSsid;
       if (d.engine == Engine.skySpy) {
         rawSsid = d.odid?.uavId ?? d.deviceName;
-      } else if (d.engine.isBle) {
+      } else if (isBleDevice) {
         rawSsid = d.deviceName;
       } else {
-        // WiFi AP: SSID only. Empty = hidden network (correct per WiGLE spec).
         rawSsid = d.ssid;
       }
       final ssid = _escapeCsv(rawSsid);
@@ -78,7 +77,8 @@ class WigleCsv {
   /// WiGLE capabilities from firmware auth_mode byte.
   /// Firmware values: 0=OPEN, 1=WEP, 2=WPA, 3=WPA2, 4=WPA_WPA2, 5=WPA2_ENT, 6=WPA3
   static String _capabilities(Detection d) {
-    if (d.engine.isBle) return '[LE]';
+    final isBle = d.method == 'ble_adv' || d.engine.isBle;
+    if (isBle) return '[LE]';
     final auth = d.wardrive?.authMode ?? 3;
     return switch (auth) {
       0 => '[OPEN]',
@@ -94,7 +94,8 @@ class WigleCsv {
 
   /// Channel to center frequency in MHz. BLE = 0 (matches Biscuit format).
   static String _frequency(Detection d) {
-    if (d.engine.isBle) return '0';
+    final isBle = d.method == 'ble_adv' || d.engine.isBle;
+    if (isBle) return '0';
     if (d.channel >= 1 && d.channel <= 13) return '${2407 + d.channel * 5}';
     if (d.channel == 14) return '2484';
     if (d.channel >= 36 && d.channel <= 177) {
@@ -105,7 +106,8 @@ class WigleCsv {
 
   /// WiGLE type field.
   static String _type(Detection d) {
-    if (d.engine.isBle) return 'BLE';
+    final isBle = d.method == 'ble_adv' || d.engine.isBle;
+    if (isBle) return 'BLE';
     return 'WIFI';
   }
 
