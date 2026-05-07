@@ -61,6 +61,9 @@ enum WardriveTarget {
   };
 
   bool get hasRadioChoice => this != drone;
+
+  /// Whether this target includes flock detection engines.
+  bool get includesFlock => this == flock || this == wigleFlock;
 }
 
 enum WardriveRadio {
@@ -623,7 +626,7 @@ class WardriveController extends ChangeNotifier {
           d.method == 'ble_adv' ||
           (d.engine.isBle && d.method != 'wifi_ap')).length,
       bleTotal: rawBleCount,
-      flockCount: _flockMacs.length,
+      flockCount: target.includesFlock ? _flockMacs.length : 0,
       droneCount: droneCount,
       detectionsPerKm: distanceKm > 0 && distanceKm.isFinite 
           ? rawDetectionCount / distanceKm 
@@ -649,7 +652,8 @@ class WardriveController extends ChangeNotifier {
       }
     }
     uniqueMacs.add(detection.macAddress);
-    if (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi) {
+    if (target.includesFlock &&
+        (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi)) {
       _flockMacs.add(detection.macAddress);
     }
     if (detection.engine == Engine.skySpy) droneCount++;

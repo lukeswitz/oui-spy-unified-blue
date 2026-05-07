@@ -9,7 +9,6 @@ import 'package:oui_spy/features/engines/unipwn_screen.dart';
 import 'package:oui_spy/features/export/export_screen.dart';
 import 'package:oui_spy/features/feed/feed_screen.dart';
 import 'package:oui_spy/features/home/home_screen.dart';
-import 'package:oui_spy/features/map/map_screen.dart';
 import 'package:oui_spy/features/onboarding/scan_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
@@ -29,12 +28,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/home',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: HomeScreen(),
-            ),
-          ),
-          GoRoute(
-            path: '/map',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              child: MapScreen(),
             ),
           ),
           GoRoute(
@@ -140,7 +133,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
 
-  static const _routes = ['/home', '/map', '/feed', '/wardrive', '/config'];
+  static const _routes = ['/home', '/feed', '/wardrive', '/config'];
 
   @override
   Widget build(BuildContext context) {
@@ -156,10 +149,6 @@ class _AppShellState extends State<AppShell> {
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard),
             label: 'HOME',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.map),
-            label: 'MAP',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
