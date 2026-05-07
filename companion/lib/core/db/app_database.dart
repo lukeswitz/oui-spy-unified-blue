@@ -167,6 +167,27 @@ class AppDatabase extends _$AppDatabase {
     return result.read(detections.macAddress.count(distinct: true)) ?? 0;
   }
 
+  /// Count unique WiFi and BLE MACs in a session.
+  Future<({int wifi, int ble})> wifiBleUniqueCounts(String sessionId) async {
+    final wifiQuery = selectOnly(detections)
+      ..where(detections.sessionId.equals(sessionId))
+      ..where(detections.detectionMethod.equals('wifi_ap'))
+      ..addColumns([detections.macAddress.count(distinct: true)]);
+    final wifiResult = await wifiQuery.getSingle();
+    final wifi =
+        wifiResult.read(detections.macAddress.count(distinct: true)) ?? 0;
+
+    final bleQuery = selectOnly(detections)
+      ..where(detections.sessionId.equals(sessionId))
+      ..where(detections.detectionMethod.equals('ble_adv'))
+      ..addColumns([detections.macAddress.count(distinct: true)]);
+    final bleResult = await bleQuery.getSingle();
+    final ble =
+        bleResult.read(detections.macAddress.count(distinct: true)) ?? 0;
+
+    return (wifi: wifi, ble: ble);
+  }
+
   /// Get all distinct MACs seen across all sessions for stalking detection.
   Future<List<String>> macSeenInMultipleSessions(int minSessions) async {
     final mac = detections.macAddress;

@@ -1101,6 +1101,7 @@ class _SessionHistorySheet extends ConsumerWidget {
                         return _SessionRow(
                           session: sessions[i],
                           flockCountFuture: db.flockMacCount(sid),
+                          wifiBleFuture: db.wifiBleUniqueCounts(sid),
                           onTap: () {
                             Navigator.pop(context);
                             ref.read(wardriveProvider).loadSession(sid);
@@ -1257,6 +1258,7 @@ class _SessionRow extends ConsumerWidget {
     this.onUploadWigle,
     this.wigleUploaded = false,
     this.flockCountFuture,
+    this.wifiBleFuture,
   });
   final Session session;
   final VoidCallback onTap;
@@ -1265,6 +1267,7 @@ class _SessionRow extends ConsumerWidget {
   final VoidCallback? onUploadWigle;
   final bool wigleUploaded;
   final Future<int>? flockCountFuture;
+  final Future<({int wifi, int ble})>? wifiBleFuture;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1303,43 +1306,76 @@ class _SessionRow extends ConsumerWidget {
                         fontFamily: 'monospace', fontWeight: FontWeight.w500,
                       )),
                       const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
-                              style: TextStyle(
-                                color: t.textDim, fontSize: 9,
-                                fontFamily: 'monospace',
+                      FutureBuilder<({int wifi, int ble})>(
+                        future: wifiBleFuture,
+                        builder: (_, wbSnap) {
+                          final wb = wbSnap.data;
+                          return Row(
+                            children: [
+                              Text(
+                                '$durStr  \u00b7  ',
+                                style: TextStyle(
+                                  color: t.textDim, fontSize: 9,
+                                  fontFamily: 'monospace',
+                                ),
                               ),
-                            ),
-                          ),
-                          if (flockCountFuture != null)
-                            FutureBuilder<int>(
-                              future: flockCountFuture,
-                              builder: (_, snap) {
-                                final fc = snap.data ?? 0;
-                                if (fc == 0) return const SizedBox.shrink();
-                                return Padding(
-                                  padding: const EdgeInsets.only(left: 6),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.videocam, size: 10, color: AppTheme.flockBle),
-                                      const SizedBox(width: 2),
-                                      Text(
-                                        '$fc',
-                                        style: const TextStyle(
-                                          color: AppTheme.flockBle, fontSize: 9,
-                                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
+                              Icon(Icons.wifi, size: 10, color: AppTheme.accent),
+                              const SizedBox(width: 2),
+                              Text(
+                                '${wb?.wifi ?? session.uniqueMacCount}',
+                                style: TextStyle(
+                                  color: AppTheme.accent, fontSize: 9,
+                                  fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(Icons.bluetooth, size: 10, color: Colors.blue),
+                              const SizedBox(width: 1),
+                              Text(
+                                '${wb?.ble ?? 0}',
+                                style: const TextStyle(
+                                  color: Colors.blue, fontSize: 9,
+                                  fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '\u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
+                                  style: TextStyle(
+                                    color: t.textDim, fontSize: 9,
+                                    fontFamily: 'monospace',
                                   ),
-                                );
-                              },
-                            ),
-                        ],
+                                ),
+                              ),
+                              if (flockCountFuture != null)
+                                FutureBuilder<int>(
+                                  future: flockCountFuture,
+                                  builder: (_, snap) {
+                                    final fc = snap.data ?? 0;
+                                    if (fc == 0) return const SizedBox.shrink();
+                                    return Padding(
+                                      padding: const EdgeInsets.only(left: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.videocam, size: 10, color: AppTheme.flockBle),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            '$fc',
+                                            style: const TextStyle(
+                                              color: AppTheme.flockBle, fontSize: 9,
+                                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
