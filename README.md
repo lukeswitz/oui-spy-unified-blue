@@ -75,12 +75,6 @@ When wardrive owns WiFi, Detector and Foxhunter don't start their own scans. Ins
 
 ---
 
-## How It Works
-
-The firmware runs an **engine registry** on FreeRTOS. Each engine registers init/start/stop/loop/config callbacks. The companion app sends enable/disable commands over BLE GATT using bitmasks. Detections flow through a shared queue (depth 64) and get pushed to the app as packed binary notifications.
-
----
-
 ## ESP-NOW Mesh & Node Orchestration
 
 > Not stable, coming in v0.0.4
@@ -93,58 +87,26 @@ Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any
 - **Bidirectional** — detections flow both ways, tx/rx counters tracked
 - **No infrastructure required** — ESP-NOW peer-to-peer, no router or internet needed
 
-### Node Orchestration
-
-The companion app acts as a central coordinator for all mesh nodes. When you enable an engine on the primary node, the orchestrator automatically syncs the command to all peers via ESP-NOW relay.
-
-- **Engine sync** — enable/disable any engine and all connected nodes follow
-- **Channel splitting** — wardrive mode automatically divides WiFi channels across nodes (e.g., node A scans 1-7, node B scans 8-14) for maximum coverage with zero overlap
-- **Health monitoring** — 5-second heartbeat from each peer reports active engines, detection count, uptime, and free heap. Peers marked stale after 15s of silence
-- **Command relay** — phone sends orchestration commands via BLE to primary node, which broadcasts to all peers over ESP-NOW. Three mesh packet types: detection (existing), command (new), and status (new)
-
-```
- Phone ──BLE──► Primary Node ──ESP-NOW──►  Peer 1
-                     │                     Peer 2
-                     │                     Peer 3
-                     ▼
-              Local execution
-              (same command)
-```
-
 ---
 
 ## Companion App
 
-Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. No web dashboard or WiFi AP on the device — all control and data display happens in the app.
+Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. No web dashboard or WiFi AP— all control and data display **happens in the app.**
 
 ### Screens
 
-**Home** — Connection status with pulsing radar animation. Once connected: engine cards showing live state (disabled/scanning/alerting). Tap any card to enable/disable — mesh peers auto-sync. Status bar shows connected node, GPS quality, active engine count, and active node count. Each engine card shows a "+N nodes" badge when mesh peers are running that engine.
+**Home** — Connection status with pulsing radar animation. Once connected: engine cards showing live state (disabled/scanning/alerting). Tap any card to view settings or enable/disable directly. Status bar shows connected node, GPS quality, active engine count, and active node count.
 
-**Map** — Full-screen map with CartoDB tiles (dark theme or light theme depending on your preference). Engine-colored markers for geotagged detections. Route trace polyline. Auto-follow mode centers on your position. Deduplicated by MAC+engine.
+**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Filter bar to show/hide specific engines. **Tap crosshairs to foxhunt, and the far right icon to display on map.**
 
-**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Filter bar to show/hide specific engines. Detections arrive as binary GATT notifications and decode in real time.
-
-**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Session auto-saves to SQLite. WiGLE CSV export with share sheet on stop. Session history with delete support.
+**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Session auto-saves to SQLite. WiGLE CSV export. Session history with devices count, upload/share.
 
 **Config** — Five tabs: Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing), Debug Log (raw BLE traffic viewer).
-
-### Features
-
-- **Dark and light theme** — toggle in settings, persisted across sessions
-- **Metric and imperial units** — km/mi, km/h/mph, m/ft throughout the app
-- **GPS relay** — phone GPS streams to firmware over BLE for detection geotagging
-- **WiGLE CSV export** — auto-generates on session stop, compatible with WiGLE upload
-- **Session history** — browse, replay, delete, and re-export past wardrive sessions from SQLite
-- **Chunked BLE transfer** — large payloads (watchlists, mesh configs) split across multiple writes
-- **Onboarding** — BLE scan screen finds nearby OUI-SPY devices, one-tap connect
-- **Node management** — view mesh peers, connection state, rx/tx stats
-- **Node orchestration** — automatic engine sync to mesh peers, channel splitting for wardrive, per-peer health monitoring with stale detection
 
 ### Engine-Specific Screens
 
 - **Detector** — manage OUI/MAC watchlist, see matches with filter descriptions
-- **Foxhunter** — set target MAC, live RSSI display, beep interval indicator
+- **Foxhunter** — set target MAC, live RSSI display
 - **Sky Spy** — drone telemetry table (UAV ID, operator ID, lat/lon, altitude, speed, heading, pilot location)
 - **UniPwn** — discovered Unitree robots list, select target, trigger exploit sequence
 
@@ -228,30 +190,6 @@ flutter build macos --release           # macOS .app
 
 ---
 
-## BLE Protocol
-
-Single GATT service (`00000001-0a15-4b70-ba00-c010ae1ba01c`). Binary packed structs. No JSON.
-
-| Characteristic | UUID Suffix | Direction | Purpose |
-|----------------|-------------|-----------|---------|
-| Device Info | `0001` | Read | Firmware version, node ID, capabilities |
-| Engine Control | `0002` | Write | Enable/disable/config by engine ID |
-| Detection Events | `0010` | Notify | Packed `DetectionEvent` structs (variable size by engine) |
-| Device Status | `0011` | Read/Notify | Active engine bitmask, per-engine states |
-| GPS Receive | `0012` | Write | Phone GPS → firmware (lat, lon, alt, speed, heading, accuracy, sats) |
-| Hardware Config | `0020` | Read/Write | Buzzer, LED, neopixel settings |
-| Alert Config | `0021` | Read/Write | Cooldown, heartbeat, rediscover intervals |
-| Foxhunter Config | `0130` | Write | Target MAC |
-| Foxhunter RSSI | `0131` | Notify | Live RSSI + beep interval |
-| Sky Spy Telemetry | `0140` | Notify | Full ODID drone data |
-| UniPwn Devices | `0150` | Notify | Discovered robot list |
-| UniPwn Command | `0151` | Write | Target selection, exploit trigger |
-| Mesh Config | `0060` | Read/Write | Enable, encryption, key, peer MACs |
-| Mesh Status | `0061` | Read/Notify | Peer count, connected count, rx/tx/errors |
-| Orchestration | `0070` | Write/Notify | Relay engine commands to mesh peers; receive peer status heartbeats |
-
----
-
 ## The Ecosystem
 
 This repo contains the unified firmware (all engines) and the companion app. Each engine also exists as a standalone project:
@@ -281,4 +219,4 @@ This repo contains the unified firmware (all engines) and the companion app. Eac
 
 ## Disclaimer
 
-Security research and privacy auditing tool. Detecting surveillance hardware in public spaces is legal in most jurisdictions. Comply with local laws regarding wireless scanning and signal interception. Authors not responsible for misuse.
+Security research and privacy auditing tool. Detecting surveillance hardware in public spaces is legal in most jurisdictions. Comply with local laws regarding wireless scanning and signal interception. Authors not responsible for misuse. Using GATT during pairing process can be a risk. Users agree to use in lawful manner only.
