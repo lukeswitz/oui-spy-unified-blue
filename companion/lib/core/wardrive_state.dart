@@ -418,19 +418,23 @@ class WardriveController extends ChangeNotifier {
       orElse: () => Engine.wardrive,
     );
 
+    final ssid = (row['ssid'] as String?) ?? '';
+    final authMode = (row['authMode'] as int?) ?? 0;
+    final deviceName = (row['deviceName'] as String?) ?? '';
+
     return Detection(
       id: '${row['id']}',
       sessionId: row['sessionId'] as String,
       nodeId: row['nodeId'] as String,
       macAddress: row['macAddress'] as String,
-      deviceName: (row['deviceName'] as String?) ?? '',
+      deviceName: deviceName,
       engine: engine,
       method: row['detectionMethod'] as String,
       rssi: row['rssi'] as int,
       channel: row['channel'] as int,
       deviceTimestampMs: row['deviceTimestampMs'] as int,
       appTimestamp: DateTime.fromMillisecondsSinceEpoch(row['appTimestamp'] as int),
-      ssid: (row['ssid'] as String?) ?? '',
+      ssid: ssid,
       count: (row['count'] as int?) ?? 1,
       latitude: row['latitude'] as double?,
       longitude: row['longitude'] as double?,
@@ -439,6 +443,9 @@ class WardriveController extends ChangeNotifier {
       heading: row['heading'] as double?,
       accuracy: row['accuracy'] as double?,
       satelliteCount: row['satelliteCount'] as int?,
+      wardrive: engine == Engine.wardrive
+          ? WardriveExtension(ssid: ssid, authMode: authMode, deviceName: deviceName)
+          : null,
     );
   }
 
@@ -682,6 +689,8 @@ class WardriveController extends ChangeNotifier {
       latitude: drift.Value(detection.latitude),
       longitude: drift.Value(detection.longitude),
       accuracy: drift.Value(detection.accuracy),
+      ssid: drift.Value(detection.ssid),
+      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
     ));
 
     notifyListeners();

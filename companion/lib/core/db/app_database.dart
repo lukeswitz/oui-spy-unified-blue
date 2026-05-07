@@ -29,13 +29,18 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (Migrator m) async {
         await m.createAll();
+      },
+      onUpgrade: (Migrator m, int from, int to) async {
+        if (from < 2) {
+          await m.addColumn(detections, detections.authMode);
+        }
       },
     );
   }
@@ -131,6 +136,7 @@ class AppDatabase extends _$AppDatabase {
               'deviceTimestampMs': r.deviceTimestampMs,
               'appTimestamp': r.appTimestamp,
               'ssid': r.ssid,
+              'authMode': r.authMode,
               'count': r.count,
               'latitude': r.latitude,
               'longitude': r.longitude,

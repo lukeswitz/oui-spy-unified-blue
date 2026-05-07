@@ -1412,6 +1412,18 @@ class $DetectionsTable extends Detections
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _authModeMeta = const VerificationMeta(
+    'authMode',
+  );
+  @override
+  late final GeneratedColumn<int> authMode = GeneratedColumn<int>(
+    'auth_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _countMeta = const VerificationMeta('count');
   @override
   late final GeneratedColumn<int> count = GeneratedColumn<int>(
@@ -1638,6 +1650,7 @@ class $DetectionsTable extends Detections
     accuracy,
     satelliteCount,
     ssid,
+    authMode,
     count,
     isRaven,
     ravenFirmware,
@@ -1808,6 +1821,12 @@ class $DetectionsTable extends Detections
       context.handle(
         _ssidMeta,
         ssid.isAcceptableOrUnknown(data['ssid']!, _ssidMeta),
+      );
+    }
+    if (data.containsKey('auth_mode')) {
+      context.handle(
+        _authModeMeta,
+        authMode.isAcceptableOrUnknown(data['auth_mode']!, _authModeMeta),
       );
     }
     if (data.containsKey('count')) {
@@ -2018,6 +2037,10 @@ class $DetectionsTable extends Detections
         DriftSqlType.string,
         data['${effectivePrefix}ssid'],
       )!,
+      authMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}auth_mode'],
+      )!,
       count: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}count'],
@@ -2119,6 +2142,7 @@ class Detection extends DataClass implements Insertable<Detection> {
   final double? accuracy;
   final int? satelliteCount;
   final String ssid;
+  final int authMode;
   final int count;
   final bool? isRaven;
   final String? ravenFirmware;
@@ -2157,6 +2181,7 @@ class Detection extends DataClass implements Insertable<Detection> {
     this.accuracy,
     this.satelliteCount,
     required this.ssid,
+    required this.authMode,
     required this.count,
     this.isRaven,
     this.ravenFirmware,
@@ -2212,6 +2237,7 @@ class Detection extends DataClass implements Insertable<Detection> {
       map['satellite_count'] = Variable<int>(satelliteCount);
     }
     map['ssid'] = Variable<String>(ssid);
+    map['auth_mode'] = Variable<int>(authMode);
     map['count'] = Variable<int>(count);
     if (!nullToAbsent || isRaven != null) {
       map['is_raven'] = Variable<bool>(isRaven);
@@ -2302,6 +2328,7 @@ class Detection extends DataClass implements Insertable<Detection> {
           ? const Value.absent()
           : Value(satelliteCount),
       ssid: Value(ssid),
+      authMode: Value(authMode),
       count: Value(count),
       isRaven: isRaven == null && nullToAbsent
           ? const Value.absent()
@@ -2382,6 +2409,7 @@ class Detection extends DataClass implements Insertable<Detection> {
       accuracy: serializer.fromJson<double?>(json['accuracy']),
       satelliteCount: serializer.fromJson<int?>(json['satelliteCount']),
       ssid: serializer.fromJson<String>(json['ssid']),
+      authMode: serializer.fromJson<int>(json['authMode']),
       count: serializer.fromJson<int>(json['count']),
       isRaven: serializer.fromJson<bool?>(json['isRaven']),
       ravenFirmware: serializer.fromJson<String?>(json['ravenFirmware']),
@@ -2427,6 +2455,7 @@ class Detection extends DataClass implements Insertable<Detection> {
       'accuracy': serializer.toJson<double?>(accuracy),
       'satelliteCount': serializer.toJson<int?>(satelliteCount),
       'ssid': serializer.toJson<String>(ssid),
+      'authMode': serializer.toJson<int>(authMode),
       'count': serializer.toJson<int>(count),
       'isRaven': serializer.toJson<bool?>(isRaven),
       'ravenFirmware': serializer.toJson<String?>(ravenFirmware),
@@ -2468,6 +2497,7 @@ class Detection extends DataClass implements Insertable<Detection> {
     Value<double?> accuracy = const Value.absent(),
     Value<int?> satelliteCount = const Value.absent(),
     String? ssid,
+    int? authMode,
     int? count,
     Value<bool?> isRaven = const Value.absent(),
     Value<String?> ravenFirmware = const Value.absent(),
@@ -2508,6 +2538,7 @@ class Detection extends DataClass implements Insertable<Detection> {
         ? satelliteCount.value
         : this.satelliteCount,
     ssid: ssid ?? this.ssid,
+    authMode: authMode ?? this.authMode,
     count: count ?? this.count,
     isRaven: isRaven.present ? isRaven.value : this.isRaven,
     ravenFirmware: ravenFirmware.present
@@ -2564,6 +2595,7 @@ class Detection extends DataClass implements Insertable<Detection> {
           ? data.satelliteCount.value
           : this.satelliteCount,
       ssid: data.ssid.present ? data.ssid.value : this.ssid,
+      authMode: data.authMode.present ? data.authMode.value : this.authMode,
       count: data.count.present ? data.count.value : this.count,
       isRaven: data.isRaven.present ? data.isRaven.value : this.isRaven,
       ravenFirmware: data.ravenFirmware.present
@@ -2621,6 +2653,7 @@ class Detection extends DataClass implements Insertable<Detection> {
           ..write('accuracy: $accuracy, ')
           ..write('satelliteCount: $satelliteCount, ')
           ..write('ssid: $ssid, ')
+          ..write('authMode: $authMode, ')
           ..write('count: $count, ')
           ..write('isRaven: $isRaven, ')
           ..write('ravenFirmware: $ravenFirmware, ')
@@ -2664,6 +2697,7 @@ class Detection extends DataClass implements Insertable<Detection> {
     accuracy,
     satelliteCount,
     ssid,
+    authMode,
     count,
     isRaven,
     ravenFirmware,
@@ -2706,6 +2740,7 @@ class Detection extends DataClass implements Insertable<Detection> {
           other.accuracy == this.accuracy &&
           other.satelliteCount == this.satelliteCount &&
           other.ssid == this.ssid &&
+          other.authMode == this.authMode &&
           other.count == this.count &&
           other.isRaven == this.isRaven &&
           other.ravenFirmware == this.ravenFirmware &&
@@ -2746,6 +2781,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
   final Value<double?> accuracy;
   final Value<int?> satelliteCount;
   final Value<String> ssid;
+  final Value<int> authMode;
   final Value<int> count;
   final Value<bool?> isRaven;
   final Value<String?> ravenFirmware;
@@ -2784,6 +2820,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     this.accuracy = const Value.absent(),
     this.satelliteCount = const Value.absent(),
     this.ssid = const Value.absent(),
+    this.authMode = const Value.absent(),
     this.count = const Value.absent(),
     this.isRaven = const Value.absent(),
     this.ravenFirmware = const Value.absent(),
@@ -2823,6 +2860,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     this.accuracy = const Value.absent(),
     this.satelliteCount = const Value.absent(),
     this.ssid = const Value.absent(),
+    this.authMode = const Value.absent(),
     this.count = const Value.absent(),
     this.isRaven = const Value.absent(),
     this.ravenFirmware = const Value.absent(),
@@ -2870,6 +2908,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     Expression<double>? accuracy,
     Expression<int>? satelliteCount,
     Expression<String>? ssid,
+    Expression<int>? authMode,
     Expression<int>? count,
     Expression<bool>? isRaven,
     Expression<String>? ravenFirmware,
@@ -2909,6 +2948,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
       if (accuracy != null) 'accuracy': accuracy,
       if (satelliteCount != null) 'satellite_count': satelliteCount,
       if (ssid != null) 'ssid': ssid,
+      if (authMode != null) 'auth_mode': authMode,
       if (count != null) 'count': count,
       if (isRaven != null) 'is_raven': isRaven,
       if (ravenFirmware != null) 'raven_firmware': ravenFirmware,
@@ -2950,6 +2990,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     Value<double?>? accuracy,
     Value<int?>? satelliteCount,
     Value<String>? ssid,
+    Value<int>? authMode,
     Value<int>? count,
     Value<bool?>? isRaven,
     Value<String?>? ravenFirmware,
@@ -2989,6 +3030,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
       accuracy: accuracy ?? this.accuracy,
       satelliteCount: satelliteCount ?? this.satelliteCount,
       ssid: ssid ?? this.ssid,
+      authMode: authMode ?? this.authMode,
       count: count ?? this.count,
       isRaven: isRaven ?? this.isRaven,
       ravenFirmware: ravenFirmware ?? this.ravenFirmware,
@@ -3070,6 +3112,9 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     if (ssid.present) {
       map['ssid'] = Variable<String>(ssid.value);
     }
+    if (authMode.present) {
+      map['auth_mode'] = Variable<int>(authMode.value);
+    }
     if (count.present) {
       map['count'] = Variable<int>(count.value);
     }
@@ -3149,6 +3194,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
           ..write('accuracy: $accuracy, ')
           ..write('satelliteCount: $satelliteCount, ')
           ..write('ssid: $ssid, ')
+          ..write('authMode: $authMode, ')
           ..write('count: $count, ')
           ..write('isRaven: $isRaven, ')
           ..write('ravenFirmware: $ravenFirmware, ')
@@ -9354,6 +9400,7 @@ typedef $$DetectionsTableCreateCompanionBuilder =
       Value<double?> accuracy,
       Value<int?> satelliteCount,
       Value<String> ssid,
+      Value<int> authMode,
       Value<int> count,
       Value<bool?> isRaven,
       Value<String?> ravenFirmware,
@@ -9394,6 +9441,7 @@ typedef $$DetectionsTableUpdateCompanionBuilder =
       Value<double?> accuracy,
       Value<int?> satelliteCount,
       Value<String> ssid,
+      Value<int> authMode,
       Value<int> count,
       Value<bool?> isRaven,
       Value<String?> ravenFirmware,
@@ -9547,6 +9595,11 @@ class $$DetectionsTableFilterComposer
 
   ColumnFilters<String> get ssid => $composableBuilder(
     column: $table.ssid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get authMode => $composableBuilder(
+    column: $table.authMode,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9781,6 +9834,11 @@ class $$DetectionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get authMode => $composableBuilder(
+    column: $table.authMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get count => $composableBuilder(
     column: $table.count,
     builder: (column) => ColumnOrderings(column),
@@ -9990,6 +10048,9 @@ class $$DetectionsTableAnnotationComposer
   GeneratedColumn<String> get ssid =>
       $composableBuilder(column: $table.ssid, builder: (column) => column);
 
+  GeneratedColumn<int> get authMode =>
+      $composableBuilder(column: $table.authMode, builder: (column) => column);
+
   GeneratedColumn<int> get count =>
       $composableBuilder(column: $table.count, builder: (column) => column);
 
@@ -10152,6 +10213,7 @@ class $$DetectionsTableTableManager
                 Value<double?> accuracy = const Value.absent(),
                 Value<int?> satelliteCount = const Value.absent(),
                 Value<String> ssid = const Value.absent(),
+                Value<int> authMode = const Value.absent(),
                 Value<int> count = const Value.absent(),
                 Value<bool?> isRaven = const Value.absent(),
                 Value<String?> ravenFirmware = const Value.absent(),
@@ -10190,6 +10252,7 @@ class $$DetectionsTableTableManager
                 accuracy: accuracy,
                 satelliteCount: satelliteCount,
                 ssid: ssid,
+                authMode: authMode,
                 count: count,
                 isRaven: isRaven,
                 ravenFirmware: ravenFirmware,
@@ -10230,6 +10293,7 @@ class $$DetectionsTableTableManager
                 Value<double?> accuracy = const Value.absent(),
                 Value<int?> satelliteCount = const Value.absent(),
                 Value<String> ssid = const Value.absent(),
+                Value<int> authMode = const Value.absent(),
                 Value<int> count = const Value.absent(),
                 Value<bool?> isRaven = const Value.absent(),
                 Value<String?> ravenFirmware = const Value.absent(),
@@ -10268,6 +10332,7 @@ class $$DetectionsTableTableManager
                 accuracy: accuracy,
                 satelliteCount: satelliteCount,
                 ssid: ssid,
+                authMode: authMode,
                 count: count,
                 isRaven: isRaven,
                 ravenFirmware: ravenFirmware,

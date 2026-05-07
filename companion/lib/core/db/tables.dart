@@ -54,6 +54,7 @@ class Detections extends Table {
   RealColumn get accuracy => real().nullable()();
   IntColumn get satelliteCount => integer().nullable()();
   TextColumn get ssid => text().withDefault(const Constant(''))();
+  IntColumn get authMode => integer().withDefault(const Constant(0))();
   IntColumn get count => integer().withDefault(const Constant(1))();
   // Flock extensions
   BoolColumn get isRaven => boolean().nullable()();
