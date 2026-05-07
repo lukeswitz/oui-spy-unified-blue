@@ -173,6 +173,23 @@ class WardriveController extends ChangeNotifier {
   String? foxhuntTarget;
   String sessionId = '';
 
+  /// Pending zoom target set from other screens (e.g. feed tap).
+  /// Consumed once by the wardrive map, then cleared.
+  LatLng? pendingZoomTarget;
+
+  /// Request the wardrive map to zoom to a specific location.
+  void requestZoom(double lat, double lon) {
+    pendingZoomTarget = LatLng(lat, lon);
+    notifyListeners();
+  }
+
+  /// Consume the pending zoom target (called by wardrive screen after moving camera).
+  LatLng? consumeZoomTarget() {
+    final target = pendingZoomTarget;
+    pendingZoomTarget = null;
+    return target;
+  }
+
   DateTime? startTime;
   final List<Detection> detections = [];
   final Map<String, Detection> _dedupedByMac = {};

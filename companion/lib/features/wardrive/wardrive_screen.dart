@@ -81,6 +81,12 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     );
   }
 
+  void _zoomToDetection(Detection d) {
+    if (d.latitude == null || d.longitude == null) return;
+    _mapController.move(LatLng(d.latitude!, d.longitude!), 18);
+    if (_followMode) setState(() => _followMode = false);
+  }
+
   void _focusMap(WardriveController wd) {
     final pos = wd.currentPosition ?? ref.read(gpsProvider).lastPosition;
     if (pos == null) return;
@@ -114,6 +120,16 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       });
     } else if (loadedId == null) {
       _fittedSessionId = null;
+    }
+
+    // Consume pending zoom target from cross-tab navigation
+    if (wd.pendingZoomTarget != null) {
+      final zoom = wd.consumeZoomTarget()!;
+      _followMode = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.move(zoom, 18);
+      });
     }
 
     // Auto-follow: keep map centered on current position while moving
@@ -223,7 +239,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                     ),
                     if (wd.target.includesFlock) ...[
                       const SizedBox(height: 6),
-                      FlockPanel(detections: wd.flockDetections),
+                      FlockPanel(
+                        detections: wd.flockDetections,
+                        onDetectionTap: (d) => _zoomToDetection(d),
+                      ),
                     ],
                     if (wd.foxhuntTarget != null) ...[
                       const SizedBox(height: 6),
@@ -251,7 +270,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                     const SizedBox(height: 8),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: _DetectionList(detections: wd.dedupedDetections),
+                      child: _DetectionList(
+                        detections: wd.dedupedDetections,
+                        onDetectionTap: (d) => _zoomToDetection(d),
+                      ),
                     ),
                   ],
                 ),
@@ -627,8 +649,9 @@ class _IconBtn extends StatelessWidget {
 }
 
 class _DetectionList extends StatelessWidget {
-  const _DetectionList({required this.detections});
+  const _DetectionList({required this.detections, this.onDetectionTap});
   final List<Detection> detections;
+  final void Function(Detection)? onDetectionTap;
 
   @override
   Widget build(BuildContext context) {
@@ -671,7 +694,7 @@ class _DetectionList extends StatelessWidget {
                 ],
               ),
             ),
-            ...entry.value.take(10).map((d) => _DetListRow(d: d)),
+            ...entry.value.take(10).map((d) => _DetListRow(d: d, onTap: onDetectionTap)),
           ],
         ],
       ),
@@ -680,8 +703,9 @@ class _DetectionList extends StatelessWidget {
 }
 
 class _DetListRow extends StatelessWidget {
-  const _DetListRow({required this.d});
+  const _DetListRow({required this.d, this.onTap});
   final Detection d;
+  final void Function(Detection)? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -697,8 +721,12 @@ class _DetListRow extends StatelessWidget {
             : d.deviceName.isNotEmpty
                 ? d.deviceName
                 : '';
+    final hasGps = d.latitude != null && d.longitude != null;
 
-    return Padding(
+    return GestureDetector(
+      onTap: hasGps && onTap != null ? () => onTap!(d) : null,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       child: Row(
         children: [
@@ -737,6 +765,7 @@ class _DetListRow extends StatelessWidget {
           )),
         ],
       ),
+    ),
     );
   }
 }

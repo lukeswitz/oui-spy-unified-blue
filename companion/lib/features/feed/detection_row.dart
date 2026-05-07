@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DetectionRow extends ConsumerWidget {
@@ -153,10 +155,13 @@ class DetectionRow extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Icon(
-                          Icons.location_on,
-                          size: 10,
-                          color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
+                        GestureDetector(
+                          onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
+                          child: Icon(
+                            Icons.location_on,
+                            size: 10,
+                            color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
+                          ),
                         ),
                       ],
                     ),
@@ -169,6 +174,15 @@ class DetectionRow extends ConsumerWidget {
       ),
     ),
     );
+  }
+
+  void _zoomOnMap(BuildContext context, WidgetRef ref) {
+    if (detection.latitude == null || detection.longitude == null) return;
+    ref.read(wardriveProvider).requestZoom(
+      detection.latitude!,
+      detection.longitude!,
+    );
+    context.go('/wardrive');
   }
 
   void _startFoxhunt(BuildContext context, WidgetRef ref) {
@@ -220,11 +234,22 @@ class DetectionRow extends ConsumerWidget {
                 _startFoxhunt(context, ref);
               },
             ),
+            if (detection.latitude != null)
+              ListTile(
+                leading: const Icon(Icons.map, color: AppTheme.gpsGood),
+                title: const Text('Show on Map',
+                    style: TextStyle(color: AppTheme.gpsGood)),
+                subtitle: Text('Zoom to detection location',
+                    style: TextStyle(color: t.textDim, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _zoomOnMap(context, ref);
+                },
+              ),
             ListTile(
               leading: Icon(Icons.copy, color: t.textSecondary),
               title: Text('Copy MAC', style: TextStyle(color: t.textPrimary)),
               onTap: () {
-                // ignore: unused_import
                 Navigator.pop(ctx);
               },
             ),

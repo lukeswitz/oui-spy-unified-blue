@@ -6,8 +6,9 @@ import 'package:oui_spy/theme/app_theme.dart';
 /// Compact flock count badge. Tap to expand detail list.
 /// Receives pre-deduped flock detections (unique per MAC).
 class FlockPanel extends StatefulWidget {
-  const FlockPanel({super.key, required this.detections});
+  const FlockPanel({super.key, required this.detections, this.onDetectionTap});
   final List<Detection> detections;
+  final void Function(Detection)? onDetectionTap;
 
   @override
   State<FlockPanel> createState() => _FlockPanelState();
@@ -78,7 +79,10 @@ class _FlockPanelState extends State<FlockPanel> {
               padding: const EdgeInsets.symmetric(vertical: 2),
               shrinkWrap: true,
               itemCount: widget.detections.length,
-              itemBuilder: (_, i) => _Row(d: widget.detections[i]),
+              itemBuilder: (_, i) => _Row(
+                d: widget.detections[i],
+                onTap: widget.onDetectionTap,
+              ),
             ),
           ),
       ],
@@ -87,8 +91,9 @@ class _FlockPanelState extends State<FlockPanel> {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.d});
+  const _Row({required this.d, this.onTap});
   final Detection d;
+  final void Function(Detection)? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -98,8 +103,12 @@ class _Row extends StatelessWidget {
     final isRaven = d.flock?.isRaven ?? false;
     final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
+    final hasGps = d.latitude != null && d.longitude != null;
 
-    return Padding(
+    return GestureDetector(
+      onTap: hasGps && onTap != null ? () => onTap!(d) : null,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       child: Row(
         children: [
@@ -149,6 +158,7 @@ class _Row extends StatelessWidget {
           )),
         ],
       ),
+    ),
     );
   }
 }

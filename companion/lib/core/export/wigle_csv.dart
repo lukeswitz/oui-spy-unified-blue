@@ -92,7 +92,7 @@ class WigleCsv {
     };
   }
 
-  /// Channel to center frequency in MHz. BLE = 0 (matches Biscuit format).
+
   static String _frequency(Detection d) {
     final isBle = d.method == 'ble_adv' || d.engine.isBle;
     if (isBle) return '0';
