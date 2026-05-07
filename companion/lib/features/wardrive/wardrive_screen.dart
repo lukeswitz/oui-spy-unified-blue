@@ -13,6 +13,7 @@ import 'package:oui_spy/core/models/engine.dart';
 
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
+import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
@@ -220,6 +221,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                       onTap: () => _focusMap(wd),
                       active: _followMode,
                     ),
+                    if (wd.target.includesFlock) ...[
+                      const SizedBox(height: 6),
+                      FlockPanel(detections: wd.flockDetections),
+                    ],
                     if (wd.foxhuntTarget != null) ...[
                       const SizedBox(height: 6),
                       _FoxhuntBadge(mac: wd.foxhuntTarget!),
@@ -823,12 +828,30 @@ class _CompletedSessionBar extends ConsumerWidget {
           const Icon(Icons.check_circle, size: 14, color: AppTheme.success),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${UnitFormatter.distance(wd.distanceKm, units)}',
-              style: TextStyle(
-                color: t.textSecondary, fontSize: 10,
-                fontFamily: 'monospace', fontWeight: FontWeight.w500,
-              ),
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${UnitFormatter.distance(wd.distanceKm, units)}',
+                    style: TextStyle(
+                      color: t.textSecondary, fontSize: 10,
+                      fontFamily: 'monospace', fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (wd.flockCount > 0) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.videocam, size: 12, color: AppTheme.flockBle),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${wd.flockCount}',
+                    style: const TextStyle(
+                      color: AppTheme.flockBle, fontSize: 10,
+                      fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           GestureDetector(
@@ -1048,6 +1071,7 @@ class _SessionHistorySheet extends ConsumerWidget {
                         final sid = sessions[i].id;
                         return _SessionRow(
                           session: sessions[i],
+                          flockCountFuture: db.flockMacCount(sid),
                           onTap: () {
                             Navigator.pop(context);
                             ref.read(wardriveProvider).loadSession(sid);
@@ -1203,6 +1227,7 @@ class _SessionRow extends ConsumerWidget {
     required this.onDelete,
     this.onUploadWigle,
     this.wigleUploaded = false,
+    this.flockCountFuture,
   });
   final Session session;
   final VoidCallback onTap;
@@ -1210,6 +1235,7 @@ class _SessionRow extends ConsumerWidget {
   final VoidCallback onDelete;
   final VoidCallback? onUploadWigle;
   final bool wigleUploaded;
+  final Future<int>? flockCountFuture;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1248,12 +1274,43 @@ class _SessionRow extends ConsumerWidget {
                         fontFamily: 'monospace', fontWeight: FontWeight.w500,
                       )),
                       const SizedBox(height: 2),
-                      Text(
-                        '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
-                        style: TextStyle(
-                          color: t.textDim, fontSize: 9,
-                          fontFamily: 'monospace',
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '$durStr  \u00b7  ${session.detectionCount} det  \u00b7  ${session.uniqueMacCount} mac  \u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
+                              style: TextStyle(
+                                color: t.textDim, fontSize: 9,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                          if (flockCountFuture != null)
+                            FutureBuilder<int>(
+                              future: flockCountFuture,
+                              builder: (_, snap) {
+                                final fc = snap.data ?? 0;
+                                if (fc == 0) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.videocam, size: 10, color: AppTheme.flockBle),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        '$fc',
+                                        style: const TextStyle(
+                                          color: AppTheme.flockBle, fontSize: 9,
+                                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
                       ),
                     ],
                   ),
