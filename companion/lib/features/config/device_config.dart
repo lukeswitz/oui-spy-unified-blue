@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
@@ -43,7 +45,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _readDeviceConfig();
   }
 
@@ -157,6 +159,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               tabAlignment: TabAlignment.start,
               tabs: const [
                 Tab(text: 'APP'),
+                Tab(text: 'DETECTIONS'),
                 Tab(text: 'HARDWARE'),
                 Tab(text: 'ALERTS'),
                 Tab(text: 'WIFI'),
@@ -169,6 +172,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 controller: _tabController,
                 children: [
                   _buildAppTab(),
+                  const _DetectionsTab(),
                   _buildHardwareTab(),
                   _buildAlertsTab(),
                   _buildWifiTab(),
@@ -1276,6 +1280,498 @@ class _InfoRow extends StatelessWidget {
         children: [
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
           Text(value, style: TextStyle(color: t.textPrimary, fontFamily: 'monospace', fontSize: 13)),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Detections tab — sortable list of all flock + detector detections
+// ---------------------------------------------------------------------------
+
+enum _DetSort { time, rssi, mac }
+
+class _DetectionsTab extends ConsumerStatefulWidget {
+  const _DetectionsTab();
+
+  @override
+  ConsumerState<_DetectionsTab> createState() => _DetectionsTabState();
+}
+
+class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
+  List<Map<String, dynamic>> _detections = [];
+  bool _loading = true;
+  _DetSort _sort = _DetSort.time;
+  bool _ascending = false;
+  String? _engineFilter; // null = all, 'flock', 'detector'
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final db = ref.read(databaseProvider);
+    final rows = await db.getFlockDetectorDetections();
+    if (mounted) setState(() { _detections = rows; _loading = false; });
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    var list = _detections;
+    if (_engineFilter == 'flock') {
+      list = list.where((d) {
+        final e = d['engine'] as String;
+        return e == 'flockBle' || e == 'flockWifi';
+      }).toList();
+    } else if (_engineFilter == 'detector') {
+      list = list.where((d) => d['engine'] == 'detector').toList();
+    }
+
+    final cmp = switch (_sort) {
+      _DetSort.time => (Map<String, dynamic> a, Map<String, dynamic> b) =>
+          (a['appTimestamp'] as int).compareTo(b['appTimestamp'] as int),
+      _DetSort.rssi => (Map<String, dynamic> a, Map<String, dynamic> b) =>
+          (a['rssi'] as int).compareTo(b['rssi'] as int),
+      _DetSort.mac => (Map<String, dynamic> a, Map<String, dynamic> b) =>
+          (a['macAddress'] as String).compareTo(b['macAddress'] as String),
+    };
+
+    list.sort((a, b) => _ascending ? cmp(a, b) : cmp(b, a));
+    return list;
+  }
+
+  Color _engineColor(String engine) => switch (engine) {
+    'flockBle' => AppTheme.flockBle,
+    'flockWifi' => AppTheme.flockWifi,
+    'detector' => AppTheme.detector,
+    _ => AppTheme.accent,
+  };
+
+  String _engineLabel(String engine) => switch (engine) {
+    'flockBle' => 'FLOCK BLE',
+    'flockWifi' => 'FLOCK WiFi',
+    'detector' => 'DETECTOR',
+    _ => engine,
+  };
+
+  void _toggleSort(_DetSort s) {
+    setState(() {
+      if (_sort == s) {
+        _ascending = !_ascending;
+      } else {
+        _sort = s;
+        _ascending = false;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(
+        color: AppTheme.accent, strokeWidth: 2));
+    }
+
+    if (_detections.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_off, size: 36, color: t.textDim),
+            const SizedBox(height: 12),
+            Text('NO DETECTIONS', style: TextStyle(
+              color: t.textDim, fontSize: 12,
+              fontWeight: FontWeight.w700, letterSpacing: 2,
+            )),
+            const SizedBox(height: 6),
+            Text(
+              'Run a wardrive with Flock or Detector engines to see detections here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: t.textDim, fontSize: 11),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final items = _filtered;
+    final flockCount = _detections.where((d) {
+      final e = d['engine'] as String;
+      return e == 'flockBle' || e == 'flockWifi';
+    }).length;
+    final detectorCount = _detections.where((d) => d['engine'] == 'detector').length;
+
+    return Column(
+      children: [
+        // Filter chips
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              _FilterChip(
+                label: 'ALL (${_detections.length})',
+                selected: _engineFilter == null,
+                color: AppTheme.accent,
+                onTap: () => setState(() => _engineFilter = null),
+              ),
+              const SizedBox(width: 6),
+              _FilterChip(
+                label: 'FLOCK ($flockCount)',
+                selected: _engineFilter == 'flock',
+                color: AppTheme.flockBle,
+                onTap: () => setState(() =>
+                    _engineFilter = _engineFilter == 'flock' ? null : 'flock'),
+              ),
+              const SizedBox(width: 6),
+              _FilterChip(
+                label: 'DETECT ($detectorCount)',
+                selected: _engineFilter == 'detector',
+                color: AppTheme.detector,
+                onTap: () => setState(() =>
+                    _engineFilter = _engineFilter == 'detector' ? null : 'detector'),
+              ),
+            ],
+          ),
+        ),
+        // Sort buttons
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+          child: Row(
+            children: [
+              Text('SORT', style: TextStyle(
+                color: t.textDim, fontSize: 9,
+                fontWeight: FontWeight.w700, letterSpacing: 1,
+              )),
+              const SizedBox(width: 8),
+              _SortBtn(
+                label: 'TIME', active: _sort == _DetSort.time,
+                ascending: _ascending,
+                onTap: () => _toggleSort(_DetSort.time),
+              ),
+              const SizedBox(width: 4),
+              _SortBtn(
+                label: 'RSSI', active: _sort == _DetSort.rssi,
+                ascending: _ascending,
+                onTap: () => _toggleSort(_DetSort.rssi),
+              ),
+              const SizedBox(width: 4),
+              _SortBtn(
+                label: 'MAC', active: _sort == _DetSort.mac,
+                ascending: _ascending,
+                onTap: () => _toggleSort(_DetSort.mac),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () {
+                  setState(() => _loading = true);
+                  _load();
+                },
+                child: Icon(Icons.refresh, size: 16, color: t.textDim),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Detection list
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            itemCount: items.length,
+            itemBuilder: (_, i) => _DetectionRow(
+              data: items[i],
+              engineColor: _engineColor(items[i]['engine'] as String),
+              engineLabel: _engineLabel(items[i]['engine'] as String),
+              onShowMap: () => _showOnMap(items[i]),
+              onFoxhunt: () => _startFoxhunt(items[i]),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showOnMap(Map<String, dynamic> det) {
+    final lat = det['latitude'] as double?;
+    final lon = det['longitude'] as double?;
+    final sid = det['sessionId'] as String;
+
+    final wd = ref.read(wardriveProvider);
+    if (wd.isActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stop active wardrive first')),
+      );
+      return;
+    }
+
+    wd.loadSession(sid).then((_) {
+      if (lat != null && lon != null) {
+        wd.requestZoom(lat, lon);
+      }
+      if (context.mounted) context.go('/wardrive');
+    });
+  }
+
+  void _startFoxhunt(Map<String, dynamic> det) {
+    final mac = det['macAddress'] as String;
+    final channel = det['channel'] as int? ?? 0;
+    final wd = ref.read(wardriveProvider);
+
+    wd.setFoxhuntTarget(mac, channel: channel);
+    if (context.mounted) {
+      context.go('/wardrive');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppTheme.warning,
+          content: Text('Foxhunt: ${mac.toUpperCase()}'),
+        ),
+      );
+    }
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? color.withValues(alpha: 0.6) : color.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Text(label, style: TextStyle(
+          color: selected ? color : color.withValues(alpha: 0.6),
+          fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+        )),
+      ),
+    );
+  }
+}
+
+class _SortBtn extends StatelessWidget {
+  const _SortBtn({
+    required this.label,
+    required this.active,
+    required this.ascending,
+    required this.onTap,
+  });
+  final String label;
+  final bool active;
+  final bool ascending;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: active ? AppTheme.accent.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: active ? AppTheme.accent.withValues(alpha: 0.4) : t.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(
+              color: active ? AppTheme.accent : t.textDim,
+              fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+            )),
+            if (active) ...[
+              const SizedBox(width: 2),
+              Icon(
+                ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 9, color: AppTheme.accent,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetectionRow extends StatelessWidget {
+  const _DetectionRow({
+    required this.data,
+    required this.engineColor,
+    required this.engineLabel,
+    required this.onShowMap,
+    required this.onFoxhunt,
+  });
+  final Map<String, dynamic> data;
+  final Color engineColor;
+  final String engineLabel;
+  final VoidCallback onShowMap;
+  final VoidCallback onFoxhunt;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final mac = (data['macAddress'] as String).toUpperCase();
+    final rssi = data['rssi'] as int;
+    final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
+    final timeStr = DateFormat('MMM d HH:mm').format(ts);
+    final hasGps = data['latitude'] != null && data['longitude'] != null;
+    final deviceName = data['deviceName'] as String? ?? '';
+    final rssiNorm = ((rssi + 100) / 70).clamp(0.0, 1.0);
+    final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 3, height: 20,
+                decoration: BoxDecoration(
+                  color: engineColor,
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(mac, style: TextStyle(
+                          color: t.textPrimary, fontSize: 11,
+                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                        )),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: engineColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(engineLabel, style: TextStyle(
+                            color: engineColor, fontSize: 7,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.3,
+                          )),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(timeStr, style: TextStyle(
+                          color: t.textDim, fontSize: 9,
+                          fontFamily: 'monospace',
+                        )),
+                        if (deviceName.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(deviceName, style: TextStyle(
+                              color: t.textSecondary, fontSize: 9,
+                            ), overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Text('$rssi', style: TextStyle(
+                color: rssiColor, fontSize: 12,
+                fontFamily: 'monospace', fontWeight: FontWeight.w700,
+              )),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (hasGps)
+                GestureDetector(
+                  onTap: onShowMap,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppTheme.accent.withValues(alpha: 0.25)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.map_outlined, size: 12, color: AppTheme.accent),
+                        SizedBox(width: 4),
+                        Text('MAP', style: TextStyle(
+                          color: AppTheme.accent, fontSize: 8,
+                          fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                        )),
+                      ],
+                    ),
+                  ),
+                ),
+              if (hasGps) const SizedBox(width: 6),
+              GestureDetector(
+                onTap: onFoxhunt,
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warning.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppTheme.warning.withValues(alpha: 0.25)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.gps_fixed, size: 12, color: AppTheme.warning),
+                      SizedBox(width: 4),
+                      Text('FOXHUNT', style: TextStyle(
+                        color: AppTheme.warning, fontSize: 8,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (!hasGps)
+                Text('NO GPS', style: TextStyle(
+                  color: t.textDim, fontSize: 8,
+                  fontWeight: FontWeight.w600, letterSpacing: 0.5,
+                )),
+            ],
+          ),
         ],
       ),
     );

@@ -215,7 +215,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             if (!wd.isActive && wd.hasSessionData)
               Positioned(
                 top: 0, left: 0, right: 0,
-                child: _CompletedSessionBar(wd: wd, ref: ref),
+                child: _CompletedSessionBar(
+                  wd: wd,
+                  onZoomDetection: (d) => _zoomToDetection(d),
+                ),
               ),
 
             // Idle: mode selector + start
@@ -285,9 +288,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   }
 
   List<Marker> _distanceFilteredMarkers(WardriveController wd) {
-    final geoDetections = wd.dedupedDetections
+    final allGeo = wd.dedupedDetections
         .where((d) => d.latitude != null && d.longitude != null)
         .toList();
+    final geoDetections = wd.flockFilter
+        ? allGeo.where((d) =>
+            d.engine == Engine.flockBle || d.engine == Engine.flockWifi).toList()
+        : allGeo;
     final distThresh = wd.markerDistanceM;
     final filtered = <Detection>[];
     final placed = <LatLng>[];
@@ -832,140 +839,336 @@ class _MarkerDot extends StatelessWidget {
   }
 }
 
-class _CompletedSessionBar extends ConsumerWidget {
-  const _CompletedSessionBar({required this.wd, required this.ref});
+class _CompletedSessionBar extends ConsumerStatefulWidget {
+  const _CompletedSessionBar({required this.wd, required this.onZoomDetection});
   final WardriveController wd;
-  final WidgetRef ref;
+  final void Function(Detection) onZoomDetection;
 
   @override
-  Widget build(BuildContext context, WidgetRef wRef) {
+  ConsumerState<_CompletedSessionBar> createState() => _CompletedSessionBarState();
+}
+
+class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
+  bool _flockExpanded = false;
+
+  WardriveController get wd => widget.wd;
+
+  @override
+  Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    final units = wRef.watch(unitSystemProvider);
-    final wigle = wRef.watch(wigleProvider);
+    final units = ref.watch(unitSystemProvider);
+    final wigle = ref.watch(wigleProvider);
     final sid = wd.lastCompletedSessionId ?? wd.sessionId;
     final isUploaded = wigle.isUploaded(sid);
     final isUploading = wigle.isUploading(sid);
+    final flockDets = wd.flockDetections;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: t.background.withValues(alpha: 0.85),
+        color: t.background.withValues(alpha: 0.92),
         border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.check_circle, size: 14, color: AppTheme.success),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${UnitFormatter.distance(wd.distanceKm, units)}',
-                    style: TextStyle(
-                      color: t.textSecondary, fontSize: 10,
-                      fontFamily: 'monospace', fontWeight: FontWeight.w500,
-                    ),
+          // Row 1: stats text
+          Row(
+            children: [
+              const Icon(Icons.check_circle, size: 14, color: AppTheme.success),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${wd.uniqueMacs.length} unique  \u00b7  ${wd.rawDetectionCount} total  \u00b7  ${UnitFormatter.distance(wd.distanceKm, units)}',
+                  style: TextStyle(
+                    color: t.textSecondary, fontSize: 10,
+                    fontFamily: 'monospace', fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (wd.flockCount > 0) ...[
-                  const SizedBox(width: 8),
-                  Icon(Icons.videocam, size: 12, color: AppTheme.flockBle),
-                  const SizedBox(width: 2),
-                  Text(
-                    '${wd.flockCount}',
-                    style: const TextStyle(
-                      color: AppTheme.flockBle, fontSize: 10,
-                      fontFamily: 'monospace', fontWeight: FontWeight.w600,
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => wd.clearMapData(),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  alignment: Alignment.center,
+                  child: Icon(Icons.close, size: 14, color: t.textDim),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // Row 2: cam chip + action buttons
+          Row(
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: wd.flockCount > 0
+                    ? () {
+                        setState(() => _flockExpanded = !_flockExpanded);
+                        wd.toggleFlockFilter();
+                      }
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _flockExpanded
+                        ? AppTheme.flockBle.withValues(alpha: 0.25)
+                        : wd.flockCount > 0
+                            ? AppTheme.flockBle.withValues(alpha: 0.10)
+                            : t.surface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _flockExpanded
+                          ? AppTheme.flockBle.withValues(alpha: 0.7)
+                          : wd.flockCount > 0
+                              ? AppTheme.flockBle.withValues(alpha: 0.35)
+                              : t.border,
                     ),
                   ),
-                ],
-              ],
-            ),
-          ),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _shareCsv(context),
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.file_download_outlined, size: 14, color: AppTheme.accent),
-                  SizedBox(width: 4),
-                  Text('CSV', style: TextStyle(
-                    color: AppTheme.accent, fontSize: 9,
-                    fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                  )),
-                ],
-              ),
-            ),
-          ),
-          if (wigle.isLoggedIn) ...[
-            const SizedBox(width: 6),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: isUploaded || isUploading
-                  ? null
-                  : () => _uploadToWigle(context, wRef, sid),
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (isUploaded ? AppTheme.success : AppTheme.warning)
-                      .withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: (isUploaded ? AppTheme.success : AppTheme.warning)
-                        .withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isUploading)
-                      const SizedBox(
-                        width: 12, height: 12,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5, color: AppTheme.warning,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.videocam, size: 12,
+                          color: wd.flockCount > 0
+                              ? AppTheme.flockBle
+                              : t.textDim),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${wd.flockCount}',
+                        style: TextStyle(
+                          color: wd.flockCount > 0
+                              ? AppTheme.flockBle
+                              : t.textDim,
+                          fontSize: 10,
+                          fontFamily: 'monospace', fontWeight: FontWeight.w700,
                         ),
-                      )
-                    else
-                      Icon(
-                        isUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
-                        size: 14,
-                        color: isUploaded ? AppTheme.success : AppTheme.warning,
                       ),
-                    const SizedBox(width: 4),
-                    Text(
-                      isUploaded ? 'SENT' : 'WIGLE',
-                      style: TextStyle(
-                        color: isUploaded ? AppTheme.success : AppTheme.warning,
-                        fontSize: 9,
+                      if (wd.flockCount > 0) ...[
+                        const SizedBox(width: 3),
+                        Icon(
+                          _flockExpanded ? Icons.expand_less : Icons.expand_more,
+                          size: 12, color: AppTheme.flockBle,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Spacer(),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _shareCsv(context),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.file_download_outlined, size: 14, color: AppTheme.accent),
+                      SizedBox(width: 4),
+                      Text('CSV', style: TextStyle(
+                        color: AppTheme.accent, fontSize: 9,
                         fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+              if (wigle.isLoggedIn) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: isUploaded || isUploading
+                      ? null
+                      : () => _uploadToWigle(context, ref, sid),
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (isUploaded ? AppTheme.success : AppTheme.warning)
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: (isUploaded ? AppTheme.success : AppTheme.warning)
+                            .withValues(alpha: 0.4),
                       ),
                     ),
-                  ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isUploading)
+                          const SizedBox(
+                            width: 12, height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5, color: AppTheme.warning,
+                            ),
+                          )
+                        else
+                          Icon(
+                            isUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
+                            size: 14,
+                            color: isUploaded ? AppTheme.success : AppTheme.warning,
+                          ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isUploaded ? 'SENT' : 'WIGLE',
+                          style: TextStyle(
+                            color: isUploaded ? AppTheme.success : AppTheme.warning,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+              ],
+            ],
+          ),
+          // Expandable flock detections panel
+          if (_flockExpanded && flockDets.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 180),
+              decoration: BoxDecoration(
+                color: t.background.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.flockBle.withValues(alpha: 0.3)),
+              ),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                shrinkWrap: true,
+                itemCount: flockDets.length,
+                itemBuilder: (_, i) {
+                  final d = flockDets[i];
+                  final isBle = d.engine == Engine.flockBle;
+                  final engineColor = isBle ? AppTheme.flockBle : AppTheme.flockWifi;
+                  final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
+                  final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
+                  final hasGps = d.latitude != null && d.longitude != null;
+                  final isRaven = d.flock?.isRaven ?? false;
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: hasGps ? () => widget.onZoomDetection(d) : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: i < flockDets.length - 1
+                            ? Border(bottom: BorderSide(
+                                color: t.border.withValues(alpha: 0.5), width: 0.5))
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 3, height: 20,
+                            decoration: BoxDecoration(
+                              color: engineColor,
+                              borderRadius: BorderRadius.circular(1.5),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      d.macAddress.toUpperCase(),
+                                      style: TextStyle(
+                                        color: t.textPrimary, fontSize: 10,
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 3, vertical: 0.5),
+                                      decoration: BoxDecoration(
+                                        color: engineColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                      child: Text(
+                                        isBle ? 'BLE' : 'WiFi',
+                                        style: TextStyle(
+                                          color: engineColor, fontSize: 7,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isRaven) ...[
+                                      const SizedBox(width: 3),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 3, vertical: 0.5),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.warning.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                        child: const Text('RAVEN',
+                                          style: TextStyle(
+                                            color: AppTheme.warning, fontSize: 7,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'ch${d.channel}',
+                                      style: TextStyle(
+                                        color: t.textDim, fontSize: 8,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                    if (hasGps) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(Icons.location_on, size: 8,
+                                          color: AppTheme.success.withValues(alpha: 0.7)),
+                                    ],
+                                    if (!hasGps) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(Icons.location_off, size: 8,
+                                          color: t.textDim),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '${d.rssi}',
+                            style: TextStyle(
+                              color: rssiColor, fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text('dBm', style: TextStyle(
+                            color: t.textDim, fontSize: 7,
+                          )),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
-          const SizedBox(width: 6),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => wd.clearMapData(),
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              alignment: Alignment.center,
-              child: Icon(Icons.close, size: 14, color: t.textDim),
-            ),
-          ),
         ],
       ),
     );
@@ -1112,6 +1315,7 @@ class _SessionHistorySheet extends ConsumerWidget {
                               ? () => _uploadToWigle(context, ref, sid)
                               : null,
                           wigleUploaded: wigle.isUploaded(sid),
+                          wigleUploading: wigle.isUploading(sid),
                         );
                       },
                     );
@@ -1257,6 +1461,7 @@ class _SessionRow extends ConsumerWidget {
     required this.onDelete,
     this.onUploadWigle,
     this.wigleUploaded = false,
+    this.wigleUploading = false,
     this.flockCountFuture,
     this.wifiBleFuture,
   });
@@ -1266,6 +1471,7 @@ class _SessionRow extends ConsumerWidget {
   final VoidCallback onDelete;
   final VoidCallback? onUploadWigle;
   final bool wigleUploaded;
+  final bool wigleUploading;
   final Future<int>? flockCountFuture;
   final Future<({int wifi, int ble})>? wifiBleFuture;
 
@@ -1393,12 +1599,19 @@ class _SessionRow extends ConsumerWidget {
                 ),
                 const SizedBox(width: 6),
                 if (onUploadWigle != null)
-                  _SessionActionBtn(
-                    icon: wigleUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
-                    label: wigleUploaded ? 'SENT' : 'WIGLE',
-                    color: wigleUploaded ? AppTheme.success : AppTheme.warning,
-                    onTap: wigleUploaded ? null : onUploadWigle,
-                  ),
+                  wigleUploading
+                      ? _SessionActionBtn(
+                          icon: Icons.cloud_sync,
+                          label: 'SENDING',
+                          color: AppTheme.warning,
+                          isLoading: true,
+                        )
+                      : _SessionActionBtn(
+                          icon: wigleUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
+                          label: wigleUploaded ? 'SENT' : 'WIGLE',
+                          color: wigleUploaded ? AppTheme.success : AppTheme.warning,
+                          onTap: wigleUploaded ? null : onUploadWigle,
+                        ),
                 const Spacer(),
                 _SessionActionBtn(
                   icon: Icons.delete_forever_outlined,
@@ -1421,18 +1634,20 @@ class _SessionActionBtn extends StatelessWidget {
     required this.label,
     required this.color,
     this.onTap,
+    this.isLoading = false,
   });
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback? onTap;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = onTap != null;
+    final enabled = onTap != null || isLoading;
     final c = enabled ? color : color.withValues(alpha: 0.4);
     return GestureDetector(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         constraints: const BoxConstraints(minWidth: 56, minHeight: 36),
@@ -1445,7 +1660,15 @@ class _SessionActionBtn extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: c),
+            if (isLoading)
+              SizedBox(
+                width: 12, height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5, color: c,
+                ),
+              )
+            else
+              Icon(icon, size: 14, color: c),
             const SizedBox(width: 4),
             Text(label, style: TextStyle(
               color: c, fontSize: 9,

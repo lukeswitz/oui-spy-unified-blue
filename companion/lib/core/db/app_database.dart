@@ -200,6 +200,38 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.read(mac)!).toList();
   }
 
+  /// Get all flock + detector detections across all sessions, deduped by MAC
+  /// (latest per MAC), ordered by timestamp descending.
+  Future<List<Map<String, dynamic>>> getFlockDetectorDetections() async {
+    final rows = await (select(detections)
+          ..where((d) => d.engine.isIn([
+                'flockBle', 'flockWifi', 'detector',
+              ]))
+          ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))
+        .get();
+    // Dedupe: keep latest per MAC+engine
+    final seen = <String, Map<String, dynamic>>{};
+    for (final r in rows) {
+      final key = '${r.macAddress}|${r.engine}';
+      if (!seen.containsKey(key)) {
+        seen[key] = {
+          'id': r.id,
+          'sessionId': r.sessionId,
+          'macAddress': r.macAddress,
+          'deviceName': r.deviceName,
+          'engine': r.engine,
+          'detectionMethod': r.detectionMethod,
+          'rssi': r.rssi,
+          'channel': r.channel,
+          'appTimestamp': r.appTimestamp,
+          'latitude': r.latitude,
+          'longitude': r.longitude,
+        };
+      }
+    }
+    return seen.values.toList();
+  }
+
   // -- WiGLE upload operations --
 
   Future<void> insertWigleUpload(WigleUploadsCompanion upload) =>

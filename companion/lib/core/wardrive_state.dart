@@ -669,8 +669,7 @@ class WardriveController extends ChangeNotifier {
       }
     }
     uniqueMacs.add(detection.macAddress);
-    if (target.includesFlock &&
-        (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi)) {
+    if (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi) {
       _flockMacs.add(detection.macAddress);
     }
     if (detection.engine == Engine.skySpy) droneCount++;
