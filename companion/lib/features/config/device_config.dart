@@ -1645,234 +1645,190 @@ class _DetectionRow extends StatelessWidget {
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: t.surface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: t.border),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 3, height: 20,
-                decoration: BoxDecoration(
-                  color: engineColor,
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(mac, style: TextStyle(
-                          color: t.textPrimary, fontSize: 11,
-                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                        )),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: engineColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(engineLabel, style: TextStyle(
-                            color: engineColor, fontSize: 7,
-                            fontWeight: FontWeight.w700, letterSpacing: 0.3,
-                          )),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Text(timeStr, style: TextStyle(
-                          color: t.textDim, fontSize: 9,
-                          fontFamily: 'monospace',
-                        )),
-                        if (deviceName.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(deviceName, style: TextStyle(
-                              color: t.textSecondary, fontSize: 9,
-                            ), overflow: TextOverflow.ellipsis),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Text('$rssi', style: TextStyle(
-                color: rssiColor, fontSize: 12,
-                fontFamily: 'monospace', fontWeight: FontWeight.w700,
-              )),
-            ],
-          ),
-          // Detail chips row: channel + method + addr field
+          // ── Top section: MAC + engine + RSSI ──
           Padding(
-            padding: const EdgeInsets.only(top: 5, left: 11),
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 3,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (channel > 0)
-                  _DetChip(
-                    icon: Icons.wifi,
-                    label: 'CH$channel',
-                    color: t.textDim,
-                  ),
-                if (method.isNotEmpty)
-                  _DetChip(
-                    icon: _methodIcon(method),
-                    label: method.toUpperCase(),
+                // Engine accent dot
+                Container(
+                  width: 8, height: 8,
+                  margin: const EdgeInsets.only(top: 4, right: 10),
+                  decoration: BoxDecoration(
                     color: engineColor,
-                  ),
-                if (_addrField(method) != null)
-                  _DetChip(
-                    icon: Icons.alt_route,
-                    label: _addrField(method)!,
-                    color: t.textDim,
-                  ),
-                if (hasGps)
-                  _DetChip(
-                    icon: Icons.location_on,
-                    label: 'GPS',
-                    color: AppTheme.gpsGood,
-                  ),
-                if (!hasGps)
-                  _DetChip(
-                    icon: Icons.location_off,
-                    label: 'NO GPS',
-                    color: t.textDim,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              if (hasGps)
-                GestureDetector(
-                  onTap: onShowMap,
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppTheme.accent.withValues(alpha: 0.25)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.map_outlined, size: 12, color: AppTheme.accent),
-                        SizedBox(width: 4),
-                        Text('MAP', style: TextStyle(
-                          color: AppTheme.accent, fontSize: 8,
-                          fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                        )),
-                      ],
-                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [BoxShadow(
+                      color: engineColor.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                    )],
                   ),
                 ),
-              if (hasGps) const SizedBox(width: 6),
-              GestureDetector(
-                onTap: onFoxhunt,
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.warning.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppTheme.warning.withValues(alpha: 0.25)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                // MAC
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.gps_fixed, size: 12, color: AppTheme.warning),
-                      SizedBox(width: 4),
-                      Text('FOXHUNT', style: TextStyle(
-                        color: AppTheme.warning, fontSize: 8,
-                        fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                      Text(mac, style: TextStyle(
+                        color: t.textPrimary, fontSize: 15,
+                        fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
                       )),
+                      if (deviceName.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(deviceName, style: TextStyle(
+                            color: t.textSecondary, fontSize: 12,
+                          ), overflow: TextOverflow.ellipsis),
+                        ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                // RSSI
+                Text('$rssi', style: TextStyle(
+                  color: rssiColor, fontSize: 20,
+                  fontFamily: 'monospace', fontWeight: FontWeight.w800,
+                )),
+              ],
+            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  IconData _methodIcon(String method) => switch (method) {
-    'oui_addr1' || 'oui_addr2' || 'oui_addr3' || 'oui_match' => Icons.fingerprint,
-    'wildcard_probe' => Icons.wifi_find,
-    'name_match' => Icons.label,
-    'mfg_id' => Icons.factory,
-    'raven_uuid' => Icons.memory,
-    'watchlist' => Icons.radar,
-    _ => Icons.sensors,
-  };
-
-  /// Map detection method to human-readable addr field explanation.
-  String? _addrField(String method) => switch (method) {
-    'oui_addr1' => 'ADDR1 (dst)',
-    'oui_addr2' => 'ADDR2 (src)',
-    'oui_addr3' => 'ADDR3 (bssid)',
-    'wildcard_probe' => 'PROBE (empty SSID)',
-    'oui_match' => 'BLE OUI prefix',
-    'name_match' => 'BLE device name',
-    'mfg_id' => 'BLE mfg data',
-    'raven_uuid' => 'Raven svc UUID',
-    _ => null,
-  };
-}
-
-/// Compact chip for detection detail info.
-class _DetChip extends StatelessWidget {
-  const _DetChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 9, color: color),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 8,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'monospace',
-              letterSpacing: 0.3,
+          const SizedBox(height: 10),
+          // ── Middle: metadata row ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              children: [
+                // Engine badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: engineColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(engineLabel, style: TextStyle(
+                    color: engineColor, fontSize: 10,
+                    fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                  )),
+                ),
+                const SizedBox(width: 8),
+                // Method
+                if (method.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: t.textDim.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(_methodLabel(method), style: TextStyle(
+                      color: t.textSecondary, fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    )),
+                  ),
+                if (channel > 0) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.cell_tower, size: 14, color: t.textDim),
+                  const SizedBox(width: 3),
+                  Text('$channel', style: TextStyle(
+                    color: t.textSecondary, fontSize: 12,
+                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                  )),
+                ],
+                const Spacer(),
+                // Timestamp
+                Icon(Icons.access_time, size: 12, color: t.textDim),
+                const SizedBox(width: 4),
+                Text(timeStr, style: TextStyle(
+                  color: t.textDim, fontSize: 11,
+                  fontFamily: 'monospace',
+                )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          // ── Bottom: action buttons ──
+          Container(
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: t.border, width: 0.5)),
+            ),
+            child: Row(
+              children: [
+                // Map button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: hasGps ? onShowMap : null,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.place,
+                            size: 16,
+                            color: hasGps ? AppTheme.accent : t.textDim.withValues(alpha: 0.3),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('MAP', style: TextStyle(
+                            color: hasGps ? AppTheme.accent : t.textDim.withValues(alpha: 0.3),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(width: 0.5, height: 20, color: t.border),
+                // Foxhunt button
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onFoxhunt,
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.gps_fixed, size: 16, color: AppTheme.foxhunter),
+                          SizedBox(width: 6),
+                          Text('FOXHUNT', style: TextStyle(
+                            color: AppTheme.foxhunter,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                          )),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+
+  String _methodLabel(String method) => switch (method) {
+    'oui_addr1' => 'ADDR1 (DST)',
+    'oui_addr2' => 'ADDR2 (SRC)',
+    'oui_addr3' => 'ADDR3 (BSSID)',
+    'wildcard_probe' => 'PROBE REQ',
+    'oui_match' => 'BLE OUI',
+    'name_match' => 'BLE NAME',
+    'mfg_id' => 'MFG DATA',
+    'raven_uuid' => 'RAVEN UUID',
+    'watchlist' => 'WATCHLIST',
+    _ => method.toUpperCase(),
+  };
 }
