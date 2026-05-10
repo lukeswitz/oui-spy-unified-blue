@@ -31,38 +31,43 @@ class WardriveStats extends ConsumerWidget {
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                flex: 3,
-                child: _HeroCount(
-                  icon: Icons.wifi,
-                  unique: stats.wifiDetections,
-                  total: stats.wifiTotal,
-                  color: AppTheme.accent,
-                  fontSize: 44,
+              if (stats.wifiDetections > 0 || stats.wifiTotal > 0)
+                Expanded(
+                  flex: 3,
+                  child: _HeroCount(
+                    icon: Icons.wifi,
+                    unique: stats.wifiDetections,
+                    total: stats.wifiTotal,
+                    color: AppTheme.accent,
+                    fontSize: 44,
+                  ),
                 ),
-              ),
               if (stats.flockCount > 0)
                 Expanded(
-                  flex: 2,
+                  flex: stats.wifiDetections == 0 && stats.bleDetections == 0
+                      ? 3 : 2,
                   child: _HeroCount(
                     icon: Icons.videocam,
                     unique: stats.flockCount,
                     total: null,
                     color: AppTheme.flockBle,
+                    fontSize: stats.wifiDetections == 0 && stats.bleDetections == 0
+                        ? 44 : 30,
+                  ),
+                ),
+              if (stats.bleDetections > 0 || stats.bleTotal > 0)
+                Expanded(
+                  flex: 2,
+                  child: _HeroCount(
+                    icon: Icons.bluetooth,
+                    unique: stats.bleDetections,
+                    total: stats.bleTotal,
+                    color: t.textSecondary,
                     fontSize: 30,
                   ),
                 ),
-              Expanded(
-                flex: 2,
-                child: _HeroCount(
-                  icon: Icons.bluetooth,
-                  unique: stats.bleDetections,
-                  total: stats.bleTotal,
-                  color: t.textSecondary,
-                  fontSize: 30,
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 8),

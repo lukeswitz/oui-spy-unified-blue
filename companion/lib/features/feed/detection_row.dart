@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -19,6 +20,7 @@ class DetectionRow extends ConsumerWidget {
     final hasGps = detection.latitude != null;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
+    final manufacturer = ref.read(ouiLookupProvider).lookup(detection.macAddress);
 
     return GestureDetector(
       onLongPress: () => _showActions(context, ref),
@@ -46,15 +48,33 @@ class DetectionRow extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Row 1: MAC address
-                          Text(
-                            detection.macAddress.toUpperCase(),
-                            style: TextStyle(
-                              color: t.textPrimary,
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w500,
-                            ),
+                          // Row 1: MAC address + manufacturer
+                          Row(
+                            children: [
+                              Text(
+                                detection.macAddress.toUpperCase(),
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontSize: 13,
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (manufacturer != null) ...[
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    manufacturer,
+                                    style: TextStyle(
+                                      color: t.textDim,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 2),
                           // Row 2: Method badge + count + mesh node + device name
@@ -324,6 +344,7 @@ class DetectionRow extends ConsumerWidget {
 
   void _showActions(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
+    final vendor = ref.read(ouiLookupProvider).lookup(detection.macAddress);
     showModalBottomSheet(
       context: context,
       backgroundColor: t.surface,
@@ -343,12 +364,15 @@ class DetectionRow extends ConsumerWidget {
                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
               ),
             ),
+            if (vendor != null)
+              Text(vendor,
+                  style: TextStyle(color: t.textSecondary, fontSize: 12)),
             if (detection.deviceName.isNotEmpty)
               Text(detection.deviceName,
                   style: TextStyle(color: t.textSecondary, fontSize: 12)),
             const SizedBox(height: 8),
             // Detail summary in bottom sheet
-            _DetailSummary(detection: detection, t: t),
+            _DetailSummary(detection: detection, t: t, manufacturer: vendor),
             const SizedBox(height: 12),
             ListTile(
               leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
@@ -386,6 +410,17 @@ class DetectionRow extends ConsumerWidget {
                     duration: const Duration(seconds: 1),
                   ),
                 );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppTheme.error),
+              title: const Text('Delete Detection',
+                  style: TextStyle(color: AppTheme.error)),
+              subtitle: Text('Remove from feed',
+                  style: TextStyle(color: t.textDim, fontSize: 11)),
+              onTap: () {
+                Navigator.pop(ctx);
+                ref.read(appStateProvider).removeDetection(detection.id);
               },
             ),
           ],
@@ -543,14 +578,18 @@ class _AuthBadge extends StatelessWidget {
 
 /// Detail summary shown in bottom sheet.
 class _DetailSummary extends StatelessWidget {
-  const _DetailSummary({required this.detection, required this.t});
+  const _DetailSummary({required this.detection, required this.t, this.manufacturer});
   final Detection detection;
   final ResolvedTheme t;
+  final String? manufacturer;
 
   @override
   Widget build(BuildContext context) {
     final rows = <Widget>[];
 
+    if (manufacturer != null) {
+      rows.add(_detailRow('Vendor', manufacturer!));
+    }
     rows.add(_detailRow('Engine', detection.engine.label));
     rows.add(_detailRow('Method', detection.method));
     rows.add(_detailRow('RSSI', '${detection.rssi} dBm'));

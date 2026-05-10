@@ -9,6 +9,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -24,6 +25,9 @@ void main() async {
   );
 
   final container = ProviderContainer();
+
+  // Load OUI vendor database (async, non-blocking)
+  container.read(ouiLookupProvider).init();
 
   // Force AppState to initialize before auto-connect so it catches
   // the connection state stream events (prevents race condition where

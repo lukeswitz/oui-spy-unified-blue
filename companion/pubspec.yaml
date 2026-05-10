@@ -56,3 +56,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/oui_vendors.tsv.gz

@@ -11,6 +11,7 @@ import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
@@ -290,6 +291,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
         const SizedBox(height: 8),
         const _ChannelRangeSlider(),
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 12),
+        const _OuiDatabaseSection(),
         const SizedBox(height: 24),
         const Divider(),
         const SizedBox(height: 12),
@@ -1616,7 +1621,7 @@ class _SortBtn extends StatelessWidget {
   }
 }
 
-class _DetectionRow extends StatelessWidget {
+class _DetectionRow extends ConsumerWidget {
   const _DetectionRow({
     required this.data,
     required this.engineColor,
@@ -1631,7 +1636,7 @@ class _DetectionRow extends StatelessWidget {
   final VoidCallback onFoxhunt;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final mac = (data['macAddress'] as String).toUpperCase();
     final rssi = data['rssi'] as int;
@@ -1641,6 +1646,7 @@ class _DetectionRow extends StatelessWidget {
     final timeStr = DateFormat('MMM d HH:mm').format(ts);
     final hasGps = data['latitude'] != null && data['longitude'] != null;
     final deviceName = data['deviceName'] as String? ?? '';
+    final vendor = ref.read(ouiLookupProvider).lookup(mac);
     final rssiNorm = ((rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
 
@@ -1682,6 +1688,14 @@ class _DetectionRow extends StatelessWidget {
                         fontFamily: 'monospace', fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
                       )),
+                      if (vendor != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(vendor, style: TextStyle(
+                            color: engineColor.withValues(alpha: 0.8), fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ), overflow: TextOverflow.ellipsis),
+                        ),
                       if (deviceName.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
@@ -1831,4 +1845,126 @@ class _DetectionRow extends StatelessWidget {
     'watchlist' => 'WATCHLIST',
     _ => method.toUpperCase(),
   };
+}
+
+class _OuiDatabaseSection extends ConsumerStatefulWidget {
+  const _OuiDatabaseSection();
+
+  @override
+  ConsumerState<_OuiDatabaseSection> createState() => _OuiDatabaseSectionState();
+}
+
+class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
+  bool _updating = false;
+  String? _status;
+
+  Future<void> _checkUpdate() async {
+    setState(() {
+      _updating = true;
+      _status = null;
+    });
+    try {
+      final oui = ref.read(ouiLookupProvider);
+      final updated = await oui.checkForUpdate();
+      setState(() {
+        _updating = false;
+        _status = updated
+            ? 'Updated to ${oui.entryCount} vendors'
+            : 'Already up to date (${oui.entryCount} vendors)';
+      });
+    } catch (e) {
+      setState(() {
+        _updating = false;
+        _status = 'Update failed: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final oui = ref.read(ouiLookupProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'OUI DATABASE',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                letterSpacing: 2,
+                color: t.textDim,
+              ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'MAC vendor lookup database (Ringmast4r/OUI-Master-Database)',
+          style: TextStyle(color: t.textDim, fontSize: 11),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Icon(Icons.storage, size: 14, color: t.textSecondary),
+            const SizedBox(width: 8),
+            Text(
+              '${oui.entryCount} vendors loaded',
+              style: TextStyle(color: t.textPrimary, fontSize: 12),
+            ),
+            if (oui.lastUpdated != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                'updated ${_formatDate(oui.lastUpdated!)}',
+                style: TextStyle(color: t.textDim, fontSize: 10),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _updating ? null : _checkUpdate,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_updating)
+                  const SizedBox(
+                    width: 12, height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5, color: AppTheme.accent,
+                    ),
+                  )
+                else
+                  const Icon(Icons.refresh, size: 14, color: AppTheme.accent),
+                const SizedBox(width: 6),
+                Text(
+                  _updating ? 'Checking...' : 'Check for Update',
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_status != null) ...[
+          const SizedBox(height: 8),
+          Text(_status!, style: TextStyle(color: t.textSecondary, fontSize: 11)),
+        ],
+      ],
+    );
+  }
+
+  String _formatDate(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inDays == 0) return 'today';
+    if (diff.inDays == 1) return 'yesterday';
+    return '${diff.inDays}d ago';
+  }
 }
