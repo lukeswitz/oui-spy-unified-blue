@@ -139,6 +139,55 @@ class UnitFormatter {
 }
 
 
+// ---------------------------------------------------------------------------
+// Map tile style — persisted to SharedPreferences
+// ---------------------------------------------------------------------------
+
+enum MapStyle {
+  cartoDark('Carto Dark', 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'),
+  cartoLight('Carto Light', 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'),
+  cartoVoyager('Voyager', 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'),
+  osm('OpenStreetMap', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+  openTopo('Topo', 'https://tile.opentopomap.org/{z}/{x}/{y}.png'),
+  stamenToner('Toner', 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}@2x.png'),
+  stamenTerrain('Terrain', 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}@2x.png'),
+  ;
+
+  const MapStyle(this.label, this.urlTemplate);
+  final String label;
+  final String urlTemplate;
+
+  bool get isDark => this == cartoDark || this == stamenToner;
+}
+
+class MapStyleNotifier extends StateNotifier<MapStyle> {
+  MapStyleNotifier() : super(MapStyle.cartoDark) {
+    _load();
+  }
+
+  static const _key = 'map_style';
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_key);
+    if (value != null) {
+      final match = MapStyle.values.where((s) => s.name == value);
+      if (match.isNotEmpty) state = match.first;
+    }
+  }
+
+  Future<void> setStyle(MapStyle style) async {
+    state = style;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, style.name);
+  }
+}
+
+final mapStyleProvider =
+    StateNotifierProvider<MapStyleNotifier, MapStyle>((ref) {
+  return MapStyleNotifier();
+});
+
 class AppTheme {
   const AppTheme._();
 

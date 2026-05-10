@@ -267,6 +267,22 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Remove a detection from the feed by its ID.
+  void removeDetection(String id) {
+    final idx = recentDetections.indexWhere((d) => d.id == id);
+    if (idx == -1) return;
+    final removed = recentDetections.removeAt(idx);
+    final key = '${removed.macAddress}|${removed.engine.name}';
+    _dedupeIndex.remove(key);
+    // Fix indices after removal
+    for (final entry in _dedupeIndex.entries) {
+      if (entry.value > idx) {
+        _dedupeIndex[entry.key] = entry.value - 1;
+      }
+    }
+    notifyListeners();
+  }
+
   Future<void> enableMesh({
     required bool encryption,
     required List<Uint8List> peerMacs,

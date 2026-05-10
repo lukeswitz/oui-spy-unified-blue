@@ -11,6 +11,7 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
@@ -101,6 +102,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mapStyle = ref.watch(mapStyleProvider);
     final wd = ref.watch(wardriveProvider);
     final gpsPos = ref.read(gpsProvider).lastPosition;
     final center = wd.currentPosition != null
@@ -154,7 +156,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 15,
-                backgroundColor: isDark ? const Color(0xFF0A0A0A) : const Color(0xFFE8E8EE),
+                backgroundColor: mapStyle.isDark ? const Color(0xFF0A0A0A) : const Color(0xFFE8E8EE),
                 onMapEvent: (event) {
                   if (event is MapEventMoveStart &&
                       event.source == MapEventSource.dragStart) {
@@ -164,9 +166,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: isDark
-                      ? 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'
-                      : 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+                  urlTemplate: mapStyle.urlTemplate,
                   userAgentPackageName: 'tech.colonelpanic.ouispy',
                   maxZoom: 19,
                 ),
@@ -174,7 +174,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                   PolylineLayer(polylines: [
                     Polyline(
                       points: wd.routePoints,
-                      color: isDark
+                      color: mapStyle.isDark
                           ? Colors.white.withValues(alpha: 0.7)
                           : AppTheme.accent.withValues(alpha: 0.6),
                       strokeWidth: 2.5,
@@ -202,6 +202,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                     ),
                   ]),
               ],
+            ),
+
+            // Map style picker (always visible, top-left when idle, below stats when active)
+            Positioned(
+              top: wd.isActive ? 130 : 8,
+              left: 12,
+              child: _MapStyleButton(ref: ref, mapStyle: mapStyle),
             ),
 
             // Stats bar (top, only when active)
@@ -255,10 +262,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                 ),
               ),
 
-            // Active: node stats overlay (top-left, below stats)
+            // Active: node stats overlay (top-left, below map style btn)
             if (wd.isActive && ref.watch(appStateProvider).meshEnabled)
               Positioned(
-                top: 130, left: 12,
+                top: 170, left: 12,
                 child: _NodeStatsOverlay(ref: ref),
               ),
 
@@ -272,7 +279,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                     Center(child: _runControls(ref, wd)),
                     const SizedBox(height: 8),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: _DetectionList(
                         detections: wd.dedupedDetections,
                         onDetectionTap: (d) => _zoomToDetection(d),
@@ -655,6 +662,65 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
+class _MapStyleButton extends StatelessWidget {
+  const _MapStyleButton({required this.ref, required this.mapStyle});
+  final WidgetRef ref;
+  final MapStyle mapStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return PopupMenuButton<MapStyle>(
+      initialValue: mapStyle,
+      onSelected: (style) => ref.read(mapStyleProvider.notifier).setStyle(style),
+      offset: const Offset(0, 40),
+      color: t.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: t.border),
+      ),
+      itemBuilder: (_) => MapStyle.values.map((style) {
+        final selected = style == mapStyle;
+        return PopupMenuItem<MapStyle>(
+          value: style,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(
+                style.isDark ? Icons.dark_mode : Icons.light_mode,
+                size: 14,
+                color: selected ? AppTheme.accent : t.textDim,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                style.label,
+                style: TextStyle(
+                  color: selected ? AppTheme.accent : t.textPrimary,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+              if (selected) ...[
+                const Spacer(),
+                Icon(Icons.check, size: 14, color: AppTheme.accent),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: t.surface.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: t.border),
+        ),
+        child: Icon(Icons.layers, size: 16, color: t.textSecondary),
+      ),
+    );
+  }
+}
+
 class _DetectionList extends StatelessWidget {
   const _DetectionList({required this.detections, this.onDetectionTap});
   final List<Detection> detections;
@@ -709,25 +775,26 @@ class _DetectionList extends StatelessWidget {
   }
 }
 
-class _DetListRow extends StatelessWidget {
+class _DetListRow extends ConsumerWidget {
   const _DetListRow({required this.d, this.onTap});
   final Detection d;
   final void Function(Detection)? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
     final bool isWifiAp = d.method == 'wifi_ap' || (!d.engine.isBle && d.method != 'ble_adv');
     final bool isHidden = isWifiAp && d.ssid.isEmpty && d.deviceName.isEmpty;
+    final vendor = ref.read(ouiLookupProvider).lookup(d.macAddress);
     final label = isHidden
         ? '<hidden>'
         : d.ssid.isNotEmpty
             ? d.ssid
             : d.deviceName.isNotEmpty
                 ? d.deviceName
-                : '';
+                : vendor ?? '';
     final hasGps = d.latitude != null && d.longitude != null;
 
     return GestureDetector(
@@ -752,7 +819,12 @@ class _DetListRow extends StatelessWidget {
             const SizedBox(width: 6),
             Expanded(child: Text(label,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: t.textSecondary, fontSize: 9),
+              style: TextStyle(
+                color: vendor != null && d.ssid.isEmpty && d.deviceName.isEmpty
+                    ? t.textDim
+                    : t.textSecondary,
+                fontSize: 9,
+              ),
             )),
           ] else
             const Spacer(),
