@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
+import 'package:oui_spy/features/feed/feed_stats_header.dart';
 import 'package:oui_spy/features/feed/filter_bar.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -18,6 +20,36 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Set<Engine> _activeFilters = Engine.values.toSet();
   String _searchQuery = '';
   String? _selectedNode;
+  bool _showStats = true;
+
+  /// Merge flock detections from active wardrive into the feed.
+  /// The feed's 500-entry ring buffer gets overwhelmed by wardrive
+  /// detections, evicting flock entries. This ensures they always show.
+  List<Detection> _mergeFlockFromWardrive(
+    List<Detection> feedDetections,
+    WardriveController wd,
+  ) {
+    if (!wd.isActive || !wd.target.includesFlock) return feedDetections;
+
+    final flockDets = wd.flockDetections;
+    if (flockDets.isEmpty) return feedDetections;
+
+    final feedFlockMacs = <String>{};
+    for (final d in feedDetections) {
+      if (d.engine == Engine.flockBle || d.engine == Engine.flockWifi) {
+        feedFlockMacs.add(d.macAddress);
+      }
+    }
+
+    final missing = flockDets
+        .where((d) => !feedFlockMacs.contains(d.macAddress))
+        .toList();
+    if (missing.isEmpty) return feedDetections;
+
+    final merged = List<Detection>.from(feedDetections);
+    merged.insertAll(0, missing);
+    return merged;
+  }
 
   List<Detection> _filter(List<Detection> detections) {
     return detections.where((d) {
@@ -41,7 +73,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
-    final filtered = _filter(state.recentDetections);
+    final wd = ref.watch(wardriveProvider);
+    final merged = _mergeFlockFromWardrive(state.recentDetections, wd);
+    final filtered = _filter(merged);
     final sourceNodes = state.meshSourceNodes;
 
     return Scaffold(
@@ -57,6 +91,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         letterSpacing: 3, color: t.textDim,
                       )),
                   const Spacer(),
+                  GestureDetector(
+                    onTap: () => setState(() => _showStats = !_showStats),
+                    child: Icon(
+                      _showStats ? Icons.analytics : Icons.analytics_outlined,
+                      size: 16,
+                      color: _showStats ? AppTheme.accent : t.textDim,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   if (sourceNodes.isNotEmpty) ...[
                     const Icon(Icons.hub, size: 10, color: AppTheme.warning),
                     const SizedBox(width: 4),
@@ -77,6 +120,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               onNodeChanged: (node) => setState(() => _selectedNode = node),
             ),
             const Divider(),
+            if (_showStats && filtered.length >= 2)
+              FeedStatsHeader(detections: filtered),
             Expanded(
               child: filtered.isEmpty
                   ? Center(child: Text(

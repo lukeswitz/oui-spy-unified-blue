@@ -1635,6 +1635,8 @@ class _DetectionRow extends StatelessWidget {
     final t = AppTheme.of(context);
     final mac = (data['macAddress'] as String).toUpperCase();
     final rssi = data['rssi'] as int;
+    final channel = data['channel'] as int? ?? 0;
+    final method = data['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
     final timeStr = DateFormat('MMM d HH:mm').format(ts);
     final hasGps = data['latitude'] != null && data['longitude'] != null;
@@ -1713,6 +1715,46 @@ class _DetectionRow extends StatelessWidget {
               )),
             ],
           ),
+          // Detail chips row: channel + method + addr field
+          Padding(
+            padding: const EdgeInsets.only(top: 5, left: 11),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 3,
+              children: [
+                if (channel > 0)
+                  _DetChip(
+                    icon: Icons.wifi,
+                    label: 'CH$channel',
+                    color: t.textDim,
+                  ),
+                if (method.isNotEmpty)
+                  _DetChip(
+                    icon: _methodIcon(method),
+                    label: method.toUpperCase(),
+                    color: engineColor,
+                  ),
+                if (_addrField(method) != null)
+                  _DetChip(
+                    icon: Icons.alt_route,
+                    label: _addrField(method)!,
+                    color: t.textDim,
+                  ),
+                if (hasGps)
+                  _DetChip(
+                    icon: Icons.location_on,
+                    label: 'GPS',
+                    color: AppTheme.gpsGood,
+                  ),
+                if (!hasGps)
+                  _DetChip(
+                    icon: Icons.location_off,
+                    label: 'NO GPS',
+                    color: t.textDim,
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(height: 6),
           Row(
             children: [
@@ -1764,13 +1806,70 @@ class _DetectionRow extends StatelessWidget {
                   ),
                 ),
               ),
-              const Spacer(),
-              if (!hasGps)
-                Text('NO GPS', style: TextStyle(
-                  color: t.textDim, fontSize: 8,
-                  fontWeight: FontWeight.w600, letterSpacing: 0.5,
-                )),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _methodIcon(String method) => switch (method) {
+    'oui_addr1' || 'oui_addr2' || 'oui_addr3' || 'oui_match' => Icons.fingerprint,
+    'wildcard_probe' => Icons.wifi_find,
+    'name_match' => Icons.label,
+    'mfg_id' => Icons.factory,
+    'raven_uuid' => Icons.memory,
+    'watchlist' => Icons.radar,
+    _ => Icons.sensors,
+  };
+
+  /// Map detection method to human-readable addr field explanation.
+  String? _addrField(String method) => switch (method) {
+    'oui_addr1' => 'ADDR1 (dst)',
+    'oui_addr2' => 'ADDR2 (src)',
+    'oui_addr3' => 'ADDR3 (bssid)',
+    'wildcard_probe' => 'PROBE (empty SSID)',
+    'oui_match' => 'BLE OUI prefix',
+    'name_match' => 'BLE device name',
+    'mfg_id' => 'BLE mfg data',
+    'raven_uuid' => 'Raven svc UUID',
+    _ => null,
+  };
+}
+
+/// Compact chip for detection detail info.
+class _DetChip extends StatelessWidget {
+  const _DetChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 9, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'monospace',
+              letterSpacing: 0.3,
+            ),
           ),
         ],
       ),

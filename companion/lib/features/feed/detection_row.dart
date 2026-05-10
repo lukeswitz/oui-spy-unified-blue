@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -39,11 +41,12 @@ class DetectionRow extends ConsumerWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    // MAC + name + method
+                    // MAC + name + method + details
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Row 1: MAC address
                           Text(
                             detection.macAddress.toUpperCase(),
                             style: TextStyle(
@@ -54,12 +57,22 @@ class DetectionRow extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(height: 2),
+                          // Row 2: Method badge + count + mesh node + device name
                           Row(
                             children: [
                               _MethodBadge(
                                 method: detection.method,
                                 color: engine.color,
                               ),
+                              if (detection.channel > 0) ...[
+                                const SizedBox(width: 4),
+                                _InfoChip(
+                                  icon: Icons.wifi,
+                                  label: 'CH${detection.channel}',
+                                  color: t.textDim,
+                                  bgColor: t.textDim.withValues(alpha: 0.1),
+                                ),
+                              ],
                               if (detection.count > 1) ...[
                                 const SizedBox(width: 4),
                                 Container(
@@ -81,28 +94,11 @@ class DetectionRow extends ConsumerWidget {
                               ],
                               if (detection.sourceNodeId.isNotEmpty) ...[
                                 const SizedBox(width: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.warning.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.hub, size: 8, color: AppTheme.warning),
-                                      const SizedBox(width: 2),
-                                      Text(
-                                        detection.sourceNodeId,
-                                        style: const TextStyle(
-                                          color: AppTheme.warning,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w600,
-                                          fontFamily: 'monospace',
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                _InfoChip(
+                                  icon: Icons.hub,
+                                  label: detection.sourceNodeId,
+                                  color: AppTheme.warning,
+                                  bgColor: AppTheme.warning.withValues(alpha: 0.15),
                                 ),
                               ],
                               if (detection.deviceName.isNotEmpty) ...[
@@ -120,6 +116,8 @@ class DetectionRow extends ConsumerWidget {
                               ],
                             ],
                           ),
+                          // Row 3: Engine-specific details
+                          _buildDetailsRow(t),
                         ],
                       ),
                     ),
@@ -176,6 +174,132 @@ class DetectionRow extends ConsumerWidget {
     );
   }
 
+  /// Build engine-specific detail chips row.
+  Widget _buildDetailsRow(ResolvedTheme t) {
+    final chips = <Widget>[];
+
+    switch (detection.engine) {
+      case Engine.flockBle:
+      case Engine.flockWifi:
+        if (detection.flock != null) {
+          if (detection.flock!.isRaven) {
+            chips.add(_InfoChip(
+              icon: Icons.memory,
+              label: 'RAVEN',
+              color: AppTheme.warning,
+              bgColor: AppTheme.warning.withValues(alpha: 0.12),
+            ));
+            if (detection.flock!.ravenFirmware != null &&
+                detection.flock!.ravenFirmware!.isNotEmpty) {
+              chips.add(_InfoChip(
+                icon: Icons.info_outline,
+                label: detection.flock!.ravenFirmware!,
+                color: t.textDim,
+                bgColor: t.textDim.withValues(alpha: 0.1),
+              ));
+            }
+          }
+        }
+        // Show which addr field matched
+        chips.add(_AddrBadge(method: detection.method, t: t));
+
+      case Engine.wardrive:
+        if (detection.wardrive != null) {
+          if (detection.wardrive!.ssid.isNotEmpty) {
+            chips.add(_InfoChip(
+              icon: Icons.wifi,
+              label: detection.wardrive!.ssid,
+              color: t.textSecondary,
+              bgColor: t.textDim.withValues(alpha: 0.1),
+              maxWidth: 120,
+            ));
+          }
+          chips.add(_AuthBadge(authMode: detection.wardrive!.authMode, t: t));
+        }
+
+      case Engine.skySpy:
+        if (detection.odid != null) {
+          if (detection.odid!.uavId != null && detection.odid!.uavId!.isNotEmpty) {
+            chips.add(_InfoChip(
+              icon: Icons.flight,
+              label: detection.odid!.uavId!,
+              color: Engine.skySpy.color,
+              bgColor: Engine.skySpy.color.withValues(alpha: 0.12),
+              maxWidth: 100,
+            ));
+          }
+          if (detection.odid!.altitudeMsl != null) {
+            chips.add(_InfoChip(
+              icon: Icons.height,
+              label: '${detection.odid!.altitudeMsl}m',
+              color: t.textDim,
+              bgColor: t.textDim.withValues(alpha: 0.1),
+            ));
+          }
+          if (detection.odid!.droneSpeed != null && detection.odid!.droneSpeed! > 0) {
+            chips.add(_InfoChip(
+              icon: Icons.speed,
+              label: '${detection.odid!.droneSpeed}m/s',
+              color: t.textDim,
+              bgColor: t.textDim.withValues(alpha: 0.1),
+            ));
+          }
+        }
+
+      case Engine.uniPwn:
+        if (detection.unipwn != null) {
+          chips.add(_InfoChip(
+            icon: Icons.smart_toy,
+            label: detection.unipwn!.robotType.toUpperCase(),
+            color: Engine.uniPwn.color,
+            bgColor: Engine.uniPwn.color.withValues(alpha: 0.12),
+          ));
+          if (detection.unipwn!.exploited) {
+            chips.add(_InfoChip(
+              icon: Icons.verified,
+              label: 'PWNED',
+              color: AppTheme.success,
+              bgColor: AppTheme.success.withValues(alpha: 0.12),
+            ));
+          }
+        }
+
+      case Engine.detector:
+        if (detection.detector != null) {
+          if (detection.detector!.filterDescription != null &&
+              detection.detector!.filterDescription!.isNotEmpty) {
+            chips.add(_InfoChip(
+              icon: Icons.filter_alt,
+              label: detection.detector!.filterDescription!,
+              color: t.textDim,
+              bgColor: t.textDim.withValues(alpha: 0.1),
+              maxWidth: 120,
+            ));
+          }
+          chips.add(_InfoChip(
+            icon: detection.detector!.isFullMac ? Icons.fingerprint : Icons.blur_on,
+            label: detection.detector!.isFullMac ? 'FULL MAC' : 'OUI',
+            color: t.textDim,
+            bgColor: t.textDim.withValues(alpha: 0.1),
+          ));
+        }
+
+      case Engine.foxhunter:
+        break;
+    }
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 2,
+        children: chips,
+      ),
+    );
+  }
+
   void _zoomOnMap(BuildContext context, WidgetRef ref) {
     if (detection.latitude == null || detection.longitude == null) return;
     ref.read(wardriveProvider).requestZoom(
@@ -222,7 +346,10 @@ class DetectionRow extends ConsumerWidget {
             if (detection.deviceName.isNotEmpty)
               Text(detection.deviceName,
                   style: TextStyle(color: t.textSecondary, fontSize: 12)),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            // Detail summary in bottom sheet
+            _DetailSummary(detection: detection, t: t),
+            const SizedBox(height: 12),
             ListTile(
               leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
               title: const Text('Foxhunt This Device',
@@ -250,7 +377,15 @@ class DetectionRow extends ConsumerWidget {
               leading: Icon(Icons.copy, color: t.textSecondary),
               title: Text('Copy MAC', style: TextStyle(color: t.textPrimary)),
               onTap: () {
+                Clipboard.setData(ClipboardData(text: detection.macAddress.toUpperCase()));
                 Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('MAC copied'),
+                    backgroundColor: t.surface,
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
               },
             ),
           ],
@@ -263,6 +398,235 @@ class DetectionRow extends ConsumerWidget {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m';
     return '${diff.inHours}h';
+  }
+}
+
+/// Compact info chip with icon + label.
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.bgColor,
+    this.maxWidth,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color bgColor;
+  final double? maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 8, color: color),
+          const SizedBox(width: 2),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'monospace',
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Badge showing which 802.11 address field triggered detection.
+class _AddrBadge extends StatelessWidget {
+  const _AddrBadge({required this.method, required this.t});
+  final String method;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, hint) = switch (method) {
+      'oui_addr1' => ('ADDR1', 'dst'),
+      'oui_addr2' => ('ADDR2', 'src'),
+      'oui_addr3' => ('ADDR3', 'bssid'),
+      'wildcard_probe' => ('PROBE', 'empty SSID'),
+      'oui_match' => ('OUI', 'ble prefix'),
+      'name_match' => ('NAME', 'ble name'),
+      'mfg_id' => ('MFG', 'mfg data'),
+      'raven_uuid' => ('UUID', 'raven svc'),
+      _ => ('', ''),
+    };
+    if (label.isEmpty) return const SizedBox.shrink();
+    return Tooltip(
+      message: hint,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+          color: t.textDim.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: t.textDim,
+            fontSize: 8,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Auth mode badge for wardrive detections.
+class _AuthBadge extends StatelessWidget {
+  const _AuthBadge({required this.authMode, required this.t});
+  final int authMode;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (authMode) {
+      0 => ('OPEN', AppTheme.error),
+      1 => ('WEP', AppTheme.warning),
+      2 => ('WPA', AppTheme.warning),
+      3 => ('WPA2', AppTheme.success),
+      4 => ('WPA/2', AppTheme.success),
+      5 => ('ENT', AppTheme.accent),
+      6 => ('WPA3', AppTheme.success),
+      _ => ('WPA2', AppTheme.success),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(3),
+        border: authMode == 0
+            ? Border.all(color: color.withValues(alpha: 0.4), width: 0.5)
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            authMode == 0 ? Icons.lock_open : Icons.lock,
+            size: 8,
+            color: color,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 8,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Detail summary shown in bottom sheet.
+class _DetailSummary extends StatelessWidget {
+  const _DetailSummary({required this.detection, required this.t});
+  final Detection detection;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+
+    rows.add(_detailRow('Engine', detection.engine.label));
+    rows.add(_detailRow('Method', detection.method));
+    rows.add(_detailRow('RSSI', '${detection.rssi} dBm'));
+    if (detection.channel > 0) {
+      rows.add(_detailRow('Channel', '${detection.channel}'));
+    }
+    rows.add(_detailRow('Seen', '\u00d7${detection.count}'));
+    if (detection.sourceNodeId.isNotEmpty) {
+      rows.add(_detailRow('Source Node', detection.sourceNodeId));
+    }
+    if (detection.ssid.isNotEmpty) {
+      rows.add(_detailRow('SSID', detection.ssid));
+    }
+    if (detection.wardrive != null) {
+      rows.add(_detailRow('Security', _authLabel(detection.wardrive!.authMode)));
+    }
+    if (detection.flock?.isRaven == true) {
+      rows.add(_detailRow('Type', 'Raven (ext battery)'));
+    }
+    if (detection.odid?.uavId != null) {
+      rows.add(_detailRow('UAV ID', detection.odid!.uavId!));
+    }
+    if (detection.latitude != null) {
+      rows.add(_detailRow('Location',
+          '${detection.latitude!.toStringAsFixed(5)}, ${detection.longitude!.toStringAsFixed(5)}'));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: t.surfaceLight,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Column(children: rows),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(color: t.textDim, fontSize: 10),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 10,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _authLabel(int mode) {
+    return switch (mode) {
+      0 => 'Open (no encryption)',
+      1 => 'WEP',
+      2 => 'WPA-PSK',
+      3 => 'WPA2-PSK',
+      4 => 'WPA/WPA2-PSK',
+      5 => 'WPA2-Enterprise',
+      6 => 'WPA3-SAE',
+      _ => 'WPA2-PSK',
+    };
   }
 }
 

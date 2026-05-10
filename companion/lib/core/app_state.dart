@@ -243,11 +243,26 @@ class AppState extends ChangeNotifier {
       }
       _dedupeIndex[key] = 0;
 
-      // Evict oldest if over capacity
+      // Evict oldest if over capacity — prefer evicting wardrive entries
+      // so low-frequency engines (flock, drone, detector) don't get crowded out.
       if (recentDetections.length > maxRecentDetections) {
-        final removed = recentDetections.removeLast();
+        int evictIdx = recentDetections.length - 1;
+        // Scan backwards for a wardrive entry to evict first
+        for (int i = recentDetections.length - 1; i >= maxRecentDetections ~/ 2; i--) {
+          if (recentDetections[i].engine == Engine.wardrive) {
+            evictIdx = i;
+            break;
+          }
+        }
+        final removed = recentDetections.removeAt(evictIdx);
         final removedKey = '${removed.macAddress}|${removed.engine.name}';
         _dedupeIndex.remove(removedKey);
+        // Fix indices after removal
+        for (final entry in _dedupeIndex.entries) {
+          if (entry.value > evictIdx) {
+            _dedupeIndex[entry.key] = entry.value - 1;
+          }
+        }
       }
     }
   }
