@@ -582,7 +582,20 @@ class _IdleControls extends StatelessWidget {
             _Pill(
               label: 'START',
               color: t.color,
-              onTap: () => ref.read(wardriveProvider).startSession(),
+              onTap: () {
+                ref.read(gpsProvider).onMessage = (msg) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(msg),
+                        backgroundColor: AppTheme.accent,
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                };
+                ref.read(wardriveProvider).startSession();
+              },
             ),
           ],
         ),

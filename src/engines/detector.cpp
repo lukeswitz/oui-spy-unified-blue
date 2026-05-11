@@ -1,7 +1,6 @@
 #include "detector.h"
 #include "protocol.h"
-#include <Arduino.h>
-#include <NimBLEDevice.h>
+#include "../ble_compat.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
@@ -96,8 +95,8 @@ static bool matchFilterBytes(const uint8_t* mac) {
     return matchFilter(macStr) != nullptr;
 }
 
-class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
-    void onResult(NimBLEAdvertisedDevice* dev) override {
+class DetectorCallback : public BLE_SCAN_CB_CLASS {
+    BLE_SCAN_CB_ONRESULT(dev) {
         if (!scanning) return;
         std::string addrStr = dev->getAddress().toString();
         unsigned int m[6];
@@ -190,7 +189,7 @@ static void detectorStart(void) {
 
     if (!wardriveOwns) {
         bleScan = NimBLEDevice::getScan();
-        bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
+        bleScanSetCallbacks(bleScan, &scanCb);
         bleScan->setActiveScan(true);
         bleScan->setInterval(100);
         bleScan->setWindow(99);
@@ -223,7 +222,7 @@ static void detectorStop(void) {
 
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
         if (bleScan && bleScan->isScanning()) bleScan->stop();
-        if (bleScan) bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
+        if (bleScan) bleScanClearCallbacks(bleScan);
     }
     bleScan = nullptr;
 

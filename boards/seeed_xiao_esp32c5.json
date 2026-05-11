@@ -1,0 +1,44 @@
+{
+  "build": {
+    "core": "esp32",
+    "extra_flags": [
+      "-DARDUINO_XIAO_ESP32C5"
+    ],
+    "f_cpu": "240000000L",
+    "f_flash": "80000000L",
+    "flash_mode": "dio",
+    "hwids": [
+      [
+        "0x2886",
+        "0x0067"
+      ],
+      [
+        "0x303a",
+        "0x1001"
+      ]
+    ],
+    "mcu": "esp32c5",
+    "variant": "XIAO_ESP32C5"
+  },
+  "connectivity": [
+    "wifi",
+    "bluetooth"
+  ],
+  "debug": {
+    "openocd_target": "esp32c5.cfg"
+  },
+  "frameworks": [
+    "arduino",
+    "espidf"
+  ],
+  "name": "Seeed Studio XIAO ESP32C5",
+  "upload": {
+    "flash_size": "8MB",
+    "maximum_ram_size": 327680,
+    "maximum_size": 8388608,
+    "require_upload_port": true,
+    "speed": 115200
+  },
+  "url": "https://wiki.seeedstudio.com/XIAO_ESP32C5_Getting_Started/",
+  "vendor": "Seeed Studio"
+}

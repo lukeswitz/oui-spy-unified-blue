@@ -1,7 +1,8 @@
 #include "mesh_espnow.h"
-#include <Arduino.h>
+#include "ble_compat.h"
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_mac.h>
 #include <WiFi.h>
 #include <mbedtls/gcm.h>
 #include <string.h>
@@ -88,7 +89,7 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
     return true;
 }
 
-static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
+static void onEspNowRecv(ESPNOW_RECV_CB_ARGS) {
     if (!meshCurrentConfig.enabled) return;
 
     uint8_t plainBuf[256];
@@ -134,8 +135,13 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
     }
 }
 
+#if ESP_IDF_VERSION_MAJOR >= 5
+static void onEspNowSend(const wifi_tx_info_t* txInfo, esp_now_send_status_t status) {
+    (void)txInfo;
+#else
 static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
     (void)macAddr;
+#endif
     (void)status;
 }
 

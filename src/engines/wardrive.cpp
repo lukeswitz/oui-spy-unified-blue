@@ -3,10 +3,9 @@
 #include "flock_oui.h"
 #include "detector.h"
 #include "foxhunter.h"
-#include <Arduino.h>
+#include "../ble_compat.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
-#include <NimBLEDevice.h>
 
 // ============================================================================
 // BLE flock detection helpers (shared with BLE callback)
@@ -40,7 +39,7 @@ static bool flockMatchName(const char* name) {
     return false;
 }
 
-static bool flockMatchMfgId(NimBLEAdvertisedDevice* dev) {
+static bool flockMatchMfgId(BLE_ADV_DEV dev) {
     if (!dev->haveManufacturerData()) return false;
     std::string data = dev->getManufacturerData();
     if (data.size() < 2) return false;
@@ -51,7 +50,7 @@ static bool flockMatchMfgId(NimBLEAdvertisedDevice* dev) {
     return false;
 }
 
-static bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev) {
+static bool flockMatchRavenUuid(BLE_ADV_DEV dev) {
     if (!dev->haveServiceUUID()) return false;
     int count = dev->getServiceUUIDCount();
     for (int i = 0; i < count; i++) {
@@ -390,11 +389,11 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
     const uint8_t* addr2 = &p[10];  // source/transmitter
     const uint8_t* addr3 = &p[16];  // BSSID
 
-    // --- 1. Flock OUI check on ALL frames (not just beacons) ---
-    // This is what flock_wifi.cpp does — check addr2/addr1/addr3 for OUI match.
-    // Must run before beacon dedup so flock cameras get reported even if
-    // their BSSID was already seen as an AP.
-    {
+    // --- 1. Flock OUI check on all frames ---
+    // check addr2/addr1/addr3 for OUI match.
+    // Must run before beacon dedup so flock cameras get reported
+    if (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED ||
+        engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) {
         const uint8_t* flockMac = NULL;
         uint8_t flockMethod = 0xFF;
 
@@ -484,12 +483,13 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
 
 static NimBLEScan* pWardriveScan = nullptr;
 
-class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
-    void onResult(NimBLEAdvertisedDevice* dev) override {
+class WardriveAdvCallbacks : public BLE_SCAN_CB_CLASS {
+public:
+    BLE_SCAN_CB_ONRESULT(dev) {
         if (!wardriveActive) return;
 
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAdvGetMac(dev, mac);
         if (wardriveIsDedupCooldown(mac)) return;
 
         int rssi = dev->getRSSI();
@@ -497,43 +497,45 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         std::string name = dev->getName();
 
         // Flock detection FIRST — alertable events get queue priority over
-        // passive wardrive collection. Prevents cross-engine dedup from
-        // suppressing flock alerts when queue is congested.
-        bool isFlock = false;
-        uint8_t flockMethod = 0;
-        bool isRaven = false;
+        // passive wardrive collection. Only when any flock engine is active.
+        if (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED ||
+            engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) {
+            bool isFlock = false;
+            uint8_t flockMethod = 0;
+            bool isRaven = false;
 
-        if (flockMatchOui(mac)) {
-            isFlock = true;
-            flockMethod = METHOD_OUI_MATCH;
-        }
-        if (!isFlock && name.length() > 0 && flockMatchName(name.c_str())) {
-            isFlock = true;
-            flockMethod = METHOD_NAME_MATCH;
-        }
-        if (!isFlock && flockMatchMfgId(dev)) {
-            isFlock = true;
-            flockMethod = METHOD_MFG_ID;
-        }
-        if (!isFlock && flockMatchRavenUuid(dev)) {
-            isFlock = true;
-            flockMethod = METHOD_RAVEN_UUID;
-            isRaven = true;
-        }
+            if (flockMatchOui(mac)) {
+                isFlock = true;
+                flockMethod = METHOD_OUI_MATCH;
+            }
+            if (!isFlock && name.length() > 0 && flockMatchName(name.c_str())) {
+                isFlock = true;
+                flockMethod = METHOD_NAME_MATCH;
+            }
+            if (!isFlock && flockMatchMfgId(dev)) {
+                isFlock = true;
+                flockMethod = METHOD_MFG_ID;
+            }
+            if (!isFlock && flockMatchRavenUuid(dev)) {
+                isFlock = true;
+                flockMethod = METHOD_RAVEN_UUID;
+                isRaven = true;
+            }
 
-        if (isFlock) {
-            DetectionEvent fEvt = {};
-            fEvt.engine_id = ENGINE_FLOCK_BLE;
-            memcpy(fEvt.mac, mac, 6);
-            fEvt.rssi = rssi;
-            fEvt.channel = 0;
-            fEvt.timestamp_ms = now;
-            fEvt.method = flockMethod;
-            memset(fEvt.source_node_id, 0, MESH_NODE_ID_LEN);
-            memset(&fEvt.ext, 0, sizeof(fEvt.ext));
-            fEvt.ext.flock.is_raven = isRaven ? 1 : 0;
-            memset(fEvt.ext.flock.raven_fw, 0, sizeof(fEvt.ext.flock.raven_fw));
-            pushDetection(&fEvt);
+            if (isFlock) {
+                DetectionEvent fEvt = {};
+                fEvt.engine_id = ENGINE_FLOCK_BLE;
+                memcpy(fEvt.mac, mac, 6);
+                fEvt.rssi = rssi;
+                fEvt.channel = 0;
+                fEvt.timestamp_ms = now;
+                fEvt.method = flockMethod;
+                memset(fEvt.source_node_id, 0, MESH_NODE_ID_LEN);
+                memset(&fEvt.ext, 0, sizeof(fEvt.ext));
+                fEvt.ext.flock.is_raven = isRaven ? 1 : 0;
+                memset(fEvt.ext.flock.raven_fw, 0, sizeof(fEvt.ext.flock.raven_fw));
+                pushDetection(&fEvt);
+            }
         }
 
         // Wardrive passive collection event
@@ -559,13 +561,22 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
             foxhunterCheckBleDevice(mac, evt.rssi);
         }
     }
+#if NIMBLE_V2
+    void onScanEnd(const NimBLEScanResults& results, int reason) override {
+        if (pWardriveScan && wardriveActive) {
+            pWardriveScan->clearResults();
+        }
+    }
+#endif
 };
 
+#if !NIMBLE_V2
 static void wardriveBleOnComplete(NimBLEScanResults results) {
     if (pWardriveScan && wardriveActive) {
         pWardriveScan->clearResults();
     }
 }
+#endif
 
 static WardriveAdvCallbacks wardriveBleCallbacks;
 
@@ -639,7 +650,7 @@ static void wardriveStart(void) {
     // BLE scanner
     if (wardriveRadio & 0x02) {
         pWardriveScan = NimBLEDevice::getScan();
-        pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
+        bleScanSetCallbacks(pWardriveScan, &wardriveBleCallbacks);
         pWardriveScan->setActiveScan(true);
         // Interval == window: Espressif recommendation for WiFi/BLE coexistence.
         // Continuous BLE within its TDM slot, no wasted RF gaps.
@@ -662,7 +673,7 @@ static void wardriveStop(void) {
     if (pWardriveScan != nullptr) {
         if (pWardriveScan->isScanning()) pWardriveScan->stop();
         vTaskDelay(pdMS_TO_TICKS(200));
-        pWardriveScan->setAdvertisedDeviceCallbacks(nullptr, false);
+        bleScanClearCallbacks(pWardriveScan);
         pWardriveScan->clearResults();
         pWardriveScan = nullptr;
     }
@@ -707,7 +718,11 @@ static void wardriveLoop(void) {
             if (pWardriveScan != nullptr && !pWardriveScan->isScanning()) {
                 int durSec = bleScanDurationMs / 1000;
                 if (durSec < 1) durSec = 1;
+#if NIMBLE_V2
+                pWardriveScan->start(durSec, false);
+#else
                 pWardriveScan->start(durSec, wardriveBleOnComplete, false);
+#endif
             }
         }
     }

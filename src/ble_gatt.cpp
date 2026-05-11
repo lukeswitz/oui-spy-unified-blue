@@ -12,11 +12,11 @@
  * - Foxhunter RSSI (NOTIFY)
  */
 #include "ble_gatt.h"
+#include "ble_compat.h"
 #include "engine_registry.h"
 #include "mesh_espnow.h"
-#include <Arduino.h>
 #include <Preferences.h>
-#include <NimBLEDevice.h>
+#include <esp_mac.h>
 
 // Forward declarations
 static NimBLEServer* pServer = nullptr;
@@ -35,13 +35,9 @@ static NimBLECharacteristic* chrMeshStatus = nullptr;
 
 static bool phoneConnected = false;
 
-// ============================================================================
-// Server Callbacks (NimBLE 1.4 API)
-// ============================================================================
 class ServerCallbacks : public NimBLEServerCallbacks {
-    void onConnect(NimBLEServer* server) override {
+    BLE_SRV_ON_CONNECT {
         phoneConnected = true;
-        // Pause any active BLE scan to stabilize GATT connection
         NimBLEScan* scan = NimBLEDevice::getScan();
         if (scan && scan->isScanning()) {
             scan->stop();
@@ -49,7 +45,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         Serial.println("[BLE] Phone connected (scan paused for GATT)");
     }
 
-    void onDisconnect(NimBLEServer* server) override {
+    BLE_SRV_ON_DISCONNECT {
         phoneConnected = false;
         Serial.println("[BLE] Phone disconnected — disabling all engines");
         engineDisableAll();
@@ -58,11 +54,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     }
 };
 
-// ============================================================================
-// Engine Control Write Callback (NimBLE 1.4 API)
-// ============================================================================
 class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < 2) return;
 
@@ -86,7 +79,7 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
         Serial.printf("[BLE] Engine command: %s engine %d\n", cmdName, cmd.engine_id);
     }
 
-    void onRead(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_READ {
         uint8_t buf[2 + ENGINE_COUNT];
         buf[0] = engineGetAvailableMask();
         buf[1] = engineGetActiveMask();
@@ -97,11 +90,8 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// ============================================================================
-// GPS Receive Write Callback
-// ============================================================================
 class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < sizeof(GpsData)) return;
 
@@ -112,11 +102,8 @@ class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// ============================================================================
-// Hardware Config Callbacks
-// ============================================================================
 class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < 3) return;
 
@@ -144,7 +131,7 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
                       buzzer, buzzerVol, led, brightness);
     }
 
-    void onRead(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_READ {
         Preferences p;
         p.begin("ouispy-hw", true);
         uint8_t buf[4];
@@ -157,11 +144,8 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// ============================================================================
-// Alert Config Callbacks
-// ============================================================================
 class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < 8) return;
 
@@ -183,7 +167,7 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
                       cooldown, heartbeat, rediscover, hbActive);
     }
 
-    void onRead(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_READ {
         Preferences p;
         p.begin("ouispy-alert", true);
         uint8_t buf[8];
@@ -201,13 +185,10 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// ============================================================================
-// Foxhunter Config Callback — receive target MAC from app
-// ============================================================================
 extern void foxhunterSetTarget(const uint8_t* mac, uint8_t channel);
 
 class FoxhunterConfigCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < 6) return;
         uint8_t channel = val.length() >= 7 ? (uint8_t)val[6] : 0;
@@ -216,11 +197,8 @@ class FoxhunterConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// ============================================================================
-// UniPwn Command Callback — receive exploit commands from app
-// ============================================================================
 class UnipwnCommandCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < 8) return;
         // Parse: target_mac[6] command_type[1] payload_len[1] payload[N]
@@ -234,11 +212,8 @@ class UnipwnCommandCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// ============================================================================
-// Mesh Config Callbacks
-// ============================================================================
 class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_WRITE {
         std::string val = chr->getValue();
         if (val.length() < 3) return;
 
@@ -275,7 +250,7 @@ class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
                       cfg.enabled, cfg.encryption_enabled, cfg.peer_count);
     }
 
-    void onRead(NimBLECharacteristic* chr) override {
+    BLE_CHR_ON_READ {
         uint8_t buf[3];
         buf[0] = meshCurrentConfig.enabled;
         buf[1] = meshCurrentConfig.encryption_enabled;
@@ -303,7 +278,7 @@ void bleGattInit(void) {
     Serial.println("[BLE] Initializing NimBLE...");
 
     NimBLEDevice::init("OUI-SPY");
-    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    NimBLEDevice::setPower(BLE_POWER_MAX);
     NimBLEDevice::setMTU(512);
 
     pServer = NimBLEDevice::createServer();
@@ -400,11 +375,17 @@ void bleGattInit(void) {
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
 
+#if !NIMBLE_V2
     svc->start();
+#endif
 
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(SVC_UUID);
+#if NIMBLE_V2
+    adv->enableScanResponse(true);
+#else
     adv->setScanResponse(true);
+#endif
     adv->start();
 
     Serial.println("[BLE] GATT server started, advertising as OUI-SPY");

@@ -1,8 +1,7 @@
 #include "foxhunter.h"
 #include "protocol.h"
 #include "ble_gatt.h"
-#include <Arduino.h>
-#include <NimBLEDevice.h>
+#include "../ble_compat.h"
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
@@ -36,12 +35,12 @@ static int calculateBeepInterval(int rssi) {
     return 3000;
 }
 
-class FoxhunterCallback : public NimBLEAdvertisedDeviceCallbacks {
-    void onResult(NimBLEAdvertisedDevice* dev) override {
+class FoxhunterCallback : public BLE_SCAN_CB_CLASS {
+    BLE_SCAN_CB_ONRESULT(dev) {
         if (!hasTarget || !scanning) return;
 
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAdvGetMac(dev, mac);
         if (memcmp(mac, targetMac, 6) != 0) return;
 
         currentRssi = dev->getRSSI();
@@ -226,7 +225,7 @@ static void foxhunterStart(void) {
 
     if (!wardriveOwns) {
         bleScan = NimBLEDevice::getScan();
-        bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
+        bleScanSetCallbacks(bleScan, &scanCb);
         bleScan->setActiveScan(true);
         bleScan->setInterval(100);
         bleScan->setWindow(99);
@@ -263,7 +262,7 @@ static void foxhunterStop(void) {
 
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
         if (bleScan && bleScan->isScanning()) bleScan->stop();
-        if (bleScan) bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
+        if (bleScan) bleScanClearCallbacks(bleScan);
     }
     bleScan = nullptr;
 
@@ -272,12 +271,9 @@ static void foxhunterStop(void) {
 
 static void foxhunterProximityBeep(void) {
     if (!hwBuzzerEnabled || hwBuzzerVolume == 0) return;
-    ledcSetup(0, 2400, 8);
-    ledcAttachPin(PIN_BUZZER, 0);
-    ledcWrite(0, hwBuzzerVolume);
+    buzzerTone(PIN_BUZZER, 2400, hwBuzzerVolume);
     delay(30);
-    ledcWrite(0, 0);
-    ledcDetachPin(PIN_BUZZER);
+    buzzerOff(PIN_BUZZER);
 }
 
 static void foxhunterLoop(void) {

@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GpsProvider {
@@ -14,6 +15,9 @@ class GpsProvider {
   }
 
   final BleManager _bleManager;
+
+  /// UI callback to show a message (toast/snackbar). Set by screen layer.
+  void Function(String message)? onMessage;
 
   StreamSubscription<Position>? _positionSub;
   Timer? _pushTimer;
@@ -71,26 +75,52 @@ class GpsProvider {
       return false;
     }
 
-    var permission = await Geolocator.checkPermission();
-
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        DebugLog.log('GPS: permission denied');
+    // iOS: use Geolocator's own permission flow (works correctly, always has)
+    // Android: use permission_handler for proper "Allow all the time" prompt
+    if (Platform.isAndroid) {
+      // Step 1: foreground
+      var locStatus = await ph.Permission.locationWhenInUse.status;
+      if (locStatus.isDenied) {
+        locStatus = await ph.Permission.locationWhenInUse.request();
+      }
+      if (locStatus.isPermanentlyDenied) {
+        DebugLog.log('GPS: location permanently denied — opening settings');
+        await ph.openAppSettings();
         return false;
       }
+      if (!locStatus.isGranted) {
+        DebugLog.log('GPS: foreground location denied ($locStatus)');
+        return false;
+      }
+
+      // Step 2: background — system shows "Allow all the time" toggle
+      var alwaysStatus = await ph.Permission.locationAlways.status;
+      if (!alwaysStatus.isGranted) {
+        onMessage?.call('Select "Allow all the time" for GPS tracking while screen is off');
+        DebugLog.log('GPS: requesting background location upgrade');
+        alwaysStatus = await ph.Permission.locationAlways.request();
+      }
+      _hasAlwaysPermission = alwaysStatus.isGranted;
+      DebugLog.log('GPS: background=$alwaysStatus');
+    } else {
+      // iOS: Geolocator handles the native CLLocationManager flow
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          DebugLog.log('GPS: permission denied');
+          return false;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        DebugLog.log('GPS: permission denied forever');
+        return false;
+      }
+      _hasAlwaysPermission = permission == LocationPermission.always;
     }
 
-    if (permission == LocationPermission.deniedForever) {
-      DebugLog.log('GPS: permission denied forever');
-      return false;
-    }
-
-    _hasAlwaysPermission = permission == LocationPermission.always;
-
-    // Start stream immediately with whatever permission we have.
-    // whileInUse is enough for foreground GPS — don't block on background upgrade.
+    // Start stream — whileInUse is enough for foreground GPS
     _positionSub?.cancel();
     _positionSub = Geolocator.getPositionStream(
       locationSettings: _platformSettings(),
@@ -104,26 +134,7 @@ class GpsProvider {
     });
 
     DebugLog.log('GPS: started (always=$_hasAlwaysPermission)');
-
-    // Request background upgrade async — don't block stream startup
-    if (permission == LocationPermission.whileInUse) {
-      _requestBackgroundUpgrade();
-    }
-
     return true;
-  }
-
-  Future<void> _requestBackgroundUpgrade() async {
-    DebugLog.log('GPS: requesting background permission upgrade');
-    if (Platform.isAndroid) {
-      // On Android 11+, background location must be granted in app settings.
-      // Opening settings is advisory — GPS stream already running with whileInUse.
-      await Geolocator.openAppSettings();
-    } else {
-      final upgraded = await Geolocator.requestPermission();
-      _hasAlwaysPermission = upgraded == LocationPermission.always;
-      DebugLog.log('GPS: background upgrade result=$upgraded');
-    }
   }
 
   LocationSettings _platformSettings() {
