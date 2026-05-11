@@ -12,7 +12,7 @@
 #include "opendroneid.h"
 #include "odid_wifi.h"
 
-#define MAX_UAVS 8
+#define MAX_UAVS 32
 
 static ODID_UAS_Data UAS_data;
 
