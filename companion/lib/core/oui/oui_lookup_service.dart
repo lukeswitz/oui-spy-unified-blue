@@ -34,19 +34,42 @@ class OuiLookupService {
     '385B44': 'Flock Safety (Battery)',
     '943469': 'Flock Safety (Battery)',
     'B4E3F9': 'Flock Safety (Battery)',
-    // Flock Safety — WiFi cameras (Liteon/UGS modules)
+    // @NitekryDPaul / OrdoOuroborous — original promiscuous-mode set
     '70C94E': 'Flock Safety (Falcon)',
     '3C9180': 'Flock Safety (Falcon)',
     'D8F3BC': 'Flock Safety (Falcon)',
     '803049': 'Flock Safety (Falcon)',
+    'B83532': 'Flock Safety (Falcon)',
     '145AFC': 'Flock Safety (Falcon)',
     '744CA1': 'Flock Safety (Falcon)',
     '083A88': 'Flock Safety (Falcon)',
     '9C2F9D': 'Flock Safety (Falcon)',
+    'C03532': 'Flock Safety (Falcon)',
     '940853': 'Flock Safety (Falcon)',
     'E4AAEA': 'Flock Safety (Falcon)',
-    // Flock Safety — official IEEE registration
+    'F46ADD': 'Flock Safety (Falcon)',
+    '24B2B9': 'Flock Safety (Falcon)',
+    '00F48D': 'Flock Safety (Falcon)',
+    'D03957': 'Flock Safety (Falcon)',
+    'E8D0FC': 'Flock Safety (Falcon)',
+    'E04F43': 'Flock Safety (Falcon)',
+    'B81EA4': 'Flock Safety (Falcon)',
+    '700894': 'Flock Safety (Falcon)',
+    '3C71BF': 'Flock Safety (Falcon)',
+    '5800E3': 'Flock Safety (Falcon)',
+    '5C93A2': 'Flock Safety (Falcon)',
+    '646E69': 'Flock Safety (Falcon)',
+    '4827EA': 'Flock Safety (Falcon)',
+    'A4CF12': 'Flock Safety (Falcon)',
+    // @NitekryDPaul April 2026 additions
     'B41E52': 'Flock Safety',
+    '14B5CD': 'Flock Safety (Falcon)',
+    '942A6F': 'Flock Safety (Falcon)',
+    'F4E2C6': 'Flock Safety (Falcon)',
+    'D411D6': 'Flock Safety (Falcon)',
+    'E00AF6': 'Flock Safety (Falcon)',
+    // DeFlockJoplin — wildcard-probe field research
+    '826BF2': 'Flock Safety (Falcon)',
     // Flock Safety — Raven gunshot detector (Espressif)
     'EC6260': 'Flock Safety (Raven)',
   };
@@ -78,23 +101,25 @@ class OuiLookupService {
       _parseRaw(content);
     }
 
-    // Apply overrides so known devices always show correct name
-    _db.addAll(_overrides);
     _loaded = true;
   }
 
   /// Look up manufacturer by MAC address string.
   /// Accepts formats: "AA:BB:CC:DD:EE:FF", "AA-BB-CC-DD-EE-FF", "AABBCCDDEEFF"
-  /// Checks hardcoded overrides first (Flock Safety devices use OEM chip
-  /// vendor OUIs that would otherwise show as Silicon Labs / Liteon / etc).
+  /// When an OUI matches a known override (e.g. Flock Safety) AND the OUI DB
+  /// has the chip vendor, returns both: "Flock Safety (Falcon) · Liteon".
   String? lookup(String macAddress) {
     final prefix = _extractPrefix(macAddress);
     if (prefix == null) return null;
-    // Overrides always work, even before DB loads
     final override = _overrides[prefix];
-    if (override != null) return override;
-    if (!_loaded) return null;
-    return _db[prefix];
+    final dbVendor = _loaded ? _db[prefix] : null;
+    if (override != null) {
+      if (dbVendor != null && !dbVendor.startsWith('Flock')) {
+        return '$override · $dbVendor';
+      }
+      return override;
+    }
+    return dbVendor;
   }
 
   /// Check if an OUI DB update is available and download it.
@@ -141,10 +166,9 @@ class OuiLookupService {
         }
         await localFile.writeAsString(buffer.toString());
 
-        // Reload with overrides applied on top
+        // Reload — overrides are applied at lookup time, not in _db
         _db.clear();
         _db.addAll(newDb);
-        _db.addAll(_overrides);
         _lastUpdated = DateTime.now();
         return true;
       }
