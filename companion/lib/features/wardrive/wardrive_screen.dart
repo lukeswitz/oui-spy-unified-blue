@@ -582,19 +582,45 @@ class _IdleControls extends StatelessWidget {
             _Pill(
               label: 'START',
               color: t.color,
-              onTap: () {
-                ref.read(gpsProvider).onMessage = (msg) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(msg),
-                        backgroundColor: AppTheme.accent,
-                        duration: const Duration(seconds: 4),
+              onTap: () async {
+                await ref.read(wardriveProvider).startSession();
+                if (!context.mounted) return;
+                final gps = ref.read(gpsProvider);
+                if (gps.needsBackgroundUpgrade) {
+                  final t = AppTheme.of(context);
+                  final open = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: t.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    );
+                      title: Text('Background Location',
+                        style: TextStyle(color: t.textPrimary, fontSize: 16,
+                          fontWeight: FontWeight.w600)),
+                      content: Text(
+                        'Wardrive works best with "Allow all the time" '
+                        'location. Without it, GPS stops when the screen turns off.\n\n'
+                        'Tap Location → "Allow all the time".',
+                        style: TextStyle(color: t.textSecondary, fontSize: 13),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: Text('LATER', style: TextStyle(color: t.textDim)),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text('OPEN SETTINGS',
+                            style: TextStyle(color: AppTheme.accent)),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (open == true) {
+                    await gps.openBackgroundSettings();
                   }
-                };
-                ref.read(wardriveProvider).startSession();
+                }
               },
             ),
           ],
