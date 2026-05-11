@@ -9,6 +9,17 @@ import 'package:oui_spy/features/feed/feed_stats_header.dart';
 import 'package:oui_spy/features/feed/filter_bar.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
+enum FeedMetric {
+  time('TIME'),
+  rssi('RSSI'),
+  count('COUNT'),
+  name('NAME'),
+  channel('CH');
+
+  const FeedMetric(this.label);
+  final String label;
+}
+
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -21,6 +32,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   String _searchQuery = '';
   String? _selectedNode;
   bool _showStats = true;
+  FeedMetric _sortMetric = FeedMetric.time;
+  bool _sortAscending = false; // false = descending (newest/strongest/most first)
 
   /// Merge flock detections from active wardrive into the feed.
   /// The feed's 500-entry ring buffer gets overwhelmed by wardrive
@@ -69,13 +82,32 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }).toList();
   }
 
+  List<Detection> _sorted(List<Detection> detections) {
+    final sorted = List<Detection>.from(detections);
+    final asc = _sortAscending;
+    int dir(int v) => asc ? v : -v;
+    switch (_sortMetric) {
+      case FeedMetric.time:
+        sorted.sort((a, b) => dir(a.appTimestamp.compareTo(b.appTimestamp)));
+      case FeedMetric.rssi:
+        sorted.sort((a, b) => dir(a.rssi.compareTo(b.rssi)));
+      case FeedMetric.count:
+        sorted.sort((a, b) => dir(a.count.compareTo(b.count)));
+      case FeedMetric.name:
+        sorted.sort((a, b) => dir(a.deviceName.toLowerCase().compareTo(b.deviceName.toLowerCase())));
+      case FeedMetric.channel:
+        sorted.sort((a, b) => dir(a.channel.compareTo(b.channel)));
+    }
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final wd = ref.watch(wardriveProvider);
     final merged = _mergeFlockFromWardrive(state.recentDetections, wd);
-    final filtered = _filter(merged);
+    final filtered = _sorted(_filter(merged));
     final sourceNodes = state.meshSourceNodes;
 
     return Scaffold(
@@ -119,6 +151,55 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               selectedNode: _selectedNode,
               onNodeChanged: (node) => setState(() => _selectedNode = node),
             ),
+            SizedBox(
+              height: 28,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: FeedMetric.values.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 4),
+                itemBuilder: (context, index) {
+                  final metric = FeedMetric.values[index];
+                  final active = _sortMetric == metric;
+                  final arrow = active ? (_sortAscending ? ' ↑' : ' ↓') : '';
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      if (active) {
+                        _sortAscending = !_sortAscending;
+                      } else {
+                        _sortMetric = metric;
+                        _sortAscending = false;
+                      }
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? AppTheme.accent.withValues(alpha: 0.2)
+                            : t.surface,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: active
+                              ? AppTheme.accent.withValues(alpha: 0.6)
+                              : t.border,
+                          width: active ? 1.0 : 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        '${metric.label}$arrow',
+                        style: TextStyle(
+                          color: active ? AppTheme.accent : t.textDim,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
             const Divider(),
             if (_showStats && filtered.length >= 2)
               FeedStatsHeader(detections: filtered),
