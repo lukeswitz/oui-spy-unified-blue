@@ -1523,15 +1523,16 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   void _startFoxhunt(Map<String, dynamic> det) {
     final mac = det['macAddress'] as String;
     final channel = det['channel'] as int? ?? 0;
-    final wd = ref.read(wardriveProvider);
 
-    wd.setFoxhuntTarget(mac, channel: channel);
+    ref.read(appStateProvider).setFoxhunterTarget(
+      mac,
+      channel: channel,
+    );
     if (context.mounted) {
-      context.go('/wardrive');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: AppTheme.warning,
-          content: Text('Foxhunt: ${mac.toUpperCase()}'),
+          backgroundColor: AppTheme.foxhunter,
+          content: Text('Foxhunting ${mac.toUpperCase().substring(0, 8)}...'),
         ),
       );
     }
