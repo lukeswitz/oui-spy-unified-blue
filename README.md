@@ -1,6 +1,6 @@
 <div align="center">
-<h1>OUI SPY Unified & Companion</h1> 
- 
+<h1>OUI SPY Unified & Companion</h1>
+
 [![Version](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases) [![Join TestFlight Beta](https://img.shields.io/badge/TestFlight-Join-blue.svg?style=f&logo=apple)](https://testflight.apple.com/join/5RCKgnJ2) ![Platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
 ![Dart](https://img.shields.io/badge/Dart-Flutter%20App-0175C2)
 ![C++](https://img.shields.io/badge/C%2B%2B-ESP32%20FW-ff6600)
@@ -12,7 +12,7 @@
 </div>
 
 ---
-**About this fork:** 
+**About this fork:**
 
 Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
 
@@ -24,7 +24,7 @@ Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Sp
 
 | Target | How |
 |--------|-----|
-| **Flock Safety ALPRs** | BLE MAC prefix, device name, manufacturer ID `0x09C8`, WiFi probe/SSID patterns |
+| **Flock Safety ALPRs** | BLE MAC prefix, device name, manufacturer ID `0x09C8`, WiFi promiscuous OUI match (addr1/addr2/addr3), wildcard probe signature |
 | **Raven Gunshot Detectors** | BLE GATT service UUIDs, firmware version fingerprinting |
 | **Drones (FAA Remote ID)** | WiFi promiscuous + BLE — NAN action frames, vendor beacons, ODID advertisements |
 | **Unitree Robots** | BLE name prefix matching (Go2_, G1_, H1_, B2_, X1_), connect + exploit |
@@ -33,6 +33,26 @@ Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Sp
 | **All BLE Devices** | Advertisement capture with name, manufacturer data, service UUIDs |
 
 All engines can run concurrently, with some limitations.
+
+---
+
+## Flock Safety Detection
+
+The Flock-WiFi engine runs in 802.11 promiscuous mode, hopping channels 1/6/11 at 350ms dwell. Three detection methods:
+
+- **addr2 OUI match** — transmitter-side match against 43 known Flock Safety OUI prefixes
+- **addr1 OUI match** — receiver-side technique that catches Flock STAs appearing only as the destination of probe responses during their burst-sleep windows. Skips multicast/broadcast addresses.
+- **Wildcard probe signature** — Probe Request (type=0 subtype=4) with zero-length SSID IE from a known-OUI addr2. High-precision Flock signature with FCS-trailer retry for driver compatibility. From [DeFlockJoplin](https://github.com/DeflockJoplin/flock-you) field research (Joplin drive-test: 11/12 cameras caught, 2 false positives).
+
+The Flock-BLE engine scans for FS Ext Battery devices, Flock WiFi modules, and Raven gunshot detectors via BLE advertisements, manufacturer company ID, device name patterns, and GATT service UUIDs.
+
+Both engines share a unified OUI table (`flock_oui.h`) with 43 prefixes:
+- 10 FS Ext Battery (BLE, Silicon Labs EFR32)
+- 26 Flock WiFi cameras — [@NitekryDPaul](https://github.com/nitekry) / OrdoOuroborous original promiscuous-mode set
+- 6 @NitekryDPaul April 2026 additions
+- 1 [DeFlockJoplin](https://github.com/DeflockJoplin/flock-you) wildcard-probe field discovery
+
+The companion app resolves every Flock OUI to its surveillance label (e.g. "Flock Safety (Falcon)") while also showing the underlying chip manufacturer from the IEEE OUI database when available (e.g. "Flock Safety (Falcon) · Liteon Technology").
 
 ---
 
@@ -91,17 +111,21 @@ Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any
 
 ## Companion App
 
-Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. No web dashboard or WiFi AP— all control and data display **happens in the app.**
+Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. No web dashboard or WiFi AP — all control and data display happens in the app.
 
 ### Screens
 
 **Home** — Connection status with pulsing radar animation. Once connected: engine cards showing live state (disabled/scanning/alerting). Tap any card to view settings or enable/disable directly. Status bar shows connected node, GPS quality, active engine count, and active node count.
 
-**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Filter bar to show/hide specific engines. **Tap crosshairs to foxhunt, and the far right icon to display on map.**
+**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Top stats bar shows top vendors and top Flock devices by count. Filter bar to show/hide specific engines. Tap crosshairs to foxhunt, and the far right icon to display on map.
 
 **Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Session auto-saves to SQLite. WiGLE CSV export. Session history with devices count, upload/share.
 
-**Config** — Five tabs: Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing), Debug Log (raw BLE traffic viewer).
+**Config** — Five tabs: Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing), Detections (sortable list with engine filter chips for Flock/Detector, vendor lookup with OUI DB update).
+
+### OUI Vendor Lookup
+
+The app ships with a 39k+ OUI vendor database (gzipped TSV from [Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety devices use OEM chip vendor OUIs (Silicon Labs, Liteon, UGS) — the app overrides these with correct labels while preserving the underlying chip manufacturer: e.g. "Flock Safety (Falcon) · Liteon Technology".
 
 ### Engine-Specific Screens
 
@@ -208,6 +232,10 @@ This repo contains the unified firmware (all engines) and the companion app. Eac
 ## Acknowledgments
 
 **Will Greenberg** ([@wgreenberg](https://github.com/wgreenberg)) — [flock-you](https://github.com/wgreenberg/flock-you) research. Manufacturer company ID `0x09C8` (XUNTONG) detection method and structured pattern approach sourced from his work.
+
+**@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)) — 42 Flock Safety OUI prefixes from promiscuous-mode WiFi field testing, addr1 receiver-side detection technique.
+
+**Michael / DeFlockJoplin** ([DeflockJoplin](https://github.com/DeflockJoplin/flock-you)) — Wildcard probe signature (Probe Request + zero-length SSID + known OUI) from Joplin drive-test field research.
 
 ---
 
