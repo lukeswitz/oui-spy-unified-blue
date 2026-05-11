@@ -30,6 +30,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   final _mapController = MapController();
   bool _followMode = true;
   String? _fittedSessionId;
+  final _statsKey = GlobalKey();
+  double _statsHeight = 0;
 
   @override
   void dispose() {
@@ -204,19 +206,27 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
               ],
             ),
 
-            // Map style picker (always visible, top-left when idle, below stats when active)
-            Positioned(
-              top: wd.isActive ? 130 : 8,
-              left: 12,
-              child: _MapStyleButton(ref: ref, mapStyle: mapStyle),
-            ),
-
             // Stats bar (top, only when active)
             if (wd.isActive)
               Positioned(
                 top: 0, left: 0, right: 0,
-                child: WardriveStats(stats: wd.currentStats),
+                child: _MeasuredBox(
+                  statsKey: _statsKey,
+                  onHeightChanged: (h) {
+                    if ((_statsHeight - h).abs() > 1) {
+                      setState(() => _statsHeight = h);
+                    }
+                  },
+                  child: WardriveStats(stats: wd.currentStats),
+                ),
               ),
+
+            // Map style picker (always visible, top-left when idle, below stats when active)
+            Positioned(
+              top: wd.isActive ? _statsHeight + 8 : 8,
+              left: 12,
+              child: _MapStyleButton(ref: ref, mapStyle: mapStyle),
+            ),
 
             // Idle: completed session summary (if map data present)
             if (!wd.isActive && wd.hasSessionData)
@@ -238,7 +248,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             // Active: focus button (top-right, below stats)
             if (wd.isActive)
               Positioned(
-                top: 130, right: 12,
+                top: _statsHeight + 8, right: 12,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -265,7 +275,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             // Active: node stats overlay (top-left, below map style btn)
             if (wd.isActive && ref.watch(appStateProvider).meshEnabled)
               Positioned(
-                top: 170, left: 12,
+                top: _statsHeight + 48, left: 12,
                 child: _NodeStatsOverlay(ref: ref),
               ),
 
@@ -659,6 +669,46 @@ class _IconBtn extends StatelessWidget {
             color: active ? AppTheme.accent : t.textSecondary),
       ),
     );
+  }
+}
+
+class _MeasuredBox extends StatefulWidget {
+  const _MeasuredBox({
+    required this.statsKey,
+    required this.onHeightChanged,
+    required this.child,
+  });
+  final GlobalKey statsKey;
+  final ValueChanged<double> onHeightChanged;
+  final Widget child;
+
+  @override
+  State<_MeasuredBox> createState() => _MeasuredBoxState();
+}
+
+class _MeasuredBoxState extends State<_MeasuredBox> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  }
+
+  @override
+  void didUpdateWidget(covariant _MeasuredBox old) {
+    super.didUpdateWidget(old);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+  }
+
+  void _measure() {
+    final box = widget.statsKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      widget.onHeightChanged(box.size.height);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyedSubtree(key: widget.statsKey, child: widget.child);
   }
 }
 
