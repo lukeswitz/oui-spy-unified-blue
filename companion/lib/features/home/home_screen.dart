@@ -682,7 +682,7 @@ class _RecentActivity extends StatelessWidget {
                             ? det.deviceName
                             : det.ssid.isNotEmpty
                                 ? det.ssid
-                                : det.engine.label,
+                                : '<hidden>',
                         style: TextStyle(
                           color: t.textSecondary,
                           fontSize: 12,
