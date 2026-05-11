@@ -31,6 +31,26 @@ static int wifiDedupCount = 0;
 
 // matchOui now provided by flock_oui.h as flockMatchOuiISR()
 
+/**
+ * Parse 802.11 IE chain for SSID element (tag 0).
+ * Returns:  1 = wildcard SSID (tag 0, length 0) — Flock-style probe
+ *           0 = SSID IE found with non-zero length — directed probe
+ *          -1 = no SSID IE found — caller should retry with FCS-stripped len
+ * From DeFlockJoplin field research: high-precision Flock signature.
+ */
+static int IRAM_ATTR isWildcardProbeIE(const uint8_t* body, int len) {
+    if (!body || len < 2) return -1;
+    while (len >= 2) {
+        uint8_t id   = body[0];
+        uint8_t elen = body[1];
+        if ((int)elen + 2 > len) break;
+        if (id == 0) return (elen == 0) ? 1 : 0;
+        body += elen + 2;
+        len  -= elen + 2;
+    }
+    return -1;
+}
+
 static bool IRAM_ATTR isDedupCooldownISR(const uint8_t* mac) {
     uint32_t now = millis();
     for (int i = 0; i < wifiDedupCount; i++) {
@@ -81,10 +101,20 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
         method = METHOD_OUI_ADDR2;
         matchMac = addr2;
 
-        // Wildcard probe check: probe request (type=0 subtype=4) with empty SSID
-        if (frameType == 0 && frameSubtype == 4 && len > 25) {
-            uint8_t ssidLen = p[25]; // SSID IE length
-            if (ssidLen == 0) {
+        // Wildcard probe: Probe Request (type=0 subtype=4) with zero-length
+        // SSID IE. DeFlockJoplin high-precision signature (Joplin drive-test:
+        // 11/12 cameras caught, 2 false positives). Suppresses broad addr2
+        // alert on same frame to avoid double-counting.
+        if (frameType == 0 && frameSubtype == 4) {
+            int bodyOff = 24; // MAC header size
+            int bodyLen = len - bodyOff;
+            const uint8_t* body = p + bodyOff;
+            int r = (bodyLen > 0) ? isWildcardProbeIE(body, bodyLen) : -1;
+            // FCS-trailer retry: some drivers include 4-byte FCS in sig_len.
+            // Only retry when first parse found no SSID IE at all (-1).
+            // A found-but-nonzero (0) = legit directed probe, don't retry.
+            if (r == -1 && bodyLen > 4) r = isWildcardProbeIE(body, bodyLen - 4);
+            if (r == 1) {
                 method = METHOD_WILDCARD_PROBE;
             }
         }
