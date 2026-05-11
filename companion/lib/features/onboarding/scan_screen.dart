@@ -21,6 +21,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   bool _scanning = false;
   String? _error;
   StreamSubscription<List<ScanResult>>? _scanSub;
+  StreamSubscription<NodeConnectionState>? _connSub;
 
   @override
   void initState() {
@@ -30,11 +31,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) context.go('/home');
       });
+    } else {
+      _connSub = ble.connectionState.listen((state) {
+        if (state == NodeConnectionState.ready && mounted) {
+          context.go('/home');
+        }
+      });
     }
   }
 
   @override
   void dispose() {
+    _connSub?.cancel();
     _scanSub?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
