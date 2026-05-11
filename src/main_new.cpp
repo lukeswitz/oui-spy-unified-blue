@@ -135,15 +135,38 @@ static void playBootMelody(void) {
 #define NOTIFY_DEDUP_COOLDOWN_MS 3000
 static struct {
     uint8_t mac[6];
+    uint8_t engine_id;
     unsigned long ts;
 } notifyDedup[NOTIFY_DEDUP_SIZE];
 static int notifyDedupHead = 0;
 static int notifyDedupCount = 0;
 
-static bool isNotifyDedupCooldown(const uint8_t* mac) {
+/// Engine-aware dedup: same MAC from DIFFERENT engine classes passes through.
+/// Wardrive (passive collection) and flock/detector (active alerting) are
+/// separate classes so a wardrive event never suppresses a flock alert.
+static uint8_t engineClass(uint8_t engine_id) {
+    switch ((EngineId)engine_id) {
+        case ENGINE_FLOCK_BLE:
+        case ENGINE_FLOCK_WIFI:
+            return 1;  // flock class
+        case ENGINE_DETECTOR:
+        case ENGINE_FOXHUNTER:
+        case ENGINE_SKYSPY:
+        case ENGINE_UNIPWN:
+            return 2;  // target-alert class
+        case ENGINE_WARDRIVE:
+            return 3;  // passive-collection class
+        default:
+            return 0;
+    }
+}
+
+static bool isNotifyDedupCooldown(const uint8_t* mac, uint8_t engine_id) {
     unsigned long now = millis();
+    uint8_t cls = engineClass(engine_id);
     for (int i = 0; i < notifyDedupCount; i++) {
-        if (memcmp(notifyDedup[i].mac, mac, 6) == 0) {
+        if (memcmp(notifyDedup[i].mac, mac, 6) == 0 &&
+            engineClass(notifyDedup[i].engine_id) == cls) {
             if (now - notifyDedup[i].ts < NOTIFY_DEDUP_COOLDOWN_MS) return true;
             notifyDedup[i].ts = now;
             return false;
@@ -157,6 +180,7 @@ static bool isNotifyDedupCooldown(const uint8_t* mac) {
         notifyDedupHead = (notifyDedupHead + 1) % NOTIFY_DEDUP_SIZE;
     }
     memcpy(notifyDedup[idx].mac, mac, 6);
+    notifyDedup[idx].engine_id = engine_id;
     notifyDedup[idx].ts = now;
     return false;
 }
@@ -168,7 +192,7 @@ static void detectionNotifyTask(void* param) {
     for (;;) {
         if (xQueueReceive(detectionQueue, &evt, portMAX_DELAY) == pdTRUE) {
             // Cross-engine dedup: suppress same MAC within cooldown window
-            if (isNotifyDedupCooldown(evt.mac)) continue;
+            if (isNotifyDedupCooldown(evt.mac, evt.engine_id)) continue;
 
             // Audible + visual feedback only for target engines
             if (isAlertableEngine(evt.engine_id)) {

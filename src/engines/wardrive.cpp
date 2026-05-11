@@ -64,6 +64,23 @@ static bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev) {
 }
 
 // ============================================================================
+// Wildcard probe IE parser (shared logic with flock_wifi.cpp)
+// ============================================================================
+
+static int IRAM_ATTR isWildcardProbeIE(const uint8_t* body, int len) {
+    if (!body || len < 2) return -1;
+    while (len >= 2) {
+        uint8_t id   = body[0];
+        uint8_t elen = body[1];
+        if ((int)elen + 2 > len) break;
+        if (id == 0) return (elen == 0) ? 1 : 0;
+        body += elen + 2;
+        len  -= elen + 2;
+    }
+    return -1;
+}
+
+// ============================================================================
 // State
 // ============================================================================
 
@@ -123,6 +140,39 @@ static bool wardriveIsDedupCooldown(const uint8_t* mac) {
     }
     memcpy(wardriveDedup[idx].mac, mac, 6);
     wardriveDedup[idx].ts = now;
+    return false;
+}
+
+// ISR-safe flock dedup — separate from wardrive beacon dedup so flock cameras
+// don't get suppressed by the 10s wardrive cooldown, but still avoids flooding
+// the queue with every CTRL/DATA frame from the same camera.
+#define FLOCK_WIFI_DEDUP_SIZE 16
+#define FLOCK_WIFI_DEDUP_COOL_MS 5000
+static struct {
+    uint8_t mac[6];
+    unsigned long ts;
+} flockWifiDedup[FLOCK_WIFI_DEDUP_SIZE];
+static int flockWifiDedupHead = 0;
+static int flockWifiDedupCount = 0;
+
+static bool IRAM_ATTR flockWifiIsDedupISR(const uint8_t* mac) {
+    uint32_t now = millis();
+    for (int i = 0; i < flockWifiDedupCount; i++) {
+        if (memcmp(flockWifiDedup[i].mac, mac, 6) == 0) {
+            if (now - flockWifiDedup[i].ts < FLOCK_WIFI_DEDUP_COOL_MS) return true;
+            flockWifiDedup[i].ts = now;
+            return false;
+        }
+    }
+    int idx;
+    if (flockWifiDedupCount < FLOCK_WIFI_DEDUP_SIZE) {
+        idx = flockWifiDedupCount++;
+    } else {
+        idx = flockWifiDedupHead;
+        flockWifiDedupHead = (flockWifiDedupHead + 1) % FLOCK_WIFI_DEDUP_SIZE;
+    }
+    memcpy(flockWifiDedup[idx].mac, mac, 6);
+    flockWifiDedup[idx].ts = now;
     return false;
 }
 
@@ -320,7 +370,13 @@ static void sendWildcardProbe(void) {
 
 static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (!wardriveActive) return;
-    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
+
+    // Accept MGMT, DATA, and CTRL frames. Flock cameras appear as addr1
+    // (destination) in frames from associated APs — these can be any type.
+    // CTRL frames (ACK/CTS/RTS/BlockAck) may be short; len<24 check below
+    // handles that. Standalone flock_wifi accepts all types and catches
+    // cameras that were invisible when wardrive filtered to MGMT+DATA only.
+    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA && type != WIFI_PKT_CTRL) return;
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* p = pkt->payload;
@@ -345,9 +401,15 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         if (flockMatchOuiISR(addr2)) {
             flockMac = addr2;
             flockMethod = METHOD_OUI_ADDR2;
-            // Wildcard probe check (type=0 subtype=4 empty SSID)
-            if (frameType == 0 && frameSubtype == 4 && len > 25 && p[25] == 0) {
-                flockMethod = METHOD_WILDCARD_PROBE;
+            // Wildcard probe: Probe Request (type=0 subtype=4) with zero-length
+            // SSID IE. Synced with flock_wifi.cpp DeFlockJoplin IE parser.
+            if (frameType == 0 && frameSubtype == 4) {
+                int bodyOff = 24;
+                int bodyLen = len - bodyOff;
+                const uint8_t* body = p + bodyOff;
+                int r = (bodyLen > 0) ? isWildcardProbeIE(body, bodyLen) : -1;
+                if (r == -1 && bodyLen > 4) r = isWildcardProbeIE(body, bodyLen - 4);
+                if (r == 1) flockMethod = METHOD_WILDCARD_PROBE;
             }
         } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
             flockMac = addr1;
@@ -357,9 +419,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
             flockMethod = METHOD_OUI_ADDR3;
         }
 
-        if (flockMac != NULL) {
-            // Flock has its own dedup — use addr2 as key (transmitter = camera)
-            // Don't share dedup ring with wardrive beacon BSSID tracking
+        if (flockMac != NULL && !flockWifiIsDedupISR(flockMac)) {
             DetectionEvent evt;
             memset(&evt, 0, sizeof(evt));
             evt.engine_id = ENGINE_FLOCK_WIFI;
@@ -432,22 +492,13 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         memcpy(mac, dev->getAddress().getNative(), 6);
         if (wardriveIsDedupCooldown(mac)) return;
 
-        DetectionEvent evt = {};
-        evt.engine_id = ENGINE_WARDRIVE;
-        memcpy(evt.mac, mac, 6);
-        evt.rssi = dev->getRSSI();
-        evt.channel = 0;
-        evt.timestamp_ms = millis();
-        evt.method = METHOD_BLE_ADV;
-        memset(evt.source_node_id, 0, MESH_NODE_ID_LEN);
-        memset(evt.ext.wardrive.ssid, 0, 33);
-        evt.ext.wardrive.auth_mode = 0;
+        int rssi = dev->getRSSI();
+        uint32_t now = millis();
         std::string name = dev->getName();
-        strncpy(evt.ext.wardrive.device_name, name.c_str(), 20);
-        evt.ext.wardrive.device_name[20] = '\0';
-        pushDetection(&evt);
 
-        // Full flock detection: OUI, name, mfg ID, Raven UUID
+        // Flock detection FIRST — alertable events get queue priority over
+        // passive wardrive collection. Prevents cross-engine dedup from
+        // suppressing flock alerts when queue is congested.
         bool isFlock = false;
         uint8_t flockMethod = 0;
         bool isRaven = false;
@@ -474,9 +525,9 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
             DetectionEvent fEvt = {};
             fEvt.engine_id = ENGINE_FLOCK_BLE;
             memcpy(fEvt.mac, mac, 6);
-            fEvt.rssi = evt.rssi;
+            fEvt.rssi = rssi;
             fEvt.channel = 0;
-            fEvt.timestamp_ms = evt.timestamp_ms;
+            fEvt.timestamp_ms = now;
             fEvt.method = flockMethod;
             memset(fEvt.source_node_id, 0, MESH_NODE_ID_LEN);
             memset(&fEvt.ext, 0, sizeof(fEvt.ext));
@@ -484,6 +535,21 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
             memset(fEvt.ext.flock.raven_fw, 0, sizeof(fEvt.ext.flock.raven_fw));
             pushDetection(&fEvt);
         }
+
+        // Wardrive passive collection event
+        DetectionEvent evt = {};
+        evt.engine_id = ENGINE_WARDRIVE;
+        memcpy(evt.mac, mac, 6);
+        evt.rssi = rssi;
+        evt.channel = 0;
+        evt.timestamp_ms = now;
+        evt.method = METHOD_BLE_ADV;
+        memset(evt.source_node_id, 0, MESH_NODE_ID_LEN);
+        memset(evt.ext.wardrive.ssid, 0, 33);
+        evt.ext.wardrive.auth_mode = 0;
+        strncpy(evt.ext.wardrive.device_name, name.c_str(), 20);
+        evt.ext.wardrive.device_name[20] = '\0';
+        pushDetection(&evt);
 
         // Dispatch to other active engines that went passive
         if (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) {
@@ -512,6 +578,8 @@ static void wardriveInit(void) {
     wardriveDedupCount = 0;
     wifiDedupHead = 0;
     wifiDedupCount = 0;
+    flockWifiDedupHead = 0;
+    flockWifiDedupCount = 0;
     Serial.println("[WARDRIVE] Initialized");
 }
 
@@ -522,6 +590,8 @@ static void wardriveStart(void) {
     wardriveDedupCount = 0;
     wifiDedupHead = 0;
     wifiDedupCount = 0;
+    flockWifiDedupHead = 0;
+    flockWifiDedupCount = 0;
     currentChannel = channelStart;
     lastChannelHop = millis();
     beaconsThisHop = 0;
@@ -546,9 +616,15 @@ static void wardriveStart(void) {
         };
         esp_wifi_set_country(&country);
 
-        // Promiscuous filter: MGMT (beacons/probe resp) + DATA (flock OUI on data frames)
+        // Promiscuous filter: ALL frame types.
+        // CTRL frames needed for flock OUI detection — cameras appear as
+        // addr1 (destination) in data/ctrl frames from associated APs.
+        // Standalone flock_wifi uses default (all types) and catches cameras
+        // that wardrive missed when limited to MGMT+DATA only.
         wifi_promiscuous_filter_t filter = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
+                           WIFI_PROMIS_FILTER_MASK_DATA |
+                           WIFI_PROMIS_FILTER_MASK_CTRL
         };
         esp_wifi_set_promiscuous_filter(&filter);
 
