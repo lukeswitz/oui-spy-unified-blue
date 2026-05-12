@@ -12,6 +12,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
+import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/models/session.dart';
@@ -73,7 +74,7 @@ enum WardriveRadio {
 }
 
 class WardriveController extends ChangeNotifier {
-  WardriveController(this._ble, this._gps, this._db) {
+  WardriveController(this._ble, this._gps, this._db, this._ignoreList) {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready && isActive) {
         _reEnableEngines();
@@ -110,6 +111,7 @@ class WardriveController extends ChangeNotifier {
   final BleManager _ble;
   final GpsProvider _gps;
   final AppDatabase _db;
+  final IgnoreListState _ignoreList;
   StreamSubscription<NodeConnectionState>? _connSub;
 
   WardriveState state = WardriveState.idle;
@@ -358,6 +360,7 @@ class WardriveController extends ChangeNotifier {
     nodeBleCount.clear();
     distanceKm = 0;
     droneCount = 0;
+    flockFilter = false;
     _lastCompletedSessionId = null;
     notifyListeners();
   }
@@ -476,7 +479,7 @@ class WardriveController extends ChangeNotifier {
       final dir = await _wardriveDir();
       final filename = await _csvFilename(sid);
       final file = File(path.join(dir.path, filename));
-      final csv = WigleCsv.generate(dets);
+      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV saved ${file.path}');
       return file.path;
@@ -522,7 +525,7 @@ class WardriveController extends ChangeNotifier {
       final dbRows = await _db.getDetectionMapsForSession(sid);
       if (dbRows.isEmpty) return null;
       final dets = dbRows.map(_detectionFromDb).toList();
-      final csv = WigleCsv.generate(dets);
+      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV regenerated from DB for $sid (${dets.length} det)');
       return file;
@@ -655,8 +658,17 @@ class WardriveController extends ChangeNotifier {
 
   void _onDetection(Detection detection) {
     if (state != WardriveState.running) return;
-    rawDetectionCount++;
+
     final isBle = detection.method == 'ble_adv' || detection.engine.isBle;
+    if (_ignoreList.shouldSuppress(
+      mac: detection.macAddress,
+      ssid: detection.ssid.isNotEmpty ? detection.ssid : detection.deviceName,
+      isBle: isBle,
+    )) {
+      return;
+    }
+
+    rawDetectionCount++;
     if (isBle) { rawBleCount++; } else { rawWifiCount++; }
 
     // Track per-source-node WiFi/BLE counts
@@ -784,5 +796,6 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final ble = ref.watch(bleManagerProvider);
   final gps = ref.watch(gpsProvider);
   final db = ref.watch(databaseProvider);
-  return WardriveController(ble, gps, db);
+  final allowlist = ref.watch(ignoreListProvider);
+  return WardriveController(ble, gps, db, allowlist);
 });

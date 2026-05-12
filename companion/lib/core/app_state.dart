@@ -9,18 +9,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
+import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
 /// App-wide state that survives navigation. Single source of truth.
 /// All screens read from here instead of creating their own subscriptions.
 class AppState extends ChangeNotifier {
-  AppState(this._ble, this._gps) {
+  AppState(this._ble, this._gps, this._ignoreList) {
     _init();
   }
 
   final BleManager _ble;
   final GpsProvider _gps;
+  final IgnoreListState _ignoreList;
   final List<StreamSubscription<dynamic>> _subs = [];
 
   // Connection
@@ -164,6 +166,14 @@ class AppState extends ChangeNotifier {
 
     // Detections — track unique MACs per engine + deduplicated ring buffer
     _subs.add(_ble.detections.listen((det) {
+      final isBle = det.method == 'ble_adv' || det.engine.isBle;
+      if (_ignoreList.shouldSuppress(
+        mac: det.macAddress,
+        ssid: det.ssid.isNotEmpty ? det.ssid : det.deviceName,
+        isBle: isBle,
+      )) {
+        return;
+      }
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
       (_recentDetectionTimes[det.engine] ??= []).add(DateTime.now());
@@ -364,5 +374,6 @@ class AppState extends ChangeNotifier {
 final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   final ble = ref.watch(bleManagerProvider);
   final gps = ref.watch(gpsProvider);
-  return AppState(ble, gps);
+  final allowlist = ref.watch(ignoreListProvider);
+  return AppState(ble, gps, allowlist);
 });

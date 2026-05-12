@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -50,7 +51,7 @@ class ExportScreen extends ConsumerWidget {
               label: 'WIGLE CSV 1.6',
               description: 'Compatible with wigle.net upload',
               icon: Icons.table_chart,
-              onTap: count > 0 ? () => _exportWigleCsv(context, state.recentDetections) : null,
+              onTap: count > 0 ? () => _exportWigleCsv(context, state.recentDetections, ref.read(ignoreListProvider)) : null,
             ),
             _ExportButton(
               label: 'JSON',
@@ -70,8 +71,8 @@ class ExportScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportWigleCsv(BuildContext context, List<Detection> detections) async {
-    final csv = WigleCsv.generate(detections);
+  Future<void> _exportWigleCsv(BuildContext context, List<Detection> detections, IgnoreListState ignoreList) async {
+    final csv = WigleCsv.generate(detections, ignoreList: ignoreList);
     await _shareFile(context, csv, 'oui_spy_wigle.csv');
   }
 

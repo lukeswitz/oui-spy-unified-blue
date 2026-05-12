@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
@@ -10,7 +11,7 @@ class WigleCsv {
   static const _version = '1.0.0';
   static final _dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
-  static String generate(List<Detection> detections) {
+  static String generate(List<Detection> detections, {IgnoreListState? ignoreList}) {
     final buffer = StringBuffer();
 
     // Pre-header 
@@ -38,6 +39,17 @@ class WigleCsv {
     // Data rows
     for (final d in detections) {
       if (d.latitude == null || d.longitude == null) continue;
+
+      if (ignoreList != null) {
+        final isBle = d.method == 'ble_adv' || d.engine.isBle;
+        if (ignoreList.shouldSuppress(
+          mac: d.macAddress,
+          ssid: d.ssid.isNotEmpty ? d.ssid : d.deviceName,
+          isBle: isBle,
+        )) {
+          continue;
+        }
+      }
 
       final mac = d.macAddress;
       final isBleDevice = d.method == 'ble_adv' || d.engine.isBle;

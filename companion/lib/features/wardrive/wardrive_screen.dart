@@ -1010,9 +1010,9 @@ class _CompletedSessionBar extends ConsumerStatefulWidget {
 }
 
 class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
-  bool _flockExpanded = false;
-
   WardriveController get wd => widget.wd;
+
+  bool get _flockExpanded => wd.flockFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -1065,10 +1065,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: wd.flockCount > 0
-                    ? () {
-                        setState(() => _flockExpanded = !_flockExpanded);
-                        wd.toggleFlockFilter();
-                      }
+                    ? () => wd.toggleFlockFilter()
                     : null,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
