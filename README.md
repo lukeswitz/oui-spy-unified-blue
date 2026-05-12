@@ -142,8 +142,8 @@ The app ships with a 39k+ OUI vendor database (gzipped TSV from [Ringmast4r/OUI-
 
 | Platform | Method |
 |----------|--------|
-| **Android** | [APK from latest release](https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest) — enable "Install unknown apps" |
-| **iOS** | [Join TestFlight beta](https://testflight.apple.com/join/5RCKgnJ2) |
+| **Android** | [APK from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) — enable "Install unknown apps" if needed|
+| **TestFlight: iOS & macOS Silicon** | [Join TestFlight beta](https://testflight.apple.com/join/5RCKgnJ2) |
 | **macOS** | [Signed .app from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
 
 ---
