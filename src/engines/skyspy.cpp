@@ -5,7 +5,8 @@
  */
 #include "skyspy.h"
 #include "protocol.h"
-#include "../ble_compat.h"
+#include <Arduino.h>
+#include <NimBLEDevice.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include "opendroneid.h"
@@ -32,7 +33,7 @@ static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
 static unsigned long lastScanStart = 0;
 
-static DroneData* findOrAllocDrone(const uint8_t* mac) {
+static DroneData* findOrAllocDrone(uint8_t* mac) {
     for (int i = 0; i < MAX_UAVS; i++) {
         if (drones[i].active && memcmp(drones[i].mac, mac, 6) == 0)
             return &drones[i];
@@ -90,38 +91,32 @@ static void applyOdidData(DroneData* d) {
 // BLE Callback — ODID advertisements
 // ============================================================================
 
-class SkySkyBLECallback : public BLE_SCAN_CB_CLASS {
-    BLE_SCAN_CB_ONRESULT(dev) {
-#if NIMBLE_V2
-        const std::vector<uint8_t>& payloadVec = dev->getPayload();
-        int len = (int)payloadVec.size();
-        const uint8_t* payload = payloadVec.data();
-#else
+class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
+    void onResult(NimBLEAdvertisedDevice* dev) override {
         int len = dev->getPayloadLength();
-        const uint8_t* payload = dev->getPayload();
-#endif
+        uint8_t* payload = dev->getPayload();
         if (!payload || len < 6 + (int)sizeof(ODID_BasicID_encoded)) return;
 
+        // ODID BLE signature: 0x16 0xFA 0xFF 0x0D
         if (payload[1] != 0x16 || payload[2] != 0xFA ||
             payload[3] != 0xFF || payload[4] != 0x0D) return;
 
-        const uint8_t* odid = &payload[6];
+        uint8_t* odid = &payload[6];
         int odidLen = len - 6;
 
         memset(&UAS_data, 0, sizeof(UAS_data));
         if ((odid[0] & 0xF0) == (ODID_MESSAGETYPE_PACKED << 4)) {
-            odid_message_process_pack(&UAS_data, (uint8_t*)odid, odidLen);
+            odid_message_process_pack(&UAS_data, odid, odidLen);
         } else {
-            decodeOpenDroneID(&UAS_data, (uint8_t*)odid);
+            decodeOpenDroneID(&UAS_data, odid);
         }
 
         bool useful = UAS_data.BasicIDValid[0] || UAS_data.LocationValid ||
                       UAS_data.SystemValid || UAS_data.OperatorIDValid;
         if (!useful) return;
 
-        uint8_t macBuf[6];
-        bleAdvGetMac(dev, macBuf);
-        const uint8_t* mac = macBuf;
+        uint8_t* mac = (uint8_t*)dev->getAddress().getNative();
+        if (!mac) return;
 
         DroneData* d = findOrAllocDrone(mac);
         if (!d->active) {
@@ -212,7 +207,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
 static void skyspyInit(void) {
     memset(drones, 0, sizeof(drones));
     bleScan = NimBLEDevice::getScan();
-    bleScanSetCallbacks(bleScan, &bleCb);
+    bleScan->setAdvertisedDeviceCallbacks(&bleCb, true);
     bleScan->setActiveScan(true);
     bleScan->setInterval(100);
     bleScan->setWindow(99);

@@ -3,9 +3,10 @@
 #include "flock_oui.h"
 #include "detector.h"
 #include "foxhunter.h"
-#include "../ble_compat.h"
+#include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <NimBLEDevice.h>
 
 // ============================================================================
 // BLE flock detection helpers (shared with BLE callback)
@@ -39,7 +40,7 @@ static bool flockMatchName(const char* name) {
     return false;
 }
 
-static bool flockMatchMfgId(BLE_ADV_DEV dev) {
+static bool flockMatchMfgId(NimBLEAdvertisedDevice* dev) {
     if (!dev->haveManufacturerData()) return false;
     std::string data = dev->getManufacturerData();
     if (data.size() < 2) return false;
@@ -50,7 +51,7 @@ static bool flockMatchMfgId(BLE_ADV_DEV dev) {
     return false;
 }
 
-static bool flockMatchRavenUuid(BLE_ADV_DEV dev) {
+static bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev) {
     if (!dev->haveServiceUUID()) return false;
     int count = dev->getServiceUUIDCount();
     for (int i = 0; i < count; i++) {
@@ -483,13 +484,12 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
 
 static NimBLEScan* pWardriveScan = nullptr;
 
-class WardriveAdvCallbacks : public BLE_SCAN_CB_CLASS {
-public:
-    BLE_SCAN_CB_ONRESULT(dev) {
+class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
+    void onResult(NimBLEAdvertisedDevice* dev) override {
         if (!wardriveActive) return;
 
         uint8_t mac[6];
-        bleAdvGetMac(dev, mac);
+        memcpy(mac, dev->getAddress().getNative(), 6);
         if (wardriveIsDedupCooldown(mac)) return;
 
         int rssi = dev->getRSSI();
@@ -561,22 +561,13 @@ public:
             foxhunterCheckBleDevice(mac, evt.rssi);
         }
     }
-#if NIMBLE_V2
-    void onScanEnd(const NimBLEScanResults& results, int reason) override {
-        if (pWardriveScan && wardriveActive) {
-            pWardriveScan->clearResults();
-        }
-    }
-#endif
 };
 
-#if !NIMBLE_V2
 static void wardriveBleOnComplete(NimBLEScanResults results) {
     if (pWardriveScan && wardriveActive) {
         pWardriveScan->clearResults();
     }
 }
-#endif
 
 static WardriveAdvCallbacks wardriveBleCallbacks;
 
@@ -650,7 +641,7 @@ static void wardriveStart(void) {
     // BLE scanner
     if (wardriveRadio & 0x02) {
         pWardriveScan = NimBLEDevice::getScan();
-        bleScanSetCallbacks(pWardriveScan, &wardriveBleCallbacks);
+        pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
         pWardriveScan->setActiveScan(true);
         // Interval == window: Espressif recommendation for WiFi/BLE coexistence.
         // Continuous BLE within its TDM slot, no wasted RF gaps.
@@ -673,7 +664,7 @@ static void wardriveStop(void) {
     if (pWardriveScan != nullptr) {
         if (pWardriveScan->isScanning()) pWardriveScan->stop();
         vTaskDelay(pdMS_TO_TICKS(200));
-        bleScanClearCallbacks(pWardriveScan);
+        pWardriveScan->setAdvertisedDeviceCallbacks(nullptr, false);
         pWardriveScan->clearResults();
         pWardriveScan = nullptr;
     }
@@ -718,11 +709,7 @@ static void wardriveLoop(void) {
             if (pWardriveScan != nullptr && !pWardriveScan->isScanning()) {
                 int durSec = bleScanDurationMs / 1000;
                 if (durSec < 1) durSec = 1;
-#if NIMBLE_V2
-                pWardriveScan->start(durSec, false);
-#else
                 pWardriveScan->start(durSec, wardriveBleOnComplete, false);
-#endif
             }
         }
     }

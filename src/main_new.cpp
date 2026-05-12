@@ -9,7 +9,7 @@
  * Core 1: BLE GATT server + BLE engine tasks + detection notification
  */
 #include <Arduino.h>
-#include "ble_compat.h"
+#include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -48,7 +48,7 @@ static void initHardware(void) {
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, LOW);
     pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, LED_OFF);
+    digitalWrite(PIN_LED, HIGH);
 
     Serial.println("[HW] Pins initialized");
 }
@@ -97,13 +97,16 @@ static bool isAlertableEngine(uint8_t engine_id) {
 /// Pleasant ascending three-note chime: E6 → G#6 → B6
 static void detectionChime(void) {
     if (!hwBuzzerEnabled || hwBuzzerVolume == 0) return;
-    const int notes[] = {1319, 1661, 1976};
+    const int notes[] = {1319, 1661, 1976};  // E6, G#6, B6 — major triad
     for (int i = 0; i < 3; i++) {
-        buzzerTone(PIN_BUZZER, notes[i], hwBuzzerVolume);
+        ledcSetup(0, notes[i], 8);
+        ledcAttachPin(PIN_BUZZER, 0);
+        ledcWrite(0, hwBuzzerVolume);
         delay(45);
-        buzzerOff(PIN_BUZZER);
+        ledcWrite(0, 0);
         delay(20);
     }
+    ledcDetachPin(PIN_BUZZER);
 }
 
 // ============================================================================
@@ -112,14 +115,16 @@ static void detectionChime(void) {
 static void playBootMelody(void) {
     if (!hwBuzzerEnabled) return;
 
-    const int notes[] = {523, 659, 784, 1047};
-    uint8_t duty = hwBuzzerVolume > 0 ? hwBuzzerVolume : 80;
+    const int notes[] = {523, 659, 784, 1047};  // C5, E5, G5, C6
     for (int i = 0; i < 4; i++) {
-        buzzerTone(PIN_BUZZER, notes[i], duty);
+        ledcSetup(0, notes[i], 8);
+        ledcAttachPin(PIN_BUZZER, 0);
+        ledcWrite(0, hwBuzzerVolume > 0 ? hwBuzzerVolume : 80);
         delay(80);
-        buzzerOff(PIN_BUZZER);
+        ledcWrite(0, 0);
         delay(30);
     }
+    ledcDetachPin(PIN_BUZZER);
 }
 
 // ============================================================================
@@ -194,7 +199,7 @@ static void detectionNotifyTask(void* param) {
                 Serial.printf("[CHIME] engine=%d\n", evt.engine_id);
                 detectionChime();
                 if (hwLedEnabled) {
-                    digitalWrite(PIN_LED, LED_ON);
+                    digitalWrite(PIN_LED, LOW);
                 }
             }
 
@@ -206,7 +211,7 @@ static void detectionNotifyTask(void* param) {
 
             // LED off after notification sent
             if (hwLedEnabled) {
-                digitalWrite(PIN_LED, LED_OFF);
+                digitalWrite(PIN_LED, HIGH);
             }
 
             // Also print to serial (for debugging / Flask compatibility)
@@ -313,9 +318,9 @@ void setup() {
     bleGattInit();
 
     // Create FreeRTOS tasks
-    xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, APP_CORE);
-    xTaskCreatePinnedToCore(engineCmdTask, "eng_cmd", 4096, NULL, 1, NULL, APP_CORE);
-    xTaskCreatePinnedToCore(statusHeartbeatTask, "status_hb", 2048, NULL, 1, NULL, APP_CORE);
+    xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(engineCmdTask, "eng_cmd", 4096, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(statusHeartbeatTask, "status_hb", 2048, NULL, 1, NULL, 1);
 
     Serial.println("[INIT] Tasks created");
 
@@ -324,9 +329,9 @@ void setup() {
 
     // LED blink to confirm boot
     for (int i = 0; i < 3; i++) {
-        digitalWrite(PIN_LED, LED_ON);
+        digitalWrite(PIN_LED, LOW);
         delay(100);
-        digitalWrite(PIN_LED, LED_OFF);
+        digitalWrite(PIN_LED, HIGH);
         delay(100);
     }
 

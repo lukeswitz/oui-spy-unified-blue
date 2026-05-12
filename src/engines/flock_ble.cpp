@@ -8,7 +8,8 @@
 #include "protocol.h"
 #include "flock_oui.h"
 #include "../mesh_espnow.h"
-#include "../ble_compat.h"
+#include <Arduino.h>
+#include <NimBLEDevice.h>
 
 // ============================================================================
 // Detection Patterns (OUI matching now in shared flock_oui.h)
@@ -85,7 +86,7 @@ static bool checkMfgID(uint16_t id) {
     return false;
 }
 
-static bool checkRavenUUID(BLE_ADV_DEV dev) {
+static bool checkRavenUUID(NimBLEAdvertisedDevice* dev) {
     if (!dev->haveServiceUUID()) return false;
     int count = dev->getServiceUUIDCount();
     for (int i = 0; i < count; i++) {
@@ -97,7 +98,7 @@ static bool checkRavenUUID(BLE_ADV_DEV dev) {
     return false;
 }
 
-static const char* estimateRavenFW(BLE_ADV_DEV dev) {
+static const char* estimateRavenFW(NimBLEAdvertisedDevice* dev) {
     if (!dev->haveServiceUUID()) return "?";
     bool has_new_gps = false, has_old_loc = false, has_power = false;
     int count = dev->getServiceUUIDCount();
@@ -140,8 +141,8 @@ static bool isDedupCooldown(const uint8_t* mac) {
 // BLE Scan Callback
 // ============================================================================
 
-class FlockBLECallback : public BLE_SCAN_CB_CLASS {
-    BLE_SCAN_CB_ONRESULT(dev) {
+class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
+    void onResult(NimBLEAdvertisedDevice* dev) override {
         std::string addrStr = dev->getAddress().toString();
         unsigned int m[6];
         sscanf(addrStr.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -247,7 +248,7 @@ static void flockBleStart(void) {
     }
 
     bleScan = NimBLEDevice::getScan();
-    bleScanSetCallbacks(bleScan, &scanCb);
+    bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
     bleScan->setActiveScan(true);
     bleScan->setInterval(100);
     bleScan->setWindow(99);
@@ -264,7 +265,7 @@ static void flockBleStop(void) {
             bleScan->stop();
         }
         if (bleScan) {
-            bleScanClearCallbacks(bleScan);
+            bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
         }
     }
     bleScan = nullptr;

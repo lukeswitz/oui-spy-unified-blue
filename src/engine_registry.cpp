@@ -2,7 +2,8 @@
  * Engine Registry implementation.
  */
 #include "engine_registry.h"
-#include "ble_compat.h"
+#include <Arduino.h>
+#include <NimBLEDevice.h>
 
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};

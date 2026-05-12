@@ -19,28 +19,12 @@
 #define MESH_TAG_LEN         16
 #define MESH_NODE_ID_LEN     5
 
-// Hardware pins — board-specific
-#if defined(ARDUINO_XIAO_ESP32C5)
-  #define PIN_BUZZER       25    // D2 = GPIO25 on XIAO ESP32-C5
-  #define PIN_LED          27    // LED_BUILTIN = GPIO27, active HIGH
-  #define PIN_NEOPIXEL     8     // External WS2812B data
-  #define LED_ACTIVE_HIGH  1
-#else
-  #define PIN_BUZZER       3     // GPIO3 (D2) on XIAO ESP32-S3
-  #define PIN_LED          21    // Onboard LED, active LOW
-  #define PIN_NEOPIXEL     4     // WS2812B data
-  #define PIN_GPS_RX       44    // Optional hardware GPS
-  #define PIN_GPS_TX       43
-  #define LED_ACTIVE_HIGH  0
-#endif
-
-#if LED_ACTIVE_HIGH
-  #define LED_ON   HIGH
-  #define LED_OFF  LOW
-#else
-  #define LED_ON   LOW
-  #define LED_OFF  HIGH
-#endif
+// Hardware pins (XIAO ESP32-S3)
+#define PIN_BUZZER     3
+#define PIN_LED        21    // Onboard LED, active LOW
+#define PIN_NEOPIXEL   4     // WS2812B data
+#define PIN_GPS_RX     44    // Optional hardware GPS
+#define PIN_GPS_TX     43
 
 // Firmware version
 #define FW_VERSION     "3.1.0"

@@ -6,7 +6,8 @@
  */
 #include "unipwn.h"
 #include "protocol.h"
-#include "../ble_compat.h"
+#include <Arduino.h>
+#include <NimBLEDevice.h>
 
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
@@ -64,8 +65,8 @@ static bool isDedupCooldown(const uint8_t* mac) {
 // BLE Callback
 // ============================================================================
 
-class UnipwnCallback : public BLE_SCAN_CB_CLASS {
-    BLE_SCAN_CB_ONRESULT(dev) {
+class UnipwnCallback : public NimBLEAdvertisedDeviceCallbacks {
+    void onResult(NimBLEAdvertisedDevice* dev) override {
         std::string name = dev->haveName() ? dev->getName() : "";
         if (!isUnitreeDevice(name.c_str())) return;
 
@@ -106,7 +107,7 @@ static UnipwnCallback scanCb;
 
 static void unipwnInit(void) {
     bleScan = NimBLEDevice::getScan();
-    bleScanSetCallbacks(bleScan, &scanCb);
+    bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
     bleScan->setActiveScan(true);
     bleScan->setInterval(100);
     bleScan->setWindow(99);
