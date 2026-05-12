@@ -1,6 +1,7 @@
 #include "wardrive.h"
 #include "../protocol.h"
 #include "flock_oui.h"
+#include "dedup_ring.h"
 #include "detector.h"
 #include "foxhunter.h"
 #include <Arduino.h>
@@ -63,22 +64,7 @@ static bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev) {
     return false;
 }
 
-// ============================================================================
-// Wildcard probe IE parser (shared logic with flock_wifi.cpp)
-// ============================================================================
-
-static int IRAM_ATTR isWildcardProbeIE(const uint8_t* body, int len) {
-    if (!body || len < 2) return -1;
-    while (len >= 2) {
-        uint8_t id   = body[0];
-        uint8_t elen = body[1];
-        if ((int)elen + 2 > len) break;
-        if (id == 0) return (elen == 0) ? 1 : 0;
-        body += elen + 2;
-        len  -= elen + 2;
-    }
-    return -1;
-}
+// isWildcardProbeIE() now in shared flock_oui.h
 
 // ============================================================================
 // State
@@ -110,100 +96,18 @@ static volatile uint8_t beaconsThisHop = 0;  // count beacons on current channel
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
-// Dedup ring — shared by WiFi promisc + BLE callbacks.
-// 512 entries handles dense urban (200+ BSSIDs per sweep) without premature eviction.
-#define WARDRIVE_DEDUP_SIZE    512
-#define WARDRIVE_DEDUP_COOL_MS 10000
+// Dedup rings — using shared template from dedup_ring.h.
+// BLE callback ring (normal context, 10s cooldown, 512 entries for dense urban).
+static DedupRing<512, 10000> wardriveDedup;
+// ISR flock dedup — separate so flock cameras aren't suppressed by 10s wardrive cooldown.
+static DedupRingISR<16, 5000> flockWifiDedup;
+// ISR WiFi beacon dedup — separate ring to avoid contention with BLE callback.
+static DedupRingISR<512, 10000> wifiDedup;
 
-static struct {
-    uint8_t mac[6];
-    unsigned long ts;
-} wardriveDedup[WARDRIVE_DEDUP_SIZE];
-static int wardriveDedupHead = 0;
-static int wardriveDedupCount = 0;
-
-static bool wardriveIsDedupCooldown(const uint8_t* mac) {
-    unsigned long now = millis();
-    for (int i = 0; i < wardriveDedupCount; i++) {
-        if (memcmp(wardriveDedup[i].mac, mac, 6) == 0) {
-            if (now - wardriveDedup[i].ts < WARDRIVE_DEDUP_COOL_MS) return true;
-            wardriveDedup[i].ts = now;
-            return false;
-        }
-    }
-    int idx;
-    if (wardriveDedupCount < WARDRIVE_DEDUP_SIZE) {
-        idx = wardriveDedupCount++;
-    } else {
-        idx = wardriveDedupHead;
-        wardriveDedupHead = (wardriveDedupHead + 1) % WARDRIVE_DEDUP_SIZE;
-    }
-    memcpy(wardriveDedup[idx].mac, mac, 6);
-    wardriveDedup[idx].ts = now;
-    return false;
-}
-
-// ISR-safe flock dedup — separate from wardrive beacon dedup so flock cameras
-// don't get suppressed by the 10s wardrive cooldown, but still avoids flooding
-// the queue with every CTRL/DATA frame from the same camera.
-#define FLOCK_WIFI_DEDUP_SIZE 16
-#define FLOCK_WIFI_DEDUP_COOL_MS 5000
-static struct {
-    uint8_t mac[6];
-    unsigned long ts;
-} flockWifiDedup[FLOCK_WIFI_DEDUP_SIZE];
-static int flockWifiDedupHead = 0;
-static int flockWifiDedupCount = 0;
-
-static bool IRAM_ATTR flockWifiIsDedupISR(const uint8_t* mac) {
-    uint32_t now = millis();
-    for (int i = 0; i < flockWifiDedupCount; i++) {
-        if (memcmp(flockWifiDedup[i].mac, mac, 6) == 0) {
-            if (now - flockWifiDedup[i].ts < FLOCK_WIFI_DEDUP_COOL_MS) return true;
-            flockWifiDedup[i].ts = now;
-            return false;
-        }
-    }
-    int idx;
-    if (flockWifiDedupCount < FLOCK_WIFI_DEDUP_SIZE) {
-        idx = flockWifiDedupCount++;
-    } else {
-        idx = flockWifiDedupHead;
-        flockWifiDedupHead = (flockWifiDedupHead + 1) % FLOCK_WIFI_DEDUP_SIZE;
-    }
-    memcpy(flockWifiDedup[idx].mac, mac, 6);
-    flockWifiDedup[idx].ts = now;
-    return false;
-}
-
-// ISR-safe dedup (separate ring to avoid contention with BLE callback)
-static struct {
-    uint8_t mac[6];
-    unsigned long ts;
-} wifiDedup[WARDRIVE_DEDUP_SIZE];
-static int wifiDedupHead = 0;
-static int wifiDedupCount = 0;
-
-static bool IRAM_ATTR wifiIsDedupISR(const uint8_t* mac) {
-    uint32_t now = millis();
-    for (int i = 0; i < wifiDedupCount; i++) {
-        if (memcmp(wifiDedup[i].mac, mac, 6) == 0) {
-            if (now - wifiDedup[i].ts < WARDRIVE_DEDUP_COOL_MS) return true;
-            wifiDedup[i].ts = now;
-            return false;
-        }
-    }
-    int idx;
-    if (wifiDedupCount < WARDRIVE_DEDUP_SIZE) {
-        idx = wifiDedupCount++;
-    } else {
-        idx = wifiDedupHead;
-        wifiDedupHead = (wifiDedupHead + 1) % WARDRIVE_DEDUP_SIZE;
-    }
-    memcpy(wifiDedup[idx].mac, mac, 6);
-    wifiDedup[idx].ts = now;
-    return false;
-}
+// Cached engine active states — avoids function calls per frame in ISR.
+static volatile uint8_t wdFlockActive = 0;
+static volatile uint8_t wdFoxhunterActive = 0;
+static volatile uint8_t wdDetectorActive = 0;
 
 static bool isPriorityChannel(uint8_t ch) {
     return ch == 1 || ch == 6 || ch == 11;
@@ -391,10 +295,8 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
     const uint8_t* addr3 = &p[16];  // BSSID
 
     // --- 1. Flock OUI check on all frames ---
-    // check addr2/addr1/addr3 for OUI match.
     // Must run before beacon dedup so flock cameras get reported
-    if (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED ||
-        engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) {
+    if (wdFlockActive) {
         const uint8_t* flockMac = NULL;
         uint8_t flockMethod = 0xFF;
 
@@ -419,9 +321,8 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
             flockMethod = METHOD_OUI_ADDR3;
         }
 
-        if (flockMac != NULL && !flockWifiIsDedupISR(flockMac)) {
-            DetectionEvent evt;
-            memset(&evt, 0, sizeof(evt));
+        if (flockMac != NULL && !flockWifiDedup.check(flockMac)) {
+            DetectionEvent evt = {};
             evt.engine_id = ENGINE_FLOCK_WIFI;
             memcpy(evt.mac, flockMac, 6);
             evt.rssi = pkt->rx_ctrl.rssi;
@@ -433,7 +334,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
     }
 
     // --- 2. Foxhunter target check on ALL frames ---
-    if (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) {
+    if (wdFoxhunterActive) {
         foxhunterCheckWifiDeviceISR(addr1, addr2, addr3,
                                      pkt->rx_ctrl.rssi,
                                      pkt->rx_ctrl.channel);
@@ -441,7 +342,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
 
     // --- 3. Beacon / Probe Response → wardrive AP capture (WiGLE data) ---
     if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {
-        if (wifiIsDedupISR(addr3)) return;  // dedup on BSSID
+        if (wifiDedup.check(addr3)) return;
 
         int tagOffset = 36;
         char ssid[33] = {0};
@@ -463,8 +364,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         uint8_t authMode = parseAuthFromFrame(p, len);
         beaconsThisHop++;
 
-        DetectionEvent evt;
-        memset(&evt, 0, sizeof(evt));
+        DetectionEvent evt = {};
         evt.engine_id = ENGINE_WARDRIVE;
         memcpy(evt.mac, addr3, 6);
         evt.rssi = pkt->rx_ctrl.rssi;
@@ -473,7 +373,6 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         evt.method = METHOD_WIFI_AP;
         memcpy(evt.ext.wardrive.ssid, ssid, 33);
         evt.ext.wardrive.auth_mode = authMode;
-        memset(evt.ext.wardrive.device_name, 0, 21);
         pushDetectionFromISR(&evt);
     }
 }
@@ -490,7 +389,7 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
 
         uint8_t mac[6];
         memcpy(mac, dev->getAddress().getNative(), 6);
-        if (wardriveIsDedupCooldown(mac)) return;
+        if (wardriveDedup.check(mac)) return;
 
         int rssi = dev->getRSSI();
         uint32_t now = millis();
@@ -498,8 +397,7 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
 
         // Flock detection FIRST — alertable events get queue priority over
         // passive wardrive collection. Only when any flock engine is active.
-        if (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED ||
-            engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) {
+        if (wdFlockActive) {
             bool isFlock = false;
             uint8_t flockMethod = 0;
             bool isRaven = false;
@@ -527,37 +425,27 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
                 fEvt.engine_id = ENGINE_FLOCK_BLE;
                 memcpy(fEvt.mac, mac, 6);
                 fEvt.rssi = rssi;
-                fEvt.channel = 0;
                 fEvt.timestamp_ms = now;
                 fEvt.method = flockMethod;
-                memset(fEvt.source_node_id, 0, MESH_NODE_ID_LEN);
-                memset(&fEvt.ext, 0, sizeof(fEvt.ext));
                 fEvt.ext.flock.is_raven = isRaven ? 1 : 0;
-                memset(fEvt.ext.flock.raven_fw, 0, sizeof(fEvt.ext.flock.raven_fw));
                 pushDetection(&fEvt);
             }
         }
 
-        // Wardrive passive collection event
         DetectionEvent evt = {};
         evt.engine_id = ENGINE_WARDRIVE;
         memcpy(evt.mac, mac, 6);
         evt.rssi = rssi;
-        evt.channel = 0;
         evt.timestamp_ms = now;
         evt.method = METHOD_BLE_ADV;
-        memset(evt.source_node_id, 0, MESH_NODE_ID_LEN);
-        memset(evt.ext.wardrive.ssid, 0, 33);
-        evt.ext.wardrive.auth_mode = 0;
         strncpy(evt.ext.wardrive.device_name, name.c_str(), 20);
-        evt.ext.wardrive.device_name[20] = '\0';
         pushDetection(&evt);
 
         // Dispatch to other active engines that went passive
-        if (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) {
+        if (wdDetectorActive) {
             detectorCheckBleDevice(mac, evt.rssi);
         }
-        if (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) {
+        if (wdFoxhunterActive) {
             foxhunterCheckBleDevice(mac, evt.rssi);
         }
     }
@@ -576,24 +464,23 @@ static WardriveAdvCallbacks wardriveBleCallbacks;
 // ============================================================================
 
 static void wardriveInit(void) {
-    wardriveDedupHead = 0;
-    wardriveDedupCount = 0;
-    wifiDedupHead = 0;
-    wifiDedupCount = 0;
-    flockWifiDedupHead = 0;
-    flockWifiDedupCount = 0;
+    wardriveDedup.reset();
+    wifiDedup.reset();
+    flockWifiDedup.reset();
+    flockOuiInitBuckets();
     Serial.println("[WARDRIVE] Initialized");
 }
 
 static void wardriveStart(void) {
     wardriveActive = true;
     lastBleScan = 0;
-    wardriveDedupHead = 0;
-    wardriveDedupCount = 0;
-    wifiDedupHead = 0;
-    wifiDedupCount = 0;
-    flockWifiDedupHead = 0;
-    flockWifiDedupCount = 0;
+    wardriveDedup.reset();
+    wifiDedup.reset();
+    flockWifiDedup.reset();
+    wdFlockActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED ||
+                     engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
+    wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
+    wdDetectorActive = (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) ? 1 : 0;
     currentChannel = channelStart;
     lastChannelHop = millis();
     beaconsThisHop = 0;

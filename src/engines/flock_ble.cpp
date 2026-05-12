@@ -1,48 +1,34 @@
-/**
- * Flock-BLE Engine — detects Flock Safety and Raven surveillance devices via BLE.
- *
- * Ported from raw/flockyou.cpp BLE scanning logic.
- * Pushes detections to detectionQueue for BLE GATT notification.
- */
 #include "flock_ble.h"
 #include "protocol.h"
 #include "flock_oui.h"
+#include "dedup_ring.h"
 #include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
-
-// ============================================================================
-// Detection Patterns (OUI matching now in shared flock_oui.h)
-// ============================================================================
 
 static const char* name_patterns[] = {
     "FS Ext Battery", "Penguin", "Flock", "Pigvision"
 };
 static const int name_pattern_count = sizeof(name_patterns) / sizeof(name_patterns[0]);
 
-static const uint16_t mfg_ids[] = { 0x09C8 }; // XUNTONG
+static const uint16_t mfg_ids[] = { 0x09C8 };
 static const int mfg_id_count = sizeof(mfg_ids) / sizeof(mfg_ids[0]);
 
-// Raven service UUIDs
 #define RAVEN_GPS_SVC       "00003100-0000-1000-8000-00805f9b34fb"
 #define RAVEN_POWER_SVC     "00003200-0000-1000-8000-00805f9b34fb"
 #define RAVEN_OLD_LOC_SVC   "00001819-0000-1000-8000-00805f9b34fb"
 
 static const char* raven_uuids[] = {
-    "0000180a-0000-1000-8000-00805f9b34fb",  // Device Info
+    "0000180a-0000-1000-8000-00805f9b34fb",
     RAVEN_GPS_SVC,
     RAVEN_POWER_SVC,
-    "00003300-0000-1000-8000-00805f9b34fb",  // Network
-    "00003400-0000-1000-8000-00805f9b34fb",  // Upload
-    "00003500-0000-1000-8000-00805f9b34fb",  // Error
-    "00001809-0000-1000-8000-00805f9b34fb",  // Old Health
+    "00003300-0000-1000-8000-00805f9b34fb",
+    "00003400-0000-1000-8000-00805f9b34fb",
+    "00003500-0000-1000-8000-00805f9b34fb",
+    "00001809-0000-1000-8000-00805f9b34fb",
     RAVEN_OLD_LOC_SVC
 };
 static const int raven_uuid_count = sizeof(raven_uuids) / sizeof(raven_uuids[0]);
-
-// ============================================================================
-// State
-// ============================================================================
 
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
@@ -50,23 +36,9 @@ static unsigned long lastScanStart = 0;
 static const unsigned long SCAN_INTERVAL_MS = 3000;
 static const int SCAN_DURATION_S = 2;
 
-// Simple dedup: track last N MACs to avoid spamming queue
-#define DEDUP_SIZE 32
-#define DEDUP_COOLDOWN_MS 5000
-static struct {
-    uint8_t mac[6];
-    unsigned long lastSeen;
-} dedup[DEDUP_SIZE];
-static int dedupCount = 0;
-
-// Detection count for stats
+static DedupRing<32, 5000> dedup;
 static uint32_t totalDetections = 0;
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-// checkMACPrefix now uses shared flockMatchOui() from flock_oui.h
 static bool checkMACPrefix(const uint8_t* mac) {
     return flockMatchOui(mac);
 }
@@ -114,41 +86,10 @@ static const char* estimateRavenFW(NimBLEAdvertisedDevice* dev) {
     return "?";
 }
 
-static bool isDedupCooldown(const uint8_t* mac) {
-    unsigned long now = millis();
-    for (int i = 0; i < dedupCount; i++) {
-        if (memcmp(dedup[i].mac, mac, 6) == 0) {
-            if (now - dedup[i].lastSeen < DEDUP_COOLDOWN_MS) return true;
-            dedup[i].lastSeen = now;
-            return false;
-        }
-    }
-    // Add new entry — circular ring buffer
-    static int dedupHead = 0;
-    int idx;
-    if (dedupCount < DEDUP_SIZE) {
-        idx = dedupCount++;
-    } else {
-        idx = dedupHead;
-        dedupHead = (dedupHead + 1) % DEDUP_SIZE;
-    }
-    memcpy(dedup[idx].mac, mac, 6);
-    dedup[idx].lastSeen = now;
-    return false;
-}
-
-// ============================================================================
-// BLE Scan Callback
-// ============================================================================
-
 class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
-        std::string addrStr = dev->getAddress().toString();
-        unsigned int m[6];
-        sscanf(addrStr.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
-               &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]);
-        uint8_t mac[6] = {(uint8_t)m[0], (uint8_t)m[1], (uint8_t)m[2],
-                          (uint8_t)m[3], (uint8_t)m[4], (uint8_t)m[5]};
+        uint8_t mac[6];
+        memcpy(mac, dev->getAddress().getNative(), 6);
 
         int rssi = dev->getRSSI();
         std::string name = dev->haveName() ? dev->getName() : "";
@@ -158,19 +99,16 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         bool isRaven = false;
         const char* ravenFW = "";
 
-        // 1. MAC prefix
         if (checkMACPrefix(mac)) {
             detected = true;
             method = METHOD_OUI_MATCH;
         }
 
-        // 2. Device name
         if (!detected && !name.empty() && checkDeviceName(name.c_str())) {
             detected = true;
             method = METHOD_NAME_MATCH;
         }
 
-        // 3. Manufacturer ID
         if (!detected) {
             for (int i = 0; i < (int)dev->getManufacturerDataCount(); i++) {
                 std::string data = dev->getManufacturerData(i);
@@ -186,7 +124,6 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
             }
         }
 
-        // 4. Raven UUID
         if (!detected && checkRavenUUID(dev)) {
             detected = true;
             method = METHOD_RAVEN_UUID;
@@ -195,27 +132,21 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         }
 
         if (!detected) return;
-
-        // Dedup cooldown — avoid spamming queue with same device every 2s scan
-        if (isDedupCooldown(mac)) return;
+        if (dedup.check(mac)) return;
 
         totalDetections++;
 
-        // Build detection event for queue
-        DetectionEvent evt;
-        memset(&evt, 0, sizeof(evt));
+        DetectionEvent evt = {};
         evt.engine_id = ENGINE_FLOCK_BLE;
         memcpy(evt.mac, mac, 6);
         evt.rssi = rssi;
-        evt.channel = 0;  // BLE
         evt.timestamp_ms = millis();
         evt.method = method;
         evt.ext.flock.is_raven = isRaven ? 1 : 0;
         strncpy(evt.ext.flock.raven_fw, ravenFW, sizeof(evt.ext.flock.raven_fw) - 1);
-
         pushDetection(&evt);
 
-        // Log
+        std::string addrStr = dev->getAddress().toString();
         const char* methodStr[] = {"oui", "name", "mfg_id", "raven_uuid"};
         Serial.printf("[FLOCK-BLE] %s %s RSSI:%d [%s]%s%s\n",
                       addrStr.c_str(), name.c_str(), rssi,
@@ -227,26 +158,19 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
 
 static FlockBLECallback scanCb;
 
-// ============================================================================
-// Engine Lifecycle
-// ============================================================================
-
 static void flockBleInit(void) {
-    dedupCount = 0;
+    dedup.reset();
     totalDetections = 0;
+    flockOuiInitBuckets();
     Serial.println("[FLOCK-BLE] Initialized");
 }
 
 static void flockBleStart(void) {
     scanning = true;
-
-    // If wardrive is active it already runs BLE scan with flock detection.
-    // Don't touch the shared NimBLEScan singleton — wardrive owns it.
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) {
         Serial.println("[FLOCK-BLE] Started (passive — wardrive handles BLE scan)");
         return;
     }
-
     bleScan = NimBLEDevice::getScan();
     bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
     bleScan->setActiveScan(true);
@@ -258,15 +182,9 @@ static void flockBleStart(void) {
 
 static void flockBleStop(void) {
     scanning = false;
-
-    // Only stop scan if we own it (wardrive not active)
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
-        if (bleScan && bleScan->isScanning()) {
-            bleScan->stop();
-        }
-        if (bleScan) {
-            bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
-        }
+        if (bleScan && bleScan->isScanning()) bleScan->stop();
+        if (bleScan) bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
     }
     bleScan = nullptr;
     Serial.println("[FLOCK-BLE] Stopped");
@@ -274,10 +192,7 @@ static void flockBleStop(void) {
 
 static void flockBleLoop(void) {
     if (!scanning) return;
-
-    // Passive mode when wardrive owns the scan
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
-
     if (!bleScan) return;
     unsigned long now = millis();
     if (now - lastScanStart >= SCAN_INTERVAL_MS) {
@@ -287,10 +202,6 @@ static void flockBleLoop(void) {
         }
     }
 }
-
-// ============================================================================
-// Export
-// ============================================================================
 
 const EngineCallbacks flockBleCallbacks = {
     .init   = flockBleInit,

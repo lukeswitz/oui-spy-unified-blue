@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +23,14 @@ class DetectionRow extends ConsumerWidget {
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.read(ouiLookupProvider).lookup(detection.macAddress);
 
-    return GestureDetector(
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind == PointerDeviceKind.mouse &&
+            event.buttons == kSecondaryMouseButton) {
+          _showActions(context, ref);
+        }
+      },
+      child: GestureDetector(
       onLongPress: () {
         HapticFeedback.mediumImpact();
         _showActions(context, ref);
@@ -193,6 +201,7 @@ class DetectionRow extends ConsumerWidget {
           ],
         ),
       ),
+    ),
     ),
     );
   }
@@ -631,20 +640,24 @@ class _DetailSummary extends StatelessWidget {
     );
   }
 
+  void _copyValue(BuildContext context, String label, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied'),
+        backgroundColor: t.surface,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
   Widget _detailRow(BuildContext context, String label, String value) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPress: () {
-        Clipboard.setData(ClipboardData(text: value));
-        HapticFeedback.lightImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$label copied'),
-            backgroundColor: t.surface,
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      },
+      onLongPress: () => _copyValue(context, label, value),
+      onSecondaryTapDown: (_) => _copyValue(context, label, value),
+      onTap: () => _copyValue(context, label, value),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: Row(

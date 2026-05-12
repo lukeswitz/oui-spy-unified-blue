@@ -1,26 +1,26 @@
 #include "detector.h"
 #include "protocol.h"
+#include "dedup_ring.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
-#include <vector>
 
 struct TargetFilter {
-    char id[18];
-    bool isFullMAC;
+    uint8_t macBytes[6];
+    uint8_t prefixLen;
     char desc[32];
 };
 
-static std::vector<TargetFilter> filters;
+static TargetFilter filters[50];
+static int filterCount = 0;
 static NimBLEScan* bleScan = nullptr;
 static volatile bool scanning = false;
 static unsigned long lastScanStart = 0;
 static const unsigned long SCAN_INTERVAL_MS = 3000;
 static const int SCAN_DURATION_S = 2;
 
-// WiFi promiscuous — scan all 2.4GHz channels to maximize watchlist hit rate
 static volatile bool wifiActive = false;
 static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
 static const int channelCount = 14;
@@ -28,102 +28,89 @@ static int channelIdx = 0;
 static unsigned long lastChannelHop = 0;
 static const unsigned long DWELL_MS = 120;
 
-#define DEDUP_SIZE 32
-#define DEDUP_COOLDOWN_MS 3000
-static struct { uint8_t mac[6]; unsigned long lastSeen; } dedup[DEDUP_SIZE];
-static int dedupCount = 0;
+static DedupRing<32, 3000> dedup;
+
+static void parseHexMac(const char* str, uint8_t* out, uint8_t* outLen) {
+    uint8_t buf[6] = {};
+    int n = 0;
+    const char* p = str;
+    while (*p && n < 6) {
+        char hi = *p++;
+        if (hi == ':' || hi == '-' || hi == '.') continue;
+        char lo = *p ? *p++ : '0';
+        uint8_t val = 0;
+        if (hi >= '0' && hi <= '9') val = (hi - '0') << 4;
+        else if (hi >= 'a' && hi <= 'f') val = (hi - 'a' + 10) << 4;
+        else if (hi >= 'A' && hi <= 'F') val = (hi - 'A' + 10) << 4;
+        if (lo >= '0' && lo <= '9') val |= (lo - '0');
+        else if (lo >= 'a' && lo <= 'f') val |= (lo - 'a' + 10);
+        else if (lo >= 'A' && lo <= 'F') val |= (lo - 'A' + 10);
+        buf[n++] = val;
+    }
+    memcpy(out, buf, 6);
+    *outLen = (uint8_t)n;
+}
 
 static void loadFilters() {
     Preferences p;
     p.begin("ouispy", true);
     int count = p.getInt("filterCount", 0);
-    filters.clear();
+    filterCount = 0;
     for (int i = 0; i < count && i < 50; i++) {
-        TargetFilter f;
         char key[16];
         snprintf(key, sizeof(key), "id_%d", i);
         String id = p.getString(key, "");
         if (id.length() == 0) continue;
-        strncpy(f.id, id.c_str(), sizeof(f.id) - 1);
+
         snprintf(key, sizeof(key), "mac_%d", i);
-        f.isFullMAC = p.getBool(key, false);
+        bool isFullMAC = p.getBool(key, false);
+
+        TargetFilter f = {};
+        parseHexMac(id.c_str(), f.macBytes, &f.prefixLen);
+        if (!isFullMAC && f.prefixLen > 3) f.prefixLen = 3;
+
         snprintf(key, sizeof(key), "desc_%d", i);
         String desc = p.getString(key, "");
         strncpy(f.desc, desc.c_str(), sizeof(f.desc) - 1);
-        filters.push_back(f);
+
+        filters[filterCount++] = f;
     }
     p.end();
-    Serial.printf("[DETECTOR] Loaded %d filters\n", (int)filters.size());
+    Serial.printf("[DETECTOR] Loaded %d filters\n", filterCount);
 }
 
-static bool isDedupCooldown(const uint8_t* mac) {
-    unsigned long now = millis();
-    for (int i = 0; i < dedupCount; i++) {
-        if (memcmp(dedup[i].mac, mac, 6) == 0) {
-            if (now - dedup[i].lastSeen < DEDUP_COOLDOWN_MS) return true;
-            dedup[i].lastSeen = now;
-            return false;
-        }
-    }
-    static int dedupHead = 0;
-    int idx;
-    if (dedupCount < DEDUP_SIZE) {
-        idx = dedupCount++;
-    } else {
-        idx = dedupHead;
-        dedupHead = (dedupHead + 1) % DEDUP_SIZE;
-    }
-    memcpy(dedup[idx].mac, mac, 6);
-    dedup[idx].lastSeen = now;
-    return false;
-}
-
-static const TargetFilter* matchFilter(const char* macStr) {
-    for (const auto& f : filters) {
-        if (f.isFullMAC) {
-            if (strcasecmp(macStr, f.id) == 0) return &f;
-        } else {
-            if (strncasecmp(macStr, f.id, strlen(f.id)) == 0) return &f;
+static const TargetFilter* matchFilterBytes(const uint8_t* mac) {
+    for (int i = 0; i < filterCount; i++) {
+        if (memcmp(mac, filters[i].macBytes, filters[i].prefixLen) == 0) {
+            return &filters[i];
         }
     }
     return nullptr;
 }
 
-static bool matchFilterBytes(const uint8_t* mac) {
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    return matchFilter(macStr) != nullptr;
-}
-
 class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
         if (!scanning) return;
-        std::string addrStr = dev->getAddress().toString();
-        unsigned int m[6];
-        sscanf(addrStr.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
-               &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]);
-        uint8_t mac[6] = {(uint8_t)m[0], (uint8_t)m[1], (uint8_t)m[2],
-                          (uint8_t)m[3], (uint8_t)m[4], (uint8_t)m[5]};
+        uint8_t mac[6];
+        memcpy(mac, dev->getAddress().getNative(), 6);
 
-        const TargetFilter* hit = matchFilter(addrStr.c_str());
+        const TargetFilter* hit = matchFilterBytes(mac);
         if (!hit) return;
-        if (isDedupCooldown(mac)) return;
+        if (dedup.check(mac)) return;
 
         DetectionEvent evt = {};
         evt.engine_id = ENGINE_DETECTOR;
         memcpy(evt.mac, mac, 6);
         evt.rssi = dev->getRSSI();
-        evt.channel = 0;
         evt.timestamp_ms = millis();
-        evt.method = 0;
-        evt.ext.detector.is_full_mac = hit->isFullMAC ? 1 : 0;
+        evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
         strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
         pushDetection(&evt);
 
-        Serial.printf("[DETECTOR] BLE %s RSSI:%d [%s] %s\n",
-                      addrStr.c_str(), dev->getRSSI(),
-                      hit->isFullMAC ? "MAC" : "OUI", hit->desc);
+        Serial.printf("[DETECTOR] BLE %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [%s] %s\n",
+                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                      dev->getRSSI(),
+                      hit->prefixLen == 6 ? "MAC" : "OUI", hit->desc);
     }
 };
 
@@ -139,7 +126,8 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     if (len < 24) return;
 
     const uint8_t* addr2 = &p[10];
-    if (!matchFilterBytes(addr2)) return;
+    const TargetFilter* hit = matchFilterBytes(addr2);
+    if (!hit) return;
 
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_DETECTOR;
@@ -151,41 +139,34 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     pushDetectionFromISR(&evt);
 }
 
-// Exported: check a MAC from wardrive's BLE callback
 void detectorCheckBleDevice(const uint8_t* mac, int rssi) {
     if (!scanning) return;
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    const TargetFilter* hit = matchFilter(macStr);
+    const TargetFilter* hit = matchFilterBytes(mac);
     if (!hit) return;
-    if (isDedupCooldown(mac)) return;
+    if (dedup.check(mac)) return;
 
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_DETECTOR;
     memcpy(evt.mac, mac, 6);
     evt.rssi = rssi;
-    evt.channel = 0;
     evt.timestamp_ms = millis();
-    evt.method = 0;
-    evt.ext.detector.is_full_mac = hit->isFullMAC ? 1 : 0;
+    evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
     strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetection(&evt);
 
-    Serial.printf("[DETECTOR] BLE %s RSSI:%d [%s] %s (via wardrive)\n",
-                  macStr, rssi, hit->isFullMAC ? "MAC" : "OUI", hit->desc);
+    Serial.printf("[DETECTOR] BLE %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [%s] %s (via wardrive)\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                  rssi, hit->prefixLen == 6 ? "MAC" : "OUI", hit->desc);
 }
 
 static void detectorInit(void) {
     loadFilters();
-    dedupCount = 0;
+    dedup.reset();
     Serial.println("[DETECTOR] Initialized");
 }
 
 static void detectorStart(void) {
     scanning = true;
-
-    // If wardrive owns the BLE scan, go passive for BLE
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
 
     if (!wardriveOwns) {
@@ -197,7 +178,6 @@ static void detectorStart(void) {
         lastScanStart = 0;
     }
 
-    // WiFi promiscuous only when wardrive doesn't own WiFi
     if (!wardriveOwns) {
         WiFi.mode(WIFI_STA);
         esp_wifi_set_promiscuous(true);
@@ -232,8 +212,6 @@ static void detectorStop(void) {
 
 static void detectorLoop(void) {
     if (!scanning) return;
-
-    // Passive when wardrive active
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
 
     if (wifiActive && millis() - lastChannelHop >= DWELL_MS) {

@@ -193,22 +193,21 @@ class WardriveController extends ChangeNotifier {
   }
 
   DateTime? startTime;
-  final List<Detection> detections = [];
   final Map<String, Detection> _dedupedByMac = {};
+  final List<Detection> _dedupedOrdered = [];
+  List<Detection> get detections => _dedupedOrdered;
   int rawDetectionCount = 0;
   final Set<String> uniqueMacs = {};
   final Set<String> _flockMacs = {};
+  final Map<String, Detection> _flockByMac = {};
+  List<Detection>? _cachedFlockDetections;
   final List<LatLng> routePoints = [];
   double distanceKm = 0;
   GpsPosition? lastGpsForDistance;
   GpsPosition? currentPosition;
   int droneCount = 0;
 
-  List<Detection> get dedupedDetections {
-    final list = _dedupedByMac.values.toList();
-    list.sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
-    return list;
-  }
+  List<Detection> get dedupedDetections => _dedupedOrdered;
 
   StreamSubscription<Detection>? _detSub;
   StreamSubscription<GpsPosition>? _gpsSub;
@@ -218,18 +217,11 @@ class WardriveController extends ChangeNotifier {
   bool get isActive => state != WardriveState.idle;
   int get flockCount => _flockMacs.length;
 
-  /// Unique flock detections (latest per MAC).
   List<Detection> get flockDetections {
-    final byMac = <String, Detection>{};
-    for (final d in detections) {
-      if (d.engine != Engine.flockBle && d.engine != Engine.flockWifi) continue;
-      final prev = byMac[d.macAddress];
-      if (prev == null || d.appTimestamp.isAfter(prev.appTimestamp)) {
-        byMac[d.macAddress] = d;
-      }
-    }
-    final list = byMac.values.toList();
+    if (_cachedFlockDetections != null) return _cachedFlockDetections!;
+    final list = _flockByMac.values.toList();
     list.sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
+    _cachedFlockDetections = list;
     return list;
   }
 
@@ -254,7 +246,7 @@ class WardriveController extends ChangeNotifier {
 
     startTime = DateTime.now();
     sessionId = const Uuid().v4();
-    detections.clear();
+    _dedupedOrdered.clear();
     _dedupedByMac.clear();
     rawDetectionCount = 0;
     rawWifiCount = 0;
@@ -263,6 +255,8 @@ class WardriveController extends ChangeNotifier {
     nodeBleCount.clear();
     uniqueMacs.clear();
     _flockMacs.clear();
+    _flockByMac.clear();
+    _cachedFlockDetections = null;
     routePoints.clear();
     distanceKm = 0;
     droneCount = 0;
@@ -350,11 +344,13 @@ class WardriveController extends ChangeNotifier {
 
   /// Clear map overlay from a completed/loaded session.
   void clearMapData() {
-    detections.clear();
+    _dedupedOrdered.clear();
     _dedupedByMac.clear();
     routePoints.clear();
     uniqueMacs.clear();
     _flockMacs.clear();
+    _flockByMac.clear();
+    _cachedFlockDetections = null;
     rawDetectionCount = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
@@ -370,8 +366,10 @@ class WardriveController extends ChangeNotifier {
     if (isActive) return;
 
     final dbRows = await _db.getDetectionMapsForSession(sid);
-    detections.clear();
+    _dedupedOrdered.clear();
     _dedupedByMac.clear();
+    _flockByMac.clear();
+    _cachedFlockDetections = null;
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
@@ -394,16 +392,24 @@ class WardriveController extends ChangeNotifier {
       }
       if (det.engine == Engine.skySpy) droneCount++;
 
+      final isFlock = det.engine == Engine.flockBle || det.engine == Engine.flockWifi;
+      if (isFlock) {
+        _flockByMac[det.macAddress] = det;
+      }
+
       final key = '${det.macAddress}|${det.engine.name}';
       final existing = _dedupedByMac[key];
       if (existing != null) {
-        _dedupedByMac[key] = det.copyWith(
+        final updated = det.copyWith(
           count: existing.count + 1,
           rssi: det.rssi > existing.rssi ? det.rssi : existing.rssi,
         );
+        _dedupedByMac[key] = updated;
+        _dedupedOrdered.remove(existing);
+        _dedupedOrdered.insert(0, updated);
       } else {
         _dedupedByMac[key] = det;
-        detections.add(det);
+        _dedupedOrdered.insert(0, det);
       }
 
       if (det.latitude != null && det.longitude != null) {
@@ -681,8 +687,11 @@ class WardriveController extends ChangeNotifier {
       }
     }
     uniqueMacs.add(detection.macAddress);
-    if (detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi) {
+    final isFlock = detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi;
+    if (isFlock) {
       _flockMacs.add(detection.macAddress);
+      _flockByMac[detection.macAddress] = detection;
+      _cachedFlockDetections = null;
     }
     if (detection.engine == Engine.skySpy) droneCount++;
 
@@ -694,17 +703,20 @@ class WardriveController extends ChangeNotifier {
     if (existing != null) {
       final rssiDelta = (detection.rssi - existing.rssi).abs();
       final shouldRelog = rssiDelta >= threshold;
-      _dedupedByMac[key] = detection.copyWith(
+      final updated = detection.copyWith(
         count: existing.count + 1,
         rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
       );
+      _dedupedByMac[key] = updated;
+      _dedupedOrdered.remove(existing);
+      _dedupedOrdered.insert(0, updated);
       if (!shouldRelog) {
         notifyListeners();
         return;
       }
     } else {
       _dedupedByMac[key] = detection;
-      detections.add(detection);
+      _dedupedOrdered.insert(0, detection);
     }
 
     _db.insertDetection(DetectionsCompanion(

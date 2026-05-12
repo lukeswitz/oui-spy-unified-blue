@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:math' as math;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -944,7 +945,14 @@ class _DetListRow extends ConsumerWidget {
                 : vendor ?? '';
     final hasGps = d.latitude != null && d.longitude != null;
 
-    return GestureDetector(
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind == PointerDeviceKind.mouse &&
+            event.buttons == kSecondaryMouseButton) {
+          _showCopySheet(context, ref);
+        }
+      },
+      child: GestureDetector(
       onTap: hasGps && onTap != null ? () => onTap!(d) : null,
       onLongPress: () => _showCopySheet(context, ref),
       behavior: HitTestBehavior.opaque,
@@ -1329,6 +1337,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                     behavior: HitTestBehavior.opaque,
                     onTap: hasGps ? () => widget.onZoomDetection(d) : null,
                     onLongPress: () => _showFlockCopySheet(context, d),
+                    onSecondaryTapDown: (_) => _showFlockCopySheet(context, d),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(

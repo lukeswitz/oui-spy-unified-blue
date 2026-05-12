@@ -1,0 +1,80 @@
+#ifndef DEDUP_RING_H
+#define DEDUP_RING_H
+
+#include <stdint.h>
+#include <string.h>
+#include <Arduino.h>
+
+template<int SIZE, uint32_t COOLDOWN_MS>
+struct DedupRing {
+    struct Entry {
+        uint8_t mac[6];
+        uint32_t ts;
+    } ring[SIZE];
+    int head = 0;
+    int count = 0;
+
+    bool check(const uint8_t* mac) {
+        uint32_t now = millis();
+        for (int i = 0; i < count; i++) {
+            if (memcmp(ring[i].mac, mac, 6) == 0) {
+                if (now - ring[i].ts < COOLDOWN_MS) return true;
+                ring[i].ts = now;
+                return false;
+            }
+        }
+        int idx;
+        if (count < SIZE) {
+            idx = count++;
+        } else {
+            idx = head;
+            head = (head + 1) % SIZE;
+        }
+        memcpy(ring[idx].mac, mac, 6);
+        ring[idx].ts = now;
+        return false;
+    }
+
+    void reset() {
+        head = 0;
+        count = 0;
+    }
+};
+
+template<int SIZE, uint32_t COOLDOWN_MS>
+struct DedupRingISR {
+    struct Entry {
+        uint8_t mac[6];
+        uint32_t ts;
+    } ring[SIZE];
+    int head = 0;
+    int count = 0;
+
+    bool IRAM_ATTR check(const uint8_t* mac) {
+        uint32_t now = millis();
+        for (int i = 0; i < count; i++) {
+            if (memcmp(ring[i].mac, mac, 6) == 0) {
+                if (now - ring[i].ts < COOLDOWN_MS) return true;
+                ring[i].ts = now;
+                return false;
+            }
+        }
+        int idx;
+        if (count < SIZE) {
+            idx = count++;
+        } else {
+            idx = head;
+            head = (head + 1) % SIZE;
+        }
+        memcpy(ring[idx].mac, mac, 6);
+        ring[idx].ts = now;
+        return false;
+    }
+
+    void reset() {
+        head = 0;
+        count = 0;
+    }
+};
+
+#endif

@@ -91,19 +91,23 @@ class IgnoreListState extends ChangeNotifier {
   }
 
   static const _prefsKey = 'privacy_ignore_list';
+  static final _macStripRegex = RegExp(r'[:\-.]');
 
   final List<IgnoreEntry> _entries = [];
+  final Map<int, String> _ouiHexCache = {};
   List<IgnoreEntry> get entries => List.unmodifiable(_entries);
 
   void add(IgnoreEntry entry) {
     if (_entries.contains(entry)) return;
     _entries.add(entry);
+    _rebuildOuiCache();
     notifyListeners();
     _save();
   }
 
   void remove(IgnoreEntry entry) {
     _entries.remove(entry);
+    _rebuildOuiCache();
     notifyListeners();
     _save();
   }
@@ -133,10 +137,11 @@ class IgnoreListState extends ChangeNotifier {
     String ssid = '',
     required bool isBle,
   }) {
-    final macLower = mac.toLowerCase().replaceAll(RegExp(r'[:\-.]'), '');
+    final macLower = mac.toLowerCase().replaceAll(_macStripRegex, '');
     final macColoned = _insertColons(macLower);
 
-    for (final e in _entries) {
+    for (int i = 0; i < _entries.length; i++) {
+      final e = _entries[i];
       if (!e.enabled) continue;
       if (!_scopeMatches(e.scope, isBle: isBle)) continue;
 
@@ -146,11 +151,20 @@ class IgnoreListState extends ChangeNotifier {
         case IgnoreType.mac:
           if (macColoned == e.value) return true;
         case IgnoreType.oui:
-          final ouiHex = e.value.replaceAll(':', '');
-          if (macLower.startsWith(ouiHex)) return true;
+          final ouiHex = _ouiHexCache[i] ?? '';
+          if (ouiHex.isNotEmpty && macLower.startsWith(ouiHex)) return true;
       }
     }
     return false;
+  }
+
+  void _rebuildOuiCache() {
+    _ouiHexCache.clear();
+    for (int i = 0; i < _entries.length; i++) {
+      if (_entries[i].type == IgnoreType.oui) {
+        _ouiHexCache[i] = _entries[i].value.replaceAll(':', '');
+      }
+    }
   }
 
   static bool _scopeMatches(IgnoreScope scope, {required bool isBle}) {
@@ -178,6 +192,7 @@ class IgnoreListState extends ChangeNotifier {
       _entries
         ..clear()
         ..addAll(list.map(IgnoreEntry.fromJson));
+      _rebuildOuiCache();
       notifyListeners();
     } catch (_) {}
   }
