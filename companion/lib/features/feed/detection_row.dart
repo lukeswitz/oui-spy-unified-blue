@@ -23,7 +23,10 @@ class DetectionRow extends ConsumerWidget {
     final manufacturer = ref.read(ouiLookupProvider).lookup(detection.macAddress);
 
     return GestureDetector(
-      onLongPress: () => _showActions(context, ref),
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        _showActions(context, ref);
+      },
       child: Container(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
@@ -588,32 +591,32 @@ class _DetailSummary extends StatelessWidget {
     final rows = <Widget>[];
 
     if (manufacturer != null) {
-      rows.add(_detailRow('Vendor', manufacturer!));
+      rows.add(_detailRow(context, 'Vendor', manufacturer!));
     }
-    rows.add(_detailRow('Engine', detection.engine.label));
-    rows.add(_detailRow('Method', detection.method));
-    rows.add(_detailRow('RSSI', '${detection.rssi} dBm'));
+    rows.add(_detailRow(context, 'Engine', detection.engine.label));
+    rows.add(_detailRow(context, 'Method', detection.method));
+    rows.add(_detailRow(context, 'RSSI', '${detection.rssi} dBm'));
     if (detection.channel > 0) {
-      rows.add(_detailRow('Channel', '${detection.channel}'));
+      rows.add(_detailRow(context, 'Channel', '${detection.channel}'));
     }
-    rows.add(_detailRow('Seen', '\u00d7${detection.count}'));
+    rows.add(_detailRow(context, 'Seen', '\u00d7${detection.count}'));
     if (detection.sourceNodeId.isNotEmpty) {
-      rows.add(_detailRow('Source Node', detection.sourceNodeId));
+      rows.add(_detailRow(context, 'Source Node', detection.sourceNodeId));
     }
     if (detection.ssid.isNotEmpty) {
-      rows.add(_detailRow('SSID', detection.ssid));
+      rows.add(_detailRow(context, 'SSID', detection.ssid));
     }
     if (detection.wardrive != null) {
-      rows.add(_detailRow('Security', _authLabel(detection.wardrive!.authMode)));
+      rows.add(_detailRow(context, 'Security', _authLabel(detection.wardrive!.authMode)));
     }
     if (detection.flock?.isRaven == true) {
-      rows.add(_detailRow('Type', 'Raven (ext battery)'));
+      rows.add(_detailRow(context, 'Type', 'Raven (ext battery)'));
     }
     if (detection.odid?.uavId != null) {
-      rows.add(_detailRow('UAV ID', detection.odid!.uavId!));
+      rows.add(_detailRow(context, 'UAV ID', detection.odid!.uavId!));
     }
     if (detection.latitude != null) {
-      rows.add(_detailRow('Location',
+      rows.add(_detailRow(context, 'Location',
           '${detection.latitude!.toStringAsFixed(5)}, ${detection.longitude!.toStringAsFixed(5)}'));
     }
 
@@ -628,29 +631,44 @@ class _DetailSummary extends StatelessWidget {
     );
   }
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              label,
-              style: TextStyle(color: t.textDim, fontSize: 10),
-            ),
+  Widget _detailRow(BuildContext context, String label, String value) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: value));
+        HapticFeedback.lightImpact();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$label copied'),
+            backgroundColor: t.surface,
+            duration: const Duration(seconds: 1),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: t.textPrimary,
-                fontSize: 10,
-                fontFamily: 'monospace',
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 80,
+              child: Text(
+                label,
+                style: TextStyle(color: t.textDim, fontSize: 10),
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+            Icon(Icons.copy, size: 8, color: t.textDim.withValues(alpha: 0.4)),
+          ],
+        ),
       ),
     );
   }

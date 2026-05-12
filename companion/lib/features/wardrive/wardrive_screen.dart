@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -869,6 +870,63 @@ class _DetListRow extends ConsumerWidget {
   final Detection d;
   final void Function(Detection)? onTap;
 
+  void _showCopySheet(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final vendor = ref.read(ouiLookupProvider).lookup(d.macAddress);
+    final items = <(String, String)>[
+      ('MAC', d.macAddress.toUpperCase()),
+      if (d.ssid.isNotEmpty) ('SSID', d.ssid),
+      if (d.deviceName.isNotEmpty) ('Name', d.deviceName),
+      if (vendor != null) ('Vendor', vendor),
+      if (d.odid?.uavId != null) ('UAV ID', d.odid!.uavId!),
+      if (d.latitude != null)
+        ('Location', '${d.latitude!.toStringAsFixed(5)}, ${d.longitude!.toStringAsFixed(5)}'),
+    ];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: t.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('COPY', style: TextStyle(
+              color: t.textDim, fontSize: 10,
+              fontWeight: FontWeight.w700, letterSpacing: 2,
+            )),
+            const SizedBox(height: 8),
+            for (final (label, value) in items)
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: Icon(Icons.copy, size: 14, color: t.textDim),
+                title: Text(label, style: TextStyle(color: t.textDim, fontSize: 10)),
+                subtitle: Text(value, style: TextStyle(
+                  color: t.textPrimary, fontSize: 12, fontFamily: 'monospace',
+                )),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: value));
+                  HapticFeedback.lightImpact();
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('$label copied'),
+                      backgroundColor: t.surface,
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
@@ -888,6 +946,7 @@ class _DetListRow extends ConsumerWidget {
 
     return GestureDetector(
       onTap: hasGps && onTap != null ? () => onTap!(d) : null,
+      onLongPress: () => _showCopySheet(context, ref),
       behavior: HitTestBehavior.opaque,
       child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -1013,6 +1072,59 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
   WardriveController get wd => widget.wd;
 
   bool get _flockExpanded => wd.flockFilter;
+
+  void _showFlockCopySheet(BuildContext context, Detection d) {
+    final t = AppTheme.of(context);
+    final items = <(String, String)>[
+      ('MAC', d.macAddress.toUpperCase()),
+      if (d.deviceName.isNotEmpty) ('Name', d.deviceName),
+      if (d.latitude != null)
+        ('Location', '${d.latitude!.toStringAsFixed(5)}, ${d.longitude!.toStringAsFixed(5)}'),
+    ];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: t.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('COPY', style: TextStyle(
+              color: t.textDim, fontSize: 10,
+              fontWeight: FontWeight.w700, letterSpacing: 2,
+            )),
+            const SizedBox(height: 8),
+            for (final (label, value) in items)
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: Icon(Icons.copy, size: 14, color: t.textDim),
+                title: Text(label, style: TextStyle(color: t.textDim, fontSize: 10)),
+                subtitle: Text(value, style: TextStyle(
+                  color: t.textPrimary, fontSize: 12, fontFamily: 'monospace',
+                )),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: value));
+                  HapticFeedback.lightImpact();
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('$label copied'),
+                      backgroundColor: t.surface,
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1216,6 +1328,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: hasGps ? () => widget.onZoomDetection(d) : null,
+                    onLongPress: () => _showFlockCopySheet(context, d),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
