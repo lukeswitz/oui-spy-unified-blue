@@ -31,6 +31,7 @@ class DetectionRow extends ConsumerWidget {
         }
       },
       child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onLongPress: () {
         HapticFeedback.mediumImpact();
         _showActions(context, ref);

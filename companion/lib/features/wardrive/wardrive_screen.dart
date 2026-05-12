@@ -1001,6 +1001,7 @@ class _DetListRow extends ConsumerWidget {
         ],
       ),
     ),
+    ),
     );
   }
 }
@@ -1333,11 +1334,17 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   final hasGps = d.latitude != null && d.longitude != null;
                   final isRaven = d.flock?.isRaven ?? false;
 
-                  return GestureDetector(
+                  return Listener(
+                    onPointerDown: (event) {
+                      if (event.kind == PointerDeviceKind.mouse &&
+                          event.buttons == kSecondaryMouseButton) {
+                        _showFlockCopySheet(context, d);
+                      }
+                    },
+                    child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: hasGps ? () => widget.onZoomDetection(d) : null,
                     onLongPress: () => _showFlockCopySheet(context, d),
-                    onSecondaryTapDown: (_) => _showFlockCopySheet(context, d),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
@@ -1444,6 +1451,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                         ],
                       ),
                     ),
+                  ),
                   );
                 },
               ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -2049,6 +2050,69 @@ class _DetectionRow extends ConsumerWidget {
   final VoidCallback onShowMap;
   final VoidCallback onFoxhunt;
 
+  void _showCopySheet(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final mac = (data['macAddress'] as String).toUpperCase();
+    final deviceName = data['deviceName'] as String? ?? '';
+    final ssid = data['ssid'] as String? ?? '';
+    final vendor = ref.read(ouiLookupProvider).lookup(mac);
+    final lat = data['latitude'] as double?;
+    final lon = data['longitude'] as double?;
+
+    final items = <(String, String)>[
+      ('MAC', mac),
+      if (deviceName.isNotEmpty) ('Name', deviceName),
+      if (ssid.isNotEmpty) ('SSID', ssid),
+      if (vendor != null) ('Vendor', vendor),
+      if (lat != null && lon != null)
+        ('Location', '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}'),
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: t.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('COPY', style: TextStyle(
+              color: t.textDim, fontSize: 10,
+              fontWeight: FontWeight.w700, letterSpacing: 2,
+            )),
+            const SizedBox(height: 8),
+            for (final (label, value) in items)
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: Icon(Icons.copy, size: 14, color: t.textDim),
+                title: Text(label, style: TextStyle(color: t.textDim, fontSize: 10)),
+                subtitle: Text(value, style: TextStyle(
+                  color: t.textPrimary, fontSize: 12, fontFamily: 'monospace',
+                )),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: value));
+                  HapticFeedback.lightImpact();
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('$label copied'),
+                      backgroundColor: t.surface,
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
@@ -2064,7 +2128,20 @@ class _DetectionRow extends ConsumerWidget {
     final rssiNorm = ((rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
 
-    return Container(
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind == PointerDeviceKind.mouse &&
+            event.buttons == kSecondaryMouseButton) {
+          _showCopySheet(context, ref);
+        }
+      },
+      child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        _showCopySheet(context, ref);
+      },
+      child: Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: t.surface,
@@ -2244,6 +2321,8 @@ class _DetectionRow extends ConsumerWidget {
           ),
         ],
       ),
+    ),
+    ),
     );
   }
 
