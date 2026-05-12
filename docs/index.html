@@ -446,7 +446,7 @@
       </div>
 
       <div class="complete-msg" id="completeMsg">
-        FIRMWARE DEPLOYED // DEVICE READY
+        FIRMWARE DEPLOYED // PLEASE RESET YOUR OUI-SPY
       </div>
 
       <div class="log" id="log"></div>
@@ -592,7 +592,7 @@
         setProgress(100, 'COMPLETE');
         progressFill.classList.add('complete');
         setStatus('FLASH COMPLETE', 'done');
-        log('Flash complete. Resetting device...', 'success');
+        log('Flash complete. Please reset your OUI-SPY to begin using new firmware.', 'success');
 
         await esploader.after("hard_reset");
         await transport.disconnect();
