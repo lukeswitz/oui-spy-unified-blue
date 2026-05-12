@@ -46,7 +46,7 @@ The Flock-WiFi engine runs in 802.11 promiscuous mode, hopping channels 1/6/11 a
 
 The Flock-BLE engine scans for FS Ext Battery devices, Flock WiFi modules, and Raven gunshot detectors via BLE advertisements, manufacturer company ID, device name patterns, and GATT service UUIDs.
 
-Both engines share a unified OUI table (`flock_oui.h`) with 43 prefixes:
+Both engines share a sorted OUI table (`flock_oui.h`) with 43 prefixes:
 - 10 FS Ext Battery (BLE, Silicon Labs EFR32)
 - 26 Flock WiFi cameras — [@NitekryDPaul](https://github.com/nitekry) / OrdoOuroborous original promiscuous-mode set
 - 6 @NitekryDPaul April 2026 additions
@@ -85,6 +85,10 @@ BLE is shared across all engines concurrently. NimBLE handles interleaved scanni
 - **Wardrive** — BLE advertisement capture for wardriving database
 - **UniPwn** — BLE discovery + GATT connection for Unitree robot exploitation
 
+### Deduplication & Scan Caching
+
+All engines share a templated `DedupRing` (with an ISR-safe variant for promiscuous callbacks) that suppresses duplicate MAC reports within a configurable cooldown window. Ring-buffer design — fixed memory, no heap allocation, O(n) scan with small n. Engines reuse NimBLE scan instances and WiFi scan results across cycles instead of re-initializing each pass.
+
 ### Passive Feeding (wardrive active)
 
 When wardrive owns WiFi, Detector and Foxhunter don't start their own scans. Instead wardrive feeds them via callbacks:
@@ -115,13 +119,13 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 
 ### Screens
 
-**Home** — Connection status with pulsing radar animation. Once connected: engine cards showing live state (disabled/scanning/alerting). Tap any card to view settings or enable/disable directly. Status bar shows connected node, GPS quality, active engine count, and active node count.
+**Home** — Connection status with pulsing radar animation. Navigates home automatically when a device connects. Engine cards show live state (disabled/scanning/alerting). Tap any card to view settings or enable/disable directly. Status bar shows connected node, GPS quality, active engine count, and active node count.
 
-**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Top stats bar shows top vendors and top Flock devices by count. Filter bar to show/hide specific engines. Tap crosshairs to foxhunt, and the far right icon to display on map.
+**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Top stats bar shows top vendors and top Flock devices by count. Filter bar to show/hide specific engines. Long-press (or right-click on desktop) any row for actions: copy MAC/location/vendor to clipboard, show on map, foxhunt target. Tap crosshairs to foxhunt, and the far right icon to display on map.
 
-**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Session auto-saves to SQLite. WiGLE CSV export. Session history with devices count, upload/share.
+**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Long-press any device row to copy MAC, location, vendor, or SSID. Session auto-saves to SQLite. WiGLE CSV export. Session history with devices count, upload/share.
 
-**Config** — Five tabs: Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing), Detections (sortable list with engine filter chips for Flock/Detector, vendor lookup with OUI DB update).
+**Config** — Seven tabs: App (theme, units), Ignore List (suppress devices by MAC/OUI/SSID with per-scope WiFi/BLE/both toggles — excluded from feed, exports, database, and alerts), Detections (sortable list with engine filter chips, vendor lookup with OUI DB update), Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing).
 
 ### OUI Vendor Lookup
 

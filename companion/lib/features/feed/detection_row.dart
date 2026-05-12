@@ -424,8 +424,11 @@ class DetectionRow extends ConsumerWidget {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: const Text('MAC copied'),
-                    backgroundColor: t.surface,
+                    content: const Text(
+                      'MAC copied',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    backgroundColor: t.surfaceLight,
                     duration: const Duration(seconds: 1),
                   ),
                 );
@@ -645,7 +648,22 @@ class _DetailSummary extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: t.border, width: 0.5),
       ),
-      child: Column(children: rows),
+      child: Column(
+        children: [
+          ...rows,
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'tap any row to copy',
+              style: TextStyle(
+                color: t.textDim,
+                fontSize: 9,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -654,42 +672,53 @@ class _DetailSummary extends StatelessWidget {
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$label copied'),
-        backgroundColor: t.surface,
+        content: Text(
+          '$label copied',
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: t.surfaceLight,
         duration: const Duration(seconds: 1),
       ),
     );
   }
 
   Widget _detailRow(BuildContext context, String label, String value) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onLongPress: () => _copyValue(context, label, value),
-      onSecondaryTapDown: (_) => _copyValue(context, label, value),
-      onTap: () => _copyValue(context, label, value),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 80,
-              child: Text(
-                label,
-                style: TextStyle(color: t.textDim, fontSize: 10),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                value,
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontSize: 10,
-                  fontFamily: 'monospace',
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        splashColor: t.textDim.withValues(alpha: 0.08),
+        highlightColor: t.textDim.withValues(alpha: 0.05),
+        onTap: () => _copyValue(context, label, value),
+        onLongPress: () => _copyValue(context, label, value),
+        onSecondaryTapDown: (_) => _copyValue(context, label, value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 85,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: t.textDim,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
-            Icon(Icons.copy, size: 8, color: t.textDim.withValues(alpha: 0.4)),
-          ],
+              Expanded(
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
