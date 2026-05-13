@@ -1,5 +1,5 @@
 <div align="center">
-<h1>OUI SPY Unified & Companion</h1>
+<h1>OUIspy Omni</h1>
 
 [![Version](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases) [![Join TestFlight Beta](https://img.shields.io/badge/TestFlight-Join-blue.svg?style=f&logo=apple)](https://testflight.apple.com/join/5RCKgnJ2) ![Platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
 ![Dart](https://img.shields.io/badge/Dart-Flutter%20App-0175C2)
