@@ -17,6 +17,8 @@ import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/models/session.dart';
+import 'package:oui_spy/core/notifications/live_activity_service.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:path_provider/path_provider.dart';
@@ -75,7 +77,7 @@ enum WardriveRadio {
 }
 
 class WardriveController extends ChangeNotifier {
-  WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter) {
+  WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready && isActive) {
         _reEnableEngines();
@@ -114,6 +116,8 @@ class WardriveController extends ChangeNotifier {
   final AppDatabase _db;
   final IgnoreListState _ignoreList;
   final GeofenceFilter _geofenceFilter;
+  final NotificationService _notificationService;
+  final LiveActivityService _liveActivity;
   StreamSubscription<NodeConnectionState>? _connSub;
 
   WardriveState state = WardriveState.idle;
@@ -267,6 +271,7 @@ class WardriveController extends ChangeNotifier {
 
     // Reload geofence exclusion zones at session start
     await _geofenceFilter.reload();
+    _notificationService.resetMilestones();
 
     _db.insertSession(SessionsCompanion(
       id: drift.Value(sessionId),
@@ -292,6 +297,10 @@ class WardriveController extends ChangeNotifier {
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
 
     WakelockPlus.enable();
+
+    // Start iOS Live Activity (Dynamic Island / Lock Screen)
+    _updateLiveActivity();
+
     notifyListeners();
     DebugLog.log('WARDRIVE: started $sessionId target=${target.label} radio=${radio.label}');
   }
@@ -314,6 +323,7 @@ class WardriveController extends ChangeNotifier {
     }
 
     WakelockPlus.disable();
+    _liveActivity.end();
 
     if (sessionId.isNotEmpty && startTime != null) {
       _db.updateSession(SessionsCompanion(
@@ -587,6 +597,7 @@ class WardriveController extends ChangeNotifier {
     _ble.enableEngine(Engine.foxhunter);
     _ble.setFoxhunterTarget(mac, channel: channel);
     foxhuntTarget = mac;
+    _updateLiveActivity();
     notifyListeners();
   }
 
@@ -635,6 +646,27 @@ class WardriveController extends ChangeNotifier {
         _ble.setFoxhunterTarget(foxhuntTarget!);
       }
     });
+  }
+
+  /// Push combined state to iOS Live Activity / Dynamic Island.
+  /// Resolves primary display mode from active engines + foxhunt target,
+  /// then sends all cross-engine counts so expanded view shows everything.
+  void _updateLiveActivity() {
+    final engineNames = activeEngines.map((e) => e.name).toSet();
+    if (foxhuntTarget != null) engineNames.add('foxhunter');
+    final mode = LiveActivityService.resolvePrimaryMode(
+      engineNames,
+      foxhuntTarget: foxhuntTarget,
+    );
+    _liveActivity.update(
+      primaryMode: mode,
+      uniqueCount: uniqueMacs.length,
+      flockCount: _flockMacs.length,
+      droneCount: droneCount,
+      distanceKm: distanceKm,
+      speedKmh: currentPosition?.speedKmh ?? 0,
+      targetMac: foxhuntTarget ?? '',
+    );
   }
 
   SessionStats get currentStats {
@@ -697,6 +729,8 @@ class WardriveController extends ChangeNotifier {
       }
     }
     uniqueMacs.add(detection.macAddress);
+    _notificationService.onWardriveUpdate(uniqueCount: uniqueMacs.length);
+    _updateLiveActivity();
     final isFlock = detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi;
     if (isFlock) {
       _flockMacs.add(detection.macAddress);
@@ -820,5 +854,7 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final db = ref.watch(databaseProvider);
   final allowlist = ref.watch(ignoreListProvider);
   final geofence = ref.read(geofenceFilterProvider);
-  return WardriveController(ble, gps, db, allowlist, geofence);
+  final notif = ref.watch(notificationServiceProvider);
+  final liveActivity = ref.watch(liveActivityServiceProvider);
+  return WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
 });

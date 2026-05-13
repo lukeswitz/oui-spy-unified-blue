@@ -143,6 +143,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                         ),
                   ),
                   const Spacer(),
+                  GestureDetector(
+                    onTap: () => context.push('/notifications'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Icon(Icons.notifications_outlined, size: 18, color: t.textSecondary),
+                    ),
+                  ),
                   if (_loading)
                     const SizedBox(
                       width: 12, height: 12,

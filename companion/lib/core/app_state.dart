@@ -12,17 +12,21 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/notifications/live_activity_service.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
 
 /// App-wide state that survives navigation. Single source of truth.
 /// All screens read from here instead of creating their own subscriptions.
 class AppState extends ChangeNotifier {
-  AppState(this._ble, this._gps, this._ignoreList) {
+  AppState(this._ble, this._gps, this._ignoreList, this._notificationService, this._liveActivity) {
     _init();
   }
 
   final BleManager _ble;
   final GpsProvider _gps;
   final IgnoreListState _ignoreList;
+  final NotificationService _notificationService;
+  final LiveActivityService _liveActivity;
   final List<StreamSubscription<dynamic>> _subs = [];
 
   // Connection
@@ -174,17 +178,41 @@ class AppState extends ChangeNotifier {
       )) {
         return;
       }
+      final isNewMac = !(_uniqueMacsPerEngine[det.engine]?.contains(det.macAddress) ?? false);
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
       (_recentDetectionTimes[det.engine] ??= []).add(DateTime.now());
       _upsertDetection(det);
+
+      // Fire notification only for first-seen MACs per engine
+      if (isNewMac) {
+        _notificationService.onDetection(det);
+      }
+
       notifyListeners();
     }));
 
     // Foxhunter RSSI
     _subs.add(_ble.foxhunterRssi.listen((data) {
+      final previousRssi = foxhunterRssi;
       foxhunterRssi = data.rssi;
       foxhunterIntervalMs = data.intervalMs;
+
+      if (foxhunterTarget != null) {
+        _notificationService.onFoxhuntProximity(
+          mac: foxhunterTarget!,
+          rssi: data.rssi,
+          previousRssi: previousRssi,
+        );
+        _liveActivity.update(
+          primaryMode: 'foxhunter',
+          uniqueCount: totalDetections,
+          targetMac: foxhunterTarget!,
+          rssi: data.rssi,
+          intervalMs: data.intervalMs,
+        );
+      }
+
       notifyListeners();
     }));
 
@@ -375,5 +403,7 @@ final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   final ble = ref.watch(bleManagerProvider);
   final gps = ref.watch(gpsProvider);
   final allowlist = ref.watch(ignoreListProvider);
-  return AppState(ble, gps, allowlist);
+  final notif = ref.watch(notificationServiceProvider);
+  final liveActivity = ref.watch(liveActivityServiceProvider);
+  return AppState(ble, gps, allowlist, notif, liveActivity);
 });
