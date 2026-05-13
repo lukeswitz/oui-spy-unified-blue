@@ -12,11 +12,16 @@
 </div>
 
 ---
+
+
 **About this fork:**
 
 Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
 
 Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
+
+> [!NOTE]
+> Early beta, bugs and unexpected behavior can be reported in Issues
 
 ---
 
