@@ -65,31 +65,36 @@ jobs:
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631  # v2.2.2
         with:
           draft: true
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
-            ## OUI-SPY ${{ github.ref_name }}
+            ## OUI-SPY Companion ${{ github.ref_name }}
 
-            ### Firmware
+            > [!NOTE]
+            > Early beta, bugs and unexpected behavior can be reported in Issues
 
-            Download `oui-spy-firmware-${{ github.ref_name }}.tar.gz`, extract, and flash:
+            ### What's New
 
-            ```bash
-            tar xzf oui-spy-firmware-${{ github.ref_name }}.tar.gz
-            cp *.bin firmware/
-            python3 flash.py
-            ```
+            -
+
+            ### Firmware Update
+
+            _**Not required if coming from <PREVIOUS_VERSION>**_
+
+            - Update the ouispy device with [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/)
 
             ### Companion App
 
             | Platform | File | Instructions |
             |----------|------|-------------|
-            | **Android** | `oui-spy-${{ github.ref_name }}.apk` | Download APK, tap to install. Enable "Install unknown apps" in Settings if prompted. |
+            | **Android** | `oui-spy-${{ github.ref_name }}.apk` | Download signed APK, tap to install. |
             | **macOS** | `oui-spy-macos-${{ github.ref_name }}.zip` | Extract zip, move `.app` to Applications, run. Signed with Developer ID. |
-            | **iOS** | [TestFlight](https://testflight.apple.com/join/XXXX) | Join beta via TestFlight link. |
+            | **iOS** | [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) | Join beta via TestFlight link. |
 
             ### Requirements
             - Seeed Studio XIAO ESP32-S3
             - Bluetooth LE capable phone/computer
             - GPS/Location services for wardriving
+
+            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/<PREVIOUS_TAG>...${{ github.ref_name }}
           files: |
             artifacts/firmware/*
