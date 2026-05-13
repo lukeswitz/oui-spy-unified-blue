@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -11,7 +12,7 @@ class WigleCsv {
   static const _version = '1.0.0';
   static final _dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
-  static String generate(List<Detection> detections, {IgnoreListState? ignoreList}) {
+  static String generate(List<Detection> detections, {IgnoreListState? ignoreList, GeofenceFilter? geofenceFilter}) {
     final buffer = StringBuffer();
 
     // Pre-header 
@@ -49,6 +50,12 @@ class WigleCsv {
         )) {
           continue;
         }
+      }
+
+      // Geofence exclusion: skip detections inside wardrive-exclusion zones
+      if (geofenceFilter != null &&
+          geofenceFilter.isExcludedNullable(d.latitude, d.longitude)) {
+        continue;
       }
 
       final mac = d.macAddress;

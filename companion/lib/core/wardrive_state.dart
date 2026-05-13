@@ -12,6 +12,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
+import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -74,7 +75,7 @@ enum WardriveRadio {
 }
 
 class WardriveController extends ChangeNotifier {
-  WardriveController(this._ble, this._gps, this._db, this._ignoreList) {
+  WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter) {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready && isActive) {
         _reEnableEngines();
@@ -112,6 +113,7 @@ class WardriveController extends ChangeNotifier {
   final GpsProvider _gps;
   final AppDatabase _db;
   final IgnoreListState _ignoreList;
+  final GeofenceFilter _geofenceFilter;
   StreamSubscription<NodeConnectionState>? _connSub;
 
   WardriveState state = WardriveState.idle;
@@ -262,6 +264,9 @@ class WardriveController extends ChangeNotifier {
     droneCount = 0;
     lastGpsForDistance = null;
     foxhuntTarget = null;
+
+    // Reload geofence exclusion zones at session start
+    await _geofenceFilter.reload();
 
     _db.insertSession(SessionsCompanion(
       id: drift.Value(sessionId),
@@ -485,7 +490,7 @@ class WardriveController extends ChangeNotifier {
       final dir = await _wardriveDir();
       final filename = await _csvFilename(sid);
       final file = File(path.join(dir.path, filename));
-      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList);
+      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList, geofenceFilter: _geofenceFilter);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV saved ${file.path}');
       return file.path;
@@ -531,7 +536,7 @@ class WardriveController extends ChangeNotifier {
       final dbRows = await _db.getDetectionMapsForSession(sid);
       if (dbRows.isEmpty) return null;
       final dets = dbRows.map(_detectionFromDb).toList();
-      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList);
+      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList, geofenceFilter: _geofenceFilter);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV regenerated from DB for $sid (${dets.length} det)');
       return file;
@@ -674,6 +679,11 @@ class WardriveController extends ChangeNotifier {
       return;
     }
 
+    // Geofence exclusion: drop detections inside any wardrive-exclusion zone
+    if (_geofenceFilter.isExcludedNullable(detection.latitude, detection.longitude)) {
+      return;
+    }
+
     rawDetectionCount++;
     if (isBle) { rawBleCount++; } else { rawWifiCount++; }
 
@@ -809,5 +819,6 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final gps = ref.watch(gpsProvider);
   final db = ref.watch(databaseProvider);
   final allowlist = ref.watch(ignoreListProvider);
-  return WardriveController(ble, gps, db, allowlist);
+  final geofence = ref.read(geofenceFilterProvider);
+  return WardriveController(ble, gps, db, allowlist, geofence);
 });

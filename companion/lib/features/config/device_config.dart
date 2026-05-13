@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
@@ -1724,6 +1727,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   _DetSort _sort = _DetSort.time;
   bool _ascending = false;
   String? _engineFilter; // null = all, 'flock', 'detector'
+  bool _showMap = false;
+  final _mapController = MapController();
 
   @override
   void initState() {
@@ -1885,6 +1890,15 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               ),
               const Spacer(),
               GestureDetector(
+                onTap: () => setState(() => _showMap = !_showMap),
+                child: Icon(
+                  _showMap ? Icons.list : Icons.map,
+                  size: 16,
+                  color: _showMap ? AppTheme.accent : t.textDim,
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
                 onTap: () {
                   setState(() => _loading = true);
                   _load();
@@ -1895,21 +1909,282 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           ),
         ),
         const Divider(height: 1),
-        // Detection list
+        // Detection list or map
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            itemCount: items.length,
-            itemBuilder: (_, i) => _DetectionRow(
-              data: items[i],
-              engineColor: _engineColor(items[i]['engine'] as String),
-              engineLabel: _engineLabel(items[i]['engine'] as String),
-              onShowMap: () => _showOnMap(items[i]),
-              onFoxhunt: () => _startFoxhunt(items[i]),
-            ),
-          ),
+          child: _showMap
+              ? _buildMapView(items, t)
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => _DetectionRow(
+                    data: items[i],
+                    engineColor: _engineColor(items[i]['engine'] as String),
+                    engineLabel: _engineLabel(items[i]['engine'] as String),
+                    onShowMap: () => _showOnMap(items[i]),
+                    onFoxhunt: () => _startFoxhunt(items[i]),
+                    onDelete: _load,
+                  ),
+                ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMapView(List<Map<String, dynamic>> items, ResolvedTheme t) {
+    final geoItems = items
+        .where((d) => d['latitude'] != null && d['longitude'] != null)
+        .toList();
+
+    if (geoItems.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.location_off, size: 36, color: t.textDim),
+            const SizedBox(height: 12),
+            Text('NO GPS DATA', style: TextStyle(
+              color: t.textDim, fontSize: 12,
+              fontWeight: FontWeight.w700, letterSpacing: 2,
+            )),
+            const SizedBox(height: 6),
+            Text(
+              'None of the current detections have location data.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: t.textDim, fontSize: 11),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final mapStyle = ref.watch(mapStyleProvider);
+
+    // Compute bounds to fit all markers
+    var minLat = 90.0, maxLat = -90.0, minLon = 180.0, maxLon = -180.0;
+    for (final d in geoItems) {
+      final lat = d['latitude'] as double;
+      final lon = d['longitude'] as double;
+      minLat = min(minLat, lat);
+      maxLat = max(maxLat, lat);
+      minLon = min(minLon, lon);
+      maxLon = max(maxLon, lon);
+    }
+    final center = LatLng((minLat + maxLat) / 2, (minLon + maxLon) / 2);
+    final bounds = LatLngBounds(LatLng(minLat, minLon), LatLng(maxLat, maxLon));
+
+    final markers = geoItems.map((d) {
+      final lat = d['latitude'] as double;
+      final lon = d['longitude'] as double;
+      final engineStr = d['engine'] as String;
+      final color = _engineColor(engineStr);
+      final mac = (d['macAddress'] as String).toUpperCase();
+
+      return Marker(
+        point: LatLng(lat, lon),
+        width: 28,
+        height: 28,
+        child: GestureDetector(
+          onTap: () => _showMarkerSheet(d),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.25),
+                ),
+              ),
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.8),
+                  border: Border.all(color: color, width: 1.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
+
+    // Fit bounds after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && geoItems.length > 1) {
+        _mapController.fitCamera(CameraFit.bounds(
+          bounds: bounds,
+          padding: const EdgeInsets.all(40),
+        ));
+      }
+    });
+
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: center,
+        initialZoom: geoItems.length == 1 ? 16 : 13,
+        backgroundColor: mapStyle.isDark
+            ? const Color(0xFF0A0A0A)
+            : const Color(0xFFE8E8EE),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: mapStyle.urlTemplate,
+          userAgentPackageName: 'tech.colonelpanic.ouispy',
+          maxZoom: 19,
+        ),
+        MarkerLayer(markers: markers),
+      ],
+    );
+  }
+
+  void _showMarkerSheet(Map<String, dynamic> det) {
+    final t = AppTheme.of(context);
+    final mac = (det['macAddress'] as String).toUpperCase();
+    final engineStr = det['engine'] as String;
+    final deviceName = det['deviceName'] as String? ?? '';
+    final ssid = det['ssid'] as String? ?? '';
+    final rssi = det['rssi'] as int;
+    final channel = det['channel'] as int? ?? 0;
+    final method = det['detectionMethod'] as String? ?? '';
+    final ts = DateTime.fromMillisecondsSinceEpoch(det['appTimestamp'] as int);
+    final timeStr = DateFormat('MMM d HH:mm').format(ts);
+    final vendor = ref.read(ouiLookupProvider).lookup(mac);
+    final lat = det['latitude'] as double?;
+    final lon = det['longitude'] as double?;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: t.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 10, height: 10,
+                  decoration: BoxDecoration(
+                    color: _engineColor(engineStr),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(mac, style: TextStyle(
+                    color: t.textPrimary, fontSize: 14,
+                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                  )),
+                ),
+              ],
+            ),
+            if (vendor != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 18),
+                child: Text(vendor, style: TextStyle(
+                  color: _engineColor(engineStr).withValues(alpha: 0.8),
+                  fontSize: 12,
+                )),
+              ),
+            if (deviceName.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 18),
+                child: Text(deviceName, style: TextStyle(
+                  color: t.textSecondary, fontSize: 11,
+                )),
+              ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: t.surfaceLight,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: t.border, width: 0.5),
+              ),
+              child: Column(
+                children: [
+                  _markerDetailRow('Engine', _engineLabel(engineStr), t),
+                  if (method.isNotEmpty) _markerDetailRow('Method', method, t),
+                  _markerDetailRow('RSSI', '$rssi dBm', t),
+                  if (channel > 0) _markerDetailRow('Channel', '$channel', t),
+                  if (ssid.isNotEmpty) _markerDetailRow('SSID', ssid, t),
+                  _markerDetailRow('Time', timeStr, t),
+                  if (lat != null && lon != null)
+                    _markerDetailRow('Location',
+                        '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}', t),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: mac));
+                      HapticFeedback.lightImpact();
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('MAC copied'),
+                          backgroundColor: t.surface,
+                          duration: const Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                    icon: Icon(Icons.copy, size: 14, color: t.textDim),
+                    label: Text('Copy MAC', style: TextStyle(
+                      color: t.textSecondary, fontSize: 11,
+                    )),
+                  ),
+                ),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _startFoxhunt(det);
+                    },
+                    icon: const Icon(Icons.gps_fixed, size: 14,
+                        color: AppTheme.foxhunter),
+                    label: const Text('Foxhunt', style: TextStyle(
+                      color: AppTheme.foxhunter, fontSize: 11,
+                    )),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _markerDetailRow(String label, String value, ResolvedTheme t) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(label, style: TextStyle(
+              color: t.textDim, fontSize: 10, fontWeight: FontWeight.w500,
+            )),
+          ),
+          Expanded(
+            child: Text(value, style: TextStyle(
+              color: t.textPrimary, fontSize: 10, fontFamily: 'monospace',
+            )),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2043,12 +2318,14 @@ class _DetectionRow extends ConsumerWidget {
     required this.engineLabel,
     required this.onShowMap,
     required this.onFoxhunt,
+    required this.onDelete,
   });
   final Map<String, dynamic> data;
   final Color engineColor;
   final String engineLabel;
   final VoidCallback onShowMap;
   final VoidCallback onFoxhunt;
+  final VoidCallback onDelete;
 
   void _showCopySheet(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
@@ -2107,6 +2384,29 @@ class _DetectionRow extends ConsumerWidget {
                   );
                 },
               ),
+            const Divider(height: 1),
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              leading: const Icon(Icons.delete_outline, size: 16, color: AppTheme.error),
+              title: const Text('Delete Detection',
+                  style: TextStyle(color: AppTheme.error, fontSize: 12)),
+              onTap: () {
+                Navigator.pop(ctx);
+                final db = ref.read(databaseProvider);
+                final id = data['id'] as int;
+                db.deleteDetectionById(id).then((_) {
+                  onDelete();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Detection removed'),
+                      backgroundColor: t.surface,
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                });
+              },
+            ),
           ],
         ),
       ),

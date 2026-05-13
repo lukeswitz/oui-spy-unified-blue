@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -40,6 +40,9 @@ class AppDatabase extends _$AppDatabase {
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
           await m.addColumn(detections, detections.authMode);
+        }
+        if (from < 3) {
+          await m.addColumn(geofences, geofences.excludeFromWardrive);
         }
       },
     );
@@ -226,11 +229,16 @@ class AppDatabase extends _$AppDatabase {
           'appTimestamp': r.appTimestamp,
           'latitude': r.latitude,
           'longitude': r.longitude,
+          'ssid': r.ssid,
         };
       }
     }
     return seen.values.toList();
   }
+
+  /// Delete a single detection by its primary key.
+  Future<void> deleteDetectionById(int id) =>
+      (delete(detections)..where((d) => d.id.equals(id))).go();
 
   // -- WiGLE upload operations --
 
@@ -265,6 +273,13 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> upsertGeofence(GeofencesCompanion geofence) =>
       into(geofences).insertOnConflictUpdate(geofence);
+
+  /// Get all enabled geofences marked for wardrive exclusion.
+  Future<List<Geofence>> getWardriveExclusionGeofences() =>
+      (select(geofences)
+            ..where((g) => g.enabled.equals(true))
+            ..where((g) => g.excludeFromWardrive.equals(true)))
+          .get();
 }
 
 LazyDatabase _openConnection() {

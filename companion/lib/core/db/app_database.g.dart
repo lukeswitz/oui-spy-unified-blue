@@ -5908,6 +5908,20 @@ class $GeofencesTable extends Geofences
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _excludeFromWardriveMeta =
+      const VerificationMeta('excludeFromWardrive');
+  @override
+  late final GeneratedColumn<bool> excludeFromWardrive = GeneratedColumn<bool>(
+    'exclude_from_wardrive',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("exclude_from_wardrive" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -5935,6 +5949,7 @@ class $GeofencesTable extends Geofences
     alertOnStalking,
     alertMode,
     enabled,
+    excludeFromWardrive,
     createdAt,
   ];
   @override
@@ -6054,6 +6069,15 @@ class $GeofencesTable extends Geofences
         enabled.isAcceptableOrUnknown(data['enabled']!, _enabledMeta),
       );
     }
+    if (data.containsKey('exclude_from_wardrive')) {
+      context.handle(
+        _excludeFromWardriveMeta,
+        excludeFromWardrive.isAcceptableOrUnknown(
+          data['exclude_from_wardrive']!,
+          _excludeFromWardriveMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -6127,6 +6151,10 @@ class $GeofencesTable extends Geofences
         DriftSqlType.bool,
         data['${effectivePrefix}enabled'],
       )!,
+      excludeFromWardrive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}exclude_from_wardrive'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -6155,6 +6183,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
   final bool alertOnStalking;
   final String alertMode;
   final bool enabled;
+  final bool excludeFromWardrive;
   final int createdAt;
   const Geofence({
     required this.id,
@@ -6171,6 +6200,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
     required this.alertOnStalking,
     required this.alertMode,
     required this.enabled,
+    required this.excludeFromWardrive,
     required this.createdAt,
   });
   @override
@@ -6200,6 +6230,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
     map['alert_on_stalking'] = Variable<bool>(alertOnStalking);
     map['alert_mode'] = Variable<String>(alertMode);
     map['enabled'] = Variable<bool>(enabled);
+    map['exclude_from_wardrive'] = Variable<bool>(excludeFromWardrive);
     map['created_at'] = Variable<int>(createdAt);
     return map;
   }
@@ -6230,6 +6261,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
       alertOnStalking: Value(alertOnStalking),
       alertMode: Value(alertMode),
       enabled: Value(enabled),
+      excludeFromWardrive: Value(excludeFromWardrive),
       createdAt: Value(createdAt),
     );
   }
@@ -6254,6 +6286,9 @@ class Geofence extends DataClass implements Insertable<Geofence> {
       alertOnStalking: serializer.fromJson<bool>(json['alertOnStalking']),
       alertMode: serializer.fromJson<String>(json['alertMode']),
       enabled: serializer.fromJson<bool>(json['enabled']),
+      excludeFromWardrive: serializer.fromJson<bool>(
+        json['excludeFromWardrive'],
+      ),
       createdAt: serializer.fromJson<int>(json['createdAt']),
     );
   }
@@ -6275,6 +6310,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
       'alertOnStalking': serializer.toJson<bool>(alertOnStalking),
       'alertMode': serializer.toJson<String>(alertMode),
       'enabled': serializer.toJson<bool>(enabled),
+      'excludeFromWardrive': serializer.toJson<bool>(excludeFromWardrive),
       'createdAt': serializer.toJson<int>(createdAt),
     };
   }
@@ -6294,6 +6330,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
     bool? alertOnStalking,
     String? alertMode,
     bool? enabled,
+    bool? excludeFromWardrive,
     int? createdAt,
   }) => Geofence(
     id: id ?? this.id,
@@ -6310,6 +6347,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
     alertOnStalking: alertOnStalking ?? this.alertOnStalking,
     alertMode: alertMode ?? this.alertMode,
     enabled: enabled ?? this.enabled,
+    excludeFromWardrive: excludeFromWardrive ?? this.excludeFromWardrive,
     createdAt: createdAt ?? this.createdAt,
   );
   Geofence copyWithCompanion(GeofencesCompanion data) {
@@ -6340,6 +6378,9 @@ class Geofence extends DataClass implements Insertable<Geofence> {
           : this.alertOnStalking,
       alertMode: data.alertMode.present ? data.alertMode.value : this.alertMode,
       enabled: data.enabled.present ? data.enabled.value : this.enabled,
+      excludeFromWardrive: data.excludeFromWardrive.present
+          ? data.excludeFromWardrive.value
+          : this.excludeFromWardrive,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -6361,6 +6402,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
           ..write('alertOnStalking: $alertOnStalking, ')
           ..write('alertMode: $alertMode, ')
           ..write('enabled: $enabled, ')
+          ..write('excludeFromWardrive: $excludeFromWardrive, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -6382,6 +6424,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
     alertOnStalking,
     alertMode,
     enabled,
+    excludeFromWardrive,
     createdAt,
   );
   @override
@@ -6402,6 +6445,7 @@ class Geofence extends DataClass implements Insertable<Geofence> {
           other.alertOnStalking == this.alertOnStalking &&
           other.alertMode == this.alertMode &&
           other.enabled == this.enabled &&
+          other.excludeFromWardrive == this.excludeFromWardrive &&
           other.createdAt == this.createdAt);
 }
 
@@ -6420,6 +6464,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
   final Value<bool> alertOnStalking;
   final Value<String> alertMode;
   final Value<bool> enabled;
+  final Value<bool> excludeFromWardrive;
   final Value<int> createdAt;
   final Value<int> rowid;
   const GeofencesCompanion({
@@ -6437,6 +6482,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
     this.alertOnStalking = const Value.absent(),
     this.alertMode = const Value.absent(),
     this.enabled = const Value.absent(),
+    this.excludeFromWardrive = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -6455,6 +6501,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
     this.alertOnStalking = const Value.absent(),
     this.alertMode = const Value.absent(),
     this.enabled = const Value.absent(),
+    this.excludeFromWardrive = const Value.absent(),
     required int createdAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -6476,6 +6523,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
     Expression<bool>? alertOnStalking,
     Expression<String>? alertMode,
     Expression<bool>? enabled,
+    Expression<bool>? excludeFromWardrive,
     Expression<int>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -6494,6 +6542,8 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
       if (alertOnStalking != null) 'alert_on_stalking': alertOnStalking,
       if (alertMode != null) 'alert_mode': alertMode,
       if (enabled != null) 'enabled': enabled,
+      if (excludeFromWardrive != null)
+        'exclude_from_wardrive': excludeFromWardrive,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -6514,6 +6564,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
     Value<bool>? alertOnStalking,
     Value<String>? alertMode,
     Value<bool>? enabled,
+    Value<bool>? excludeFromWardrive,
     Value<int>? createdAt,
     Value<int>? rowid,
   }) {
@@ -6532,6 +6583,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
       alertOnStalking: alertOnStalking ?? this.alertOnStalking,
       alertMode: alertMode ?? this.alertMode,
       enabled: enabled ?? this.enabled,
+      excludeFromWardrive: excludeFromWardrive ?? this.excludeFromWardrive,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -6582,6 +6634,9 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
     if (enabled.present) {
       map['enabled'] = Variable<bool>(enabled.value);
     }
+    if (excludeFromWardrive.present) {
+      map['exclude_from_wardrive'] = Variable<bool>(excludeFromWardrive.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -6608,6 +6663,7 @@ class GeofencesCompanion extends UpdateCompanion<Geofence> {
           ..write('alertOnStalking: $alertOnStalking, ')
           ..write('alertMode: $alertMode, ')
           ..write('enabled: $enabled, ')
+          ..write('excludeFromWardrive: $excludeFromWardrive, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -12304,6 +12360,7 @@ typedef $$GeofencesTableCreateCompanionBuilder =
       Value<bool> alertOnStalking,
       Value<String> alertMode,
       Value<bool> enabled,
+      Value<bool> excludeFromWardrive,
       required int createdAt,
       Value<int> rowid,
     });
@@ -12323,6 +12380,7 @@ typedef $$GeofencesTableUpdateCompanionBuilder =
       Value<bool> alertOnStalking,
       Value<String> alertMode,
       Value<bool> enabled,
+      Value<bool> excludeFromWardrive,
       Value<int> createdAt,
       Value<int> rowid,
     });
@@ -12429,6 +12487,11 @@ class $$GeofencesTableFilterComposer
 
   ColumnFilters<bool> get enabled => $composableBuilder(
     column: $table.enabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get excludeFromWardrive => $composableBuilder(
+    column: $table.excludeFromWardrive,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12542,6 +12605,11 @@ class $$GeofencesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get excludeFromWardrive => $composableBuilder(
+    column: $table.excludeFromWardrive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -12610,6 +12678,11 @@ class $$GeofencesTableAnnotationComposer
 
   GeneratedColumn<bool> get enabled =>
       $composableBuilder(column: $table.enabled, builder: (column) => column);
+
+  GeneratedColumn<bool> get excludeFromWardrive => $composableBuilder(
+    column: $table.excludeFromWardrive,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -12682,6 +12755,7 @@ class $$GeofencesTableTableManager
                 Value<bool> alertOnStalking = const Value.absent(),
                 Value<String> alertMode = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
+                Value<bool> excludeFromWardrive = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => GeofencesCompanion(
@@ -12699,6 +12773,7 @@ class $$GeofencesTableTableManager
                 alertOnStalking: alertOnStalking,
                 alertMode: alertMode,
                 enabled: enabled,
+                excludeFromWardrive: excludeFromWardrive,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -12718,6 +12793,7 @@ class $$GeofencesTableTableManager
                 Value<bool> alertOnStalking = const Value.absent(),
                 Value<String> alertMode = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
+                Value<bool> excludeFromWardrive = const Value.absent(),
                 required int createdAt,
                 Value<int> rowid = const Value.absent(),
               }) => GeofencesCompanion.insert(
@@ -12735,6 +12811,7 @@ class $$GeofencesTableTableManager
                 alertOnStalking: alertOnStalking,
                 alertMode: alertMode,
                 enabled: enabled,
+                excludeFromWardrive: excludeFromWardrive,
                 createdAt: createdAt,
                 rowid: rowid,
               ),

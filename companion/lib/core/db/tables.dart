@@ -174,6 +174,8 @@ class Geofences extends Table {
       text().withDefault(const Constant('push'))();
   BoolColumn get enabled =>
       boolean().withDefault(const Constant(true))();
+  BoolColumn get excludeFromWardrive =>
+      boolean().withDefault(const Constant(false))();
   IntColumn get createdAt => integer()();
 
   @override

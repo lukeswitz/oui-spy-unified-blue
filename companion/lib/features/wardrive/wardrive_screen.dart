@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
@@ -16,6 +17,7 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
+import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -34,6 +36,19 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   String? _fittedSessionId;
   final _statsKey = GlobalKey();
   double _statsHeight = 0;
+  List<Geofence> _exclusionZones = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExclusionZones();
+  }
+
+  Future<void> _loadExclusionZones() async {
+    final db = ref.read(databaseProvider);
+    final zones = await db.getWardriveExclusionGeofences();
+    if (mounted) setState(() => _exclusionZones = zones);
+  }
 
   @override
   void dispose() {
@@ -100,6 +115,48 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       _mapController.camera.zoom,
     );
     if (!_followMode) setState(() => _followMode = true);
+  }
+
+  List<Widget> _exclusionZoneLayers() {
+    if (_exclusionZones.isEmpty) return [];
+    final circles = <CircleMarker>[];
+    final polygons = <Polygon>[];
+    const zoneColor = Color(0x30E6A85A); // warning @ 0.19
+    const zoneBorder = Color(0x99E6A85A); // warning @ 0.6
+
+    for (final g in _exclusionZones) {
+      if (g.zoneType == 'circle' && g.centerLat != null && g.centerLon != null) {
+        circles.add(CircleMarker(
+          point: LatLng(g.centerLat!, g.centerLon!),
+          radius: g.radiusM ?? 200,
+          useRadiusInMeter: true,
+          color: zoneColor,
+          borderColor: zoneBorder,
+          borderStrokeWidth: 1.5,
+        ));
+      } else if (g.zoneType == 'polygon' && g.polygonJson != null) {
+        try {
+          final pts = (jsonDecode(g.polygonJson!) as List)
+              .cast<Map<String, dynamic>>()
+              .map((p) => LatLng(
+                    (p['lat'] as num).toDouble(),
+                    (p['lon'] as num).toDouble(),
+                  ))
+              .toList();
+          polygons.add(Polygon(
+            points: pts,
+            color: zoneColor,
+            borderColor: zoneBorder,
+            borderStrokeWidth: 1.5,
+          ));
+        } catch (_) {}
+      }
+    }
+
+    return [
+      if (circles.isNotEmpty) CircleLayer(circles: circles),
+      if (polygons.isNotEmpty) PolygonLayer(polygons: polygons),
+    ];
   }
 
   @override
@@ -174,6 +231,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                   userAgentPackageName: 'tech.colonelpanic.ouispy',
                   maxZoom: 19,
                 ),
+                ..._exclusionZoneLayers(),
                 if (wd.routePoints.length >= 2)
                   PolylineLayer(polylines: [
                     Polyline(
@@ -244,7 +302,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             if (!wd.isActive)
               Positioned(
                 bottom: 24, left: 0, right: 0,
-                child: _IdleControls(wd: wd, ref: ref),
+                child: _IdleControls(wd: wd, ref: ref, onGeofenceReturn: _loadExclusionZones),
               ),
 
             // Active: focus button (top-right, below stats)
@@ -392,9 +450,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
 }
 
 class _IdleControls extends StatelessWidget {
-  const _IdleControls({required this.wd, required this.ref});
+  const _IdleControls({required this.wd, required this.ref, this.onGeofenceReturn});
   final WardriveController wd;
   final WidgetRef ref;
+  final VoidCallback? onGeofenceReturn;
 
   @override
   Widget build(BuildContext context) {
@@ -578,6 +637,25 @@ class _IdleControls extends StatelessWidget {
                     )),
                   ],
                 ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () async {
+                await Navigator.push(
+                  ref.context,
+                  MaterialPageRoute(builder: (_) => const GeofenceScreen()),
+                );
+                onGeofenceReturn?.call();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                decoration: BoxDecoration(
+                  color: th.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: th.border),
+                ),
+                child: Icon(Icons.fence, size: 14, color: AppTheme.warning),
               ),
             ),
             const SizedBox(width: 12),
