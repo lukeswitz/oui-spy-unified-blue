@@ -115,28 +115,51 @@ Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any
 
 ## Companion App
 
-Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. No web dashboard or WiFi AP — all control and data display happens in the app.
+Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. All control and data display happens in the app.
 
-### Screens
+### Core Features
 
-**Home** — Connection status with pulsing radar animation. Navigates home automatically when a device connects. Engine cards show live state (disabled/scanning/alerting). Tap any card to view settings or enable/disable directly. Status bar shows connected node, GPS quality, active engine count, and active node count.
+- **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate
+- **Wardrive mapping** with 5 target modes (WiGLE, Flock, Drone, Detector, WiGLE+Flock), WiFi/BLE/both radio selection, WiGLE CSV export, direct WiGLE upload, session history
+- **Per-engine control** — enable/disable any of the 7 engines independently, configure scan timing, radio modes, watchlist entries
+- **Mesh overlay** — see peer node names and per-node detection counts during ESP-NOW coordinated wardrives
+- **Ignore list** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles
+- **Metric/imperial** units throughout (km/mi, km/h/mph, m/ft)
 
-**Feed** — Real-time scrolling detection stream. Each row shows engine color, MAC address, RSSI, detection method, timestamp. Top stats bar shows top vendors and top Flock devices by count. Filter bar to show/hide specific engines. Long-press (or right-click on desktop) any row for actions: copy MAC/location/vendor to clipboard, show on map, foxhunt target. Tap crosshairs to foxhunt, and the far right icon to display on map.
+### Notifications
 
-**Wardrive** — Dedicated wardriving screen with map, start/stop control, and live stats overlay: unique WiFi APs, unique BLE devices, Flock detections, distance traveled, speed, detections per km (or per mile — unit preference). GPS accuracy indicator with color coding. Node stats overlay shows each mesh peer's name and live detection count during coordinated wardrives. Long-press any device row to copy MAC, location, vendor, or SSID. Session auto-saves to SQLite. WiGLE CSV export. Session history with devices count, upload/share.
+Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen MACs only** — no repeat spam.
 
-**Config** — Seven tabs: App (theme, units), Ignore List (suppress devices by MAC/OUI/SSID with per-scope WiFi/BLE/both toggles — excluded from feed, exports, database, and alerts), Detections (sortable list with engine filter chips, vendor lookup with OUI DB update), Hardware (buzzer on/off, volume slider, LED, neopixel brightness), Alerts (cooldown, heartbeat, rediscover intervals), Device Info (firmware version, node ID, free heap), Wardrive (radio selection, scan timing).
+| Engine | Default | What fires |
+|--------|---------|------------|
+| Flock Safety | On | New camera detected — method, channel, RSSI |
+| Watchlist / Detector | On | Watchlist MAC hit with device name |
+| Sky Spy / Drone | On | FAA Remote ID drone with UAV ID |
+| Foxhunter | Off | Signal crosses -65dBm (warm) or -50dBm (close) |
+| Wardrive | Milestones | Every 100 unique networks |
+
+Per-MAC cooldown (30s–30min), global rate limit (1–30/min), sound/vibration toggles. Configured from the bell icon in Config.
+
+### iOS Dynamic Island & Live Activity
+
+On iPhone 14 Pro+ (iOS 16.2+), active sessions show in the Dynamic Island and Lock Screen with engine-specific icons and live stats. All 7 engines supported — wardrive gets priority when multiple are active, but combined counts from all engines always visible in the expanded view.
+
+| Engine | Icon | Compact shows | Expanded adds |
+|--------|------|---------------|---------------|
+| Wardrive | `wifi` | Unique count | Flock, drones, distance, speed |
+| Foxhunter | `scope` | RSSI dBm | Target MAC, signal bar |
+| Flock BLE/WiFi | `video` | Flock count | Total detections, distance |
+| Sky Spy | `airplane` | Drone count | Total detections |
+| Detector | `radar` | Hit count | Total detections |
+| UniPwn | `cpu` | Status | Robot type, exploit phase |
+
+### Geofence Exclusion Zones
+
+Circle or polygon zones suppress detections near sensitive locations (home, office). Excluded from feed, map, database, and CSV exports. Managed from the fence icon on the wardrive screen.
 
 ### OUI Vendor Lookup
 
-The app ships with a 39k+ OUI vendor database (gzipped TSV from [Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety devices use OEM chip vendor OUIs (Silicon Labs, Liteon, UGS) — the app overrides these with correct labels while preserving the underlying chip manufacturer: e.g. "Flock Safety (Falcon) · Liteon Technology".
-
-### Engine-Specific Screens
-
-- **Detector** — manage OUI/MAC watchlist, see matches with filter descriptions
-- **Foxhunter** — set target MAC, live RSSI display
-- **Sky Spy** — drone telemetry table (UAV ID, operator ID, lat/lon, altitude, speed, heading, pilot location)
-- **UniPwn** — discovered Unitree robots list, select target, trigger exploit sequence
+Ships with a 39k+ entry OUI database ([Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety OUIs resolve to surveillance labels while preserving chip manufacturer — e.g. "Flock Safety (Falcon) · Liteon Technology".
 
 ### Install
 
@@ -214,7 +237,70 @@ flutter build ipa --release             # iOS archive
 flutter build macos --release           # macOS .app
 ```
 
-**Key dependencies:** `flutter_blue_plus` (BLE), `flutter_map` + `latlong2` (maps), `drift` (SQLite), `geolocator` (GPS), `riverpod` (state), `go_router` (navigation), `freezed` (models), `share_plus` (export).
+**iOS Live Activity (optional):** The `OuiSpyLiveActivity` Widget Extension target provides Dynamic Island support. In Xcode: File > New > Target > Widget Extension, name it `OuiSpyLiveActivity`, then add `OuiSpyLiveActivityAttributes.swift` to both Runner and extension target membership.
+
+---
+
+## Dependencies & Third-Party Services
+
+### Firmware (PlatformIO)
+
+| Library | Author | Purpose |
+|---------|--------|---------|
+| [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) | h2zero | BLE GATT server, scanning, ESP-NOW coexistence |
+| [ESP Async WebServer](https://github.com/mathieucarbou/ESPAsyncWebServer) | mathieucarbou | OTA update server (local network only) |
+| [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) | Adafruit | WS2812B LED control |
+| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | bblanchon | JSON serialization for config/mesh payloads |
+| [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus) | mikalhart | Hardware GPS NMEA parsing (optional module) |
+
+Built on **ESP-IDF** (via Arduino core for ESP32-S3) — WiFi promiscuous mode, ESP-NOW, mbedTLS (AES-GCM mesh encryption).
+
+### Companion App (Flutter)
+
+| Package | Purpose |
+|---------|---------|
+| [flutter_blue_plus](https://pub.dev/packages/flutter_blue_plus) | BLE GATT communication with hardware |
+| [flutter_map](https://pub.dev/packages/flutter_map) + [latlong2](https://pub.dev/packages/latlong2) | Map rendering and geolocation math |
+| [drift](https://pub.dev/packages/drift) + [sqlite3_flutter_libs](https://pub.dev/packages/sqlite3_flutter_libs) | Local SQLite database for sessions and detections |
+| [geolocator](https://pub.dev/packages/geolocator) | Phone GPS with background location |
+| [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) | Reactive state management |
+| [go_router](https://pub.dev/packages/go_router) | Declarative navigation |
+| [flutter_local_notifications](https://pub.dev/packages/flutter_local_notifications) | Local push notifications (iOS, Android, macOS) |
+| [dio](https://pub.dev/packages/dio) | HTTP client (WiGLE API uploads) |
+| [share_plus](https://pub.dev/packages/share_plus) | Native share sheet for CSV export |
+| [freezed](https://pub.dev/packages/freezed) + [json_serializable](https://pub.dev/packages/json_serializable) | Immutable data models with codegen |
+| [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) | Keychain/Keystore for mesh encryption keys |
+| [wakelock_plus](https://pub.dev/packages/wakelock_plus) | Prevent sleep during wardrive sessions |
+| [permission_handler](https://pub.dev/packages/permission_handler) | Runtime permission requests |
+| [shared_preferences](https://pub.dev/packages/shared_preferences) | Persisted user settings |
+| [intl](https://pub.dev/packages/intl) | Date/number formatting |
+| [uuid](https://pub.dev/packages/uuid) | Session ID generation |
+| [crypto](https://pub.dev/packages/crypto) | Hashing utilities |
+
+### APIs & Tile Services
+
+| Service | Usage |
+|---------|-------|
+| [WiGLE](https://api.wigle.net) | Wardrive CSV upload (user provides own API key) |
+| [CARTO](https://carto.com/basemaps/) | Dark, Light, and Voyager map tiles |
+| [OpenStreetMap](https://www.openstreetmap.org/) | OSM raster tiles |
+| [OpenTopoMap](https://opentopomap.org/) | Topographic map tiles |
+| [Stadia Maps](https://stadiamaps.com/) | Stamen Toner and Terrain tiles |
+
+### Data Sources
+
+| Source | What |
+|--------|------|
+| [Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database) | 39k+ IEEE OUI vendor database (bundled as gzipped TSV) |
+
+### iOS Native Frameworks
+
+| Framework | Usage |
+|-----------|-------|
+| ActivityKit | Live Activities / Dynamic Island (iOS 16.2+) |
+| WidgetKit | Widget Extension for Live Activity rendering |
+| CoreBluetooth | BLE (via flutter_blue_plus) |
+| CoreLocation | GPS (via geolocator) |
 
 ---
 
