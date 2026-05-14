@@ -25,7 +25,6 @@ class OuiLookupService {
   static const Map<String, String> _overrides = {
     // Flock Safety — FS Ext Battery (BLE, Silicon Labs EFR32)
     '588E81': 'Flock Safety (Battery)',
-    'CCCCCC': 'Flock Safety (Battery)',
     'EC1BBD': 'Flock Safety (Battery)',
     '9035EA': 'Flock Safety (Battery)',
     '040D84': 'Flock Safety (Battery)',

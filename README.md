@@ -46,7 +46,7 @@ All engines can run concurrently, with some limitations.
 
 The Flock-WiFi engine runs in 802.11 promiscuous mode, hopping channels 1/6/11 at 350ms dwell. Three detection methods:
 
-- **addr2 OUI match** — transmitter-side match against 43 known Flock Safety OUI prefixes
+- **addr2 OUI match** — transmitter-side match against 42 known Flock Safety OUI prefixes
 - **addr1 OUI match** — receiver-side technique that catches Flock STAs appearing only as the destination of probe responses during their burst-sleep windows. Skips multicast/broadcast addresses.
 - **Wildcard probe signature** — Probe Request (type=0 subtype=4) with zero-length SSID IE from a known-OUI addr2. High-precision Flock signature with FCS-trailer retry for driver compatibility. From [DeFlockJoplin](https://github.com/DeflockJoplin/flock-you) field research (Joplin drive-test: 11/12 cameras caught, 2 false positives).
 
