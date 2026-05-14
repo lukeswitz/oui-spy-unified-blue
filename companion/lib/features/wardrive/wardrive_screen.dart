@@ -36,6 +36,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   String? _fittedSessionId;
   final _statsKey = GlobalKey();
   double _statsHeight = 0;
+  double _currentZoom = 15;
   List<Geofence> _exclusionZones = [];
 
   @override
@@ -223,6 +224,15 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                       event.source == MapEventSource.dragStart) {
                     if (_followMode) setState(() => _followMode = false);
                   }
+                  if (event is MapEventMoveEnd ||
+                      event is MapEventDoubleTapZoomEnd ||
+                      event is MapEventFlingAnimationEnd ||
+                      event is MapEventScrollWheelZoom) {
+                    final z = _mapController.camera.zoom;
+                    if ((z - _currentZoom).abs() > 0.05) {
+                      setState(() => _currentZoom = z);
+                    }
+                  }
                 },
               ),
               children: [
@@ -372,60 +382,122 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
         ? allGeo.where((d) =>
             d.engine == Engine.flockBle || d.engine == Engine.flockWifi).toList()
         : allGeo;
-    final distThresh = wd.markerDistanceM;
-    final filtered = <Detection>[];
-    final placed = <LatLng>[];
+    if (geoDetections.isEmpty) return const [];
 
+    final zoom = _currentZoom;
+    // Zoom-adaptive scale factor: small at low zoom, larger at high zoom.
+    final zoomScale = ((zoom - 12.0) / 5.0).clamp(0.55, 1.6);
+
+    // Priority pins (cameras / drones) always render individually with an
+    // elevated lollipop pin so they're never buried by cluster dots.
+    final priority = <Detection>[];
+    final clusterable = <Detection>[];
     for (final d in geoDetections) {
+      final isFlock = d.engine == Engine.flockBle || d.engine == Engine.flockWifi;
+      final isDrone = d.engine == Engine.skySpy;
+      if (isFlock || isDrone) {
+        priority.add(d);
+      } else {
+        clusterable.add(d);
+      }
+    }
+
+    // Bucket clusterable detections by a zoom-aware pixel radius so dots stay
+    // visually separated at every zoom level.
+    final pixelBucketRadius =
+        (wd.markerDistanceM > 0 ? 22.0 : 26.0); // logical px between clusters
+    final meanLat = clusterable.isNotEmpty
+        ? clusterable.first.latitude!
+        : (priority.isNotEmpty ? priority.first.latitude! : 0.0);
+    final mPerPx = _metersPerPixel(meanLat, zoom);
+    final bucketRadiusM = max(wd.markerDistanceM.toDouble(),
+        pixelBucketRadius * mPerPx);
+    final r2 = bucketRadiusM * bucketRadiusM;
+
+    final centers = <LatLng>[]; // bucket anchor points
+    final counts = <int>[];
+    final reps = <Detection>[]; // representative detection per bucket
+
+    for (final d in clusterable) {
       final ll = LatLng(d.latitude!, d.longitude!);
-      bool tooClose = false;
-      for (final p in placed) {
-        final dx = (ll.latitude - p.latitude) * 111320;
-        final dy = (ll.longitude - p.longitude) * 111320 *
+      var hit = -1;
+      for (var i = 0; i < centers.length; i++) {
+        final c = centers[i];
+        final dx = (ll.latitude - c.latitude) * 111320.0;
+        final dy = (ll.longitude - c.longitude) * 111320.0 *
             cos(ll.latitude * pi / 180);
-        if (dx * dx + dy * dy < distThresh * distThresh) {
-          tooClose = true;
+        if (dx * dx + dy * dy < r2) {
+          hit = i;
           break;
         }
       }
-      if (!tooClose) {
-        filtered.add(d);
-        placed.add(ll);
+      if (hit < 0) {
+        centers.add(ll);
+        counts.add(1);
+        reps.add(d);
+      } else {
+        counts[hit] = counts[hit] + 1;
       }
     }
 
-    final densityMap = <int, int>{};
-    for (var i = 0; i < filtered.length; i++) {
-      densityMap[i] = (densityMap[i] ?? 0) + 1;
-    }
-    for (final d in geoDetections) {
-      final ll = LatLng(d.latitude!, d.longitude!);
-      for (var i = 0; i < filtered.length; i++) {
-        final f = filtered[i];
-        final fl = LatLng(f.latitude!, f.longitude!);
-        final dx = (ll.latitude - fl.latitude) * 111320;
-        final dy = (ll.longitude - fl.longitude) * 111320 *
-            cos(ll.latitude * pi / 180);
-        if (dx * dx + dy * dy < distThresh * distThresh) {
-          densityMap[i] = (densityMap[i] ?? 1) + 1;
-          break;
-        }
-      }
+    final markers = <Marker>[];
+
+    // Cluster dots
+    for (var i = 0; i < centers.length; i++) {
+      final c = centers[i];
+      final n = counts[i];
+      final d = reps[i];
+      final base = 18.0 + 7.0 * (log(n + 1) / ln10);
+      final size = (base * zoomScale).clamp(14.0, 56.0);
+      markers.add(Marker(
+        point: c,
+        width: size + 14,
+        height: size + 14,
+        alignment: Alignment.center,
+        child: _ClusterDot(
+          color: _densityColor(n),
+          engineColor: d.engine.color,
+          size: size,
+          count: n,
+        ),
+      ));
     }
 
-    return filtered.asMap().entries.map((entry) {
-      final d = entry.value;
-      final count = densityMap[entry.key] ?? 1;
-      final size = (12 + (count.clamp(1, 20) * 1.5)).toDouble();
-      final alpha = (0.3 + (count.clamp(1, 10) * 0.07)).clamp(0.3, 1.0);
-
-      return Marker(
+    // Elevated priority pins (cameras / drones)
+    for (final d in priority) {
+      final isDrone = d.engine == Engine.skySpy;
+      final pinHead = (22.0 * zoomScale).clamp(16.0, 30.0);
+      final stem = (26.0 * zoomScale).clamp(16.0, 36.0);
+      final w = pinHead + 10;
+      final h = pinHead + stem + 6;
+      markers.add(Marker(
         point: LatLng(d.latitude!, d.longitude!),
-        width: size + 8,
-        height: size + 8,
-        child: _MarkerDot(engine: d.engine, size: size, alpha: alpha, count: count),
-      );
-    }).toList();
+        width: w,
+        height: h,
+        alignment: Alignment.topCenter,
+        child: _PriorityPin(
+          color: d.engine.color,
+          icon: isDrone ? Icons.flight : Icons.videocam,
+          headSize: pinHead,
+          stemHeight: stem,
+        ),
+      ));
+    }
+
+    return markers;
+  }
+
+  static double _metersPerPixel(double lat, double zoom) =>
+      156543.03392 * cos(lat * pi / 180) / pow(2, zoom);
+
+  static Color _densityColor(int count) {
+    // 1 → muted teal/green, 50+ → muted red. Spectrum hops through
+    // yellow/orange so denser areas pop without being garish.
+    final n = count.clamp(1, 50).toDouble();
+    final t = ((n - 1) / 49.0).clamp(0.0, 1.0);
+    // Hue: 160 (teal) → 0 (red), saturation/lightness kept muted.
+    final hue = 160.0 * (1.0 - t);
+    return HSLColor.fromAHSL(1.0, hue, 0.55, 0.52).toColor();
   }
 
   Widget _runControls(WidgetRef ref, WardriveController wd) {
@@ -1084,64 +1156,173 @@ class _DetListRow extends ConsumerWidget {
   }
 }
 
-class _MarkerDot extends StatelessWidget {
-  const _MarkerDot({required this.engine, required this.size, required this.alpha, required this.count});
-  final Engine engine;
+/// Dense detections collapse into a single cluster dot. Color = density
+/// (muted teal → red spectrum). Number always shown, scaled to dot size.
+class _ClusterDot extends StatelessWidget {
+  const _ClusterDot({
+    required this.color,
+    required this.engineColor,
+    required this.size,
+    required this.count,
+  });
+  final Color color;
+  final Color engineColor;
   final double size;
-  final double alpha;
   final int count;
 
   @override
   Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    final isFlock = engine == Engine.flockBle || engine == Engine.flockWifi;
-    final isDrone = engine == Engine.skySpy;
-    final showIcon = isFlock || isDrone;
-    final iconData = isFlock ? Icons.videocam : isDrone ? Icons.flight : null;
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Container(
-          width: size + 6,
-          height: size + 6,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: engine.color.withValues(alpha: alpha * 0.3),
+    final label = count >= 1000
+        ? '${(count / 1000).toStringAsFixed(1)}k'
+        : '$count';
+    final fontSize = (size * 0.42).clamp(8.0, 18.0);
+    return RepaintBoundary(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Soft outer ripple — gives separation from the map without
+          // looking like a giant blob.
+          Container(
+            width: size + 10,
+            height: size + 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.18),
+            ),
           ),
-        ),
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: engine.color.withValues(alpha: alpha),
-            border: Border.all(color: engine.color, width: 1.5),
-          ),
-          child: showIcon && size > 14
-              ? Icon(iconData, size: size * 0.55, color: Colors.white.withValues(alpha: 0.9))
-              : null,
-        ),
-        if (count > 1 && size > 16)
-          Positioned(
-            right: 0, top: 0,
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: t.background,
-                shape: BoxShape.circle,
-                border: Border.all(color: engine.color, width: 0.5),
+          // Main filled disc with crisp ring.
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.95),
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.55),
+                width: 1.4,
               ),
-              child: Text(
-                '$count',
-                style: TextStyle(
-                  color: engine.color, fontSize: 7,
-                  fontWeight: FontWeight.w700, fontFamily: 'monospace',
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.35),
+                  blurRadius: 6,
+                  spreadRadius: 0.5,
                 ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: fontSize,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'monospace',
+                height: 1.0,
+                shadows: const [
+                  Shadow(blurRadius: 2, color: Colors.black54),
+                ],
               ),
             ),
           ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Lollipop pin for high-priority detections (Flock cameras, drones).
+/// Anchored at the geo point's apex — the head sits ABOVE the route so it
+/// never gets buried by cluster dots.
+class _PriorityPin extends StatelessWidget {
+  const _PriorityPin({
+    required this.color,
+    required this.icon,
+    required this.headSize,
+    required this.stemHeight,
+  });
+  final Color color;
+  final IconData icon;
+  final double headSize;
+  final double stemHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: SizedBox(
+        width: headSize + 10,
+        height: headSize + stemHeight + 6,
+        child: Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            // Vertical stem
+            Positioned(
+              top: headSize - 2,
+              child: Container(
+                width: 3,
+                height: stemHeight,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Anchor dot at geo point (base of stem)
+            Positioned(
+              top: headSize + stemHeight - 4,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+            // Pin head with icon
+            Container(
+              width: headSize,
+              height: headSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: Border.all(
+                  color: Colors.black.withValues(alpha: 0.75),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.55),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 3,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                icon,
+                size: headSize * 0.58,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
