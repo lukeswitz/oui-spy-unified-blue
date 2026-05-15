@@ -1,5 +1,5 @@
 <div align="center">
-<h1>OUIspy Omni</h1>
+<h2>OUI SPY APEX</h2>
 
 [![Version](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases) [![Join TestFlight Beta](https://img.shields.io/badge/TestFlight-Join-blue.svg?style=f&logo=apple)](https://testflight.apple.com/join/5RCKgnJ2) ![Platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
 ![Dart](https://img.shields.io/badge/Dart-Flutter%20App-0175C2)
@@ -17,9 +17,10 @@
 
 **About this fork:**
 
-Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
+- Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
 
-Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
+- Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
+
 
 > [!NOTE]
 > Early beta, bugs and unexpected behavior can be reported in Issues
@@ -114,14 +115,13 @@ Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any
 - **Up to 6 peers** per node
 - **AES-GCM encryption** (mbedtls) — 32-byte key, 12-byte nonce derived from node ID + counter
 - **5-character node IDs** — every detection carries source attribution so you know which node saw it
-- **Bidirectional** — detections flow both ways, tx/rx counters tracked
 - **No infrastructure required** — ESP-NOW peer-to-peer, no router or internet needed
 
 ---
 
 ## Companion App
 
-Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware over BLE GATT. All control and data display happens in the app.
+Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All control and display happens in the app.
 
 ### Core Features
 
@@ -134,7 +134,7 @@ Native Flutter app for Android, iOS, and macOS. Connects to OUI-SPY hardware ove
 
 ### Notifications
 
-Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen MACs only** — no repeat spam.
+Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen MACs only**. Configure in settings.
 
 | Engine | Default | What fires |
 |--------|---------|------------|
@@ -143,8 +143,6 @@ Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen
 | Sky Spy / Drone | On | FAA Remote ID drone with UAV ID |
 | Foxhunter | Off | Signal crosses -65dBm (warm) or -50dBm (close) |
 | Wardrive | Milestones | Every 1000 unique networks |
-
-Per-MAC cooldown (30s–30min), global rate limit (1–30/min), sound/vibration toggles. Configured from the bell icon in Config.
 
 ### iOS Dynamic Island & Live Activity
 
@@ -161,11 +159,11 @@ On iPhone 14 Pro+ (iOS 16.2+), active sessions show in the Dynamic Island and Lo
 
 ### Geofence Exclusion Zones
 
-Circle or polygon zones suppress detections near sensitive locations (home, office). Excluded from feed, map, database, and CSV exports. Managed from the fence icon on the wardrive screen.
+Circle or polygon zones suppress detections near sensitive locations (home, office). Excluded from feed, map, database, and CSV exports. Managed from the fence icon on the wardrive screen. 
 
 ### OUI Vendor Lookup
 
-Ships with a 39k+ entry OUI database ([Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety OUIs resolve to surveillance labels while preserving chip manufacturer — e.g. "Flock Safety (Falcon) · Liteon Technology".
+Ships with a 39k+ entry OUI database ([Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety OUIs resolve to surveillance labels while preserving chip manufacturer — e.g. "`Flock Safety (Falcon) · Liteon Technology`".
 
 ### Install
 
@@ -335,7 +333,7 @@ This repo contains the unified firmware (all engines) and the companion app. Eac
 
 ---
 
-## Author
+## Author of OUISPY ecosystem
 
 **colonelpanichacks**
 

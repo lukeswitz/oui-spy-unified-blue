@@ -421,9 +421,9 @@
 
   <div class="container">
     <div class="header">
-      <h1>OUI SPY</h1>
+      <h1>OUISPY APEX</h1>
       <div class="subtitle">firmware flasher</div>
-      <div class="version">v3.1 // node orchestration</div>
+      <div class="version">v3.0.0.7</div>
     </div>
 
     <div class="flash-card" id="flashCard">
@@ -446,7 +446,7 @@
       </div>
 
       <div class="complete-msg" id="completeMsg">
-        FIRMWARE DEPLOYED // PLEASE RESET YOUR OUI-SPY
+        FIRMWARE DEPLOYED // COMPLETED: SUCCESS
       </div>
 
       <div class="log" id="log"></div>
@@ -592,7 +592,7 @@
         setProgress(100, 'COMPLETE');
         progressFill.classList.add('complete');
         setStatus('FLASH COMPLETE', 'done');
-        log('Flash complete. Please reset your OUI-SPY to begin using new firmware.', 'success');
+        log('Flash complete. Device should reset...', 'success');
 
         await esploader.after("hard_reset");
         await transport.disconnect();
@@ -621,7 +621,7 @@
     }
 
     // -------------------------------------------------------------------------
-    // PCB Trace Funk Geometry — generative circuit board art
+    // Geo art on success
     // -------------------------------------------------------------------------
     function initPCB() {
       const canvas = document.getElementById('pcbCanvas');
