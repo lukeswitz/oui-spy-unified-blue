@@ -84,28 +84,24 @@ static unsigned long lastChannelHop = 0;
 static uint16_t priorityDwellMs = 350;  // base for ch 1, 6, 11
 static uint16_t normalDwellMs   = 150;  // base for other channels
 
-// Adaptive dwell — like Atomgps_wigler: channels with more traffic get more time
+// Adaptive dwell 
 static uint16_t timePerChannel[14] = {
     350, 150, 150, 150, 150, 350, 150, 150, 150, 150, 350, 150, 150, 150
 };
 static volatile uint8_t beaconsThisHop = 0;  // count beacons on current channel
 
-// BLE scan timing — conservative to avoid starving WiFi promisc on shared radio.
-// ESP32 single 2.4GHz radio uses TDM: BLE active = WiFi capture drops 30-60%.
-// 800ms scan every 3000ms = ~27% BLE duty (was 75% at 1500/2000).
+// BLE scan timing — conservative 
+// 800ms scan every 3000ms = ~27% BLE duty
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
-// Dedup rings — using shared template from dedup_ring.h.
-// BLE callback ring (normal context, 10s cooldown, 512 entries for dense urban).
+// Dedup rings
 static DedupRing<512, 10000> wardriveDedup;
-// ISR flock dedup — separate so flock cameras aren't suppressed by 10s wardrive cooldown.
-static DedupRingISR<16, 5000> flockWifiDedup;
 // ISR WiFi beacon dedup — separate ring to avoid contention with BLE callback.
 static DedupRingISR<512, 10000> wifiDedup;
 
-// Cached engine active states — avoids function calls per frame in ISR.
-static volatile uint8_t wdFlockActive = 0;
+// Cached engine active states — avoids function calls per frame in ISR
+static volatile uint8_t wdFlockBleActive = 0;
 static volatile uint8_t wdFoxhunterActive = 0;
 static volatile uint8_t wdDetectorActive = 0;
 
@@ -267,20 +263,17 @@ static void sendWildcardProbe(void) {
 }
 
 // ============================================================================
-// WiFi Promiscuous Callback — THE wardrive WiFi scanner.
-// Pure promiscuous mode: catches beacons (SSID/auth for WiGLE), flock OUI
-// frames, and foxhunter targets. No WiFi.scanNetworks() needed.
+// WiFi Promiscuous Callback — wardrive WiFi scanner.
+// Beacons/probe-resp for WiGLE collection + foxhunter passive frames.
+// Flock-WiFi OUI detection lives in the standalone flock_wifi engine.
 // ============================================================================
 
 static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (!wardriveActive) return;
 
-    // Accept MGMT, DATA, and CTRL frames. Flock cameras appear as addr1
-    // (destination) in frames from associated APs — these can be any type.
-    // CTRL frames (ACK/CTS/RTS/BlockAck) may be short; len<24 check below
-    // handles that. Standalone flock_wifi accepts all types and catches
-    // cameras that were invisible when wardrive filtered to MGMT+DATA only.
-    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA && type != WIFI_PKT_CTRL) return;
+    // MGMT (beacons/probe-resp for WiGLE) + DATA (foxhunter target frames).
+    // CTRL frames excluded at filter mask; this is belt-and-suspenders.
+    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* p = pkt->payload;
@@ -290,58 +283,33 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
     uint8_t frameType = (p[0] >> 2) & 0x03;
     uint8_t frameSubtype = (p[0] >> 4) & 0x0F;
 
-    const uint8_t* addr1 = &p[4];   // destination
-    const uint8_t* addr2 = &p[10];  // source/transmitter
-    const uint8_t* addr3 = &p[16];  // BSSID
-
-    // --- 1. Flock OUI check on all frames ---
-    // Must run before beacon dedup so flock cameras get reported
-    if (wdFlockActive) {
-        const uint8_t* flockMac = NULL;
-        uint8_t flockMethod = 0xFF;
-
-        if (flockMatchOuiISR(addr2)) {
-            flockMac = addr2;
-            flockMethod = METHOD_OUI_ADDR2;
-            // Wildcard probe: Probe Request (type=0 subtype=4) with zero-length
-            // SSID IE. Synced with flock_wifi.cpp DeFlockJoplin IE parser.
-            if (frameType == 0 && frameSubtype == 4) {
-                int bodyOff = 24;
-                int bodyLen = len - bodyOff;
-                const uint8_t* body = p + bodyOff;
-                int r = (bodyLen > 0) ? isWildcardProbeIE(body, bodyLen) : -1;
-                if (r == -1 && bodyLen > 4) r = isWildcardProbeIE(body, bodyLen - 4);
-                if (r == 1) flockMethod = METHOD_WILDCARD_PROBE;
-            }
-        } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
-            flockMac = addr1;
-            flockMethod = METHOD_OUI_ADDR1;
-        } else if (frameType == 0 && flockMatchOuiISR(addr3)) {
-            flockMac = addr3;
-            flockMethod = METHOD_OUI_ADDR3;
+    // Beacons
+    if (frameType != 0 || (frameSubtype != 8 && frameSubtype != 5)) {
+        // Foxhunter still wants any frame from a target. Cheap when inactive.
+        if (wdFoxhunterActive) {
+            const uint8_t* addr1 = &p[4];
+            const uint8_t* addr2 = &p[10];
+            const uint8_t* addr3 = &p[16];
+            foxhunterCheckWifiDeviceISR(addr1, addr2, addr3,
+                                         pkt->rx_ctrl.rssi,
+                                         pkt->rx_ctrl.channel);
         }
-
-        if (flockMac != NULL && !flockWifiDedup.check(flockMac)) {
-            DetectionEvent evt = {};
-            evt.engine_id = ENGINE_FLOCK_WIFI;
-            memcpy(evt.mac, flockMac, 6);
-            evt.rssi = pkt->rx_ctrl.rssi;
-            evt.channel = pkt->rx_ctrl.channel;
-            evt.timestamp_ms = millis();
-            evt.method = flockMethod;
-            pushDetectionFromISR(&evt);
-        }
+        return;
     }
 
-    // --- 2. Foxhunter target check on ALL frames ---
+    const uint8_t* addr3 = &p[16];  // BSSID
+
+    // Foxhunter check on the beacon/probe-resp frame too
     if (wdFoxhunterActive) {
+        const uint8_t* addr1 = &p[4];
+        const uint8_t* addr2 = &p[10];
         foxhunterCheckWifiDeviceISR(addr1, addr2, addr3,
                                      pkt->rx_ctrl.rssi,
                                      pkt->rx_ctrl.channel);
     }
 
-    // --- 3. Beacon / Probe Response → wardrive AP capture (WiGLE data) ---
-    if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {
+    // Beacon / Probe Response → wardrive AP capture (WiGLE data)
+    {
         if (wifiDedup.check(addr3)) return;
 
         int tagOffset = 36;
@@ -356,7 +324,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
                     memcpy(ssid, &p[tagOffset + 2], tagLen);
                     ssid[tagLen] = '\0';
                 }
-                // else: ssid stays empty — hidden network
+                // hidden network
             }
             // tagLen == 0: standard hidden network — ssid stays empty
         }
@@ -395,9 +363,7 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         uint32_t now = millis();
         std::string name = dev->getName();
 
-        // Flock detection FIRST — alertable events get queue priority over
-        // passive wardrive collection. Only when any flock engine is active.
-        if (wdFlockActive) {
+        if (wdFlockBleActive) {
             bool isFlock = false;
             uint8_t flockMethod = 0;
             bool isRaven = false;
@@ -466,7 +432,6 @@ static WardriveAdvCallbacks wardriveBleCallbacks;
 static void wardriveInit(void) {
     wardriveDedup.reset();
     wifiDedup.reset();
-    flockWifiDedup.reset();
     flockOuiInitBuckets();
     Serial.println("[WARDRIVE] Initialized");
 }
@@ -476,9 +441,7 @@ static void wardriveStart(void) {
     lastBleScan = 0;
     wardriveDedup.reset();
     wifiDedup.reset();
-    flockWifiDedup.reset();
-    wdFlockActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED ||
-                     engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
+    wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
     wdDetectorActive = (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) ? 1 : 0;
     currentChannel = channelStart;
@@ -505,15 +468,9 @@ static void wardriveStart(void) {
         };
         esp_wifi_set_country(&country);
 
-        // Promiscuous filter: ALL frame types.
-        // CTRL frames needed for flock OUI detection — cameras appear as
-        // addr1 (destination) in data/ctrl frames from associated APs.
-        // Standalone flock_wifi uses default (all types) and catches cameras
-        // that wardrive missed when limited to MGMT+DATA only.
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
-                           WIFI_PROMIS_FILTER_MASK_DATA |
-                           WIFI_PROMIS_FILTER_MASK_CTRL
+                           WIFI_PROMIS_FILTER_MASK_DATA
         };
         esp_wifi_set_promiscuous_filter(&filter);
 
@@ -583,8 +540,6 @@ static void wardriveLoop(void) {
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = now;
 
-            // Wildcard probe on each hop — APs respond immediately instead of
-            // waiting up to 102.4ms for next beacon interval. Free speed boost.
             sendWildcardProbe();
         }
     }

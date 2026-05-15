@@ -180,6 +180,13 @@ static void detectorStart(void) {
 
     if (!wardriveOwns) {
         WiFi.mode(WIFI_STA);
+        // MGMT+DATA only. CTRL frame flood drops legitimate captures by
+        // overloading the ISR — same regression that hurt wardrive scans.
+        wifi_promiscuous_filter_t filter = {
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
+                           WIFI_PROMIS_FILTER_MASK_DATA
+        };
+        esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
         esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);

@@ -76,6 +76,13 @@ static void flockWifiInit(void) {
 
 static void flockWifiStart(void) {
     WiFi.mode(WIFI_STA);
+    // MGMT+DATA only. Matches type check at line 21 and prevents CTRL flood
+    // from starving OUI detection on this engine's ISR.
+    wifi_promiscuous_filter_t filter = {
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
+                       WIFI_PROMIS_FILTER_MASK_DATA
+    };
+    esp_wifi_set_promiscuous_filter(&filter);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
     esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);

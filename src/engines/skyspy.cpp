@@ -217,6 +217,12 @@ static void skyspyInit(void) {
 static void skyspyStart(void) {
     // Start WiFi promiscuous for NAN/Beacon ODID
     WiFi.mode(WIFI_STA);
+    // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
+    // bury the callback in irrelevant traffic and miss drone beacons.
+    wifi_promiscuous_filter_t filter = {
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
+    };
+    esp_wifi_set_promiscuous_filter(&filter);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(wifiCallback);
     esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);

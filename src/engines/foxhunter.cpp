@@ -236,6 +236,14 @@ static void foxhunterStart(void) {
     // WiFi promiscuous only when wardrive doesn't own WiFi
     if (!wardriveOwns) {
         WiFi.mode(WIFI_STA);
+        // MGMT+DATA only. CTRL frames (ACK/CTS/RTS/BlockAck) outnumber legit
+        // target frames 10-100x on busy networks; including them overloads
+        // the ISR and drops the very frames foxhunter needs to track RSSI on.
+        wifi_promiscuous_filter_t filter = {
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
+                           WIFI_PROMIS_FILTER_MASK_DATA
+        };
+        esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
         uint8_t startCh = (hintChannel > 0) ? hintChannel : 1;
