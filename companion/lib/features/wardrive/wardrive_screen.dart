@@ -713,7 +713,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     for (final d in priority) {
       final isDrone = d.engine == Engine.skySpy;
       final pinHead = (24.0 * zoomScale).clamp(18.0, 32.0);
-      final leader = (18.0 * zoomScale).clamp(12.0, 26.0);
+      final leader = (40.0 * zoomScale).clamp(30.0, 56.0);
       final w = pinHead + leader + 12;
       final h = pinHead + leader + 12;
       pins.add(Marker(
