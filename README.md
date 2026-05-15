@@ -142,7 +142,7 @@ Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen
 | Watchlist / Detector | On | Watchlist MAC hit with device name |
 | Sky Spy / Drone | On | FAA Remote ID drone with UAV ID |
 | Foxhunter | Off | Signal crosses -65dBm (warm) or -50dBm (close) |
-| Wardrive | Milestones | Every 100 unique networks |
+| Wardrive | Milestones | Every 1000 unique networks |
 
 Per-MAC cooldown (30s–30min), global rate limit (1–30/min), sound/vibration toggles. Configured from the bell icon in Config.
 

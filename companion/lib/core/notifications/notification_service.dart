@@ -177,12 +177,12 @@ class NotificationService extends ChangeNotifier {
     _fireDetectionNotification(det);
   }
 
-  /// Fire a wardrive milestone notification (e.g., every 100 unique networks).
+  /// Fire a wardrive milestone notification 
   void onWardriveUpdate({required int uniqueCount}) {
     if (!_initialized || !_permissionGranted) return;
     if (!milestoneAlertsEnabled) return;
 
-    final milestone = (uniqueCount ~/ 100) * 100;
+    final milestone = (uniqueCount ~/ 1000) * 1000;
     if (milestone > 0 && milestone > _lastMilestone) {
       _lastMilestone = milestone;
       _fireMilestoneNotification(milestone);
