@@ -17,6 +17,7 @@ import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
+import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
@@ -203,18 +204,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final t = AppTheme.of(context);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        Text(
-          'APPEARANCE',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 12),
-        _ConfigSwitch(
+        const ConfigSectionHeader(label: 'APPEARANCE'),
+        ConfigToggleRow(
+          icon: isDark ? Icons.dark_mode : Icons.light_mode,
           label: 'Dark Mode',
+          subtitle: isDark ? 'Dark theme active' : 'Light theme active',
+          color: AppTheme.accent,
           value: isDark,
           onChanged: (v) {
             ref.read(themeModeProvider.notifier).setMode(
@@ -222,19 +219,16 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 );
           },
         ),
-        const SizedBox(height: 24),
-        const Divider(),
-        const SizedBox(height: 12),
-        Text(
-          'UNITS',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 12),
-        _ConfigSwitch(
-          label: 'Imperial (mi, mph, ft)',
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'UNITS'),
+        ConfigToggleRow(
+          icon: isImperial ? Icons.straighten : Icons.square_foot,
+          label: 'Imperial Units',
+          subtitle: isImperial
+              ? 'Distances mi, speed mph, altitude ft'
+              : 'Distances km, speed km/h, altitude m',
+          color: AppTheme.accent,
           value: isImperial,
           onChanged: (v) {
             ref.read(unitSystemProvider.notifier).setSystem(
@@ -242,101 +236,62 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 );
           },
         ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'WARDRIVE — RSSI'),
         Padding(
-          padding: const EdgeInsets.only(left: 4, top: 4),
+          padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(
-            isImperial
-                ? 'Distances in miles, speed in mph, altitude in feet'
-                : 'Distances in km, speed in km/h, altitude in meters',
+            'RSSI change threshold before re-logging a seen device',
             style: TextStyle(color: t.textDim, fontSize: 11),
           ),
         ),
-        const SizedBox(height: 24),
-        const Divider(),
-        const SizedBox(height: 12),
-        Text(
-          'WARDRIVE',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'RSSI change threshold before re-logging a seen device',
-          style: TextStyle(color: t.textDim, fontSize: 11),
-        ),
-        const SizedBox(height: 12),
         const _WardriveRssiRow(isBle: false),
         const _WardriveRssiRow(isBle: true),
+
         const SizedBox(height: 16),
-        Text(
-          'SCAN TIMING',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Lower values = faster scans, more battery drain',
-          style: TextStyle(color: t.textDim, fontSize: 11),
-        ),
-        const SizedBox(height: 8),
-        const _ScanTimingSliders(),
-        const SizedBox(height: 16),
-        Text(
-          'CHANNEL RANGE',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'WiFi channels to scan. Narrower range = faster per-channel coverage.',
-          style: TextStyle(color: t.textDim, fontSize: 11),
-        ),
-        const SizedBox(height: 8),
-        const _ChannelRangeSlider(),
-        const SizedBox(height: 24),
-        const Divider(),
-        const SizedBox(height: 12),
-        const _OuiDatabaseSection(),
-        const SizedBox(height: 24),
-        const Divider(),
-        const SizedBox(height: 12),
-        const _WigleSection(),
-        const SizedBox(height: 24),
-        const Divider(),
-        const SizedBox(height: 12),
-        Text(
-          'ABOUT',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 8),
-        _InfoRow(label: 'Version', value: '1.0.0'),
-        const SizedBox(height: 12),
-        GestureDetector(
-          onTap: () => _launchUrl('https://github.com/colonelpanic/oui-spy'),
-          child: Row(
-            children: [
-              const Icon(Icons.code, size: 14, color: AppTheme.accent),
-              const SizedBox(width: 8),
-              Text(
-                'github.com/colonelpanic/oui-spy',
-                style: TextStyle(
-                  color: AppTheme.accent,
-                  fontSize: 12,
-                  decoration: TextDecoration.underline,
-                  decorationColor: AppTheme.accent.withValues(alpha: 0.5),
-                ),
-              ),
-            ],
+        const ConfigSectionHeader(label: 'SCAN TIMING'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8, left: 2),
+          child: Text(
+            'Lower values = faster scans, more battery drain',
+            style: TextStyle(color: t.textDim, fontSize: 11),
           ),
+        ),
+        const _ScanTimingSliders(),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'CHANNEL RANGE'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8, left: 2),
+          child: Text(
+            'WiFi channels to scan. Narrower range = faster per-channel coverage.',
+            style: TextStyle(color: t.textDim, fontSize: 11),
+          ),
+        ),
+        const _ChannelRangeSlider(),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'OUI DATABASE'),
+        const _OuiDatabaseSection(),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'WIGLE'),
+        const _WigleSection(),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'ABOUT'),
+        const ConfigInfoRow(
+          icon: Icons.info_outline,
+          label: 'Version',
+          value: '1.0.0',
+        ),
+        ConfigActionRow(
+          icon: Icons.code,
+          label: 'Source Code',
+          subtitle: 'github.com/colonelpanic/oui-spy',
+          onTap: () => _launchUrl('https://github.com/colonelpanic/oui-spy'),
+          trailing: Icon(Icons.open_in_new, size: 14, color: t.textDim),
         ),
       ],
     );
@@ -357,25 +312,40 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.bluetooth_disabled, size: 36, color: t.textDim),
-            const SizedBox(height: 12),
-            Text(
-              'NO NODE CONNECTED',
-              style: TextStyle(
-                color: t.textDim, fontSize: 12,
-                fontWeight: FontWeight.w700, letterSpacing: 2,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: t.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: t.border, width: 0.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.warning.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.bluetooth_disabled, size: 32, color: AppTheme.warning),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Connect an OUI-SPY node to configure hardware settings.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: t.textDim, fontSize: 11),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Text(
+                'NO NODE CONNECTED',
+                style: TextStyle(
+                  color: t.textPrimary, fontSize: 12,
+                  fontWeight: FontWeight.w700, letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Connect an OUI-SPY node to configure hardware settings.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: t.textDim, fontSize: 11),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -386,10 +356,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        _ConfigSwitch(
+        const ConfigSectionHeader(label: 'AUDIO'),
+        ConfigToggleRow(
+          icon: Icons.volume_up,
           label: 'Buzzer',
+          subtitle: 'Audible alerts on detections',
+          color: const Color(0xFFFFB84A),
           value: _buzzerEnabled,
           onChanged: (v) {
             setState(() => _buzzerEnabled = v);
@@ -397,32 +371,45 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           },
         ),
         if (_buzzerEnabled)
-          _ConfigSlider(
+          ConfigSliderRow(
+            icon: Icons.graphic_eq,
             label: 'Buzzer Volume',
-            value: _buzzerVolume,
+            valueLabel: '$_buzzerVolume',
             min: 1,
             max: 255,
+            divisions: 254,
+            value: _buzzerVolume.toDouble(),
+            color: const Color(0xFFFFB84A),
             onChanged: (v) {
-              setState(() => _buzzerVolume = v);
+              setState(() => _buzzerVolume = v.round());
               _writeHardwareConfig();
             },
           ),
-        _ConfigSwitch(
-          label: 'LED',
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'LIGHTING'),
+        ConfigToggleRow(
+          icon: Icons.lightbulb,
+          label: 'Status LED',
+          subtitle: 'Power and activity indicator',
+          color: const Color(0xFF4AFF8A),
           value: _ledEnabled,
           onChanged: (v) {
             setState(() => _ledEnabled = v);
             _writeHardwareConfig();
           },
         ),
-        const SizedBox(height: 16),
-        _ConfigSlider(
+        ConfigSliderRow(
+          icon: Icons.brightness_6,
           label: 'NeoPixel Brightness',
-          value: _neopixelBrightness,
+          valueLabel: '$_neopixelBrightness',
           min: 0,
           max: 255,
+          divisions: 255,
+          value: _neopixelBrightness.toDouble(),
+          color: const Color(0xFFB44AFF),
           onChanged: (v) {
-            setState(() => _neopixelBrightness = v);
+            setState(() => _neopixelBrightness = v.round());
             _writeHardwareConfig();
           },
         ),
@@ -432,7 +419,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   Widget _buildAlertsTab() {
     final appState = ref.watch(appStateProvider);
-    final t = AppTheme.of(context);
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -441,34 +427,32 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           physics: NeverScrollableScrollPhysics(),
         ),
         if (appState.isConnected) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Text(
-              'FIRMWARE TIMING',
-              style: TextStyle(
-                color: t.textDim, fontSize: 10,
-                fontWeight: FontWeight.w700, letterSpacing: 2,
-              ),
-            ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: ConfigSectionHeader(label: 'FIRMWARE TIMING'),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Column(
               children: [
-                _ConfigField(
-                  label: 'Cooldown (ms)', value: _cooldownMs,
+                ConfigNumberField(
+                  icon: Icons.hourglass_empty,
+                  label: 'Cooldown', suffix: 'ms', value: _cooldownMs,
                   onChanged: (v) { setState(() => _cooldownMs = v); _writeAlertConfig(); },
                 ),
-                _ConfigField(
-                  label: 'Heartbeat (ms)', value: _heartbeatMs,
+                ConfigNumberField(
+                  icon: Icons.favorite,
+                  label: 'Heartbeat', suffix: 'ms', value: _heartbeatMs,
                   onChanged: (v) { setState(() => _heartbeatMs = v); _writeAlertConfig(); },
                 ),
-                _ConfigField(
-                  label: 'Rediscover (ms)', value: _rediscoverMs,
+                ConfigNumberField(
+                  icon: Icons.refresh,
+                  label: 'Rediscover', suffix: 'ms', value: _rediscoverMs,
                   onChanged: (v) { setState(() => _rediscoverMs = v); _writeAlertConfig(); },
                 ),
-                _ConfigField(
-                  label: 'HB Active (ms)', value: _hbActiveMs,
+                ConfigNumberField(
+                  icon: Icons.bolt,
+                  label: 'HB Active', suffix: 'ms', value: _hbActiveMs,
                   onChanged: (v) { setState(() => _hbActiveMs = v); _writeAlertConfig(); },
                 ),
               ],
@@ -485,36 +469,43 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   Widget _buildWifiTab() {
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
+    final t = AppTheme.of(context);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        Text(
-          'WiFi STA mode connects the device to your network for OTA updates, '
-          'data upload, and remote node communication.',
-          style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 12),
+        const ConfigSectionHeader(label: 'STATION MODE'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12, left: 2),
+          child: Text(
+            'Connects node to your network for OTA updates, data upload, and remote node communication.',
+            style: TextStyle(color: t.textDim, fontSize: 11),
+          ),
         ),
-        const SizedBox(height: 16),
-        TextField(
+        ConfigTextField(
+          icon: Icons.wifi,
+          label: 'WiFi SSID',
           controller: _ssidController,
-          style: TextStyle(color: AppTheme.of(context).textPrimary),
-          decoration: const InputDecoration(labelText: 'WiFi SSID'),
         ),
-        const SizedBox(height: 12),
-        TextField(
+        ConfigTextField(
+          icon: Icons.lock,
+          label: 'Password',
           controller: _passController,
-          style: TextStyle(color: AppTheme.of(context).textPrimary),
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Password'),
+          obscure: true,
         ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: _writeWifiConfig,
-          child: const Text('SAVE & CONNECT'),
+        const SizedBox(height: 8),
+        ConfigActionRow(
+          icon: Icons.save,
+          label: 'Save & Connect',
+          subtitle: 'Push credentials to node',
+          color: AppTheme.success,
+          onTap: _writeWifiConfig,
+          trailing: const Icon(Icons.arrow_forward, size: 16, color: AppTheme.success),
         ),
-        const SizedBox(height: 24),
-        OutlinedButton(
-          onPressed: _scanNetworks,
-          child: const Text('SCAN NETWORKS'),
+        ConfigActionRow(
+          icon: Icons.radar,
+          label: 'Scan Networks',
+          subtitle: 'List nearby access points',
+          onTap: _scanNetworks,
         ),
       ],
     );
@@ -541,24 +532,36 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        _InfoRow(label: 'Version', value: _fwVersion),
-        _InfoRow(label: 'Node ID', value: _nodeId),
-        _InfoRow(label: 'Free Heap', value: _heapFree),
-        const SizedBox(height: 24),
-        OutlinedButton(
-          onPressed: () {},
-          child: const Text('CHECK FOR UPDATE'),
+        const ConfigSectionHeader(label: 'NODE INFO'),
+        ConfigInfoRow(
+          icon: Icons.numbers, label: 'Version', value: _fwVersion,
         ),
-        const SizedBox(height: 12),
-        OutlinedButton(
-          onPressed: () {},
-          style: OutlinedButton.styleFrom(
-            side: const BorderSide(color: AppTheme.error),
-            foregroundColor: AppTheme.error,
-          ),
-          child: const Text('FACTORY RESET'),
+        ConfigInfoRow(
+          icon: Icons.fingerprint, label: 'Node ID', value: _nodeId,
+        ),
+        ConfigInfoRow(
+          icon: Icons.memory, label: 'Free Heap', value: _heapFree,
+        ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'UPDATES'),
+        ConfigActionRow(
+          icon: Icons.system_update,
+          label: 'Check for Update',
+          subtitle: 'Compare against latest release',
+          onTap: () {},
+        ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'DANGER ZONE'),
+        ConfigActionRow(
+          icon: Icons.restart_alt,
+          label: 'Factory Reset',
+          subtitle: 'Erase all settings and reboot',
+          destructive: true,
+          onTap: () {},
         ),
       ],
     );
@@ -580,90 +583,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           rediscoverMs: _rediscoverMs,
           hbActiveMs: _hbActiveMs,
         );
-  }
-}
-
-class _ConfigSwitch extends StatelessWidget {
-  const _ConfigSwitch({required this.label, required this.value, this.onChanged});
-  final String label;
-  final bool value;
-  final ValueChanged<bool>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyLarge),
-          Switch(value: value, onChanged: onChanged),
-        ],
-      ),
-    );
-  }
-}
-
-class _ConfigSlider extends StatelessWidget {
-  const _ConfigSlider({required this.label, required this.value, required this.min, required this.max, required this.onChanged});
-  final String label;
-  final int value;
-  final int min;
-  final int max;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: Theme.of(context).textTheme.bodyLarge),
-            Text('$value', style: const TextStyle(color: AppTheme.accent, fontFamily: 'monospace', fontSize: 13)),
-          ],
-        ),
-        Slider(
-          value: value.toDouble(), min: min.toDouble(), max: max.toDouble(),
-          activeColor: AppTheme.accent, inactiveColor: t.border,
-          onChanged: (v) => onChanged(v.round()),
-        ),
-      ],
-    );
-  }
-}
-
-class _ConfigField extends StatelessWidget {
-  const _ConfigField({required this.label, required this.value, required this.onChanged});
-  final String label;
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
-          SizedBox(
-            width: 100,
-            child: TextFormField(
-              initialValue: '$value',
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: AppTheme.accent, fontFamily: 'monospace', fontSize: 13),
-              textAlign: TextAlign.right,
-              onFieldSubmitted: (v) {
-                final parsed = int.tryParse(v);
-                if (parsed != null) onChanged(parsed);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1295,27 +1214,6 @@ class _WigleStat extends StatelessWidget {
             color: t.textDim, fontSize: 8,
             fontWeight: FontWeight.w600, letterSpacing: 0.5,
           )),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          Text(value, style: TextStyle(color: t.textPrimary, fontFamily: 'monospace', fontSize: 13)),
         ],
       ),
     );
