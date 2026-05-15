@@ -3,26 +3,31 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/feed/feed_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
-/// Quick-filter presets — collapse common multi-engine selections to one chip.
-enum FilterPreset {
-  all('ALL', null),
-  ble('BLE', _bleEngines),
-  wifi('WIFI', _wifiEngines),
-  flock('FLOCK', _flockEngines),
-  alerts('ALERTS', _alertEngines);
+enum RadioFilter { ble, wifi }
 
-  const FilterPreset(this.label, this.engines);
+enum FilterPreset {
+  all('ALL', null, null),
+  ble('BLE', _bleEngines, RadioFilter.ble),
+  wifi('WIFI', _wifiEngines, RadioFilter.wifi),
+  flock('FLOCK', _flockEngines, null),
+  alerts('ALERTS', _alertEngines, null);
+
+  const FilterPreset(this.label, this.engines, this.radio);
   final String label;
   final Set<Engine>? engines;
+  final RadioFilter? radio;
 
   static const _bleEngines = {
     Engine.detector,
     Engine.flockBle,
     Engine.foxhunter,
     Engine.uniPwn,
+    Engine.wardrive,
   };
   static const _wifiEngines = {
+    Engine.detector,
     Engine.flockWifi,
+    Engine.foxhunter,
     Engine.skySpy,
     Engine.wardrive,
   };
@@ -31,7 +36,8 @@ enum FilterPreset {
 
   Set<Engine> resolve() => engines ?? Engine.values.toSet();
 
-  bool matches(Set<Engine> active) {
+  bool matches(Set<Engine> active, RadioFilter? activeRadio) {
+    if (radio != activeRadio) return false;
     final target = resolve();
     return active.length == target.length && active.containsAll(target);
   }
@@ -41,8 +47,10 @@ class FilterBar extends StatefulWidget {
   const FilterBar({
     super.key,
     required this.activeFilters,
+    required this.activeRadio,
     required this.searchQuery,
     required this.onFiltersChanged,
+    required this.onPresetApplied,
     required this.onSearchChanged,
     required this.sortMetric,
     required this.sortAscending,
@@ -53,8 +61,10 @@ class FilterBar extends StatefulWidget {
   });
 
   final Set<Engine> activeFilters;
+  final RadioFilter? activeRadio;
   final String searchQuery;
   final ValueChanged<Set<Engine>> onFiltersChanged;
+  final ValueChanged<FilterPreset> onPresetApplied;
   final ValueChanged<String> onSearchChanged;
   final FeedMetric sortMetric;
   final bool sortAscending;
@@ -79,7 +89,7 @@ class _FilterBarState extends State<FilterBar> {
   }
 
   void _applyPreset(FilterPreset preset) {
-    widget.onFiltersChanged(preset.resolve());
+    widget.onPresetApplied(preset);
   }
 
   String _nodeLabel() {
@@ -112,7 +122,7 @@ class _FilterBarState extends State<FilterBar> {
               for (final preset in FilterPreset.values)
                 _PresetChip(
                   label: preset.label,
-                  active: preset.matches(widget.activeFilters),
+                  active: preset.matches(widget.activeFilters, widget.activeRadio),
                   onTap: () => _applyPreset(preset),
                 ),
               _Divider(t: t),

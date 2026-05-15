@@ -3,6 +3,7 @@ import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 
 /// Generate WiGLE-compatible CSV (format 1.6)
 /// Spec: https://api.wigle.net/csvFormat.html
@@ -42,7 +43,7 @@ class WigleCsv {
       if (d.latitude == null || d.longitude == null) continue;
 
       if (ignoreList != null) {
-        final isBle = d.method == 'ble_adv' || d.engine.isBle;
+        final isBle = d.isBleDetection;
         if (ignoreList.shouldSuppress(
           mac: d.macAddress,
           ssid: d.ssid.isNotEmpty ? d.ssid : d.deviceName,
@@ -59,7 +60,7 @@ class WigleCsv {
       }
 
       final mac = d.macAddress;
-      final isBleDevice = d.method == 'ble_adv' || d.engine.isBle;
+      final isBleDevice = d.isBleDetection;
       // SSID field rules per WiGLE CSV spec:
       // - WiFi APs: use SSID from beacon. Hidden = empty field.
       // - BLE: use deviceName (BLE has no SSID).
@@ -96,7 +97,7 @@ class WigleCsv {
   /// WiGLE capabilities from firmware auth_mode byte.
   /// Firmware values: 0=OPEN, 1=WEP, 2=WPA, 3=WPA2, 4=WPA_WPA2, 5=WPA2_ENT, 6=WPA3
   static String _capabilities(Detection d) {
-    final isBle = d.method == 'ble_adv' || d.engine.isBle;
+    final isBle = d.isBleDetection;
     if (isBle) return '[LE]';
     final auth = d.wardrive?.authMode ?? 3;
     return switch (auth) {
@@ -113,7 +114,7 @@ class WigleCsv {
 
 
   static String _frequency(Detection d) {
-    final isBle = d.method == 'ble_adv' || d.engine.isBle;
+    final isBle = d.isBleDetection;
     if (isBle) return '0';
     if (d.channel >= 1 && d.channel <= 13) return '${2407 + d.channel * 5}';
     if (d.channel == 14) return '2484';
@@ -125,7 +126,7 @@ class WigleCsv {
 
   /// WiGLE type field.
   static String _type(Detection d) {
-    final isBle = d.method == 'ble_adv' || d.engine.isBle;
+    final isBle = d.isBleDetection;
     if (isBle) return 'BLE';
     return 'WIFI';
   }

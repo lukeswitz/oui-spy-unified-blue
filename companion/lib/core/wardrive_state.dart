@@ -16,6 +16,7 @@ import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/models/session.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
@@ -681,13 +682,9 @@ class WardriveController extends ChangeNotifier {
       totalDetections: rawDetectionCount,
       uniqueMacs: uniqueMacs.length,
       newMacs: uniqueMacs.length,
-      wifiDetections: _dedupedByMac.values.where((d) =>
-          d.method == 'wifi_ap' ||
-          (d.engine.isWifi && d.method != 'ble_adv')).length,
+      wifiDetections: _dedupedByMac.values.where((d) => d.isWifiDetection).length,
       wifiTotal: rawWifiCount,
-      bleDetections: _dedupedByMac.values.where((d) =>
-          d.method == 'ble_adv' ||
-          (d.engine.isBle && d.method != 'wifi_ap')).length,
+      bleDetections: _dedupedByMac.values.where((d) => d.isBleDetection).length,
       bleTotal: rawBleCount,
       flockCount: target.includesFlock ? _flockMacs.length : 0,
       droneCount: droneCount,
@@ -702,7 +699,7 @@ class WardriveController extends ChangeNotifier {
   void _onDetection(Detection detection) {
     if (state != WardriveState.running) return;
 
-    final isBle = detection.method == 'ble_adv' || detection.engine.isBle;
+    final isBle = detection.isBleDetection;
     if (_ignoreList.shouldSuppress(
       mac: detection.macAddress,
       ssid: detection.ssid.isNotEmpty ? detection.ssid : detection.deviceName,
@@ -741,8 +738,7 @@ class WardriveController extends ChangeNotifier {
 
     final key = '${detection.macAddress}|${detection.engine.name}';
     final existing = _dedupedByMac[key];
-    final isBleMethod = detection.method == 'ble_adv' || detection.engine.isBle;
-    final threshold = isBleMethod ? bleRssiRelogDb : wifiRssiRelogDb;
+    final threshold = detection.isBleDetection ? bleRssiRelogDb : wifiRssiRelogDb;
 
     if (existing != null) {
       final rssiDelta = (detection.rssi - existing.rssi).abs();

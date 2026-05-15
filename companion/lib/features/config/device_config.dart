@@ -2643,6 +2643,10 @@ class _DetectionRow extends ConsumerWidget {
     'mfg_id' => 'MFG DATA',
     'raven_uuid' => 'RAVEN UUID',
     'watchlist' => 'WATCHLIST',
+    'ble_watchlist' => 'BLE WATCHLIST',
+    'wifi_watchlist' => 'WIFI WATCHLIST',
+    'ble_proximity' => 'BLE PROXIMITY',
+    'wifi_proximity' => 'WIFI PROXIMITY',
     _ => method.toUpperCase(),
   };
 }

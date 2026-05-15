@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/features/feed/feed_stats_header.dart';
@@ -29,6 +30,7 @@ class FeedScreen extends ConsumerStatefulWidget {
 
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   Set<Engine> _activeFilters = Engine.values.toSet();
+  RadioFilter? _activeRadio;
   String _searchQuery = '';
   String? _selectedNode;
   bool _showStats = true;
@@ -64,9 +66,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     return merged;
   }
 
+  bool _radioMatches(Detection d) {
+    if (_activeRadio == null) return true;
+    return _activeRadio == RadioFilter.ble ? d.isBleDetection : d.isWifiDetection;
+  }
+
   List<Detection> _filter(List<Detection> detections) {
     return detections.where((d) {
       if (!_activeFilters.contains(d.engine)) return false;
+      if (!_radioMatches(d)) return false;
       if (_selectedNode != null) {
         if (_selectedNode == '' && d.sourceNodeId.isNotEmpty) return false;
         if (_selectedNode!.isNotEmpty && d.sourceNodeId != _selectedNode) return false;
@@ -144,8 +152,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ),
             FilterBar(
               activeFilters: _activeFilters,
+              activeRadio: _activeRadio,
               searchQuery: _searchQuery,
-              onFiltersChanged: (f) => setState(() => _activeFilters = f),
+              onFiltersChanged: (f) => setState(() {
+                _activeFilters = f;
+                _activeRadio = null;
+              }),
+              onPresetApplied: (p) => setState(() {
+                _activeFilters = p.resolve();
+                _activeRadio = p.radio;
+              }),
               onSearchChanged: (q) => setState(() => _searchQuery = q),
               sortMetric: _sortMetric,
               sortAscending: _sortAscending,

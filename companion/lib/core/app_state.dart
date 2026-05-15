@@ -12,6 +12,7 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 
@@ -170,7 +171,7 @@ class AppState extends ChangeNotifier {
 
     // Detections — track unique MACs per engine + deduplicated ring buffer
     _subs.add(_ble.detections.listen((det) {
-      final isBle = det.method == 'ble_adv' || det.engine.isBle;
+      final isBle = det.isBleDetection;
       if (_ignoreList.shouldSuppress(
         mac: det.macAddress,
         ssid: det.ssid.isNotEmpty ? det.ssid : det.deviceName,

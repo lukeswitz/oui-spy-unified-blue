@@ -14,6 +14,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -1393,7 +1394,7 @@ class _DetListRow extends ConsumerWidget {
     final t = AppTheme.of(context);
     final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
-    final bool isWifiAp = d.method == 'wifi_ap' || (!d.engine.isBle && d.method != 'ble_adv');
+    final bool isWifiAp = d.isWifiDetection;
     final bool isHidden = isWifiAp && d.ssid.isEmpty && d.deviceName.isEmpty;
     final vendor = ref.read(ouiLookupProvider).lookup(d.macAddress);
     final label = isHidden
