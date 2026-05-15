@@ -1,6 +1,6 @@
 #include "wardrive.h"
 #include "../protocol.h"
-#include "flock_oui.h"
+#include "flock_match.h"
 #include "dedup_ring.h"
 #include "detector.h"
 #include "foxhunter.h"
@@ -9,62 +9,7 @@
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
 
-// ============================================================================
-// BLE flock detection helpers (shared with BLE callback)
-// ============================================================================
-
-static const char* flockNamePatterns[] = {
-    "FS Ext Battery", "Penguin", "Flock", "Pigvision"
-};
-static const int flockNamePatternCount = sizeof(flockNamePatterns) / sizeof(flockNamePatterns[0]);
-
-static const uint16_t flockMfgIds[] = { 0x09C8 }; // XUNTONG
-static const int flockMfgIdCount = sizeof(flockMfgIds) / sizeof(flockMfgIds[0]);
-
-static const char* ravenUuids[] = {
-    "0000180a-0000-1000-8000-00805f9b34fb",
-    "00003100-0000-1000-8000-00805f9b34fb",
-    "00003200-0000-1000-8000-00805f9b34fb",
-    "00003300-0000-1000-8000-00805f9b34fb",
-    "00003400-0000-1000-8000-00805f9b34fb",
-    "00003500-0000-1000-8000-00805f9b34fb",
-    "00001809-0000-1000-8000-00805f9b34fb",
-    "00001819-0000-1000-8000-00805f9b34fb",
-};
-static const int ravenUuidCount = sizeof(ravenUuids) / sizeof(ravenUuids[0]);
-
-static bool flockMatchName(const char* name) {
-    if (!name || !name[0]) return false;
-    for (int i = 0; i < flockNamePatternCount; i++) {
-        if (strcasestr(name, flockNamePatterns[i])) return true;
-    }
-    return false;
-}
-
-static bool flockMatchMfgId(NimBLEAdvertisedDevice* dev) {
-    if (!dev->haveManufacturerData()) return false;
-    std::string data = dev->getManufacturerData();
-    if (data.size() < 2) return false;
-    uint16_t code = ((uint16_t)(uint8_t)data[1] << 8) | (uint16_t)(uint8_t)data[0];
-    for (int i = 0; i < flockMfgIdCount; i++) {
-        if (flockMfgIds[i] == code) return true;
-    }
-    return false;
-}
-
-static bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev) {
-    if (!dev->haveServiceUUID()) return false;
-    int count = dev->getServiceUUIDCount();
-    for (int i = 0; i < count; i++) {
-        std::string str = dev->getServiceUUID(i).toString();
-        for (int j = 0; j < ravenUuidCount; j++) {
-            if (strcasecmp(str.c_str(), ravenUuids[j]) == 0) return true;
-        }
-    }
-    return false;
-}
-
-// isWildcardProbeIE() now in shared flock_oui.h
+// Flock predicates and OUI live in flock_match.h / flock_oui.h.
 
 // ============================================================================
 // State
@@ -80,13 +25,15 @@ static uint8_t channelEnd   = 14;
 static uint8_t currentChannel = 1;
 static unsigned long lastChannelHop = 0;
 
-// Per-channel dwell: configurable base values, adaptive adjustment
-static uint16_t priorityDwellMs = 350;  // base for ch 1, 6, 11
-static uint16_t normalDwellMs   = 150;  // base for other channels
+// Per-channel dwell: configurable base values, adaptive adjustment.
+// Biased toward 1/6/11 (Flock + most APs live there). 500ms priority +
+// 80ms skim on others = ~1.7s full cycle, ~88% time on flock channels.
+static uint16_t priorityDwellMs = 500;  // base for ch 1, 6, 11
+static uint16_t normalDwellMs   = 80;   // base for other channels
 
-// Adaptive dwell 
+// Adaptive dwell
 static uint16_t timePerChannel[14] = {
-    350, 150, 150, 150, 150, 350, 150, 150, 150, 150, 350, 150, 150, 150
+    500, 80, 80, 80, 80, 500, 80, 80, 80, 80, 500, 80, 80, 80
 };
 static volatile uint8_t beaconsThisHop = 0;  // count beacons on current channel
 
@@ -99,9 +46,12 @@ static uint16_t bleScanIntervalMs  = 3000;
 static DedupRing<512, 10000> wardriveDedup;
 // ISR WiFi beacon dedup — separate ring to avoid contention with BLE callback.
 static DedupRingISR<512, 10000> wifiDedup;
+// Smaller dedup for Flock-WiFi hits inside ISR (independent cooldown).
+static DedupRingISR<64, 5000> isrFlockWifiDedup;
 
 // Cached engine active states — avoids function calls per frame in ISR
 static volatile uint8_t wdFlockBleActive = 0;
+static volatile uint8_t wdFlockWifiActive = 0;
 static volatile uint8_t wdFoxhunterActive = 0;
 static volatile uint8_t wdDetectorActive = 0;
 
@@ -283,13 +233,50 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
     uint8_t frameType = (p[0] >> 2) & 0x03;
     uint8_t frameSubtype = (p[0] >> 4) & 0x0F;
 
-    // Beacons
+    const uint8_t* addr1 = &p[4];
+    const uint8_t* addr2 = &p[10];
+    const uint8_t* addr3 = &p[16];
+
+    // ----- Flock-WiFi OUI fast-path (any frame type) -----
+    // Cheap: bucket-indexed OUI table, ISR-safe dedup, no allocs.
+    if (wdFlockWifiActive) {
+        uint8_t fMethod = 0xFF;
+        const uint8_t* fMac = NULL;
+        if (flockMatchOuiISR(addr2)) {
+            fMethod = METHOD_OUI_ADDR2;
+            fMac = addr2;
+            // Probe-request with wildcard SSID is a strong cam signal.
+            if (frameType == 0 && frameSubtype == 4) {
+                int bodyOff = 24;
+                int bodyLen = len - bodyOff;
+                if (bodyLen > 0) {
+                    int r = isWildcardProbeIE(p + bodyOff, bodyLen);
+                    if (r == 1) fMethod = METHOD_WILDCARD_PROBE;
+                }
+            }
+        } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
+            fMethod = METHOD_OUI_ADDR1;
+            fMac = addr1;
+        } else if (frameType == 0 && flockMatchOuiISR(addr3)) {
+            fMethod = METHOD_OUI_ADDR3;
+            fMac = addr3;
+        }
+        if (fMac && !isrFlockWifiDedup.check(fMac)) {
+            DetectionEvent fEvt = {};
+            fEvt.engine_id = ENGINE_FLOCK_WIFI;
+            memcpy(fEvt.mac, fMac, 6);
+            fEvt.rssi = pkt->rx_ctrl.rssi;
+            fEvt.channel = pkt->rx_ctrl.channel;
+            fEvt.timestamp_ms = millis();
+            fEvt.method = fMethod;
+            pushDetectionFromISR(&fEvt);
+        }
+    }
+
+    // Beacons / probe-resp only beyond this point
     if (frameType != 0 || (frameSubtype != 8 && frameSubtype != 5)) {
         // Foxhunter still wants any frame from a target. Cheap when inactive.
         if (wdFoxhunterActive) {
-            const uint8_t* addr1 = &p[4];
-            const uint8_t* addr2 = &p[10];
-            const uint8_t* addr3 = &p[16];
             foxhunterCheckWifiDeviceISR(addr1, addr2, addr3,
                                          pkt->rx_ctrl.rssi,
                                          pkt->rx_ctrl.channel);
@@ -297,12 +284,8 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         return;
     }
 
-    const uint8_t* addr3 = &p[16];  // BSSID
-
     // Foxhunter check on the beacon/probe-resp frame too
     if (wdFoxhunterActive) {
-        const uint8_t* addr1 = &p[4];
-        const uint8_t* addr2 = &p[10];
         foxhunterCheckWifiDeviceISR(addr1, addr2, addr3,
                                      pkt->rx_ctrl.rssi,
                                      pkt->rx_ctrl.channel);
@@ -363,24 +346,32 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         uint32_t now = millis();
         std::string name = dev->getName();
 
-        if (wdFlockBleActive) {
+        // Flock predicates (only when engine active). Uses shared
+        // flock_match.h — cached NimBLEUUID, no heap allocs in hot path.
+        if (wdFlockBleActive && flockShouldConsiderAddr(dev)) {
             bool isFlock = false;
             uint8_t flockMethod = 0;
             bool isRaven = false;
+            const char* ravenFw = "";
+            char tnSerial[20] = {0};
 
             if (flockMatchOui(mac)) {
                 isFlock = true;
                 flockMethod = METHOD_OUI_MATCH;
             }
-            if (!isFlock && name.length() > 0 && flockMatchName(name.c_str())) {
+            if (!isFlock && name.length() > 0 && flockMatchNameStr(name.c_str())) {
                 isFlock = true;
                 flockMethod = METHOD_NAME_MATCH;
             }
-            if (!isFlock && flockMatchMfgId(dev)) {
-                isFlock = true;
-                flockMethod = METHOD_MFG_ID;
+            if (!isFlock && dev->haveManufacturerData()) {
+                std::string md = dev->getManufacturerData();
+                if (flockMatchMfgPayload((const uint8_t*)md.data(), md.size(),
+                                         tnSerial, sizeof(tnSerial))) {
+                    isFlock = true;
+                    flockMethod = METHOD_MFG_ID;
+                }
             }
-            if (!isFlock && flockMatchRavenUuid(dev)) {
+            if (!isFlock && flockMatchRavenUuid(dev, &ravenFw)) {
                 isFlock = true;
                 flockMethod = METHOD_RAVEN_UUID;
                 isRaven = true;
@@ -394,6 +385,13 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
                 fEvt.timestamp_ms = now;
                 fEvt.method = flockMethod;
                 fEvt.ext.flock.is_raven = isRaven ? 1 : 0;
+                if (isRaven) {
+                    strncpy(fEvt.ext.flock.raven_fw, ravenFw,
+                            sizeof(fEvt.ext.flock.raven_fw) - 1);
+                } else if (tnSerial[0]) {
+                    strncpy(fEvt.ext.flock.raven_fw, tnSerial,
+                            sizeof(fEvt.ext.flock.raven_fw) - 1);
+                }
                 pushDetection(&fEvt);
             }
         }
@@ -432,7 +430,8 @@ static WardriveAdvCallbacks wardriveBleCallbacks;
 static void wardriveInit(void) {
     wardriveDedup.reset();
     wifiDedup.reset();
-    flockOuiInitBuckets();
+    isrFlockWifiDedup.reset();
+    flockMatchInit();
     Serial.println("[WARDRIVE] Initialized");
 }
 
@@ -441,7 +440,12 @@ static void wardriveStart(void) {
     lastBleScan = 0;
     wardriveDedup.reset();
     wifiDedup.reset();
+    isrFlockWifiDedup.reset();
     wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
+    // Wardrive owns the WiFi radio. If user enabled Flock-WiFi, run flock
+    // OUI matching from inside this ISR — registry enforces WiFi mutex so
+    // flock_wifi standalone won't conflict.
+    wdFlockWifiActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
     wdDetectorActive = (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) ? 1 : 0;
     currentChannel = channelStart;
@@ -487,10 +491,11 @@ static void wardriveStart(void) {
         pWardriveScan = NimBLEDevice::getScan();
         pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
         pWardriveScan->setActiveScan(true);
-        // Interval == window: Espressif recommendation for WiFi/BLE coexistence.
-        // Continuous BLE within its TDM slot, no wasted RF gaps.
-        pWardriveScan->setInterval(80);
-        pWardriveScan->setWindow(79);
+        // 97/97 ms: prime, avoids aliasing with 100/152.5 ms BLE adv periods.
+        // interval == window per Espressif coex FAQ (max RF residency, no
+        // wasted gaps inside BLE TDM slot).
+        pWardriveScan->setInterval(97);
+        pWardriveScan->setWindow(97);
     }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_SCANNING);

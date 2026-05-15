@@ -7,6 +7,7 @@
 #include <esp_wifi.h>
 #include <string.h>
 
+// Flock Wi-Fi cams known to operate on standard ISM channels only.
 static const uint8_t channels[] = {1, 6, 11};
 static int channelIdx = 0;
 static unsigned long lastChannelHop = 0;
@@ -14,7 +15,29 @@ static const unsigned long DWELL_MS = 350;
 
 static volatile bool scanning = false;
 
-static DedupRingISR<16, 5000> wifiDedup;
+// 64-slot dedup ring (bumped from 16: phones flood OUI matches).
+static DedupRingISR<64, 5000> wifiDedup;
+
+// Wildcard probe template (broadcast PROBE_REQ, empty SSID).
+// Elicits PROBE_RESP from APs immediately on channel hop, faster than
+// waiting for beacon interval (~102.4 ms).
+static const uint8_t wildcardProbeTpl[] = {
+    0x40, 0x00, 0x00, 0x00,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x00, 0x00,
+    0x00, 0x00,
+    0x01, 0x04, 0x82, 0x84, 0x8B, 0x96,
+};
+
+static void sendWildcardProbe() {
+    uint8_t probe[sizeof(wildcardProbeTpl)];
+    memcpy(probe, wildcardProbeTpl, sizeof(probe));
+    probe[10] = 0x02 | (esp_random() & 0xFE);
+    for (int i = 11; i < 16; i++) probe[i] = esp_random() & 0xFF;
+    esp_wifi_80211_tx(WIFI_IF_STA, probe, sizeof(probe), false);
+}
 
 static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (!scanning) return;
@@ -88,7 +111,8 @@ static void flockWifiStart(void) {
     esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
     lastChannelHop = millis();
     scanning = true;
-    Serial.println("[FLOCK-WIFI] Started (promiscuous ch1/6/11)");
+    sendWildcardProbe();
+    Serial.println("[FLOCK-WIFI] Started (promiscuous ch1/6/11, wildcard probe)");
 }
 
 static void flockWifiStop(void) {
@@ -106,6 +130,7 @@ static void flockWifiLoop(void) {
         channelIdx = (channelIdx + 1) % 3;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
+        sendWildcardProbe();
     }
 }
 

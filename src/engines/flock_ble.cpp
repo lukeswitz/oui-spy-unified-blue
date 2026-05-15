@@ -1,93 +1,29 @@
 #include "flock_ble.h"
 #include "protocol.h"
-#include "flock_oui.h"
+#include "flock_match.h"
 #include "dedup_ring.h"
 #include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
-static const char* name_patterns[] = {
-    "FS Ext Battery", "Penguin", "Flock", "Pigvision"
-};
-static const int name_pattern_count = sizeof(name_patterns) / sizeof(name_patterns[0]);
-
-static const uint16_t mfg_ids[] = { 0x09C8 };
-static const int mfg_id_count = sizeof(mfg_ids) / sizeof(mfg_ids[0]);
-
-#define RAVEN_GPS_SVC       "00003100-0000-1000-8000-00805f9b34fb"
-#define RAVEN_POWER_SVC     "00003200-0000-1000-8000-00805f9b34fb"
-#define RAVEN_OLD_LOC_SVC   "00001819-0000-1000-8000-00805f9b34fb"
-
-static const char* raven_uuids[] = {
-    "0000180a-0000-1000-8000-00805f9b34fb",
-    RAVEN_GPS_SVC,
-    RAVEN_POWER_SVC,
-    "00003300-0000-1000-8000-00805f9b34fb",
-    "00003400-0000-1000-8000-00805f9b34fb",
-    "00003500-0000-1000-8000-00805f9b34fb",
-    "00001809-0000-1000-8000-00805f9b34fb",
-    RAVEN_OLD_LOC_SVC
-};
-static const int raven_uuid_count = sizeof(raven_uuids) / sizeof(raven_uuids[0]);
+// Standalone Flock-BLE scanner. When Wardrive is active, this engine yields:
+// Wardrive's BLE callback runs the same predicates from flock_match.h and
+// emits FLOCK_BLE events directly.
 
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
 static unsigned long lastScanStart = 0;
-static const unsigned long SCAN_INTERVAL_MS = 3000;
-static const int SCAN_DURATION_S = 2;
+static const unsigned long SCAN_INTERVAL_MS = 2000;
+static const int SCAN_DURATION_S = 1;
 
-static DedupRing<32, 5000> dedup;
+static DedupRing<64, 5000> dedup;
 static uint32_t totalDetections = 0;
-
-static bool checkMACPrefix(const uint8_t* mac) {
-    return flockMatchOui(mac);
-}
-
-static bool checkDeviceName(const char* name) {
-    if (!name || !name[0]) return false;
-    for (int i = 0; i < name_pattern_count; i++) {
-        if (strcasestr(name, name_patterns[i])) return true;
-    }
-    return false;
-}
-
-static bool checkMfgID(uint16_t id) {
-    for (int i = 0; i < mfg_id_count; i++) {
-        if (mfg_ids[i] == id) return true;
-    }
-    return false;
-}
-
-static bool checkRavenUUID(NimBLEAdvertisedDevice* dev) {
-    if (!dev->haveServiceUUID()) return false;
-    int count = dev->getServiceUUIDCount();
-    for (int i = 0; i < count; i++) {
-        std::string str = dev->getServiceUUID(i).toString();
-        for (int j = 0; j < raven_uuid_count; j++) {
-            if (strcasecmp(str.c_str(), raven_uuids[j]) == 0) return true;
-        }
-    }
-    return false;
-}
-
-static const char* estimateRavenFW(NimBLEAdvertisedDevice* dev) {
-    if (!dev->haveServiceUUID()) return "?";
-    bool has_new_gps = false, has_old_loc = false, has_power = false;
-    int count = dev->getServiceUUIDCount();
-    for (int i = 0; i < count; i++) {
-        std::string u = dev->getServiceUUID(i).toString();
-        if (strcasecmp(u.c_str(), RAVEN_GPS_SVC) == 0)     has_new_gps = true;
-        if (strcasecmp(u.c_str(), RAVEN_OLD_LOC_SVC) == 0)  has_old_loc = true;
-        if (strcasecmp(u.c_str(), RAVEN_POWER_SVC) == 0)    has_power = true;
-    }
-    if (has_old_loc && !has_new_gps) return "1.1.x";
-    if (has_new_gps && !has_power)   return "1.2.x";
-    if (has_new_gps && has_power)    return "1.3.x";
-    return "?";
-}
 
 class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        // Address-type filter: drop RPA (resolvable) — phones/watches.
+        if (!flockShouldConsiderAddr(dev)) return;
+
         uint8_t mac[6];
         memcpy(mac, dev->getAddress().getNative(), 6);
 
@@ -98,37 +34,33 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         uint8_t method = 0;
         bool isRaven = false;
         const char* ravenFW = "";
+        char tnSerial[20] = {0};
 
-        if (checkMACPrefix(mac)) {
+        if (flockMatchOui(mac)) {
             detected = true;
             method = METHOD_OUI_MATCH;
         }
 
-        if (!detected && !name.empty() && checkDeviceName(name.c_str())) {
+        if (!detected && !name.empty() && flockMatchNameStr(name.c_str())) {
             detected = true;
             method = METHOD_NAME_MATCH;
         }
 
-        if (!detected) {
-            for (int i = 0; i < (int)dev->getManufacturerDataCount(); i++) {
-                std::string data = dev->getManufacturerData(i);
-                if (data.size() >= 2) {
-                    uint16_t code = ((uint16_t)(uint8_t)data[1] << 8) |
-                                     (uint16_t)(uint8_t)data[0];
-                    if (checkMfgID(code)) {
-                        detected = true;
-                        method = METHOD_MFG_ID;
-                        break;
-                    }
-                }
+        if (!detected && dev->haveManufacturerData()) {
+            std::string data = dev->getManufacturerData();
+            if (flockMatchMfgPayload((const uint8_t*)data.data(), data.size(),
+                                     tnSerial, sizeof(tnSerial))) {
+                detected = true;
+                method = METHOD_MFG_ID;
             }
         }
 
-        if (!detected && checkRavenUUID(dev)) {
-            detected = true;
-            method = METHOD_RAVEN_UUID;
-            isRaven = true;
-            ravenFW = estimateRavenFW(dev);
+        if (!detected) {
+            if (flockMatchRavenUuid(dev, &ravenFW)) {
+                detected = true;
+                method = METHOD_RAVEN_UUID;
+                isRaven = true;
+            }
         }
 
         if (!detected) return;
@@ -143,16 +75,25 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         evt.timestamp_ms = millis();
         evt.method = method;
         evt.ext.flock.is_raven = isRaven ? 1 : 0;
-        strncpy(evt.ext.flock.raven_fw, ravenFW, sizeof(evt.ext.flock.raven_fw) - 1);
+        if (isRaven) {
+            strncpy(evt.ext.flock.raven_fw, ravenFW,
+                    sizeof(evt.ext.flock.raven_fw) - 1);
+        } else if (tnSerial[0]) {
+            // Surface TN-serial via raven_fw slot (16 chars).
+            strncpy(evt.ext.flock.raven_fw, tnSerial,
+                    sizeof(evt.ext.flock.raven_fw) - 1);
+        }
         pushDetection(&evt);
 
         std::string addrStr = dev->getAddress().toString();
         const char* methodStr[] = {"oui", "name", "mfg_id", "raven_uuid"};
-        Serial.printf("[FLOCK-BLE] %s %s RSSI:%d [%s]%s%s\n",
+        Serial.printf("[FLOCK-BLE] %s %s RSSI:%d [%s]%s%s%s%s\n",
                       addrStr.c_str(), name.c_str(), rssi,
                       method < 4 ? methodStr[method] : "?",
                       isRaven ? " RAVEN:" : "",
-                      isRaven ? ravenFW : "");
+                      isRaven ? ravenFW : "",
+                      tnSerial[0] ? " " : "",
+                      tnSerial[0] ? tnSerial : "");
     }
 };
 
@@ -161,7 +102,7 @@ static FlockBLECallback scanCb;
 static void flockBleInit(void) {
     dedup.reset();
     totalDetections = 0;
-    flockOuiInitBuckets();
+    flockMatchInit();
     Serial.println("[FLOCK-BLE] Initialized");
 }
 
@@ -174,10 +115,11 @@ static void flockBleStart(void) {
     bleScan = NimBLEDevice::getScan();
     bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
     bleScan->setActiveScan(true);
-    bleScan->setInterval(100);
-    bleScan->setWindow(99);
+    // 97/97 ms = prime, avoids aliasing with 100ms/152.5ms BLE adv intervals.
+    bleScan->setInterval(97);
+    bleScan->setWindow(97);
     lastScanStart = 0;
-    Serial.println("[FLOCK-BLE] Started");
+    Serial.println("[FLOCK-BLE] Started (97/97 prime)");
 }
 
 static void flockBleStop(void) {
