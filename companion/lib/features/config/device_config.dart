@@ -17,6 +17,7 @@ import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
+import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
@@ -143,13 +144,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                         ),
                   ),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: () => context.push('/notifications'),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: Icon(Icons.notifications_outlined, size: 18, color: t.textSecondary),
-                    ),
-                  ),
                   if (_loading)
                     const SizedBox(
                       width: 12, height: 12,
@@ -438,26 +432,49 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   Widget _buildAlertsTab() {
     final appState = ref.watch(appStateProvider);
-    if (!appState.isConnected) return _buildDisconnectedPlaceholder();
+    final t = AppTheme.of(context);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.zero,
       children: [
-        _ConfigField(
-          label: 'Cooldown (ms)', value: _cooldownMs,
-          onChanged: (v) { setState(() => _cooldownMs = v); _writeAlertConfig(); },
+        const NotificationSettingsBody(
+          shrinkWrap: true,
+          physics: NeverScrollableScrollPhysics(),
         ),
-        _ConfigField(
-          label: 'Heartbeat (ms)', value: _heartbeatMs,
-          onChanged: (v) { setState(() => _heartbeatMs = v); _writeAlertConfig(); },
-        ),
-        _ConfigField(
-          label: 'Rediscover (ms)', value: _rediscoverMs,
-          onChanged: (v) { setState(() => _rediscoverMs = v); _writeAlertConfig(); },
-        ),
-        _ConfigField(
-          label: 'HB Active (ms)', value: _hbActiveMs,
-          onChanged: (v) { setState(() => _hbActiveMs = v); _writeAlertConfig(); },
-        ),
+        if (appState.isConnected) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text(
+              'FIRMWARE TIMING',
+              style: TextStyle(
+                color: t.textDim, fontSize: 10,
+                fontWeight: FontWeight.w700, letterSpacing: 2,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: [
+                _ConfigField(
+                  label: 'Cooldown (ms)', value: _cooldownMs,
+                  onChanged: (v) { setState(() => _cooldownMs = v); _writeAlertConfig(); },
+                ),
+                _ConfigField(
+                  label: 'Heartbeat (ms)', value: _heartbeatMs,
+                  onChanged: (v) { setState(() => _heartbeatMs = v); _writeAlertConfig(); },
+                ),
+                _ConfigField(
+                  label: 'Rediscover (ms)', value: _rediscoverMs,
+                  onChanged: (v) { setState(() => _rediscoverMs = v); _writeAlertConfig(); },
+                ),
+                _ConfigField(
+                  label: 'HB Active (ms)', value: _hbActiveMs,
+                  onChanged: (v) { setState(() => _hbActiveMs = v); _writeAlertConfig(); },
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

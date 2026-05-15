@@ -3,26 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
-class NotificationSettingsScreen extends ConsumerWidget {
-  const NotificationSettingsScreen({super.key});
+class NotificationSettingsBody extends ConsumerWidget {
+  const NotificationSettingsBody({super.key, this.shrinkWrap = false, this.physics});
+
+  final bool shrinkWrap;
+  final ScrollPhysics? physics;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final notif = ref.watch(notificationServiceProvider);
 
-    return Scaffold(
-      backgroundColor: t.background,
-      appBar: AppBar(
-        backgroundColor: t.background,
-        foregroundColor: t.textPrimary,
-        title: Text('Notifications', style: TextStyle(
-          color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w700,
-          letterSpacing: 1,
-        )),
-        elevation: 0,
-      ),
-      body: ListView(
+    return ListView(
+        shrinkWrap: shrinkWrap,
+        physics: physics,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
           // Permission status
@@ -99,7 +93,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
           _ToggleRow(
             icon: Icons.emoji_events,
             label: 'Milestone Alerts',
-            subtitle: 'Notify every 100 unique networks',
+            subtitle: 'Notify every 1000 unique networks',
             color: AppTheme.accent,
             value: notif.milestoneAlertsEnabled,
             onChanged: notif.setMilestoneAlertsEnabled,
@@ -156,8 +150,7 @@ class NotificationSettingsScreen extends ConsumerWidget {
             t: t,
           ),
         ],
-      ),
-    );
+      );
   }
 
   static String _formatCooldown(int seconds) {
