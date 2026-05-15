@@ -347,8 +347,8 @@ class BleProtocol {
           'odid_nan',
           'odid_beacon',
         ][method.clamp(0, 2)],
-      Engine.detector => 'watchlist',
-      Engine.foxhunter => 'proximity',
+      Engine.detector => const ['ble_watchlist', 'wifi_watchlist'][method.clamp(0, 1)],
+      Engine.foxhunter => const ['ble_proximity', 'wifi_proximity'][method.clamp(0, 1)],
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => const ['wifi_ap', 'ble_adv'][method.clamp(0, 1)],
     };
