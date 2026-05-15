@@ -317,10 +317,17 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                       borderStrokeWidth: 1.0,
                     ),
                   ]),
-                if (detectionLayers.clusters.isNotEmpty)
-                  MarkerLayer(markers: detectionLayers.clusters),
-                if (detectionLayers.pins.isNotEmpty)
-                  MarkerLayer(markers: detectionLayers.pins),
+                if (_currentZoom < 16.0) ...[
+                  if (detectionLayers.pins.isNotEmpty)
+                    MarkerLayer(markers: detectionLayers.pins),
+                  if (detectionLayers.clusters.isNotEmpty)
+                    MarkerLayer(markers: detectionLayers.clusters),
+                ] else ...[
+                  if (detectionLayers.clusters.isNotEmpty)
+                    MarkerLayer(markers: detectionLayers.clusters),
+                  if (detectionLayers.pins.isNotEmpty)
+                    MarkerLayer(markers: detectionLayers.pins),
+                ],
                 if (wd.currentPosition != null)
                   MarkerLayer(markers: [
                     Marker(
