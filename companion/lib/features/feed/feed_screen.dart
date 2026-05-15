@@ -147,60 +147,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               searchQuery: _searchQuery,
               onFiltersChanged: (f) => setState(() => _activeFilters = f),
               onSearchChanged: (q) => setState(() => _searchQuery = q),
+              sortMetric: _sortMetric,
+              sortAscending: _sortAscending,
+              onSortChanged: (m, asc) => setState(() {
+                _sortMetric = m;
+                _sortAscending = asc;
+              }),
               sourceNodes: sourceNodes,
               selectedNode: _selectedNode,
               onNodeChanged: (node) => setState(() => _selectedNode = node),
             ),
-            SizedBox(
-              height: 28,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: FeedMetric.values.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 4),
-                itemBuilder: (context, index) {
-                  final metric = FeedMetric.values[index];
-                  final active = _sortMetric == metric;
-                  final arrow = active ? (_sortAscending ? ' ↑' : ' ↓') : '';
-                  return GestureDetector(
-                    onTap: () => setState(() {
-                      if (active) {
-                        _sortAscending = !_sortAscending;
-                      } else {
-                        _sortMetric = metric;
-                        _sortAscending = false;
-                      }
-                    }),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: active
-                            ? AppTheme.accent.withValues(alpha: 0.2)
-                            : t.surface,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: active
-                              ? AppTheme.accent.withValues(alpha: 0.6)
-                              : t.border,
-                          width: active ? 1.0 : 0.5,
-                        ),
-                      ),
-                      child: Text(
-                        '${metric.label}$arrow',
-                        style: TextStyle(
-                          color: active ? AppTheme.accent : t.textDim,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Divider(),
+            const Divider(height: 1),
             if (_showStats && filtered.length >= 2)
               FeedStatsHeader(detections: filtered),
             Expanded(
