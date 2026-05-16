@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "flock_oui.h"
 #include "dedup_ring.h"
+#include "../engine_registry.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -98,9 +99,12 @@ static void flockWifiInit(void) {
 }
 
 static void flockWifiStart(void) {
+    scanning = true;
+    if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) {
+        Serial.println("[FLOCK-WIFI] Started (passive — wardrive handles WiFi scan)");
+        return;
+    }
     WiFi.mode(WIFI_STA);
-    // MGMT+DATA only. Matches type check at line 21 and prevents CTRL flood
-    // from starving OUI detection on this engine's ISR.
     wifi_promiscuous_filter_t filter = {
         .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                        WIFI_PROMIS_FILTER_MASK_DATA
@@ -110,13 +114,16 @@ static void flockWifiStart(void) {
     esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
     esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
     lastChannelHop = millis();
-    scanning = true;
     sendWildcardProbe();
     Serial.println("[FLOCK-WIFI] Started (promiscuous ch1/6/11, wildcard probe)");
 }
 
 static void flockWifiStop(void) {
     scanning = false;
+    if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) {
+        Serial.println("[FLOCK-WIFI] Stopped (was passive)");
+        return;
+    }
     esp_wifi_set_promiscuous_rx_cb(NULL);
     esp_wifi_set_promiscuous(false);
     WiFi.disconnect(true);
@@ -126,6 +133,7 @@ static void flockWifiStop(void) {
 
 static void flockWifiLoop(void) {
     if (!scanning) return;
+    if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (millis() - lastChannelHop >= DWELL_MS) {
         channelIdx = (channelIdx + 1) % 3;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);

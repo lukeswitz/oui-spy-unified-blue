@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "flock_match.h"
 #include "dedup_ring.h"
+#include "wardrive.h"
 #include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -13,8 +14,10 @@
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
 static unsigned long lastScanStart = 0;
-static const unsigned long SCAN_INTERVAL_MS = 2000;
-static const int SCAN_DURATION_S = 1;
+static unsigned long scanIntervalMs = 3000;
+static unsigned long scanDurationMs = 2000;
+static uint16_t bleScanInterval = 100;
+static uint16_t bleScanWindow   = 99;
 
 static DedupRing<64, 5000> dedup;
 static uint32_t totalDetections = 0;
@@ -112,14 +115,22 @@ static void flockBleStart(void) {
         Serial.println("[FLOCK-BLE] Started (passive — wardrive handles BLE scan)");
         return;
     }
+
+    scanDurationMs = wardriveGetBleScanDurationMs();
+    scanIntervalMs = wardriveGetBleScanIntervalMs();
+    bleScanInterval = 100;
+    bleScanWindow   = 99;
+    bool wifiCoex = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED);
+
     bleScan = NimBLEDevice::getScan();
     bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
     bleScan->setActiveScan(true);
-    // 97/97 ms = prime, avoids aliasing with 100ms/152.5ms BLE adv intervals.
-    bleScan->setInterval(97);
-    bleScan->setWindow(97);
+    bleScan->setInterval(bleScanInterval);
+    bleScan->setWindow(bleScanWindow);
     lastScanStart = 0;
-    Serial.println("[FLOCK-BLE] Started (97/97 prime)");
+    Serial.printf("[FLOCK-BLE] Started (%u/%u dur=%lu int=%lu coex=%d)\n",
+                  bleScanInterval, bleScanWindow,
+                  scanDurationMs, scanIntervalMs, wifiCoex ? 1 : 0);
 }
 
 static void flockBleStop(void) {
@@ -137,11 +148,13 @@ static void flockBleLoop(void) {
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (!bleScan) return;
     unsigned long now = millis();
-    if (now - lastScanStart >= SCAN_INTERVAL_MS) {
-        if (!bleScan->isScanning()) {
-            bleScan->start(SCAN_DURATION_S, false);
-            lastScanStart = now;
-        }
+    if (now - lastScanStart >= scanIntervalMs && !bleScan->isScanning()) {
+        scanDurationMs = wardriveGetBleScanDurationMs();
+        scanIntervalMs = wardriveGetBleScanIntervalMs();
+        bleScan->start(0, false);
+        lastScanStart = now;
+    } else if (bleScan->isScanning() && (now - lastScanStart >= scanDurationMs)) {
+        bleScan->stop();
     }
 }
 

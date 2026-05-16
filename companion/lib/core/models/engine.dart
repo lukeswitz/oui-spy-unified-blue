@@ -65,16 +65,25 @@ enum EngineState {
 class EngineCompatibility {
   const EngineCompatibility._();
 
-  /// WiFi engines are mutually exclusive.
+  /// WiFi engines are mutually exclusive — except wardrive+flockWifi which
+  /// coexist via firmware passive mode (flockWifi rides wardrive's sniffer).
   static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive};
+
+  static bool _wifiCompatible(Engine a, Engine b) {
+    return (a == Engine.wardrive && b == Engine.flockWifi) ||
+           (a == Engine.flockWifi && b == Engine.wardrive);
+  }
 
   /// Check if [engine] can be enabled given [activeEngines].
   static bool canEnable(Engine engine, Set<Engine> activeEngines) {
     if (activeEngines.contains(engine)) return true;
 
-    // WiFi engines: only one at a time
+    // WiFi engines: only one at a time (wardrive+flockWifi excepted)
     if (engine.isWifi) {
-      return activeEngines.intersection(_wifiEngines).isEmpty;
+      final conflicts = activeEngines
+          .intersection(_wifiEngines)
+          .where((e) => !_wifiCompatible(engine, e));
+      return conflicts.isEmpty;
     }
 
     // UniPwn active exploitation conflicts with WiFi engines
@@ -88,7 +97,9 @@ class EngineCompatibility {
     final result = <Engine>{};
 
     if (engine.isWifi) {
-      result.addAll(activeEngines.intersection(_wifiEngines));
+      result.addAll(activeEngines
+          .intersection(_wifiEngines)
+          .where((e) => !_wifiCompatible(engine, e)));
     }
 
     result.remove(engine);

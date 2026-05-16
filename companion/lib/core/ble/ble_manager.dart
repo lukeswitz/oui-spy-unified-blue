@@ -282,12 +282,20 @@ class BleManager {
   Future<void> enableEngine(Engine engine, {int? radio}) async {
     if (_engineControl == null) return;
     if (engine.isWifi) {
+      bool sentAny = false;
       for (final conflict in Engine.values.where((e) => e.isWifi && e != engine)) {
+        // Wardrive coexists with flockWifi (firmware runs flockWifi passive
+        // while wardrive owns the radio — see src/engines/flock_wifi.cpp).
+        if ((engine == Engine.flockWifi && conflict == Engine.wardrive) ||
+            (engine == Engine.wardrive && conflict == Engine.flockWifi)) {
+          continue;
+        }
         await _engineControl!.write(
           BleProtocol.encodeEngineControl(engine: conflict, enable: false),
         );
+        sentAny = true;
       }
-      await Future.delayed(const Duration(milliseconds: 200));
+      if (sentAny) await Future.delayed(const Duration(milliseconds: 200));
     }
     if (radio != null) {
       await _engineControl!.write(

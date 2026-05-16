@@ -14,6 +14,13 @@ static bool isWifiEngine(EngineId id) {
     return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY || id == ENGINE_WARDRIVE;
 }
 
+// Wardrive coexists with Flock-WiFi/Flock-BLE via passive mode (those engines
+// detect on wardrive's sniffer callback instead of owning the radio).
+static bool wifiCoexCompatible(EngineId a, EngineId b) {
+    return (a == ENGINE_WARDRIVE && b == ENGINE_FLOCK_WIFI) ||
+           (a == ENGINE_FLOCK_WIFI && b == ENGINE_WARDRIVE);
+}
+
 void engineRegistryInit(void) {
     for (int i = 0; i < ENGINE_COUNT; i++) {
         engines[i] = nullptr;
@@ -53,17 +60,20 @@ bool engineEnable(EngineId id) {
     // Already active?
     if (states[id] != ESTATE_DISABLED) return true;
 
-    // WiFi exclusivity — force-stop any conflicting WiFi engine
+    // WiFi exclusivity — force-stop conflicting WiFi engines, except
+    // wardrive+flock_wifi which run together via passive mode.
     if (isWifiEngine(id)) {
         for (int i = 0; i < ENGINE_COUNT; i++) {
-            if (i != id && isWifiEngine((EngineId)i) && states[i] != ESTATE_DISABLED) {
-                Serial.printf("[ENGINE] Stopping %s for WiFi handoff to %s\n",
-                              engines[i]->name, engines[id]->name);
-                if (engines[i] != nullptr && engines[i]->stop) {
-                    engines[i]->stop();
-                }
-                states[i] = ESTATE_DISABLED;
+            if (i == id) continue;
+            if (!isWifiEngine((EngineId)i)) continue;
+            if (states[i] == ESTATE_DISABLED) continue;
+            if (wifiCoexCompatible(id, (EngineId)i)) continue;
+            Serial.printf("[ENGINE] Stopping %s for WiFi handoff to %s\n",
+                          engines[i]->name, engines[id]->name);
+            if (engines[i] != nullptr && engines[i]->stop) {
+                engines[i]->stop();
             }
+            states[i] = ESTATE_DISABLED;
         }
     }
 

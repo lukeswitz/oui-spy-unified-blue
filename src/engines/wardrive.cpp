@@ -19,23 +19,67 @@ static volatile bool wardriveActive = false;
 static unsigned long lastBleScan = 0;
 static volatile uint8_t wardriveRadio = 0x03;
 
-// Channel hopping — configurable per-channel dwell
+// Channel hopping — interleaved schedule, per-channel adaptive dwell.
+// Default range 1-11 covers US ISM (~99% of APs). JP/EU 12-14 via config.
 static uint8_t channelStart = 1;
-static uint8_t channelEnd   = 14;
-static uint8_t currentChannel = 1;
+static uint8_t channelEnd   = 11;
 static unsigned long lastChannelHop = 0;
 
-// Per-channel dwell: configurable base values, adaptive adjustment.
-// Biased toward 1/6/11 (Flock + most APs live there). 500ms priority +
-// 80ms skim on others = ~1.7s full cycle, ~88% time on flock channels.
-static uint16_t priorityDwellMs = 500;  // base for ch 1, 6, 11
-static uint16_t normalDwellMs   = 80;   // base for other channels
+// Per-channel dwell base. Priority 200ms = catches ~2 beacons (beacon
+// interval typ 102.4ms). Normal 110ms = covers one full beacon period.
+static uint16_t priorityDwellMs = 200;
+static uint16_t normalDwellMs   = 110;
 
-// Adaptive dwell
+// Adaptive dwell per ch (1..14 → index 0..13).
 static uint16_t timePerChannel[14] = {
-    500, 80, 80, 80, 80, 500, 80, 80, 80, 80, 500, 80, 80, 80
+    200, 110, 110, 110, 110, 200, 110, 110, 110, 110, 200, 110, 110, 110
 };
-static volatile uint8_t beaconsThisHop = 0;  // count beacons on current channel
+static volatile uint8_t beaconsThisHop = 0;
+
+// Interleaved hop schedule. Priority channels (1/6/11 within range) are
+// inserted before every non-priority channel so they get revisited every
+// (numPriority + 1) hops instead of once per linear sweep.
+// Worst case range 1-14: 3 pri * (11 non-pri + 1 tail) = ~48 slots → 64 cap.
+static uint8_t hopSchedule[64];
+static uint8_t hopScheduleLen = 1;
+static uint8_t hopIdx = 0;
+static uint8_t currentChannel = 1;
+
+static void buildHopSchedule(void) {
+    hopScheduleLen = 0;
+    uint8_t priChans[3];
+    uint8_t numPri = 0;
+    const uint8_t kPri[3] = {1, 6, 11};
+    for (uint8_t i = 0; i < 3; i++) {
+        if (kPri[i] >= channelStart && kPri[i] <= channelEnd) {
+            priChans[numPri++] = kPri[i];
+        }
+    }
+    bool hasNonPri = false;
+    for (uint16_t c = channelStart; c <= channelEnd; c++) {
+        if (c == 1 || c == 6 || c == 11) continue;
+        for (uint8_t i = 0; i < numPri && hopScheduleLen < 64; i++) {
+            hopSchedule[hopScheduleLen++] = priChans[i];
+        }
+        if (hopScheduleLen < 64) hopSchedule[hopScheduleLen++] = (uint8_t)c;
+        hasNonPri = true;
+    }
+    // Tail priority pass — ensures last slot is priority for revisit symmetry.
+    if (numPri > 0) {
+        for (uint8_t i = 0; i < numPri && hopScheduleLen < 64; i++) {
+            hopSchedule[hopScheduleLen++] = priChans[i];
+        }
+    }
+    if (hopScheduleLen == 0) {
+        hopSchedule[0] = channelStart;
+        hopScheduleLen = 1;
+    }
+    if (!hasNonPri) {
+        // All-priority range (e.g. 1-1, 6-6). Already filled with tail pass.
+    }
+    hopIdx = 0;
+    currentChannel = hopSchedule[0];
+}
 
 // BLE scan timing — conservative 
 // 800ms scan every 3000ms = ~27% BLE duty
@@ -64,17 +108,19 @@ static uint16_t dwellForChannel(uint8_t ch) {
     return isPriorityChannel(ch) ? priorityDwellMs : normalDwellMs;
 }
 
-// Adaptive: adjust dwell based on beacon count (like Atomgps_wigler)
+// Adaptive: adjust dwell based on beacon count (like Atomgps_wigler).
+// Floor kept tight to keep cycle fast; ceiling capped so dense channels
+// don't starve other channels.
 static void updateAdaptiveDwell(uint8_t ch, uint8_t beaconCount) {
     if (ch < 1 || ch > 14) return;
-    const uint16_t minDwell = 50;
-    const uint16_t maxDwell = 500;
-    const uint16_t step = 50;
+    const uint16_t minDwell = 80;
+    const uint16_t maxDwell = 300;
+    const uint16_t step = 30;
 
     if (beaconCount >= 5) {
         timePerChannel[ch - 1] = min((int)(timePerChannel[ch - 1] + step), (int)maxDwell);
     } else if (beaconCount <= 1) {
-        uint16_t floor = isPriorityChannel(ch) ? 200 : minDwell;
+        uint16_t floor = isPriorityChannel(ch) ? 150 : minDwell;
         timePerChannel[ch - 1] = max((int)(timePerChannel[ch - 1] - step), (int)floor);
     }
 }
@@ -203,13 +249,20 @@ static const uint8_t wildcardProbeTemplate[] = {
 
 static void sendWildcardProbe(void) {
     uint8_t probe[sizeof(wildcardProbeTemplate)];
-    memcpy(probe, wildcardProbeTemplate, sizeof(probe));
-    // Randomize source MAC (locally administered)
-    probe[10] = 0x02 | (esp_random() & 0xFE);
-    for (int i = 11; i < 16; i++) {
-        probe[i] = esp_random() & 0xFF;
+    // Burst of 2 probes with different random source MACs. Single probe
+    // can be lost in dense RF — burst gives ~99% AP-response rate without
+    // measurable channel cost (~250µs total airtime).
+    for (int n = 0; n < 2; n++) {
+        memcpy(probe, wildcardProbeTemplate, sizeof(probe));
+        probe[10] = 0x02 | (esp_random() & 0xFE);
+        for (int i = 11; i < 16; i++) {
+            probe[i] = esp_random() & 0xFF;
+        }
+        // Randomize sequence number too — some APs dedup by seq.
+        probe[22] = esp_random() & 0xFF;
+        probe[23] = esp_random() & 0xFF;
+        esp_wifi_80211_tx(WIFI_IF_STA, probe, sizeof(probe), false);
     }
-    esp_wifi_80211_tx(WIFI_IF_STA, probe, sizeof(probe), false);
 }
 
 // ============================================================================
@@ -448,7 +501,7 @@ static void wardriveStart(void) {
     wdFlockWifiActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
     wdDetectorActive = (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) ? 1 : 0;
-    currentChannel = channelStart;
+    buildHopSchedule();
     lastChannelHop = millis();
     beaconsThisHop = 0;
 
@@ -494,8 +547,8 @@ static void wardriveStart(void) {
         // 97/97 ms: prime, avoids aliasing with 100/152.5 ms BLE adv periods.
         // interval == window per Espressif coex FAQ (max RF residency, no
         // wasted gaps inside BLE TDM slot).
-        pWardriveScan->setInterval(97);
-        pWardriveScan->setWindow(97);
+        pWardriveScan->setInterval(100);
+        pWardriveScan->setWindow(99);
     }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_SCANNING);
@@ -532,16 +585,21 @@ static void wardriveLoop(void) {
     if (!wardriveActive) return;
     unsigned long now = millis();
 
-    // WiFi: channel hopping with adaptive per-channel dwell time
+    wdFlockBleActive   = (engineGetState(ENGINE_FLOCK_BLE)  != ESTATE_DISABLED) ? 1 : 0;
+    wdFlockWifiActive  = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
+    wdFoxhunterActive  = (engineGetState(ENGINE_FOXHUNTER)  != ESTATE_DISABLED) ? 1 : 0;
+    wdDetectorActive   = (engineGetState(ENGINE_DETECTOR)   != ESTATE_DISABLED) ? 1 : 0;
+
+    // WiFi: interleaved hop schedule, adaptive per-channel dwell.
     if (wardriveRadio & 0x01) {
         uint16_t dwell = dwellForChannel(currentChannel);
         if (now - lastChannelHop >= dwell) {
-            // Adapt dwell for channel we're leaving
             updateAdaptiveDwell(currentChannel, beaconsThisHop);
             beaconsThisHop = 0;
 
-            currentChannel++;
-            if (currentChannel > channelEnd) currentChannel = channelStart;
+            hopIdx++;
+            if (hopIdx >= hopScheduleLen) hopIdx = 0;
+            currentChannel = hopSchedule[hopIdx];
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = now;
 
@@ -549,14 +607,13 @@ static void wardriveLoop(void) {
         }
     }
 
-    // BLE: timed scans
     if (wardriveRadio & 0x02) {
-        if (now - lastBleScan >= bleScanIntervalMs) {
-            lastBleScan = now;
-            if (pWardriveScan != nullptr && !pWardriveScan->isScanning()) {
-                int durSec = bleScanDurationMs / 1000;
-                if (durSec < 1) durSec = 1;
-                pWardriveScan->start(durSec, wardriveBleOnComplete, false);
+        if (pWardriveScan != nullptr) {
+            if (now - lastBleScan >= bleScanIntervalMs && !pWardriveScan->isScanning()) {
+                lastBleScan = now;
+                pWardriveScan->start(0, wardriveBleOnComplete, false);
+            } else if (pWardriveScan->isScanning() && (now - lastBleScan >= bleScanDurationMs)) {
+                pWardriveScan->stop();
             }
         }
     }
@@ -579,22 +636,29 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
     if (len >= 9) {
         bleScanDurationMs = payload[5] | (payload[6] << 8);
         bleScanIntervalMs = payload[7] | (payload[8] << 8);
-        if (bleScanDurationMs < 500) bleScanDurationMs = 500;
-        if (bleScanIntervalMs < 1000) bleScanIntervalMs = 1000;
+        if (bleScanDurationMs < 100) bleScanDurationMs = 100;
+        if (bleScanIntervalMs < bleScanDurationMs + 100) bleScanIntervalMs = bleScanDurationMs + 100;
     }
     if (len >= 11) {
         uint8_t cs = payload[9];
         uint8_t ce = payload[10];
         if (cs >= 1 && cs <= 14) channelStart = cs;
         if (ce >= channelStart && ce <= 14) channelEnd = ce;
-        currentChannel = channelStart;
     }
+    // Reset adaptive dwell and rebuild hop schedule for new range/dwell.
+    for (int i = 0; i < 14; i++) {
+        timePerChannel[i] = isPriorityChannel(i + 1) ? priorityDwellMs : normalDwellMs;
+    }
+    buildHopSchedule();
 
     Serial.printf("[WARDRIVE] Config: radio=0x%02X ch=%d-%d pri=%dms norm=%dms ble=%d/%d\n",
         wardriveRadio, channelStart, channelEnd,
         priorityDwellMs, normalDwellMs,
         bleScanDurationMs, bleScanIntervalMs);
 }
+
+uint16_t wardriveGetBleScanDurationMs(void) { return bleScanDurationMs; }
+uint16_t wardriveGetBleScanIntervalMs(void) { return bleScanIntervalMs; }
 
 const EngineCallbacks wardriveCallbacks = {
     .init   = wardriveInit,
