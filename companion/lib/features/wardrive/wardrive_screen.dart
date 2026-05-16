@@ -1292,7 +1292,9 @@ class _DetectionList extends StatelessWidget {
 
     final grouped = <String, List<Detection>>{};
     for (final d in detections) {
-      final key = d.engine.label;
+      final key = d.engine == Engine.wardrive
+          ? (d.isBleDetection ? 'WARDRIVE BLE' : 'WARDRIVE WIFI')
+          : d.engine.label;
       (grouped[key] ??= []).add(d);
     }
 

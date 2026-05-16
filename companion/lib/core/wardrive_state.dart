@@ -59,9 +59,9 @@ enum WardriveTarget {
     WardriveTarget.wigle => [Engine.wardrive],
     WardriveTarget.detector => [Engine.detector],
     WardriveTarget.wigleFlock => switch (radio) {
-      WardriveRadio.wifi => [Engine.wardrive],
+      WardriveRadio.wifi => [Engine.wardrive, Engine.flockWifi],
       WardriveRadio.ble => [Engine.wardrive, Engine.flockBle],
-      WardriveRadio.both => [Engine.wardrive, Engine.flockBle],
+      WardriveRadio.both => [Engine.wardrive, Engine.flockBle, Engine.flockWifi],
     },
   };
 
@@ -284,18 +284,16 @@ class WardriveController extends ChangeNotifier {
 
     state = WardriveState.running;
 
-    await _enableEnginesSequentially(activeEngines);
+    _detSub = _ble.detections.listen(_onDetection);
+    _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
 
-    // Use cached GPS only for initial map centering — don't add to route.
-    // Route starts from first live GPS update to avoid stale-position diagonal lines.
     final cached = _gps.lastPosition;
     if (cached != null) {
       currentPosition = cached;
     }
 
-    _detSub = _ble.detections.listen(_onDetection);
-    _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
-    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
+    await _enableEnginesSequentially(activeEngines);
 
     WakelockPlus.enable();
 
