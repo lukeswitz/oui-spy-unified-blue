@@ -210,6 +210,11 @@ class WardriveController extends ChangeNotifier {
   List<Detection>? _cachedFlockDetections;
   final List<LatLng> routePoints = [];
   double distanceKm = 0;
+  /// Median coord of the active/loaded session. Used to reject GPS outliers
+  /// (e.g. a fix that lands in Antarctica when the rest of the session is in
+  /// California). Null when no plausible coords have been seen yet.
+  LatLng? sessionCenter;
+  double _sessionOutlierKm = 200.0;
   GpsPosition? lastGpsForDistance;
   GpsPosition? currentPosition;
   int droneCount = 0;
@@ -372,7 +377,17 @@ class WardriveController extends ChangeNotifier {
     droneCount = 0;
     flockFilter = false;
     _lastCompletedSessionId = null;
+    sessionCenter = null;
     notifyListeners();
+  }
+
+  /// True when (lat, lon) is inside the loaded session's outlier radius.
+  /// Always true when no session center is known (live capture, empty session).
+  bool isWithinSession(double lat, double lon) {
+    final c = sessionCenter;
+    if (c == null) return true;
+    final d = _haversineKm(c.latitude, c.longitude, lat, lon);
+    return d.isFinite && d <= _sessionOutlierKm;
   }
 
   /// Load a previously saved wardrive session onto the map.
@@ -397,47 +412,83 @@ class WardriveController extends ChangeNotifier {
     lastGpsForDistance = null;
     foxhuntTarget = null;
 
+    // Pass 1: dedup detections, collect plausible coords for outlier anchor.
+    // O(n) — avoids per-row List.remove + insert(0) (was O(n²), choked on 38k+).
+    final lats = <double>[];
+    final lons = <double>[];
     for (final row in dbRows) {
       final det = _detectionFromDb(row);
       rawDetectionCount++;
       uniqueMacs.add(det.macAddress);
-      if (det.engine == Engine.flockBle || det.engine == Engine.flockWifi) {
-        _flockMacs.add(det.macAddress);
-      }
-      if (det.engine == Engine.skySpy) droneCount++;
-
-      final isFlock = det.engine == Engine.flockBle || det.engine == Engine.flockWifi;
+      final isFlock =
+          det.engine == Engine.flockBle || det.engine == Engine.flockWifi;
       if (isFlock) {
+        _flockMacs.add(det.macAddress);
         _flockByMac[det.macAddress] = det;
       }
+      if (det.engine == Engine.skySpy) droneCount++;
 
       final key = '${det.macAddress}|${det.engine.name}';
       final existing = _dedupedByMac[key];
       if (existing != null) {
-        final updated = det.copyWith(
+        _dedupedByMac[key] = existing.copyWith(
           count: existing.count + 1,
           rssi: det.rssi > existing.rssi ? det.rssi : existing.rssi,
         );
-        _dedupedByMac[key] = updated;
-        _dedupedOrdered.remove(existing);
-        _dedupedOrdered.insert(0, updated);
       } else {
         _dedupedByMac[key] = det;
-        _dedupedOrdered.insert(0, det);
       }
 
-      if (det.latitude != null && det.longitude != null) {
-        routePoints.add(LatLng(det.latitude!, det.longitude!));
+      if (_isPlausibleCoord(det.latitude, det.longitude)) {
+        lats.add(det.latitude!);
+        lons.add(det.longitude!);
       }
     }
 
-    // Reconstruct distance from route
-    for (var i = 1; i < routePoints.length; i++) {
-      distanceKm += _haversineKm(
-        routePoints[i - 1].latitude, routePoints[i - 1].longitude,
-        routePoints[i].latitude, routePoints[i].longitude,
-      );
+    // Median anchor + outlier radius. Median resists outliers (2 of 38k
+    // detections landing in Antarctica won't shift it). Anything > 200km from
+    // the anchor is treated as a GPS glitch and dropped from route + map.
+    LatLng? center;
+    if (lats.isNotEmpty) {
+      final ls = List<double>.from(lats)..sort();
+      final os = List<double>.from(lons)..sort();
+      center = LatLng(ls[ls.length ~/ 2], os[os.length ~/ 2]);
     }
+    sessionCenter = center;
+    const outlierKm = 200.0;
+    const minRoutePointSepKm = 0.005; // ~5m
+    final anchor = center;
+    bool inRange(double lat, double lon) =>
+        anchor == null ||
+        _haversineKm(anchor.latitude, anchor.longitude, lat, lon) <= outlierKm;
+
+    // Pass 2: build ordered detection list (no shifts) + downsampled route.
+    _dedupedOrdered
+      ..clear()
+      ..addAll(_dedupedByMac.values.toList().reversed);
+
+    double? lastRouteLat;
+    double? lastRouteLon;
+    for (final det in _dedupedByMac.values) {
+      if (!_isPlausibleCoord(det.latitude, det.longitude)) continue;
+      final lat = det.latitude!;
+      final lon = det.longitude!;
+      if (!inRange(lat, lon)) continue;
+      if (lastRouteLat == null) {
+        routePoints.add(LatLng(lat, lon));
+        lastRouteLat = lat;
+        lastRouteLon = lon;
+      } else {
+        final stepKm = _haversineKm(lastRouteLat, lastRouteLon!, lat, lon);
+        if (stepKm.isFinite && stepKm >= minRoutePointSepKm) {
+          routePoints.add(LatLng(lat, lon));
+          distanceKm += stepKm;
+          lastRouteLat = lat;
+          lastRouteLon = lon;
+        }
+      }
+    }
+    _sessionOutlierKm = outlierKm;
 
     // Load session metadata for start time display.
     final sessionRow = await _db.getSessionById(sid);
@@ -826,6 +877,17 @@ class WardriveController extends ChangeNotifier {
     _gpsSub?.cancel();
     _statsTimer?.cancel();
     super.dispose();
+  }
+
+  /// Reject coords that are null, non-finite, exact (0,0), or pole-locked.
+  /// Mirrors the map-render filter in wardrive_screen so the in-memory route
+  /// stays clean too (no polyline darting to Null Island / Antarctica).
+  static bool _isPlausibleCoord(double? lat, double? lon) {
+    if (lat == null || lon == null) return false;
+    if (!lat.isFinite || !lon.isFinite) return false;
+    if (lat == 0.0 && lon == 0.0) return false;
+    if (lat.abs() > 89.5) return false;
+    return true;
   }
 
   static double _haversineKm(double lat1, double lon1, double lat2, double lon2) {

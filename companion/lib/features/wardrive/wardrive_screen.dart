@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
+import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -51,15 +54,15 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   void initState() {
     super.initState();
     _loadExclusionZones();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final wd = ref.read(wardriveProvider);
-      if (wd.hasSessionData) {
-        _initialFitDone = true;
-        setState(() => _followMode = false);
-        _fitToSessionBounds(wd);
-      }
-    });
+  }
+
+  void _onMapReady() {
+    if (_initialFitDone) return;
+    final wd = ref.read(wardriveProvider);
+    if (!wd.hasSessionData) return;
+    _initialFitDone = true;
+    setState(() => _followMode = false);
+    _fitToSessionBounds(wd, includeCurrentPosition: true);
   }
 
   Future<void> _loadExclusionZones() async {
@@ -74,15 +77,22 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     super.dispose();
   }
 
-  void _fitToSessionBounds(WardriveController wd) {
+  void _fitToSessionBounds(WardriveController wd, {bool includeCurrentPosition = false}) {
     final points = <LatLng>[
       ...wd.routePoints.where((p) => p.latitude.isFinite && p.longitude.isFinite),
       ...wd.dedupedDetections
-          .where((d) => d.latitude != null && d.longitude != null &&
-              d.latitude!.isFinite && d.longitude!.isFinite)
+          .where((d) => _hasMapCoord(d.latitude, d.longitude))
+          .where((d) => wd.isWithinSession(d.latitude!, d.longitude!))
           .map((d) => LatLng(d.latitude!, d.longitude!)),
     ];
-    
+
+    if (includeCurrentPosition) {
+      final pos = wd.currentPosition ?? ref.read(gpsProvider).lastPosition;
+      if (pos != null && pos.latitude.isFinite && pos.longitude.isFinite) {
+        points.add(LatLng(pos.latitude, pos.longitude));
+      }
+    }
+
     if (points.length < 2) {
       if (points.length == 1) {
         _mapController.move(points.first, 16);
@@ -120,10 +130,23 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   }
 
   void _zoomToDetection(Detection d) {
-    if (d.latitude == null || d.longitude == null) return;
+    if (!_hasMapCoord(d.latitude, d.longitude)) return;
     _mapController.move(LatLng(d.latitude!, d.longitude!), 18);
     if (_followMode) setState(() => _followMode = false);
   }
+
+  /// Returns true if (lat, lon) is renderable on the map.
+  /// Excludes nulls, non-finite values, and exact (0, 0) — the latter is
+  /// commonly emitted by devices with no GPS fix and would otherwise pin
+  /// every fixless detection onto Null Island.
+  static bool _hasMapCoord(double? lat, double? lon) {
+    if (lat == null || lon == null) return false;
+    if (!lat.isFinite || !lon.isFinite) return false;
+    if (lat == 0.0 && lon == 0.0) return false;
+    if (lat.abs() > 89.5) return false; // pole-locked glitch
+    return true;
+  }
+
 
   void _focusMap(WardriveController wd) {
     final pos = wd.currentPosition ?? ref.read(gpsProvider).lastPosition;
@@ -264,6 +287,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                 initialCenter: center,
                 initialZoom: 15,
                 backgroundColor: darkBase ? const Color(0xFF0A0A0A) : const Color(0xFFE8E8EE),
+                onMapReady: _onMapReady,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
                 ),
@@ -600,7 +624,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
 
   _DetectionLayers _buildDetectionLayers(WardriveController wd, WardriveThemeData wt) {
     final allGeo = wd.dedupedDetections
-        .where((d) => d.latitude != null && d.longitude != null)
+        .where((d) => _hasMapCoord(d.latitude, d.longitude))
+        .where((d) => wd.isWithinSession(d.latitude!, d.longitude!))
         .toList();
     final geoDetections = wd.flockFilter
         ? allGeo.where((d) =>
@@ -2238,11 +2263,38 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
   }
 }
 
-class _SessionHistorySheet extends ConsumerWidget {
+class _SessionHistorySheet extends ConsumerStatefulWidget {
   const _SessionHistorySheet();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SessionHistorySheet> createState() =>
+      _SessionHistorySheetState();
+}
+
+class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
+  bool _selectMode = false;
+  final Set<String> _selected = <String>{};
+  bool _importing = false;
+
+  void _toggleSelect(String sid) {
+    setState(() {
+      if (_selected.contains(sid)) {
+        _selected.remove(sid);
+      } else {
+        _selected.add(sid);
+      }
+    });
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _selectMode = false;
+      _selected.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final db = ref.watch(databaseProvider);
 
@@ -2266,30 +2318,56 @@ class _SessionHistorySheet extends ConsumerWidget {
                   color: t.textDim, borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('WARDRIVE SESSIONS', style: TextStyle(
-                    color: t.textPrimary, fontSize: 12,
-                    fontWeight: FontWeight.w700, letterSpacing: 1.5,
-                  )),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => _clearAllSessions(context, ref),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppTheme.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _selectMode
+                            ? '${_selected.length} SELECTED'
+                            : 'WARDRIVE SESSIONS',
+                        style: TextStyle(
+                          color: t.textPrimary, fontSize: 12,
+                          fontWeight: FontWeight.w700, letterSpacing: 1.5,
+                        ),
                       ),
-                      child: Text('CLEAR ALL', style: TextStyle(
-                        color: AppTheme.error.withValues(alpha: 0.8),
-                        fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                      )),
                     ),
-                  ),
-                ],
+                    if (_selectMode) ...[
+                      _ToolbarChip(
+                        label: 'DELETE',
+                        color: AppTheme.error,
+                        enabled: _selected.isNotEmpty,
+                        onTap: () => _deleteSelected(context),
+                      ),
+                      const SizedBox(width: 6),
+                      _ToolbarChip(
+                        label: 'CANCEL',
+                        color: t.textDim,
+                        onTap: _exitSelectMode,
+                      ),
+                    ] else ...[
+                      _ToolbarChip(
+                        label: 'SELECT',
+                        color: AppTheme.accent,
+                        onTap: () => setState(() => _selectMode = true),
+                      ),
+                      const SizedBox(width: 6),
+                      _ToolbarChip(
+                        label: _importing ? 'IMPORTING' : 'IMPORT',
+                        color: AppTheme.warning,
+                        isLoading: _importing,
+                        onTap: _importing ? null : () => _importCsv(context),
+                      ),
+                      const SizedBox(width: 6),
+                      _ToolbarChip(
+                        label: 'CLEAR ALL',
+                        color: AppTheme.error,
+                        onTap: () => _clearAllSessions(context, ref),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
               Expanded(
@@ -2316,13 +2394,28 @@ class _SessionHistorySheet extends ConsumerWidget {
                       itemCount: sessions.length,
                       itemBuilder: (_, i) {
                         final sid = sessions[i].id;
+                        final isSelected = _selected.contains(sid);
                         return _SessionRow(
                           session: sessions[i],
                           flockCountFuture: db.flockMacCount(sid),
                           wifiBleFuture: db.wifiBleUniqueCounts(sid),
+                          selectable: _selectMode,
+                          selected: isSelected,
                           onTap: () {
-                            Navigator.pop(context);
-                            ref.read(wardriveProvider).loadSession(sid);
+                            if (_selectMode) {
+                              _toggleSelect(sid);
+                            } else {
+                              Navigator.pop(context);
+                              ref.read(wardriveProvider).loadSession(sid);
+                            }
+                          },
+                          onLongPress: () {
+                            if (!_selectMode) {
+                              setState(() {
+                                _selectMode = true;
+                                _selected.add(sid);
+                              });
+                            }
                           },
                           onShare: () => _shareSession(context, ref, sid),
                           onDelete: () => _deleteSession(context, ref, sessions[i]),
@@ -2342,6 +2435,88 @@ class _SessionHistorySheet extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _deleteSelected(BuildContext context) async {
+    if (_selected.isEmpty) return;
+    final t = AppTheme.of(context);
+    final db = ref.read(databaseProvider);
+    final count = _selected.length;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.background,
+        title: Text('Delete $count Sessions', style: TextStyle(color: t.textPrimary)),
+        content: Text(
+          'Delete $count selected sessions and all their detections? This cannot be undone.',
+          style: TextStyle(color: t.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+            child: const Text('DELETE'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    final wd = ref.read(wardriveProvider);
+    final toDelete = _selected.toList();
+    for (final sid in toDelete) {
+      await db.deleteSession(sid);
+      if (wd.loadedSessionId == sid) {
+        wd.clearLoadedSession();
+      }
+    }
+    if (mounted) _exitSelectMode();
+  }
+
+  Future<void> _importCsv(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.single.path;
+    if (path == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not access selected file')),
+      );
+      return;
+    }
+    setState(() => _importing = true);
+    try {
+      final db = ref.read(databaseProvider);
+      final res = await WigleCsvImport.importFile(db, File(path));
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppTheme.success,
+        content: Text(
+          'Imported ${res.detectionCount} detections '
+          '(${res.uniqueMacs} unique MACs'
+          '${res.flockMacs > 0 ? ", ${res.flockMacs} flock" : ""}'
+          '${res.skipped > 0 ? ", ${res.skipped} skipped" : ""})',
+        ),
+      ));
+    } on FormatException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppTheme.error,
+        content: Text('Import failed: ${e.message}'),
+      ));
+    } on FileSystemException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppTheme.error,
+        content: Text('Import failed: ${e.message}'),
+      ));
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
   }
 
   Future<void> _clearAllSessions(BuildContext context, WidgetRef ref) async {
@@ -2474,6 +2649,9 @@ class _SessionRow extends ConsumerWidget {
     required this.onTap,
     required this.onShare,
     required this.onDelete,
+    this.onLongPress,
+    this.selectable = false,
+    this.selected = false,
     this.onUploadWigle,
     this.wigleUploaded = false,
     this.wigleUploading = false,
@@ -2484,6 +2662,9 @@ class _SessionRow extends ConsumerWidget {
   final VoidCallback onTap;
   final VoidCallback onShare;
   final VoidCallback onDelete;
+  final VoidCallback? onLongPress;
+  final bool selectable;
+  final bool selected;
   final VoidCallback? onUploadWigle;
   final bool wigleUploaded;
   final bool wigleUploading;
@@ -2503,19 +2684,35 @@ class _SessionRow extends ConsumerWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: t.surface,
+          color: selected
+              ? AppTheme.accent.withValues(alpha: 0.12)
+              : t.surface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: t.border),
+          border: Border.all(
+            color: selected ? AppTheme.accent : t.border,
+            width: selected ? 1.5 : 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                if (selectable) ...[
+                  Icon(
+                    selected
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 18,
+                    color: selected ? AppTheme.accent : t.textDim,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 const Icon(Icons.route, size: 16, color: AppTheme.accent),
                 const SizedBox(width: 8),
                 Expanded(
@@ -2688,6 +2885,55 @@ class _SessionActionBtn extends StatelessWidget {
             Text(label, style: TextStyle(
               color: c, fontSize: 9,
               fontWeight: FontWeight.w700, letterSpacing: 0.5,
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolbarChip extends StatelessWidget {
+  const _ToolbarChip({
+    required this.label,
+    required this.color,
+    this.onTap,
+    this.enabled = true,
+    this.isLoading = false,
+  });
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
+  final bool enabled;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = enabled && onTap != null && !isLoading;
+    final c = live ? color : color.withValues(alpha: 0.35);
+    return GestureDetector(
+      onTap: live ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: c.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading) ...[
+              SizedBox(
+                width: 9, height: 9,
+                child: CircularProgressIndicator(strokeWidth: 1.2, color: c),
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(label, style: TextStyle(
+              color: c.withValues(alpha: 0.9),
+              fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5,
             )),
           ],
         ),

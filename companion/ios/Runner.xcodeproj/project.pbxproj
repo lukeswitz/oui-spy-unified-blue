@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -96,14 +96,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		EB4C061D2FB49A710021C9C9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		EB4C061D2FB49A710021C9C9 /* Exceptions for "OuiSpyLiveActivity" folder in "OuiSpyLiveActivityExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = EB4C06022FB49A700021C9C9 /* OuiSpyLiveActivityExtension */;
 		};
-		EB4C06262FB49C120021C9C9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		EB4C06262FB49C120021C9C9 /* Exceptions for "OuiSpyLiveActivity" folder in "Runner" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				OuiSpyLiveActivityAttributes.swift,
@@ -113,7 +113,19 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		EB4C06082FB49A700021C9C9 /* OuiSpyLiveActivity */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (EB4C06262FB49C120021C9C9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, EB4C061D2FB49A710021C9C9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = OuiSpyLiveActivity; sourceTree = "<group>"; };
+		EB4C06082FB49A700021C9C9 /* OuiSpyLiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				EB4C06262FB49C120021C9C9 /* Exceptions for "OuiSpyLiveActivity" folder in "Runner" target */,
+				EB4C061D2FB49A710021C9C9 /* Exceptions for "OuiSpyLiveActivity" folder in "OuiSpyLiveActivityExtension" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = OuiSpyLiveActivity;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -291,8 +303,6 @@
 				EB4C06082FB49A700021C9C9 /* OuiSpyLiveActivity */,
 			);
 			name = OuiSpyLiveActivityExtension;
-			packageProductDependencies = (
-			);
 			productName = OuiSpyLiveActivityExtension;
 			productReference = EB4C06032FB49A700021C9C9 /* OuiSpyLiveActivityExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -378,13 +388,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -474,13 +480,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
