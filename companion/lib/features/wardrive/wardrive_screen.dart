@@ -37,6 +37,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   final _mapController = MapController();
   bool _followMode = true;
   String? _fittedSessionId;
+  bool _initialFitDone = false;
   final _statsKey = GlobalKey();
   double _statsHeight = 0;
   final _completedBarKey = GlobalKey();
@@ -50,6 +51,15 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   void initState() {
     super.initState();
     _loadExclusionZones();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final wd = ref.read(wardriveProvider);
+      if (wd.hasSessionData) {
+        _initialFitDone = true;
+        setState(() => _followMode = false);
+        _fitToSessionBounds(wd);
+      }
+    });
   }
 
   Future<void> _loadExclusionZones() async {
@@ -185,6 +195,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     if (loadedId != null && loadedId != _fittedSessionId && wd.hasSessionData) {
       _fittedSessionId = loadedId;
       _followMode = false;
+      _initialFitDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _fitToSessionBounds(wd);
