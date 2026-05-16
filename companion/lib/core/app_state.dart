@@ -282,8 +282,6 @@ class AppState extends ChangeNotifier {
       }
       _dedupeIndex[key] = 0;
 
-      // Evict oldest if over capacity — prefer evicting wardrive entries
-      // so low-frequency engines (flock, drone, detector) don't get crowded out.
       if (recentDetections.length > maxRecentDetections) {
         int evictIdx = recentDetections.length - 1;
         // Scan backwards for a wardrive entry to evict first

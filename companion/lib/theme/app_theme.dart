@@ -38,9 +38,6 @@ final themeModeProvider =
   return ThemeModeNotifier();
 });
 
-// ---------------------------------------------------------------------------
-// Units — metric (km, km/h, m) vs imperial (mi, mph, ft)
-// ---------------------------------------------------------------------------
 
 enum UnitSystem { metric, imperial }
 
@@ -139,9 +136,6 @@ class UnitFormatter {
 }
 
 
-// ---------------------------------------------------------------------------
-// Map tile style — persisted to SharedPreferences
-// ---------------------------------------------------------------------------
 
 enum MapStyle {
   cartoDark('Carto Dark', 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'),
@@ -191,9 +185,6 @@ final mapStyleProvider =
 class AppTheme {
   const AppTheme._();
 
-  // -----------------------------------------------------------------------
-  // DARK palette — cyberpunk muted neon, matched saturation band
-  // -----------------------------------------------------------------------
   static const background = Color(0xFF08090E);
   static const surface = Color(0xFF0F1117);
   static const surfaceLight = Color(0xFF161822);
@@ -221,9 +212,6 @@ class AppTheme {
   static const gpsPoor = Color(0xFFE65A6B);
   static const gpsNone = Color(0xFF8890A8);
 
-  // -----------------------------------------------------------------------
-  // LIGHT palette
-  // -----------------------------------------------------------------------
   static const _lightBackground = Color(0xFFF2F3F8);
   static const _lightSurface = Color(0xFFFFFFFF);
   static const _lightSurfaceLight = Color(0xFFEBECF2);
@@ -232,9 +220,6 @@ class AppTheme {
   static const _lightTextSecondary = Color(0xFF5A5F74);
   static const _lightTextDim = Color(0xFF8A8FA4);
 
-  // -----------------------------------------------------------------------
-  // Context-aware resolver — use in widgets that need to respect theme mode
-  // -----------------------------------------------------------------------
   static ResolvedTheme of(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     return brightness == Brightness.light
@@ -258,9 +243,6 @@ class AppTheme {
           );
   }
 
-  // -----------------------------------------------------------------------
-  // ThemeData builders
-  // -----------------------------------------------------------------------
   static ThemeData get darkTheme => _buildTheme(Brightness.dark);
   static ThemeData get lightTheme => _buildTheme(Brightness.light);
 

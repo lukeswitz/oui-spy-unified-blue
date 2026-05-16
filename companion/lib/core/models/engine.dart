@@ -86,8 +86,6 @@ class EngineCompatibility {
       return conflicts.isEmpty;
     }
 
-    // UniPwn active exploitation conflicts with WiFi engines
-    // (handled at runtime, not at enable time — scanning is fine)
 
     return true;
   }

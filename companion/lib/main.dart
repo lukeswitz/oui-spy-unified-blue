@@ -37,9 +37,6 @@ void main() async {
   // Initialize Live Activity service (iOS Dynamic Island, non-blocking)
   container.read(liveActivityServiceProvider).init();
 
-  // Force AppState to initialize before auto-connect so it catches
-  // the connection state stream events (prevents race condition where
-  // auto-connect completes before AppState subscribes).
   container.read(appStateProvider);
 
   _autoConnect(container);

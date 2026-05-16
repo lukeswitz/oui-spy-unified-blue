@@ -144,11 +144,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       ),
     );
 
-    // ROOT FIX: fitCamera emits a programmatic move that onMapEvent ignores
-    // (only listens to user-source events), so _currentZoom stays stale.
-    // Heat-circle sizing keys off _currentZoom — stale-low value inflates
-    // bucketRadius (28px * mPerPx), turning 689 overlapping meter-radius
-    // circles into screen-filling blobs. Sync zoom post-fit.
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final z = _mapController.camera.zoom;
@@ -164,10 +160,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     if (_followMode) setState(() => _followMode = false);
   }
 
-  /// Returns true if (lat, lon) is renderable on the map.
-  /// Excludes nulls, non-finite values, and exact (0, 0) — the latter is
-  /// commonly emitted by devices with no GPS fix and would otherwise pin
-  /// every fixless detection onto Null Island.
   static bool _hasMapCoord(double? lat, double? lon) {
     if (lat == null || lon == null) return false;
     if (!lat.isFinite || !lon.isFinite) return false;
@@ -278,8 +270,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       });
     }
 
-    // Driver POV: rotate map so GPS heading points "up". Speed-gated so
-    // we don't spin while parked (heading is GPS noise below ~1 m/s).
     final gpsPos2 = wd.currentPosition ?? gpsPos;
     if (wt.driverPov && gpsPos2 != null) {
       if (gpsPos2.speed > 1.0) {
@@ -306,8 +296,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
 
     final detectionLayers = _buildDetectionLayers(wd, wt);
     final tileUrl = wt.mapTileOverride ?? mapStyle.urlTemplate;
-    // Nightrider overrides the tile URL with the dark Carto basemap;
-    // otherwise we respect the user's MapStyle pick.
     final darkBase = wt.mapTileOverride != null ? true : mapStyle.isDark;
 
     final mapWidget = FlutterMap(
@@ -337,10 +325,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                   if (userSources.contains(event.source)) {
                     if (_followMode) setState(() => _followMode = false);
                   }
-                  // Track zoom on ANY move event, including programmatic
-                  // fitCamera / move calls. Previously this only listened for
-                  // user-driven *End events, leaving _currentZoom stale after
-                  // auto-fit and breaking heat-circle sizing.
                   if (event is MapEventMove ||
                       event is MapEventMoveEnd ||
                       event is MapEventDoubleTapZoom ||
@@ -447,8 +431,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
               top: horizonY, left: 0, right: 0, bottom: 0,
               child: mapStack,
             ),
-            // Mountain silhouette ridge — sits at the horizon line, between
-            // sky and ground. Pure OutRun reference.
             if (wt.synthwaveSky)
               Positioned(
                 top: horizonY - 28, left: 0, right: 0, height: 36,
@@ -461,9 +443,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                   ),
                 ),
               ),
-            // Synthwave grid floor — animated TRON-style perspective road
-            // scrolling toward the viewer below the horizon. Sits ON TOP of
-            // the map so the world looks like a wireframe highway.
             if (wt.synthwaveSky)
               Positioned(
                 top: horizonY, left: 0, right: 0, bottom: 0,
@@ -743,9 +722,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     for (var i = 0; i < clusterable.length; i += heatStride) {
       final d = clusterable[i];
       final ci = clusterIdxOf[i];
-      // Heat tint follows its cluster's density, not the engine accent, so
-      // the per-detection wash matches the cluster dot instead of painting
-      // everything in the wardrive accent (orange).
       final densityTint = _percentileBlend(
           wt.engineColor(d.engine), counts[ci], p50, p90, p99);
       heat.add(CircleMarker(
@@ -849,8 +825,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
 
   static Color _percentileBlend(
       Color engineColor, int count, int p50, int p90, int p99) {
-    // Map count onto percentile spine: 1..p50 → 0.00..0.50,
-    // p50..p90 → 0.50..0.83, p90..p99+ → 0.83..1.00.
     double t;
     if (count <= p50) {
       final span = max(1, p50);
@@ -1687,8 +1661,6 @@ class _ClusterPainter extends CustomPainter {
           ..strokeWidth = 1.8,
       );
     } else {
-      // Halo — match density fill so cluster reads as one color, not
-      // engine accent wash. Soft blur for diffuse glow.
       canvas.drawCircle(
         c,
         r + 7,
@@ -3008,9 +2980,6 @@ class _FoxhuntBadge extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Node Stats Overlay — shows peer nodes + their detection counts
-// ---------------------------------------------------------------------------
 
 class _NodeStatsOverlay extends ConsumerWidget {
   const _NodeStatsOverlay({required this.ref});
@@ -3104,9 +3073,6 @@ class _NodeRow extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Wardrive theme overlays — picker button, current-pos marker, grid, scanlines
-// ---------------------------------------------------------------------------
 
 class _WardriveThemeButton extends StatelessWidget {
   const _WardriveThemeButton({required this.ref, required this.theme});
@@ -3302,9 +3268,6 @@ class _RingPainter extends CustomPainter {
 }
 
 
-// ---------------------------------------------------------------------------
-// NIGHTRIDER — synthwave sky, speed lines, retro speedo HUD.
-// ---------------------------------------------------------------------------
 
 class _SynthwaveSky extends StatefulWidget {
   const _SynthwaveSky({required this.theme});
@@ -3359,8 +3322,6 @@ class _SynthwaveSkyPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // The painter's bounds == the sky band itself. The horizon is the
-    // bottom edge of this band.
     final horizonY = size.height;
 
     // Sky gradient: deep space at top → magenta → cyan glow at horizon.
@@ -3756,10 +3717,6 @@ class _ScoreChip extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Mountain silhouette ridge — jagged line painted at the horizon, hot-pink
-// glow underline. Hand-tuned points for that OutRun cover-art shape.
-// ---------------------------------------------------------------------------
 
 class _MountainsPainter extends CustomPainter {
   const _MountainsPainter({required this.ridge, required this.glow});
@@ -3810,11 +3767,6 @@ class _MountainsPainter extends CustomPainter {
       old.ridge != ridge || old.glow != glow;
 }
 
-// ---------------------------------------------------------------------------
-// Synthwave grid floor — TRON perspective road. Vertical lines converge at
-// vanishing point (top-center). Horizontal lines scroll toward viewer at
-// speed-proportional rate. Lives ABOVE the map (alpha-blended).
-// ---------------------------------------------------------------------------
 
 class _SynthwaveGrid extends StatefulWidget {
   const _SynthwaveGrid({
@@ -3882,8 +3834,6 @@ class _SynthwaveGridPainter extends CustomPainter {
     final scrollRate = 1.0 + (speed / 8.0).clamp(0.0, 4.0);
     final scrolled = (phase * scrollRate) % 1.0;
 
-    // VERTICAL lines (perspective): radiate from vanishing point at top.
-    // Use logarithmic spacing — denser in the middle, wider at edges.
     const verticalCount = 14;
     for (var i = -verticalCount ~/ 2; i <= verticalCount ~/ 2; i++) {
       final t = i / (verticalCount / 2);
@@ -3907,12 +3857,8 @@ class _SynthwaveGridPainter extends CustomPainter {
       );
     }
 
-    // HORIZONTAL lines (animated scroll). Perspective curve: y grows by t² so
-    // they bunch up near horizon, spread near viewer.
     const horizontalCount = 12;
     for (var i = 0; i < horizontalCount; i++) {
-      // Each line's progress through its lifecycle (0 = at horizon, 1 = at
-      // viewer). Phase shift gives them staggered timing.
       final t = ((i / horizontalCount) + scrolled) % 1.0;
       // Perspective y curve.
       final yT = t * t;
@@ -3952,10 +3898,6 @@ class _SynthwaveGridPainter extends CustomPainter {
       old.speed != speed;
 }
 
-// ---------------------------------------------------------------------------
-// Palm tree streaker — silhouettes scroll DOWN both sides of the road,
-// growing as they approach the viewer. Slipstream/OutRun roadside trick.
-// ---------------------------------------------------------------------------
 
 class _PalmStreaker extends StatefulWidget {
   const _PalmStreaker({
@@ -4082,10 +4024,6 @@ class _PalmStreakerPainter extends CustomPainter {
       old.phase != phase || old.speed != speed;
 }
 
-// ---------------------------------------------------------------------------
-// CRT scanlines — extremely subtle horizontal banding to fake an aged
-// arcade-monitor look. Slipstream / Drift Stage both ship this as a filter.
-// ---------------------------------------------------------------------------
 
 class _CrtScanlines extends StatelessWidget {
   const _CrtScanlines();
@@ -4122,10 +4060,6 @@ class _CrtScanlinesPainter extends CustomPainter {
   bool shouldRepaint(covariant _CrtScanlinesPainter old) => false;
 }
 
-// ---------------------------------------------------------------------------
-// Capture flash — brief full-screen radial pulse when detection count goes
-// up. Tied to score so any new device read triggers the flash.
-// ---------------------------------------------------------------------------
 
 class _CaptureFlash extends StatefulWidget {
   const _CaptureFlash({required this.color, required this.score});

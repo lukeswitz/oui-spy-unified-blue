@@ -124,9 +124,6 @@ class BleManager {
       await FlutterBluePlus.turnOn();
     }
 
-    // Scan with no filters — macOS CoreBluetooth doesn't reliably
-    // expose service UUIDs or names in advertisements.
-    // UI filters results to show OUI-SPY devices.
     await FlutterBluePlus.startScan(timeout: timeout);
   }
 
@@ -284,8 +281,6 @@ class BleManager {
     if (engine.isWifi) {
       bool sentAny = false;
       for (final conflict in Engine.values.where((e) => e.isWifi && e != engine)) {
-        // Wardrive coexists with flockWifi (firmware runs flockWifi passive
-        // while wardrive owns the radio — see src/engines/flock_wifi.cpp).
         if ((engine == Engine.flockWifi && conflict == Engine.wardrive) ||
             (engine == Engine.wardrive && conflict == Engine.flockWifi)) {
           continue;

@@ -34,9 +34,6 @@ class BleProtocol {
     final timestampMs = view.getUint32(9, Endian.little);
     final method = bytes[13];
 
-    // Auto-detect v3.0 (14-byte header) vs v3.1 (19-byte header with source_node_id).
-    // v3.1 sizes: flock=36, skySpy=101, uniPwn=28, detector=52, wardrive=74, foxhunter=19
-    // v3.0 sizes: flock=31, skySpy=96,  uniPwn=23, detector=47, foxhunter=14
     const v31Sizes = {31: false, 36: true, 96: false, 101: true, 23: false, 28: true, 47: false, 52: true, 74: true};
     final isV31 = v31Sizes[bytes.length] ?? (bytes.length >= 19 && engine == Engine.wardrive);
 
@@ -315,8 +312,6 @@ class BleProtocol {
         parts.map((p) => int.parse(p, radix: 16)).toList(),
       );
     }
-    // macOS CoreBluetooth UUID (32 hex chars) — derive 6-byte pseudo-MAC
-    // from last 12 hex chars, same derivation firmware uses for node ID
     if (cleaned.length >= 12) {
       final tail = cleaned.substring(cleaned.length - 12);
       return Uint8List.fromList(

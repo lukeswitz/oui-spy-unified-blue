@@ -1630,9 +1630,6 @@ class _IgnoreEntryTile extends ConsumerWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Detections tab — sortable list of all flock + detector detections
-// ---------------------------------------------------------------------------
 
 enum _DetSort { time, rssi, mac }
 

@@ -417,8 +417,6 @@ class WardriveController extends ChangeNotifier {
     lastGpsForDistance = null;
     foxhuntTarget = null;
 
-    // Pass 1: dedup detections, collect plausible coords for outlier anchor.
-    // O(n) — avoids per-row List.remove + insert(0) (was O(n²), choked on 38k+).
     final lats = <double>[];
     final lons = <double>[];
     for (final row in dbRows) {
@@ -450,9 +448,6 @@ class WardriveController extends ChangeNotifier {
       }
     }
 
-    // Median anchor + outlier radius. Median resists outliers (2 of 38k
-    // detections landing in Antarctica won't shift it). Anything > 200km from
-    // the anchor is treated as a GPS glitch and dropped from route + map.
     LatLng? center;
     if (lats.isNotEmpty) {
       final ls = List<double>.from(lats)..sort();

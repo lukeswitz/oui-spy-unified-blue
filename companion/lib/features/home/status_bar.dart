@@ -136,9 +136,6 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Connection chip with glow dot
-// ---------------------------------------------------------------------------
 
 class _ConnectionChip extends StatelessWidget {
   const _ConnectionChip({required this.state});
@@ -225,9 +222,6 @@ class _ConnectionChip extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Info chip (icon + label)
-// ---------------------------------------------------------------------------
 
 class _InfoChip extends StatelessWidget {
   const _InfoChip({

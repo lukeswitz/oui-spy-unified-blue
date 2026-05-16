@@ -61,10 +61,6 @@ class WigleCsv {
 
       final mac = d.macAddress;
       final isBleDevice = d.isBleDetection;
-      // SSID field rules per WiGLE CSV spec:
-      // - WiFi APs: use SSID from beacon. Hidden = empty field.
-      // - BLE: use deviceName (BLE has no SSID).
-      // - SkySpy: use UAV ID or deviceName.
       final String rawSsid;
       if (d.engine == Engine.skySpy) {
         rawSsid = d.odid?.uavId ?? d.deviceName;
