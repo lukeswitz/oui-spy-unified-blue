@@ -112,10 +112,25 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       maxLon = math.max(maxLon, p.longitude);
     }
 
-    if (minLat >= maxLat || minLon >= maxLon || 
-        !minLat.isFinite || !maxLat.isFinite || 
+    if (!minLat.isFinite || !maxLat.isFinite ||
         !minLon.isFinite || !maxLon.isFinite) {
       return;
+    }
+
+    // Min span guard for start≈stop GPS jitter (prevents snap to max zoom).
+    const minHalfSpanM = 75.0;
+    final refLat = (minLat + maxLat) / 2.0;
+    final cosLat = math.max(0.1, math.cos(refLat * math.pi / 180.0));
+    final minHalfLat = minHalfSpanM / 111320.0;
+    final minHalfLon = minHalfSpanM / (111320.0 * cosLat);
+    if ((maxLat - minLat) < minHalfLat * 2) {
+      minLat = refLat - minHalfLat;
+      maxLat = refLat + minHalfLat;
+    }
+    if ((maxLon - minLon) < minHalfLon * 2) {
+      final refLon = (minLon + maxLon) / 2.0;
+      minLon = refLon - minHalfLon;
+      maxLon = refLon + minHalfLon;
     }
 
     _mapController.fitCamera(
@@ -125,8 +140,22 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
           LatLng(maxLat, maxLon),
         ),
         padding: const EdgeInsets.all(48),
+        maxZoom: 17.0,
       ),
     );
+
+    // ROOT FIX: fitCamera emits a programmatic move that onMapEvent ignores
+    // (only listens to user-source events), so _currentZoom stays stale.
+    // Heat-circle sizing keys off _currentZoom — stale-low value inflates
+    // bucketRadius (28px * mPerPx), turning 689 overlapping meter-radius
+    // circles into screen-filling blobs. Sync zoom post-fit.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final z = _mapController.camera.zoom;
+      if ((z - _currentZoom).abs() > 0.05) {
+        setState(() => _currentZoom = z);
+      }
+    });
   }
 
   void _zoomToDetection(Detection d) {
@@ -308,10 +337,18 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
                   if (userSources.contains(event.source)) {
                     if (_followMode) setState(() => _followMode = false);
                   }
-                  if (event is MapEventMoveEnd ||
+                  // Track zoom on ANY move event, including programmatic
+                  // fitCamera / move calls. Previously this only listened for
+                  // user-driven *End events, leaving _currentZoom stale after
+                  // auto-fit and breaking heat-circle sizing.
+                  if (event is MapEventMove ||
+                      event is MapEventMoveEnd ||
+                      event is MapEventDoubleTapZoom ||
                       event is MapEventDoubleTapZoomEnd ||
+                      event is MapEventFlingAnimation ||
                       event is MapEventFlingAnimationEnd ||
-                      event is MapEventScrollWheelZoom) {
+                      event is MapEventScrollWheelZoom ||
+                      event is MapEventNonRotatedSizeChange) {
                     final z = _mapController.camera.zoom;
                     if ((z - _currentZoom).abs() > 0.05) {
                       setState(() => _currentZoom = z);
