@@ -114,16 +114,30 @@ class LiveActivityService {
 
   /// Determine primary display mode from set of active engines.
   ///
-  /// Priority: wardrive > foxhunter > flockBle > flockWifi > skySpy > detector > uniPwn
+  /// Combinations collapse to dedicated modes so the title reflects every
+  /// active radio path:
+  ///   wardrive + flock*       → wardriveFlock (WIGLE+FLOCK)
+  ///   flockBle + flockWifi    → flockDual     (FLOCK WiFi+BLE)
+  ///
+  /// Priority for singletons:
+  ///   foxhunter(with target) > wardriveFlock > wardrive > flockDual >
+  ///   flockBle > flockWifi > skySpy > detector > uniPwn
   static String resolvePrimaryMode(Set<String> activeEngines, {String? foxhuntTarget}) {
-    if (activeEngines.contains('wardrive')) return 'wardrive';
+    final hasWardrive = activeEngines.contains('wardrive');
+    final hasFlockBle = activeEngines.contains('flockBle');
+    final hasFlockWifi = activeEngines.contains('flockWifi');
+    final hasFlock = hasFlockBle || hasFlockWifi;
+
     if (foxhuntTarget != null && activeEngines.contains('foxhunter')) return 'foxhunter';
-    if (activeEngines.contains('flockBle')) return 'flockBle';
-    if (activeEngines.contains('flockWifi')) return 'flockWifi';
+    if (hasWardrive && hasFlock) return 'wardriveFlock';
+    if (hasWardrive) return 'wardrive';
+    if (hasFlockBle && hasFlockWifi) return 'flockDual';
+    if (hasFlockBle) return 'flockBle';
+    if (hasFlockWifi) return 'flockWifi';
     if (activeEngines.contains('skySpy')) return 'skySpy';
     if (activeEngines.contains('detector')) return 'detector';
     if (activeEngines.contains('uniPwn')) return 'uniPwn';
-    return 'wardrive'; // fallback
+    return 'wardrive';
   }
 }
 
