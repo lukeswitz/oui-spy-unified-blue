@@ -3,7 +3,7 @@ import 'dart:math';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -2475,14 +2475,15 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
 
   Future<void> _importCsv(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['csv'],
-      withData: false,
+    const typeGroup = XTypeGroup(
+      label: 'CSV',
+      extensions: ['csv'],
+      uniformTypeIdentifiers: ['public.comma-separated-values-text'],
     );
-    if (result == null || result.files.isEmpty) return;
-    final path = result.files.single.path;
-    if (path == null) {
+    final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file == null) return;
+    final path = file.path;
+    if (path.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Could not access selected file')),
       );

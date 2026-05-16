@@ -19,6 +19,7 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/models/session.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
+import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart' as drift;
@@ -120,6 +121,10 @@ class WardriveController extends ChangeNotifier {
   final NotificationService _notificationService;
   final LiveActivityService _liveActivity;
   StreamSubscription<NodeConnectionState>? _connSub;
+
+  /// Imperial-units flag mirrored from [unitSystemProvider]. Used by
+  /// [_updateLiveActivity] so the iOS Live Activity matches the in-app setting.
+  bool isImperial = false;
 
   WardriveState state = WardriveState.idle;
   WardriveTarget target = WardriveTarget.wigle;
@@ -716,6 +721,7 @@ class WardriveController extends ChangeNotifier {
       distanceKm: distanceKm,
       speedKmh: currentPosition?.speedKmh ?? 0,
       targetMac: foxhuntTarget ?? '',
+      isImperial: isImperial,
     );
   }
 
@@ -912,5 +918,10 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final geofence = ref.read(geofenceFilterProvider);
   final notif = ref.watch(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
-  return WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
+  final controller = WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
+  controller.isImperial = ref.read(unitSystemProvider) == UnitSystem.imperial;
+  ref.listen<UnitSystem>(unitSystemProvider, (_, next) {
+    controller.isImperial = next == UnitSystem.imperial;
+  });
+  return controller;
 });

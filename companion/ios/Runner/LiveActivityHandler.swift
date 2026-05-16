@@ -92,7 +92,8 @@ class LiveActivityHandler {
             rssi: args["rssi"] as? Int ?? -100,
             intervalMs: args["intervalMs"] as? Int ?? 0,
             robotType: args["robotType"] as? String ?? "",
-            exploitStatus: args["exploitStatus"] as? String ?? ""
+            exploitStatus: args["exploitStatus"] as? String ?? "",
+            isImperial: args["isImperial"] as? Bool ?? false
         )
     }
 }

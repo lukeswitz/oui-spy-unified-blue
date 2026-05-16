@@ -22,6 +22,86 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
         var intervalMs: Int
         var robotType: String
         var exploitStatus: String
+        var isImperial: Bool = false
+
+        var distanceDisplay: String {
+            if isImperial {
+                let mi = distanceKm * 0.621371
+                return String(format: "%.1fmi", mi)
+            }
+            return String(format: "%.1fkm", distanceKm)
+        }
+
+        var distanceValueOnly: String {
+            if isImperial {
+                return String(format: "%.1f", distanceKm * 0.621371)
+            }
+            return String(format: "%.1f", distanceKm)
+        }
+
+        var distanceUnitLabel: String { isImperial ? "mi" : "km" }
+
+        var speedDisplay: String {
+            if isImperial {
+                return String(format: "%.0f", speedKmh * 0.621371)
+            }
+            return String(format: "%.0f", speedKmh)
+        }
+
+        init(
+            mode: EngineMode,
+            uniqueCount: Int,
+            flockCount: Int,
+            droneCount: Int,
+            detectorHits: Int,
+            distanceKm: Double,
+            speedKmh: Double,
+            targetMac: String,
+            rssi: Int,
+            intervalMs: Int,
+            robotType: String,
+            exploitStatus: String,
+            isImperial: Bool = false
+        ) {
+            self.mode = mode
+            self.uniqueCount = uniqueCount
+            self.flockCount = flockCount
+            self.droneCount = droneCount
+            self.detectorHits = detectorHits
+            self.distanceKm = distanceKm
+            self.speedKmh = speedKmh
+            self.targetMac = targetMac
+            self.rssi = rssi
+            self.intervalMs = intervalMs
+            self.robotType = robotType
+            self.exploitStatus = exploitStatus
+            self.isImperial = isImperial
+        }
+
+        // Backward-compatible decoder: tolerate ContentState payloads written
+        // before `isImperial` was added (resumed Activities after app upgrade).
+        private enum CodingKeys: String, CodingKey {
+            case mode, uniqueCount, flockCount, droneCount, detectorHits,
+                 distanceKm, speedKmh, targetMac, rssi, intervalMs,
+                 robotType, exploitStatus, isImperial
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            mode = try c.decode(EngineMode.self, forKey: .mode)
+            uniqueCount = try c.decode(Int.self, forKey: .uniqueCount)
+            flockCount = try c.decode(Int.self, forKey: .flockCount)
+            droneCount = try c.decode(Int.self, forKey: .droneCount)
+            detectorHits = try c.decode(Int.self, forKey: .detectorHits)
+            distanceKm = try c.decode(Double.self, forKey: .distanceKm)
+            speedKmh = try c.decode(Double.self, forKey: .speedKmh)
+            targetMac = try c.decode(String.self, forKey: .targetMac)
+            rssi = try c.decode(Int.self, forKey: .rssi)
+            intervalMs = try c.decode(Int.self, forKey: .intervalMs)
+            robotType = try c.decode(String.self, forKey: .robotType)
+            exploitStatus = try c.decode(String.self, forKey: .exploitStatus)
+            isImperial = try c.decodeIfPresent(Bool.self, forKey: .isImperial) ?? false
+        }
     }
 
     enum EngineMode: String, Codable, Hashable {

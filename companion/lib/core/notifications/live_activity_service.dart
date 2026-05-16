@@ -66,6 +66,7 @@ class LiveActivityService {
     int intervalMs = 0,
     String robotType = '',
     String exploitStatus = '',
+    bool isImperial = false,
   }) async {
     if (!_supported) return;
 
@@ -82,6 +83,7 @@ class LiveActivityService {
       'intervalMs': intervalMs,
       'robotType': robotType,
       'exploitStatus': exploitStatus,
+      'isImperial': isImperial,
     };
 
     try {

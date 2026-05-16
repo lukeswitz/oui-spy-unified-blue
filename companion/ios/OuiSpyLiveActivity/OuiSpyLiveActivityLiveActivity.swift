@@ -182,9 +182,9 @@ private struct ExpandedBottom: View {
                 if state.detectorHits > 0 {
                     StatPill(icon: "sensor.tag.radiowaves.forward", value: "\(state.detectorHits)", color: engineColor(.detector))
                 }
-                StatPill(icon: "road.lanes", value: String(format: "%.1fkm", state.distanceKm), color: .gray)
+                StatPill(icon: "road.lanes", value: state.distanceDisplay, color: .gray)
                 if state.speedKmh > 0 {
-                    StatPill(icon: "speedometer", value: String(format: "%.0f", state.speedKmh), color: .gray)
+                    StatPill(icon: "speedometer", value: state.speedDisplay, color: .gray)
                 }
             }
         case .flockBle, .flockWifi, .flockDual:
@@ -195,7 +195,7 @@ private struct ExpandedBottom: View {
                     StatPill(icon: "antenna.radiowaves.left.and.right", value: "WiFi", color: engineColor(.flockWifi))
                 }
                 StatPill(icon: "number", value: "\(state.uniqueCount)", color: .gray)
-                StatPill(icon: "road.lanes", value: String(format: "%.1fkm", state.distanceKm), color: .gray)
+                StatPill(icon: "road.lanes", value: state.distanceDisplay, color: .gray)
             }
         case .detector:
             HStack(spacing: 12) {
@@ -303,8 +303,8 @@ private struct LockScreenView: View {
         switch s.mode {
         case .foxhunter: return formatMac(s.targetMac)
         case .uniPwn:    return s.robotType
-        case .wardrive:  return "\(s.uniqueCount) unique \u{00b7} \(String(format: "%.1f", s.distanceKm))km"
-        case .wardriveFlock: return "\(s.uniqueCount) unique \u{00b7} \(s.flockCount) cameras \u{00b7} \(String(format: "%.1f", s.distanceKm))km"
+        case .wardrive:  return "\(s.uniqueCount) unique \u{00b7} \(s.distanceValueOnly)\(s.distanceUnitLabel)"
+        case .wardriveFlock: return "\(s.uniqueCount) unique \u{00b7} \(s.flockCount) cameras \u{00b7} \(s.distanceValueOnly)\(s.distanceUnitLabel)"
         case .flockBle, .flockWifi: return "\(s.flockCount) cameras \u{00b7} \(s.uniqueCount) total"
         case .flockDual: return "\(s.flockCount) cameras \u{00b7} WiFi+BLE"
         case .detector:  return "\(s.detectorHits) watchlist hits"
