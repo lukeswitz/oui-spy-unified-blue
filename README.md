@@ -127,6 +127,7 @@ Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All 
 
 - **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate
 - **Wardrive mapping** with 5 target modes (WiGLE, Flock, Drone, Detector, WiGLE+Flock), WiFi/BLE/both radio selection, WiGLE CSV export, direct WiGLE upload, session history
+- **WiGLE CSV import & review** — load any WiGLE-format CSV, auto-match every BSSID against the bundled OUI/Flock database, flag surveillance hits (Flock, Raven, watchlist OUIs) on the map and in the feed
 - **Per-engine control** — enable/disable any of the 7 engines independently, configure scan timing, radio modes, watchlist entries
 - **Mesh overlay** — see peer node names and per-node detection counts during ESP-NOW coordinated wardrives
 - **Ignore list** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles
