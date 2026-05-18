@@ -18,6 +18,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
+import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -2040,11 +2041,41 @@ class _DetectionsTab extends ConsumerStatefulWidget {
 class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   List<Map<String, dynamic>> _detections = [];
   bool _loading = true;
+  bool _rescanning = false;
   _DetSort _sort = _DetSort.time;
   bool _ascending = false;
   String? _engineFilter; // null = all, 'flock', 'detector'
   bool _showMap = false;
   final _mapController = MapController();
+
+  Future<void> _rescan() async {
+    final db = ref.read(databaseProvider);
+    final watchlist =
+        List<WatchlistEntry>.from(ref.read(watchlistProvider).entries);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _rescanning = true);
+    try {
+      final res = await WigleCsvRescan.rescanAll(db, watchlist: watchlist);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppTheme.success,
+        content: Text(
+          'Rescanned ${res.sessionsScanned} sessions, '
+          '${res.rowsScanned} rows, ${res.rowsUpdated} reclassified '
+          '(${res.newDetectorMacs} detector, ${res.newFlockMacs} flock)',
+        ),
+      ));
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        backgroundColor: AppTheme.error,
+        content: Text('Rescan failed: $e'),
+      ));
+    } finally {
+      if (mounted) setState(() => _rescanning = false);
+    }
+  }
 
   @override
   void initState() {
@@ -2212,6 +2243,19 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                   size: 16,
                   color: _showMap ? AppTheme.accent : t.textDim,
                 ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: _rescanning ? null : _rescan,
+                child: _rescanning
+                    ? const SizedBox(
+                        width: 14, height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5, color: AppTheme.accent,
+                        ),
+                      )
+                    : Icon(Icons.youtube_searched_for,
+                        size: 16, color: AppTheme.detector),
               ),
               const SizedBox(width: 12),
               GestureDetector(

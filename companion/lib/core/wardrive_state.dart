@@ -130,6 +130,7 @@ class WardriveController extends ChangeNotifier {
   WardriveTarget target = WardriveTarget.wigle;
   WardriveRadio radio = WardriveRadio.both;
   bool flockFilter = false;
+  bool detectorFilter = false;
   double _markerDistanceM = 10.0;
 
   int _wifiRssiRelogDb = 20;
@@ -213,6 +214,9 @@ class WardriveController extends ChangeNotifier {
   final Set<String> _flockMacs = {};
   final Map<String, Detection> _flockByMac = {};
   List<Detection>? _cachedFlockDetections;
+  final Set<String> _detectorMacs = {};
+  final Map<String, Detection> _detectorByMac = {};
+  List<Detection>? _cachedDetectorDetections;
   final List<LatLng> routePoints = [];
   double distanceKm = 0;
   /// Median coord of the active/loaded session. Used to reject GPS outliers
@@ -233,12 +237,21 @@ class WardriveController extends ChangeNotifier {
   bool get isRunning => state == WardriveState.running;
   bool get isActive => state != WardriveState.idle;
   int get flockCount => _flockMacs.length;
+  int get detectorCount => _detectorMacs.length;
 
   List<Detection> get flockDetections {
     if (_cachedFlockDetections != null) return _cachedFlockDetections!;
     final list = _flockByMac.values.toList();
     list.sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
     _cachedFlockDetections = list;
+    return list;
+  }
+
+  List<Detection> get detectorDetections {
+    if (_cachedDetectorDetections != null) return _cachedDetectorDetections!;
+    final list = _detectorByMac.values.toList();
+    list.sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
+    _cachedDetectorDetections = list;
     return list;
   }
 
@@ -274,6 +287,9 @@ class WardriveController extends ChangeNotifier {
     _flockMacs.clear();
     _flockByMac.clear();
     _cachedFlockDetections = null;
+    _detectorMacs.clear();
+    _detectorByMac.clear();
+    _cachedDetectorDetections = null;
     routePoints.clear();
     distanceKm = 0;
     droneCount = 0;
@@ -375,12 +391,16 @@ class WardriveController extends ChangeNotifier {
     _flockMacs.clear();
     _flockByMac.clear();
     _cachedFlockDetections = null;
+    _detectorMacs.clear();
+    _detectorByMac.clear();
+    _cachedDetectorDetections = null;
     rawDetectionCount = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
     distanceKm = 0;
     droneCount = 0;
     flockFilter = false;
+    detectorFilter = false;
     _lastCompletedSessionId = null;
     sessionCenter = null;
     notifyListeners();
@@ -404,6 +424,9 @@ class WardriveController extends ChangeNotifier {
     _dedupedByMac.clear();
     _flockByMac.clear();
     _cachedFlockDetections = null;
+    _detectorByMac.clear();
+    _cachedDetectorDetections = null;
+    _detectorMacs.clear();
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
@@ -428,6 +451,10 @@ class WardriveController extends ChangeNotifier {
       if (isFlock) {
         _flockMacs.add(det.macAddress);
         _flockByMac[det.macAddress] = det;
+      }
+      if (det.engine == Engine.detector) {
+        _detectorMacs.add(det.macAddress);
+        _detectorByMac[det.macAddress] = det;
       }
       if (det.engine == Engine.skySpy) droneCount++;
 
@@ -638,6 +665,11 @@ class WardriveController extends ChangeNotifier {
   }
 
   /// Toggle flock display filter (does NOT control engines).
+  void toggleDetectorFilter() {
+    detectorFilter = !detectorFilter;
+    notifyListeners();
+  }
+
   void toggleFlockFilter() {
     flockFilter = !flockFilter;
     notifyListeners();
@@ -783,6 +815,11 @@ class WardriveController extends ChangeNotifier {
       _flockMacs.add(detection.macAddress);
       _flockByMac[detection.macAddress] = detection;
       _cachedFlockDetections = null;
+    }
+    if (detection.engine == Engine.detector) {
+      _detectorMacs.add(detection.macAddress);
+      _detectorByMac[detection.macAddress] = detection;
+      _cachedDetectorDetections = null;
     }
     if (detection.engine == Engine.skySpy) droneCount++;
 

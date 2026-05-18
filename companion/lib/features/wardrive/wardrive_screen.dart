@@ -644,9 +644,16 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
         .where((d) => _hasMapCoord(d.latitude, d.longitude))
         .where((d) => wd.isWithinSession(d.latitude!, d.longitude!))
         .toList();
-    final geoDetections = wd.flockFilter
-        ? allGeo.where((d) =>
-            d.engine == Engine.flockBle || d.engine == Engine.flockWifi).toList()
+    final filterActive = wd.flockFilter || wd.detectorFilter;
+    final geoDetections = filterActive
+        ? allGeo.where((d) {
+            if (wd.flockFilter &&
+                (d.engine == Engine.flockBle || d.engine == Engine.flockWifi)) {
+              return true;
+            }
+            if (wd.detectorFilter && d.engine == Engine.detector) return true;
+            return false;
+          }).toList()
         : allGeo;
     if (geoDetections.isEmpty) return const _DetectionLayers.empty();
 
@@ -658,7 +665,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     for (final d in geoDetections) {
       final isFlock = d.engine == Engine.flockBle || d.engine == Engine.flockWifi;
       final isDrone = d.engine == Engine.skySpy;
-      if (isFlock || isDrone) {
+      final isDetector = d.engine == Engine.detector;
+      if (isFlock || isDrone || isDetector) {
         priority.add(d);
       } else {
         clusterable.add(d);
@@ -770,6 +778,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     final pins = <Marker>[];
     for (final d in priority) {
       final isDrone = d.engine == Engine.skySpy;
+      final isDetector = d.engine == Engine.detector;
       final pinHead = (24.0 * zoomScale).clamp(18.0, 32.0);
       final leader = (40.0 * zoomScale).clamp(30.0, 56.0);
       final w = pinHead + leader + 12;
@@ -782,7 +791,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
         rotate: true,
         child: _PriorityPin(
           color: wt.engineColor(d.engine),
-          icon: isDrone ? Icons.flight : Icons.videocam,
+          icon: isDrone
+              ? Icons.flight
+              : isDetector
+                  ? Icons.radar
+                  : Icons.videocam,
           headSize: pinHead,
           leaderLength: leader,
         ),
@@ -1843,6 +1856,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
   WardriveController get wd => widget.wd;
 
   bool get _flockExpanded => wd.flockFilter;
+  bool get _detectorExpanded => wd.detectorFilter;
 
   void _showFlockCopySheet(BuildContext context, Detection d) {
     final t = AppTheme.of(context);
@@ -1906,6 +1920,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
     final isUploaded = wigle.isUploaded(sid);
     final isUploading = wigle.isUploading(sid);
     final flockDets = wd.flockDetections;
+    final detectorDets = wd.detectorDetections;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1996,7 +2011,58 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: wd.detectorCount > 0
+                    ? () => wd.toggleDetectorFilter()
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _detectorExpanded
+                        ? AppTheme.detector.withValues(alpha: 0.25)
+                        : wd.detectorCount > 0
+                            ? AppTheme.detector.withValues(alpha: 0.10)
+                            : t.surface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _detectorExpanded
+                          ? AppTheme.detector.withValues(alpha: 0.7)
+                          : wd.detectorCount > 0
+                              ? AppTheme.detector.withValues(alpha: 0.35)
+                              : t.border,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.radar, size: 12,
+                          color: wd.detectorCount > 0
+                              ? AppTheme.detector
+                              : t.textDim),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${wd.detectorCount}',
+                        style: TextStyle(
+                          color: wd.detectorCount > 0
+                              ? AppTheme.detector
+                              : t.textDim,
+                          fontSize: 10,
+                          fontFamily: 'monospace', fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (wd.detectorCount > 0) ...[
+                        const SizedBox(width: 3),
+                        Icon(
+                          _detectorExpanded ? Icons.expand_less : Icons.expand_more,
+                          size: 12, color: AppTheme.detector,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
               const Spacer(),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -2214,6 +2280,122 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                       ),
                     ),
                   ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_detectorExpanded && detectorDets.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 180),
+              decoration: BoxDecoration(
+                color: t.background.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: AppTheme.detector.withValues(alpha: 0.3)),
+              ),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                shrinkWrap: true,
+                itemCount: detectorDets.length,
+                itemBuilder: (_, i) {
+                  final d = detectorDets[i];
+                  final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
+                  final rssiColor =
+                      Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
+                  final hasGps = d.latitude != null && d.longitude != null;
+                  final desc = d.detector?.filterDescription ?? '';
+                  final isFullMac = d.detector?.isFullMac ?? false;
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: hasGps ? () => widget.onZoomDetection(d) : null,
+                    onLongPress: () => _showFlockCopySheet(context, d),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: i < detectorDets.length - 1
+                            ? Border(
+                                bottom: BorderSide(
+                                    color: t.border.withValues(alpha: 0.5),
+                                    width: 0.5))
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 3, height: 20,
+                            decoration: BoxDecoration(
+                              color: AppTheme.detector,
+                              borderRadius: BorderRadius.circular(1.5),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      d.macAddress.toUpperCase(),
+                                      style: TextStyle(
+                                        color: t.textPrimary, fontSize: 10,
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 3, vertical: 0.5),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.detector
+                                            .withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                      child: Text(
+                                        isFullMac ? 'MAC' : 'OUI',
+                                        style: const TextStyle(
+                                          color: AppTheme.detector, fontSize: 7,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (desc.isNotEmpty || d.deviceName.isNotEmpty)
+                                  Text(
+                                    desc.isNotEmpty ? desc : d.deviceName,
+                                    style: TextStyle(
+                                      color: t.textDim, fontSize: 9,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (!hasGps) ...[
+                            Icon(Icons.location_off,
+                                size: 8, color: t.textDim),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            '${d.rssi}',
+                            style: TextStyle(
+                              color: rssiColor, fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text('dBm', style: TextStyle(
+                            color: t.textDim, fontSize: 7,
+                          )),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
