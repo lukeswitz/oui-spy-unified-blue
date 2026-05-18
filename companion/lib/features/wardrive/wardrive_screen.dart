@@ -18,6 +18,7 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -2501,13 +2502,20 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
     setState(() => _importing = true);
     try {
       final db = ref.read(databaseProvider);
-      final res = await WigleCsvImport.importFile(db, File(path));
+      final watchlist =
+          List<WatchlistEntry>.from(ref.read(watchlistProvider).entries);
+      final res = await WigleCsvImport.importFile(
+        db,
+        File(path),
+        watchlist: watchlist,
+      );
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(
         backgroundColor: AppTheme.success,
         content: Text(
           'Imported ${res.detectionCount} detections '
           '(${res.uniqueMacs} unique MACs'
+          '${res.detectorMacs > 0 ? ", ${res.detectorMacs} watchlist" : ""}'
           '${res.flockMacs > 0 ? ", ${res.flockMacs} flock" : ""}'
           '${res.skipped > 0 ? ", ${res.skipped} skipped" : ""})',
         ),

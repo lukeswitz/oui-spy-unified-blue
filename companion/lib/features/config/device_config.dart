@@ -17,6 +17,7 @@ import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -53,7 +54,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
     _readDeviceConfig();
   }
 
@@ -167,6 +168,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               tabAlignment: TabAlignment.start,
               tabs: const [
                 Tab(text: 'APP'),
+                Tab(text: 'WATCHLIST'),
                 Tab(text: 'IGNORE'),
                 Tab(text: 'DETECTIONS'),
                 Tab(text: 'HARDWARE'),
@@ -181,6 +183,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 controller: _tabController,
                 children: [
                   _buildAppTab(),
+                  const _WatchlistTab(),
                   const _IgnoreListTab(),
                   const _DetectionsTab(),
                   _buildHardwareTab(),
@@ -1630,6 +1633,400 @@ class _IgnoreEntryTile extends ConsumerWidget {
   }
 }
 
+
+class _WatchlistTab extends ConsumerWidget {
+  const _WatchlistTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final watchlist = ref.watch(watchlistProvider);
+    final entries = watchlist.entries;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
+          child: Row(
+            children: [
+              Icon(Icons.radar, size: 14, color: AppTheme.detector),
+              const SizedBox(width: 6),
+              Text(
+                'WATCHLIST',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      letterSpacing: 2,
+                      color: t.textDim,
+                    ),
+              ),
+              const Spacer(),
+              Text(
+                '${entries.length} target${entries.length == 1 ? '' : 's'}',
+                style: TextStyle(
+                  color: t.textDim, fontSize: 10,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _showAddDialog(context, ref),
+                child: Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: AppTheme.detector.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppTheme.detector.withValues(alpha: 0.3)),
+                  ),
+                  child: const Icon(Icons.add,
+                      size: 18, color: AppTheme.detector),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+          child: Text(
+            'Detector engine alerts when any of these OUI prefixes or full '
+            'MAC addresses are seen. Used for runtime detection and CSV import '
+            'reclassification.',
+            style: TextStyle(color: t.textDim, fontSize: 11),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: !watchlist.isLoaded
+              ? const Center(child: CircularProgressIndicator())
+              : entries.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.radar, size: 36, color: t.textDim),
+                          const SizedBox(height: 12),
+                          Text('NO TARGETS', style: TextStyle(
+                            color: t.textDim, fontSize: 12,
+                            fontWeight: FontWeight.w700, letterSpacing: 2,
+                          )),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Tap + to add an OUI prefix\nor full MAC to watch.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: t.textDim, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      itemCount: entries.length,
+                      itemBuilder: (_, i) =>
+                          _WatchlistEntryTile(entry: entries[i]),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  void _showAddDialog(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final idController = TextEditingController();
+    final descController = TextEditingController();
+    WatchlistMatchType matchType = WatchlistMatchType.oui;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final isHex = matchType != WatchlistMatchType.name;
+          final hint = switch (matchType) {
+            WatchlistMatchType.oui => 'AA:BB:CC',
+            WatchlistMatchType.fullMac => 'AA:BB:CC:DD:EE:FF',
+            WatchlistMatchType.name => 'penguin*',
+          };
+          final label = switch (matchType) {
+            WatchlistMatchType.oui => 'OUI prefix (3 bytes)',
+            WatchlistMatchType.fullMac => 'Full MAC address',
+            WatchlistMatchType.name => 'Device name (supports * and ?)',
+          };
+          return AlertDialog(
+            backgroundColor: t.surface,
+            title: Text('Add Watchlist Target',
+                style: TextStyle(color: t.textPrimary)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('MATCH TYPE', style: TextStyle(
+                    color: t.textDim, fontSize: 10,
+                    fontWeight: FontWeight.w700, letterSpacing: 1,
+                  )),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: WatchlistMatchType.values.map((type) {
+                      final selected = matchType == type;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            right: type == WatchlistMatchType.values.last
+                                ? 0
+                                : 6,
+                          ),
+                          child: _MatchTypeChip(
+                            label: switch (type) {
+                              WatchlistMatchType.oui => 'OUI',
+                              WatchlistMatchType.fullMac => 'FULL MAC',
+                              WatchlistMatchType.name => 'NAME',
+                            },
+                            selected: selected,
+                            onTap: () =>
+                                setDialogState(() => matchType = type),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: idController,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontFamily: isHex ? 'monospace' : null,
+                      fontSize: 14,
+                    ),
+                    textCapitalization: isHex
+                        ? TextCapitalization.characters
+                        : TextCapitalization.none,
+                    decoration: InputDecoration(
+                      hintText: hint,
+                      labelText: label,
+                    ),
+                  ),
+                  if (matchType == WatchlistMatchType.name) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Use * for any sequence, ? for one character. '
+                      'Match is case-insensitive.',
+                      style: TextStyle(color: t.textDim, fontSize: 10),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: descController,
+                    style: TextStyle(color: t.textPrimary, fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. Flock Safety',
+                      labelText: 'Label (optional)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('CANCEL'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final raw = idController.text.trim();
+                  if (raw.isEmpty) return;
+                  String identifier;
+                  if (matchType == WatchlistMatchType.name) {
+                    identifier = raw;
+                  } else {
+                    final hex = _normalizeHex(raw);
+                    if (matchType == WatchlistMatchType.fullMac &&
+                        hex.length != 12) return;
+                    if (matchType == WatchlistMatchType.oui &&
+                        hex.length < 6) return;
+                    identifier = _formatMac(
+                      hex,
+                      matchType == WatchlistMatchType.fullMac ? 6 : 3,
+                    );
+                  }
+                  ref.read(watchlistProvider).add(WatchlistEntry(
+                        identifier: identifier,
+                        matchType: matchType,
+                        description: descController.text.trim(),
+                      ));
+                  Navigator.pop(ctx);
+                },
+                child: const Text('ADD'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  static String _normalizeHex(String s) {
+    return s.toLowerCase().replaceAll(RegExp(r'[^0-9a-f]'), '');
+  }
+
+  static String _formatMac(String hex, int byteCount) {
+    final n = (byteCount * 2).clamp(0, hex.length);
+    final h = hex.substring(0, n);
+    final buf = StringBuffer();
+    for (int i = 0; i < h.length; i++) {
+      if (i > 0 && i.isEven) buf.write(':');
+      buf.write(h[i]);
+    }
+    return buf.toString();
+  }
+}
+
+class _MatchTypeChip extends StatelessWidget {
+  const _MatchTypeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.detector.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: selected
+                ? AppTheme.detector.withValues(alpha: 0.5)
+                : t.border,
+          ),
+        ),
+        child: Center(
+          child: Text(label, style: TextStyle(
+            color: selected ? AppTheme.detector : t.textSecondary,
+            fontSize: 11, fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          )),
+        ),
+      ),
+    );
+  }
+}
+
+class _WatchlistEntryTile extends ConsumerWidget {
+  const _WatchlistEntryTile({required this.entry});
+  final WatchlistEntry entry;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final isHex = !entry.isName;
+    final IconData icon = switch (entry.matchType) {
+      WatchlistMatchType.oui => Icons.radar,
+      WatchlistMatchType.fullMac => Icons.fingerprint,
+      WatchlistMatchType.name => Icons.badge_outlined,
+    };
+    return Dismissible(
+      key: ValueKey('wl:${entry.matchType.name}:${entry.identifier}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.error.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child:
+            const Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
+      ),
+      onDismissed: (_) => ref.read(watchlistProvider).remove(entry),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: t.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: AppTheme.detector.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                size: 16,
+                color: AppTheme.detector,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isHex
+                        ? entry.identifier.toUpperCase()
+                        : entry.identifier,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 13,
+                      fontFamily: isHex ? 'monospace' : null,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: isHex ? 0.5 : 0,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppTheme.detector.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          entry.matchType.label,
+                          style: const TextStyle(
+                            color: AppTheme.detector,
+                            fontSize: 8, fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      if (entry.description.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            entry.description,
+                            style: TextStyle(color: t.textDim, fontSize: 10),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 enum _DetSort { time, rssi, mac }
 

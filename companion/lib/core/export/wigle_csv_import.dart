@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/flock_oui.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
@@ -20,17 +21,25 @@ class WigleCsvImport {
 
   static Future<WigleImportResult> importFile(
     AppDatabase db,
-    File file,
-  ) async {
+    File file, {
+    List<WatchlistEntry> watchlist = const [],
+  }) async {
     final raw = await file.readAsString();
-    return importString(db, raw, fileName: p.basename(file.path));
+    return importString(
+      db,
+      raw,
+      fileName: p.basename(file.path),
+      watchlist: watchlist,
+    );
   }
 
   static Future<WigleImportResult> importString(
     AppDatabase db,
     String raw, {
     String? fileName,
+    List<WatchlistEntry> watchlist = const [],
   }) async {
+    final wlIndex = _WatchlistIndex.build(watchlist);
     final lines = const LineSplitter().convert(raw);
     if (lines.isEmpty) {
       throw const FormatException('Empty CSV');
@@ -77,6 +86,7 @@ class WigleCsvImport {
     final batch = <DetectionsCompanion>[];
     final uniqueMacs = <String>{};
     final flockMacs = <String>{};
+    final detectorMacs = <String>{};
     int? minTs;
     int? maxTs;
     int skipped = 0;
@@ -121,13 +131,21 @@ class WigleCsvImport {
 
       final isBle = type == 'BLE' || auth.toUpperCase().contains('LE');
       final isFlock = FlockOui.match(mac);
+      final wlHit = wlIndex.match(mac, ssid);
       final Engine engine;
-      if (isFlock) {
+      final String method;
+      if (wlHit != null) {
+        engine = Engine.detector;
+        method = isBle
+            ? (wlHit.byName ? 'name_match' : 'ble_watchlist')
+            : 'wifi_watchlist';
+      } else if (isFlock) {
         engine = isBle ? Engine.flockBle : Engine.flockWifi;
+        method = isBle ? 'ble_adv' : 'wifi_ap';
       } else {
         engine = Engine.wardrive;
+        method = isBle ? 'ble_adv' : 'wifi_ap';
       }
-      final method = isBle ? 'ble_adv' : 'wifi_ap';
       final authMode = _parseAuthMode(auth);
 
       batch.add(DetectionsCompanion(
@@ -147,9 +165,16 @@ class WigleCsvImport {
         accuracy: drift.Value(acc),
         ssid: drift.Value(isBle ? '' : ssid),
         authMode: drift.Value(authMode),
+        filterDescription: wlHit != null && wlHit.description.isNotEmpty
+            ? drift.Value(wlHit.description)
+            : const drift.Value.absent(),
+        isFullMac: wlHit != null
+            ? drift.Value(wlHit.isFullMac)
+            : const drift.Value.absent(),
       ));
       uniqueMacs.add(mac);
       if (isFlock) flockMacs.add(mac);
+      if (wlHit != null) detectorMacs.add(mac);
     }
 
     if (batch.isEmpty) {
@@ -188,6 +213,7 @@ class WigleCsvImport {
       detectionCount: batch.length,
       uniqueMacs: uniqueMacs.length,
       flockMacs: flockMacs.length,
+      detectorMacs: detectorMacs.length,
       skipped: skipped,
     );
   }
@@ -265,11 +291,153 @@ class WigleImportResult {
     required this.detectionCount,
     required this.uniqueMacs,
     required this.flockMacs,
+    required this.detectorMacs,
     required this.skipped,
   });
   final String sessionId;
   final int detectionCount;
   final int uniqueMacs;
   final int flockMacs;
+  final int detectorMacs;
   final int skipped;
+}
+
+class _WatchlistIndex {
+  _WatchlistIndex._(
+    this._fullMacs,
+    this._ouis,
+    this._descByFull,
+    this._descByOui,
+    this._namePatterns,
+  );
+
+  final Set<String> _fullMacs;
+  final Set<String> _ouis;
+  final Map<String, String> _descByFull;
+  final Map<String, String> _descByOui;
+  final List<_NamePattern> _namePatterns;
+
+  static _WatchlistIndex build(List<WatchlistEntry> entries) {
+    final fulls = <String>{};
+    final ouis = <String>{};
+    final descFull = <String, String>{};
+    final descOui = <String, String>{};
+    final names = <_NamePattern>[];
+    for (final e in entries) {
+      if (e.isName) {
+        final pat = e.identifier.trim();
+        if (pat.isEmpty) continue;
+        names.add(_NamePattern.compile(pat, e.description));
+        continue;
+      }
+      final norm = _normalizeHex(e.identifier);
+      if (norm.isEmpty) continue;
+      if (e.isFullMac) {
+        if (norm.length != 12) continue;
+        fulls.add(norm);
+        if (e.description.isNotEmpty) descFull[norm] = e.description;
+      } else {
+        if (norm.length < 6) continue;
+        final oui = norm.substring(0, 6);
+        ouis.add(oui);
+        if (e.description.isNotEmpty) descOui[oui] = e.description;
+      }
+    }
+    return _WatchlistIndex._(fulls, ouis, descFull, descOui, names);
+  }
+
+  _WatchlistHit? match(String mac, String name) {
+    if (_fullMacs.isEmpty && _ouis.isEmpty && _namePatterns.isEmpty) {
+      return null;
+    }
+    final norm = _normalizeHex(mac);
+    if (norm.length >= 12 && _fullMacs.contains(norm)) {
+      return _WatchlistHit(
+        isFullMac: true,
+        byName: false,
+        description: _descByFull[norm] ?? '',
+      );
+    }
+    if (norm.length >= 6) {
+      final oui = norm.substring(0, 6);
+      if (_ouis.contains(oui)) {
+        return _WatchlistHit(
+          isFullMac: false,
+          byName: false,
+          description: _descByOui[oui] ?? '',
+        );
+      }
+    }
+    if (name.isNotEmpty) {
+      for (final p in _namePatterns) {
+        if (p.matches(name)) {
+          return _WatchlistHit(
+            isFullMac: false,
+            byName: true,
+            description: p.description.isNotEmpty ? p.description : p.raw,
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  static String _normalizeHex(String s) {
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      final c = s.codeUnitAt(i);
+      final isDigit = c >= 0x30 && c <= 0x39;
+      final isUpper = c >= 0x41 && c <= 0x46;
+      final isLower = c >= 0x61 && c <= 0x66;
+      if (isDigit) {
+        buf.writeCharCode(c);
+      } else if (isUpper) {
+        buf.writeCharCode(c + 0x20);
+      } else if (isLower) {
+        buf.writeCharCode(c);
+      }
+    }
+    return buf.toString();
+  }
+}
+
+class _NamePattern {
+  _NamePattern._(this.raw, this.description, this._regex);
+
+  final String raw;
+  final String description;
+  final RegExp _regex;
+
+  static _NamePattern compile(String pattern, String description) {
+    final buf = StringBuffer('^');
+    for (var i = 0; i < pattern.length; i++) {
+      final c = pattern[i];
+      if (c == '*') {
+        buf.write('.*');
+      } else if (c == '?') {
+        buf.write('.');
+      } else {
+        buf.write(RegExp.escape(c));
+      }
+    }
+    buf.write(r'$');
+    return _NamePattern._(
+      pattern,
+      description,
+      RegExp(buf.toString(), caseSensitive: false),
+    );
+  }
+
+  bool matches(String name) => _regex.hasMatch(name);
+}
+
+class _WatchlistHit {
+  const _WatchlistHit({
+    required this.isFullMac,
+    required this.byName,
+    required this.description,
+  });
+  final bool isFullMac;
+  final bool byName;
+  final String description;
 }

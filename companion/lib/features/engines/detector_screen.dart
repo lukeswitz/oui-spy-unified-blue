@@ -159,7 +159,9 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
                 if (id.isEmpty) return;
                 ref.read(watchlistProvider).add(WatchlistEntry(
                   identifier: id,
-                  isFullMac: isFullMAC,
+                  matchType: isFullMAC
+                      ? WatchlistMatchType.fullMac
+                      : WatchlistMatchType.oui,
                   description: descController.text.trim(),
                 ));
                 Navigator.pop(ctx);
