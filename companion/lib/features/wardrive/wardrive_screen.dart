@@ -2590,6 +2590,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                         return _SessionRow(
                           session: sessions[i],
                           flockCountFuture: db.flockMacCount(sid),
+                          detectorCountFuture: db.detectorMacCount(sid),
                           wifiBleFuture: db.wifiBleUniqueCounts(sid),
                           selectable: _selectMode,
                           selected: isSelected,
@@ -2856,6 +2857,7 @@ class _SessionRow extends ConsumerWidget {
     this.wigleUploaded = false,
     this.wigleUploading = false,
     this.flockCountFuture,
+    this.detectorCountFuture,
     this.wifiBleFuture,
   });
   final Session session;
@@ -2869,6 +2871,7 @@ class _SessionRow extends ConsumerWidget {
   final bool wigleUploaded;
   final bool wigleUploading;
   final Future<int>? flockCountFuture;
+  final Future<int>? detectorCountFuture;
   final Future<({int wifi, int ble})>? wifiBleFuture;
 
   @override
@@ -2983,6 +2986,31 @@ class _SessionRow extends ConsumerWidget {
                                             '$fc',
                                             style: const TextStyle(
                                               color: AppTheme.flockBle, fontSize: 9,
+                                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                              if (detectorCountFuture != null)
+                                FutureBuilder<int>(
+                                  future: detectorCountFuture,
+                                  builder: (_, snap) {
+                                    final dc = snap.data ?? 0;
+                                    if (dc == 0) return const SizedBox.shrink();
+                                    return Padding(
+                                      padding: const EdgeInsets.only(left: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.radar, size: 10, color: AppTheme.detector),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            '$dc',
+                                            style: const TextStyle(
+                                              color: AppTheme.detector, fontSize: 9,
                                               fontFamily: 'monospace', fontWeight: FontWeight.w600,
                                             ),
                                           ),

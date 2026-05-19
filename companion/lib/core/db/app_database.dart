@@ -170,6 +170,16 @@ class AppDatabase extends _$AppDatabase {
     return result.read(detections.macAddress.count(distinct: true)) ?? 0;
   }
 
+  /// Count unique detector (watchlist hit) MACs in a session.
+  Future<int> detectorMacCount(String sessionId) async {
+    final query = selectOnly(detections)
+      ..where(detections.sessionId.equals(sessionId))
+      ..where(detections.engine.equals('detector'))
+      ..addColumns([detections.macAddress.count(distinct: true)]);
+    final result = await query.getSingle();
+    return result.read(detections.macAddress.count(distinct: true)) ?? 0;
+  }
+
   /// Count unique WiFi and BLE MACs in a session.
   Future<({int wifi, int ble})> wifiBleUniqueCounts(String sessionId) async {
     final wifiQuery = selectOnly(detections)
