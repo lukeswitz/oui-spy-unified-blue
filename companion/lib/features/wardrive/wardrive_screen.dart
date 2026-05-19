@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
@@ -55,6 +57,127 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   void initState() {
     super.initState();
     _loadExclusionZones();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _primeLocationPermission());
+  }
+
+  Future<bool> _primeLocationPermission() async {
+    if (!Platform.isIOS) return true;
+    if (!mounted) return false;
+    var status = await Geolocator.checkPermission();
+    if (status == LocationPermission.denied) {
+      status = await Geolocator.requestPermission();
+    }
+    if (!mounted) return false;
+    if (status == LocationPermission.denied ||
+        status == LocationPermission.deniedForever) {
+      _showPermissionGateDialog();
+      return false;
+    }
+    final servicesOn = await Geolocator.isLocationServiceEnabled();
+    if (!mounted) return false;
+    if (!servicesOn) {
+      _showServicesOffDialog();
+      return false;
+    }
+    if (status == LocationPermission.whileInUse) {
+      await _showIosAlwaysUpgradeDialog();
+    }
+    return true;
+  }
+
+  Future<void> _showIosAlwaysUpgradeDialog() async {
+    final p = await SharedPreferences.getInstance();
+    if (p.getBool('ios_always_upgrade_dismissed') == true) return;
+    if (!mounted) return;
+    final t = AppTheme.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text('Enable "Always" Location',
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+        content: Text(
+          'iOS only shows "While Using" in the first prompt. For wardriving with screen off, set:\n\n'
+          'Settings → OUI-SPY → Location → Always',
+          style: TextStyle(color: t.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await p.setBool('ios_always_upgrade_dismissed', true);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: Text("DON'T ASK AGAIN", style: TextStyle(color: t.textDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('LATER', style: TextStyle(color: t.textDim)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await Geolocator.openAppSettings();
+            },
+            child: const Text('OPEN SETTINGS', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPermissionGateDialog() {
+    final t = AppTheme.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text('Location Permission Required',
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+        content: Text(
+          'OUI-SPY needs location access to tag wardrive detections.\n\n'
+          'Open Settings → OUI-SPY → Location and choose "While Using" or "Always".',
+          style: TextStyle(color: t.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('LATER', style: TextStyle(color: t.textDim)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await Geolocator.openAppSettings();
+            },
+            child: const Text('OPEN SETTINGS', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showServicesOffDialog() {
+    final t = AppTheme.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text('Location Services Off',
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+        content: Text(
+          'Enable Settings → Privacy & Security → Location Services to wardrive.',
+          style: TextStyle(color: t.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('OK', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onMapReady() {
@@ -567,7 +690,15 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             if (!wd.isActive)
               Positioned(
                 bottom: 24, left: 0, right: 0,
-                child: _IdleControls(wd: wd, ref: ref, onGeofenceReturn: _loadExclusionZones),
+                child: _IdleControls(
+                  wd: wd,
+                  ref: ref,
+                  onGeofenceReturn: _loadExclusionZones,
+                  onStart: () async {
+                    if (!await _primeLocationPermission()) return;
+                    await ref.read(wardriveProvider).startSession();
+                  },
+                ),
               ),
 
             // Active: focus button (top-right, below stats)
@@ -875,10 +1006,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
 }
 
 class _IdleControls extends StatelessWidget {
-  const _IdleControls({required this.wd, required this.ref, this.onGeofenceReturn});
+  const _IdleControls({required this.wd, required this.ref, this.onGeofenceReturn, required this.onStart});
   final WardriveController wd;
   final WidgetRef ref;
   final VoidCallback? onGeofenceReturn;
+  final Future<void> Function() onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -1087,45 +1219,19 @@ class _IdleControls extends StatelessWidget {
             _Pill(
               label: 'START',
               color: t.color,
-              onTap: () async {
-                await ref.read(wardriveProvider).startSession();
-                if (!context.mounted) return;
-                final gps = ref.read(gpsProvider);
-                if (gps.needsBackgroundUpgrade) {
-                  final t = AppTheme.of(context);
-                  final open = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: t.surface,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                ref.read(gpsProvider).onMessage = (msg) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(msg),
+                        backgroundColor: AppTheme.accent,
+                        duration: const Duration(seconds: 4),
                       ),
-                      title: Text('Background Location',
-                        style: TextStyle(color: t.textPrimary, fontSize: 16,
-                          fontWeight: FontWeight.w600)),
-                      content: Text(
-                        'Wardrive works best with "Allow all the time" '
-                        'location. Without it, GPS stops when the screen turns off.\n\n'
-                        'Tap Location → "Allow all the time".',
-                        style: TextStyle(color: t.textSecondary, fontSize: 13),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(false),
-                          child: Text('LATER', style: TextStyle(color: t.textDim)),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
-                          child: const Text('OPEN SETTINGS',
-                            style: TextStyle(color: AppTheme.accent)),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (open == true) {
-                    await gps.openBackgroundSettings();
+                    );
                   }
-                }
+                };
+                onStart();
               },
             ),
           ],
