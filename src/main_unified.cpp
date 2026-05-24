@@ -191,8 +191,8 @@ static void detectionNotifyTask(void* param) {
 
     for (;;) {
         if (xQueueReceive(detectionQueue, &evt, portMAX_DELAY) == pdTRUE) {
-            // Cross-engine dedup: suppress same MAC within cooldown window
-            if (isNotifyDedupCooldown(evt.mac, evt.engine_id)) continue;
+            if (evt.engine_id != ENGINE_WARDRIVE &&
+                isNotifyDedupCooldown(evt.mac, evt.engine_id)) continue;
 
             // Audible + visual feedback only for target engines
             if (isAlertableEngine(evt.engine_id)) {
