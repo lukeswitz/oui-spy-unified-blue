@@ -296,11 +296,27 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   void _focusMap(WardriveController wd) {
     final pos = wd.currentPosition ?? ref.read(gpsProvider).lastPosition;
     if (pos == null) return;
-    _mapController.move(
-      LatLng(pos.latitude, pos.longitude),
-      _mapController.camera.zoom,
-    );
     if (!_followMode) setState(() => _followMode = true);
+    final here = LatLng(pos.latitude, pos.longitude);
+    if (wd.isActive && pos.speed > 1.0 && pos.heading.isFinite) {
+      _povHeading = pos.heading;
+      _applyFollowCamera(here, pos.heading);
+    } else {
+      _mapController.move(here, _mapController.camera.zoom);
+    }
+  }
+
+  void _applyFollowCamera(LatLng here, double headingDeg) {
+    final cam = _mapController.camera;
+    final size = cam.nonRotatedSize;
+    if (size.x <= 0 || size.y <= 0) {
+      _mapController.moveAndRotate(here, cam.zoom, -headingDeg);
+      return;
+    }
+    final mpp = _metersPerPixel(here.latitude, cam.zoom);
+    final aheadMeters = mpp * size.y * 0.25;
+    final ahead = const Distance().offset(here, aheadMeters, headingDeg);
+    _mapController.moveAndRotate(ahead, cam.zoom, -headingDeg);
   }
 
   List<Widget> _exclusionZoneLayers() {
@@ -382,35 +398,32 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       });
     }
 
-    // Auto-follow: keep map centered on current position while moving
-    if (_followMode && wd.isActive && wd.currentPosition != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (!_followMode) return;
-        _mapController.move(
-          LatLng(wd.currentPosition!.latitude, wd.currentPosition!.longitude),
-          _mapController.camera.zoom,
-        );
-      });
-    }
-
     final gpsPos2 = wd.currentPosition ?? gpsPos;
-    if (wt.driverPov && gpsPos2 != null) {
-      if (gpsPos2.speed > 1.0) {
-        final target = -gpsPos2.heading;
+    final povActive =
+        gpsPos2 != null && (wt.driverPov || (wd.isActive && _followMode));
+    if (povActive) {
+      final here = LatLng(gpsPos2.latitude, gpsPos2.longitude);
+      final moving = gpsPos2.speed > 1.0 && gpsPos2.heading.isFinite;
+      if (moving) {
         final delta = _shortAngleDelta(
           _povHeading.isNaN ? 0 : _povHeading,
           gpsPos2.heading,
         );
         if (_povHeading.isNaN || delta.abs() > 2.0) {
           _povHeading = gpsPos2.heading;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            _mapController.rotate(target);
-          });
         }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (!(wt.driverPov || (wd.isActive && _followMode))) return;
+          _applyFollowCamera(here, gpsPos2.heading);
+        });
+      } else if (_followMode) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_followMode) return;
+          _mapController.move(here, _mapController.camera.zoom);
+        });
       }
-    } else if (!wt.driverPov && !_povHeading.isNaN) {
+    } else if (!_povHeading.isNaN) {
       _povHeading = double.nan;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
