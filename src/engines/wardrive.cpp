@@ -19,111 +19,56 @@ static volatile bool wardriveActive = false;
 static unsigned long lastBleScan = 0;
 static volatile uint8_t wardriveRadio = 0x03;
 
-// Channel hopping — interleaved schedule, per-channel adaptive dwell.
-// Default range 1-11 covers US ISM (~99% of APs). JP/EU 12-14 via config.
 static uint8_t channelStart = 1;
 static uint8_t channelEnd   = 11;
 static unsigned long lastChannelHop = 0;
 
-// Per-channel dwell base. Priority 200ms = catches ~2 beacons (beacon
-// interval typ 102.4ms). Normal 110ms = covers one full beacon period.
-static uint16_t priorityDwellMs = 200;
-static uint16_t normalDwellMs   = 110;
+static uint16_t priorityDwellMs = 250;
+static uint16_t normalDwellMs   = 150;
 
-// Adaptive dwell per ch (1..14 → index 0..13).
-static uint16_t timePerChannel[14] = {
-    200, 110, 110, 110, 110, 200, 110, 110, 110, 110, 200, 110, 110, 110
-};
-static volatile uint8_t beaconsThisHop = 0;
-
-// Interleaved hop schedule. Priority channels (1/6/11 within range) are
-// inserted before every non-priority channel so they get revisited every
-// (numPriority + 1) hops instead of once per linear sweep.
-// Worst case range 1-14: 3 pri * (11 non-pri + 1 tail) = ~48 slots → 64 cap.
-static uint8_t hopSchedule[64];
+static uint8_t hopSchedule[32];
 static uint8_t hopScheduleLen = 1;
 static uint8_t hopIdx = 0;
 static uint8_t currentChannel = 1;
 
+static bool isPriorityChannel(uint8_t ch) {
+    return ch == 1 || ch == 6 || ch == 11;
+}
+
 static void buildHopSchedule(void) {
     hopScheduleLen = 0;
-    uint8_t priChans[3];
-    uint8_t numPri = 0;
+    for (uint16_t c = channelStart; c <= channelEnd && hopScheduleLen < 32; c++) {
+        hopSchedule[hopScheduleLen++] = (uint8_t)c;
+    }
     const uint8_t kPri[3] = {1, 6, 11};
-    for (uint8_t i = 0; i < 3; i++) {
+    for (uint8_t i = 0; i < 3 && hopScheduleLen < 32; i++) {
         if (kPri[i] >= channelStart && kPri[i] <= channelEnd) {
-            priChans[numPri++] = kPri[i];
-        }
-    }
-    bool hasNonPri = false;
-    for (uint16_t c = channelStart; c <= channelEnd; c++) {
-        if (c == 1 || c == 6 || c == 11) continue;
-        for (uint8_t i = 0; i < numPri && hopScheduleLen < 64; i++) {
-            hopSchedule[hopScheduleLen++] = priChans[i];
-        }
-        if (hopScheduleLen < 64) hopSchedule[hopScheduleLen++] = (uint8_t)c;
-        hasNonPri = true;
-    }
-    // Tail priority pass — ensures last slot is priority for revisit symmetry.
-    if (numPri > 0) {
-        for (uint8_t i = 0; i < numPri && hopScheduleLen < 64; i++) {
-            hopSchedule[hopScheduleLen++] = priChans[i];
+            hopSchedule[hopScheduleLen++] = kPri[i];
         }
     }
     if (hopScheduleLen == 0) {
         hopSchedule[0] = channelStart;
         hopScheduleLen = 1;
     }
-    if (!hasNonPri) {
-        // All-priority range (e.g. 1-1, 6-6). Already filled with tail pass.
-    }
     hopIdx = 0;
     currentChannel = hopSchedule[0];
 }
 
-// BLE scan timing — conservative 
-// 800ms scan every 3000ms = ~27% BLE duty
+static uint16_t dwellForChannel(uint8_t ch) {
+    return isPriorityChannel(ch) ? priorityDwellMs : normalDwellMs;
+}
+
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
-// Dedup rings
-static DedupRing<512, 10000> wardriveDedup;
-// ISR WiFi beacon dedup — separate ring to avoid contention with BLE callback.
-static DedupRingISR<512, 10000> wifiDedup;
-// Smaller dedup for Flock-WiFi hits inside ISR (independent cooldown).
+static DedupRing<1024, 5000> wardriveDedup;
+static DedupRingISR<1024, 2000> wifiDedup;
 static DedupRingISR<64, 5000> isrFlockWifiDedup;
 
-// Cached engine active states — avoids function calls per frame in ISR
 static volatile uint8_t wdFlockBleActive = 0;
 static volatile uint8_t wdFlockWifiActive = 0;
 static volatile uint8_t wdFoxhunterActive = 0;
 static volatile uint8_t wdDetectorActive = 0;
-
-static bool isPriorityChannel(uint8_t ch) {
-    return ch == 1 || ch == 6 || ch == 11;
-}
-
-static uint16_t dwellForChannel(uint8_t ch) {
-    if (ch >= 1 && ch <= 14) return timePerChannel[ch - 1];
-    return isPriorityChannel(ch) ? priorityDwellMs : normalDwellMs;
-}
-
-// Adaptive: adjust dwell based on beacon count (like Atomgps_wigler).
-// Floor kept tight to keep cycle fast; ceiling capped so dense channels
-// don't starve other channels.
-static void updateAdaptiveDwell(uint8_t ch, uint8_t beaconCount) {
-    if (ch < 1 || ch > 14) return;
-    const uint16_t minDwell = 80;
-    const uint16_t maxDwell = 300;
-    const uint16_t step = 30;
-
-    if (beaconCount >= 5) {
-        timePerChannel[ch - 1] = min((int)(timePerChannel[ch - 1] + step), (int)maxDwell);
-    } else if (beaconCount <= 1) {
-        uint16_t floor = isPriorityChannel(ch) ? 150 : minDwell;
-        timePerChannel[ch - 1] = max((int)(timePerChannel[ch - 1] - step), (int)floor);
-    }
-}
 
 // ============================================================================
 // Auth mode mapping from 802.11 RSN/WPA IE to our compact enum
@@ -344,7 +289,6 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
                                      pkt->rx_ctrl.channel);
     }
 
-    // Beacon / Probe Response → wardrive AP capture (WiGLE data)
     {
         if (wifiDedup.check(addr3)) return;
 
@@ -354,19 +298,14 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
             uint8_t tagId = p[tagOffset];
             uint8_t tagLen = p[tagOffset + 1];
             if (tagId == 0 && tagLen > 0 && tagLen <= 32 && tagOffset + 2 + tagLen <= len) {
-                // Check for null-filled SSID (hidden network variant:
-                // some APs broadcast tagLen=32 with all 0x00 bytes)
                 if (!isNullSsid(&p[tagOffset + 2], tagLen)) {
                     memcpy(ssid, &p[tagOffset + 2], tagLen);
                     ssid[tagLen] = '\0';
                 }
-                // hidden network
             }
-            // tagLen == 0: standard hidden network — ssid stays empty
         }
 
         uint8_t authMode = parseAuthFromFrame(p, len);
-        beaconsThisHop++;
 
         DetectionEvent evt = {};
         evt.engine_id = ENGINE_WARDRIVE;
@@ -495,30 +434,19 @@ static void wardriveStart(void) {
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
     wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
-    // Wardrive owns the WiFi radio. If user enabled Flock-WiFi, run flock
-    // OUI matching from inside this ISR — registry enforces WiFi mutex so
-    // flock_wifi standalone won't conflict.
     wdFlockWifiActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
     wdDetectorActive = (engineGetState(ENGINE_DETECTOR) != ESTATE_DISABLED) ? 1 : 0;
     buildHopSchedule();
     lastChannelHop = millis();
-    beaconsThisHop = 0;
 
-    // Reset adaptive dwell to base values
-    for (int i = 0; i < 14; i++) {
-        timePerChannel[i] = isPriorityChannel(i + 1) ? priorityDwellMs : normalDwellMs;
-    }
-
-    // WiFi: pure promiscuous mode — catches beacons (SSID/auth), flock
-    // cameras, foxhunter targets. All in one callback, no WiFi.scanNetworks().
     if (wardriveRadio & 0x01) {
         WiFi.mode(WIFI_STA);
-        WiFi.disconnect();
+        WiFi.disconnect(false, true);
+        vTaskDelay(pdMS_TO_TICKS(50));
 
-        // Set country to allow channels 1-14 (manual policy = user controls range)
         wifi_country_t country = {
-            .cc = "JP",     // JP allows widest range (1-14)
+            .cc = "JP",
             .schan = 1,
             .nchan = 14,
             .policy = WIFI_COUNTRY_POLICY_MANUAL
@@ -529,13 +457,16 @@ static void wardriveStart(void) {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                            WIFI_PROMIS_FILTER_MASK_DATA
         };
+        wifi_promiscuous_filter_t ctrl_filter = {
+            .filter_mask = 0
+        };
         esp_wifi_set_promiscuous_filter(&filter);
+        esp_wifi_set_promiscuous_ctrl_filter(&ctrl_filter);
 
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wardriveWifiCb);
         esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
 
-        // Send wildcard probe on first channel to stimulate immediate AP responses
         sendWildcardProbe();
     }
 
@@ -544,9 +475,6 @@ static void wardriveStart(void) {
         pWardriveScan = NimBLEDevice::getScan();
         pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
         pWardriveScan->setActiveScan(true);
-        // 97/97 ms: prime, avoids aliasing with 100/152.5 ms BLE adv periods.
-        // interval == window per Espressif coex FAQ (max RF residency, no
-        // wasted gaps inside BLE TDM slot).
         pWardriveScan->setInterval(100);
         pWardriveScan->setWindow(99);
     }
@@ -561,8 +489,8 @@ static void wardriveStart(void) {
 static void wardriveStop(void) {
     Serial.println("[WARDRIVE] Stopping...");
     wardriveActive = false;
+    vTaskDelay(pdMS_TO_TICKS(50));
 
-    // Stop BLE
     if (pWardriveScan != nullptr) {
         if (pWardriveScan->isScanning()) pWardriveScan->stop();
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -571,11 +499,10 @@ static void wardriveStop(void) {
         pWardriveScan = nullptr;
     }
 
-    // Stop WiFi promiscuous
     esp_wifi_set_promiscuous_rx_cb(NULL);
     esp_wifi_set_promiscuous(false);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    WiFi.disconnect(true, true);
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_DISABLED);
     Serial.println("[WARDRIVE] Stopped");
@@ -590,19 +517,14 @@ static void wardriveLoop(void) {
     wdFoxhunterActive  = (engineGetState(ENGINE_FOXHUNTER)  != ESTATE_DISABLED) ? 1 : 0;
     wdDetectorActive   = (engineGetState(ENGINE_DETECTOR)   != ESTATE_DISABLED) ? 1 : 0;
 
-    // WiFi: interleaved hop schedule, adaptive per-channel dwell.
     if (wardriveRadio & 0x01) {
         uint16_t dwell = dwellForChannel(currentChannel);
         if (now - lastChannelHop >= dwell) {
-            updateAdaptiveDwell(currentChannel, beaconsThisHop);
-            beaconsThisHop = 0;
-
             hopIdx++;
             if (hopIdx >= hopScheduleLen) hopIdx = 0;
             currentChannel = hopSchedule[hopIdx];
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = now;
-
             sendWildcardProbe();
         }
     }
@@ -626,8 +548,6 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
     wardriveRadio = newRadio;
 
     if (len >= 5) {
-        // bytes[1:2] = priority dwell (was wifiScanInterval)
-        // bytes[3:4] = normal dwell (was wifiDwellPerCh)
         priorityDwellMs = payload[1] | (payload[2] << 8);
         normalDwellMs   = payload[3] | (payload[4] << 8);
         if (priorityDwellMs < 50) priorityDwellMs = 50;
@@ -644,10 +564,6 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
         uint8_t ce = payload[10];
         if (cs >= 1 && cs <= 14) channelStart = cs;
         if (ce >= channelStart && ce <= 14) channelEnd = ce;
-    }
-    // Reset adaptive dwell and rebuild hop schedule for new range/dwell.
-    for (int i = 0; i < 14; i++) {
-        timePerChannel[i] = isPriorityChannel(i + 1) ? priorityDwellMs : normalDwellMs;
     }
     buildHopSchedule();
 
