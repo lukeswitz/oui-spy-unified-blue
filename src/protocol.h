@@ -27,8 +27,8 @@
 #define PIN_GPS_TX     43
 
 // Firmware version
-#define FW_VERSION     "0.3.9"
-#define FW_VERSION_NUM 0x000309
+#define FW_VERSION     "0.3.8"
+#define FW_VERSION_NUM 0x000308
 
 // ============================================================================
 // Engine IDs — bitmask-compatible
