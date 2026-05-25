@@ -359,14 +359,19 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
 
+  static const double _povMoveOnThreshold = 0.3; // m/s — engage rotate
+  static const double _povMoveOffThreshold = 0.1; // m/s — disengage (hysteresis)
+
   void _focusMap(WardriveController wd) {
     final pos = wd.currentPosition ?? ref.read(gpsProvider).lastPosition;
     if (pos == null) return;
     if (!_followMode) setState(() => _followMode = true);
     final here = LatLng(pos.latitude, pos.longitude);
-    if (wd.isActive && pos.speed > 1.0 && pos.heading.isFinite) {
+    if (wd.isActive && pos.speed > _povMoveOnThreshold && pos.heading.isFinite) {
       _povHeading = pos.heading;
       _applyFollowCamera(here, pos.heading);
+    } else if (!_povHeading.isNaN) {
+      _applyFollowCamera(here, _povHeading);
     } else {
       _mapController.move(here, _mapController.camera.zoom);
     }
@@ -375,6 +380,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   void _applyFollowCamera(LatLng here, double headingDeg) {
     final cam = _mapController.camera;
     final size = cam.nonRotatedSize;
+    DebugLog.log('FollowCam: heading=${headingDeg.toStringAsFixed(1)} '
+        'size=${size.x.toInt()}x${size.y.toInt()} zoom=${cam.zoom.toStringAsFixed(2)} '
+        'curRot=${cam.rotation.toStringAsFixed(1)}');
     if (size.x <= 0 || size.y <= 0) {
       _mapController.moveAndRotate(here, cam.zoom, -headingDeg);
       return;
@@ -469,8 +477,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         gpsPos2 != null && (wt.driverPov || (wd.isActive && _followMode));
     if (povActive) {
       final here = LatLng(gpsPos2.latitude, gpsPos2.longitude);
-      final moving = gpsPos2.speed > 1.0 && gpsPos2.heading.isFinite;
-      if (moving) {
+      final speed = gpsPos2.speed;
+      final headingValid = gpsPos2.heading.isFinite;
+      final wasFollowing = !_povHeading.isNaN;
+      // Hysteresis: engage at >0.3 m/s, disengage at <0.1 m/s.
+      final engaged = headingValid &&
+          (speed > _povMoveOnThreshold ||
+              (wasFollowing && speed > _povMoveOffThreshold));
+      if (engaged) {
         final delta = _shortAngleDelta(
           _povHeading.isNaN ? 0 : _povHeading,
           gpsPos2.heading,
@@ -481,7 +495,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           if (!(wt.driverPov || (wd.isActive && _followMode))) return;
-          _applyFollowCamera(here, gpsPos2.heading);
+          _applyFollowCamera(here, _povHeading);
+        });
+      } else if (wasFollowing) {
+        // Stopped but had a heading — hold last heading, recenter.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (!(wt.driverPov || (wd.isActive && _followMode))) return;
+          _applyFollowCamera(here, _povHeading);
         });
       } else if (_followMode) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -788,9 +809,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _IconBtn(
-                      icon: _followMode ? Icons.my_location : Icons.location_searching,
+                      icon: _followMode
+                          ? Icons.my_location
+                          : Icons.gps_not_fixed,
                       onTap: () => _focusMap(wd),
                       active: _followMode,
+                      tooltip: _followMode
+                          ? 'Following: map follows you and rotates with heading'
+                          : 'Center on me + follow',
                     ),
                     if (_currentRotation.abs() > 0.5) ...[
                       const SizedBox(height: 6),
@@ -1373,31 +1399,57 @@ class _OutlinePill extends StatelessWidget {
 }
 
 class _IconBtn extends StatelessWidget {
-  const _IconBtn({required this.icon, required this.onTap, this.active = false});
+  const _IconBtn({
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+    this.tooltip,
+  });
   final IconData icon;
   final VoidCallback onTap;
   final bool active;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: active
-              ? AppTheme.accent.withValues(alpha: 0.15)
-              : t.surface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: active ? AppTheme.accent.withValues(alpha: 0.6) : t.border,
+    final btn = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: active
+                ? AppTheme.accent.withValues(alpha: 0.18)
+                : t.surface.withValues(alpha: 0.92),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: active
+                  ? AppTheme.accent.withValues(alpha: 0.7)
+                  : t.border,
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            size: 22,
+            color: active ? AppTheme.accent : t.textSecondary,
           ),
         ),
-        child: Icon(icon, size: 16,
-            color: active ? AppTheme.accent : t.textSecondary),
       ),
     );
+    if (tooltip == null) return btn;
+    return Tooltip(message: tooltip!, child: btn);
   }
 }
 
@@ -1409,22 +1461,84 @@ class _CompassResetBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: t.surface.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5)),
-        ),
-        child: Transform.rotate(
-          angle: -rotation * pi / 180.0,
-          child: Icon(Icons.navigation, size: 16, color: AppTheme.accent),
+    return Tooltip(
+      message: 'Tap to reset north up',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: t.surface.withValues(alpha: 0.95),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppTheme.accent.withValues(alpha: 0.55),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Transform.rotate(
+              angle: -rotation * pi / 180.0,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomPaint(
+                    size: const Size(28, 28),
+                    painter: _CompassNeedlePainter(),
+                  ),
+                  const Positioned(
+                    top: 2,
+                    child: Text(
+                      'N',
+                      style: TextStyle(
+                        color: AppTheme.accent,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _CompassNeedlePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final red = Paint()..color = const Color(0xFFE54848);
+    final gray = Paint()..color = const Color(0xFF888888);
+    final pathN = ui.Path()
+      ..moveTo(c.dx, c.dy - 10)
+      ..lineTo(c.dx - 4, c.dy)
+      ..lineTo(c.dx + 4, c.dy)
+      ..close();
+    final pathS = ui.Path()
+      ..moveTo(c.dx, c.dy + 10)
+      ..lineTo(c.dx - 4, c.dy)
+      ..lineTo(c.dx + 4, c.dy)
+      ..close();
+    canvas.drawPath(pathN, red);
+    canvas.drawPath(pathS, gray);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _MeasuredBox extends StatefulWidget {
