@@ -48,7 +48,14 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         if (scan && scan->isScanning()) {
             scan->stop();
         }
-        Serial.println("[BLE] Phone connected (scan paused for GATT)");
+
+        // Request tight conn params for OTA throughput.
+        // iOS honors within its limits — Apple accepts 15ms minimum for
+        // peripherals. Units: interval * 1.25ms, timeout * 10ms.
+        // min=12 (15ms), max=24 (30ms), latency=0, timeout=400 (4s).
+        uint16_t connHandle = server->getPeerInfo(0).getConnHandle();
+        server->updateConnParams(connHandle, 12, 24, 0, 400);
+        Serial.println("[BLE] Phone connected, requested fast conn params");
     }
 
     void onDisconnect(NimBLEServer* server) override {

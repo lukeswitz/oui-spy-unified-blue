@@ -120,6 +120,8 @@ class OtaService {
           'X-GitHub-Api-Version': '2022-11-28',
         },
         responseType: ResponseType.json,
+        sendTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
       ),
     );
     final data = resp.data;
@@ -148,10 +150,13 @@ class OtaService {
     final assets = (data['assets'] as List?) ?? const [];
     String? assetName;
     String? assetUrl;
+    // Match only the app firmware bin (e.g. "oui-spy-v0.3.9.bin").
+    // Reject partitions.bin / bootloader.bin / boot_app0.bin — not app images.
+    final firmwarePattern = RegExp(r'oui-spy.*\.bin$', caseSensitive: false);
     for (final a in assets) {
       final m = a as Map<String, dynamic>;
       final name = m['name']?.toString() ?? '';
-      if (name.toLowerCase().endsWith(firmwareAssetSuffix)) {
+      if (firmwarePattern.hasMatch(name)) {
         assetName = name;
         assetUrl = m['browser_download_url']?.toString();
         break;
@@ -183,7 +188,19 @@ class OtaService {
       phase: OtaPhase.checking,
       message: 'Fetching latest release...',
     ));
-    final latest = await fetchLatestRelease();
+    final OtaRelease? latest;
+    try {
+      latest = await fetchLatestRelease();
+    } on DioException catch (e) {
+      DebugLog.log('OTA: GitHub fetch failed: ${e.type} ${e.message}');
+      final msg = e.type == DioExceptionType.connectionTimeout
+              || e.type == DioExceptionType.receiveTimeout
+              || e.type == DioExceptionType.sendTimeout
+          ? 'GitHub API timed out — check network'
+          : 'Network error: ${e.message ?? e.type.toString()}';
+      _progress.add(OtaProgress(phase: OtaPhase.error, error: msg));
+      return null;
+    }
     if (latest == null) {
       // fetchLatestRelease already emitted a specific error (no asset / bad tag)
       return null;
@@ -197,6 +214,11 @@ class OtaService {
       ));
       return null;
     }
+    // Update available — clear "checking" progress so UI shows install button
+    _progress.add(OtaProgress(
+      phase: OtaPhase.idle,
+      message: 'Update available: ${latest.tag}',
+    ));
     return latest;
   }
 
@@ -271,6 +293,26 @@ class OtaService {
       return false;
     }
 
+    // ESP32 app image magic byte = 0xE9. Reject anything else BEFORE sending
+    // — saves a round-trip and prevents writing garbage to flash.
+    if (image.isEmpty || image[0] != 0xE9) {
+      final got = image.isEmpty ? 'empty' : '0x${image[0].toRadixString(16)}';
+      DebugLog.log('OTA: bad magic byte: $got (expected 0xE9)');
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: 'Asset is not an ESP32 app image (magic=$got, expected 0xE9). '
+               'Wrong file uploaded to release?',
+      ));
+      return false;
+    }
+    if (image.length < 1024) {
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: 'Asset too small (${image.length} bytes) — not firmware.',
+      ));
+      return false;
+    }
+
     await dfuControl.setNotifyValue(true);
     final statusCompleter = Completer<bool>();
     final statusSub = dfuControl.onValueReceived.listen((data) {
@@ -295,6 +337,8 @@ class OtaService {
       final mtu = _ble.mtu;
       final chunkSize = (mtu - 3).clamp(20, 244);
 
+      // START: write WITH response so we know firmware accepted the session
+      // before streaming chunks.
       final start = ByteData(9);
       start.setUint8(0, 0x01);
       start.setUint32(1, image.length, Endian.little);
@@ -306,8 +350,16 @@ class OtaService {
       ));
       await dfuData.write(start.buffer.asUint8List(), withoutResponse: false);
 
+      // DATA: write WITHOUT response. Drops L2CAP ACK roundtrip — ~5-10x
+      // faster. flutter_blue_plus internally awaits Core Bluetooth's
+      // canSendWriteWithoutResponse on iOS so we don't overflow the queue.
+      // Every 128 chunks, send one WRITE-with-response as a sync barrier
+      // so firmware can apply backpressure (if RX buffer fills, that write
+      // blocks until processed).
+      final stopwatch = Stopwatch()..start();
       int offset = 0;
       int seq = 0;
+      const int syncEvery = 128;
       while (offset < image.length) {
         final end =
             (offset + (chunkSize - 3)).clamp(0, image.length);
@@ -317,15 +369,23 @@ class OtaService {
         view.setUint8(0, 0x02);
         view.setUint16(1, seq, Endian.little);
         pkt.setRange(3, 3 + payload.length, payload);
-        await dfuData.write(pkt, withoutResponse: false);
+
+        final isSync = (seq % syncEvery) == (syncEvery - 1);
+        await dfuData.write(pkt, withoutResponse: !isSync);
+
         offset = end;
         seq++;
         if ((seq & 0x1F) == 0) {
+          final kbps = stopwatch.elapsedMilliseconds == 0
+              ? 0
+              : (offset * 1000 ~/ stopwatch.elapsedMilliseconds) ~/ 1024;
           _progress.add(OtaProgress(
             phase: OtaPhase.uploading,
             bytesSent: offset,
             bytesTotal: image.length,
-            message: 'Uploading ${(offset / 1024).toStringAsFixed(0)} KB...',
+            message: '${(offset / 1024).toStringAsFixed(0)}KB '
+                '/ ${(image.length / 1024).toStringAsFixed(0)}KB '
+                '(${kbps}KB/s)',
           ));
         }
       }
@@ -337,6 +397,7 @@ class OtaService {
         message: 'Verifying...',
       ));
 
+      // COMMIT: response required so we know firmware reached CRC check.
       await dfuData.write(Uint8List.fromList([0x03]), withoutResponse: false);
 
       final ok = await statusCompleter.future
