@@ -80,26 +80,29 @@ class OtaService {
   bool _running = false;
   bool get isRunning => _running;
 
-  /// Parse "3.1.0" or "v3.1.0" → [3,1,0]. Returns null on parse failure.
+  /// Parse N-part dotted version: "v0.0.3.8.1" → [0,0,3,8,1].
+  /// Strips leading "v", accepts any number of components.
+  /// Returns null on parse failure.
   static List<int>? parseVersion(String v) {
     final cleaned = v.trim().toLowerCase().replaceFirst(RegExp(r'^v'), '');
+    if (cleaned.isEmpty) return null;
     final parts = cleaned.split(RegExp(r'[.\-+]'));
-    if (parts.isEmpty) return null;
     final out = <int>[];
-    for (final p in parts.take(3)) {
+    for (final p in parts) {
+      if (p.isEmpty) continue;
       final n = int.tryParse(p);
       if (n == null) return null;
       out.add(n);
     }
-    while (out.length < 3) {
-      out.add(0);
-    }
-    return out;
+    return out.isEmpty ? null : out;
   }
 
   /// Returns >0 if a > b, <0 if a < b, 0 if equal.
+  /// Compares component-wise; missing trailing components treated as 0
+  /// (so [0,0,3,8] == [0,0,3,8,0]).
   static int compareVersion(List<int> a, List<int> b) {
-    for (int i = 0; i < 3; i++) {
+    final n = a.length > b.length ? a.length : b.length;
+    for (int i = 0; i < n; i++) {
       final av = i < a.length ? a[i] : 0;
       final bv = i < b.length ? b[i] : 0;
       if (av != bv) return av - bv;
@@ -120,7 +123,13 @@ class OtaService {
       ),
     );
     final data = resp.data;
-    if (data == null) return null;
+    if (data == null) {
+      _progress.add(const OtaProgress(
+        phase: OtaPhase.error,
+        error: 'GitHub returned empty response',
+      ));
+      return null;
+    }
 
     final tag = data['tag_name']?.toString() ?? '';
     final body = data['body']?.toString() ?? '';
@@ -129,6 +138,10 @@ class OtaService {
     final version = parseVersion(tag);
     if (version == null) {
       DebugLog.log('OTA: unparseable release tag "$tag"');
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: 'Latest release tag "$tag" unparseable',
+      ));
       return null;
     }
 
@@ -146,6 +159,10 @@ class OtaService {
     }
     if (assetName == null || assetUrl == null) {
       DebugLog.log('OTA: no .bin asset in release $tag');
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: 'Latest release $tag has no firmware .bin asset',
+      ));
       return null;
     }
 
@@ -168,10 +185,7 @@ class OtaService {
     ));
     final latest = await fetchLatestRelease();
     if (latest == null) {
-      _progress.add(const OtaProgress(
-        phase: OtaPhase.error,
-        error: 'No release found',
-      ));
+      // fetchLatestRelease already emitted a specific error (no asset / bad tag)
       return null;
     }
     final cur = parseVersion(currentVersion) ?? [0, 0, 0];
