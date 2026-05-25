@@ -13,7 +13,7 @@ dependencies:
   # BLE
   flutter_blue_plus: ^1.35.0
   # GPS
-  geolocator: ^13.0.0
+  geolocator: ^14.0.2
   # Map
   flutter_map: ^7.0.0
   latlong2: ^0.9.0

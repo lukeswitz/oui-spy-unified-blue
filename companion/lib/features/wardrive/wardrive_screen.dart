@@ -10,7 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:oui_spy/core/debug_log.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
@@ -39,7 +41,7 @@ class WardriveScreen extends ConsumerStatefulWidget {
   ConsumerState<WardriveScreen> createState() => _WardriveScreenState();
 }
 
-class _WardriveScreenState extends ConsumerState<WardriveScreen> {
+class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBindingObserver {
   final _mapController = MapController();
   bool _followMode = true;
   String? _fittedSessionId;
@@ -56,12 +58,33 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadExclusionZones();
     WidgetsBinding.instance.addPostFrameCallback((_) => _primeLocationPermission());
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      DebugLog.log('WardriveScreen: resumed, priming permissions');
+      _primeLocationPermission().then((success) {
+        DebugLog.log('WardriveScreen: prime permission success=$success');
+        if (success && ref.read(wardriveProvider).isActive) {
+          DebugLog.log('WardriveScreen: session active, restarting GPS');
+          ref.read(gpsProvider).start();
+        }
+      });
+    }
+  }
+
   Future<bool> _primeLocationPermission() async {
-    if (!Platform.isIOS) return true;
     if (!mounted) return false;
     var status = await Geolocator.checkPermission();
     if (status == LocationPermission.denied) {
@@ -79,8 +102,16 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
       _showServicesOffDialog();
       return false;
     }
-    if (status == LocationPermission.whileInUse) {
-      await _showIosAlwaysUpgradeDialog();
+
+    if (Platform.isIOS) {
+      if (status == LocationPermission.whileInUse) {
+        await _showIosAlwaysUpgradeDialog();
+      }
+    } else if (Platform.isAndroid) {
+      var alwaysStatus = await ph.Permission.locationAlways.status;
+      if (!alwaysStatus.isGranted) {
+        await _showAndroidAlwaysUpgradeDialog();
+      }
     }
     return true;
   }
@@ -118,6 +149,47 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
             onPressed: () async {
               Navigator.of(ctx).pop();
               await Geolocator.openAppSettings();
+            },
+            child: const Text('OPEN SETTINGS', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAndroidAlwaysUpgradeDialog() async {
+    final p = await SharedPreferences.getInstance();
+    if (p.getBool('android_always_upgrade_dismissed') == true) return;
+    if (!mounted) return;
+    final t = AppTheme.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text('Enable "Always" Location',
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+        content: Text(
+          'For background tracking, Android requires "Allow all the time".\n\n'
+          'Settings → Apps → OUI-SPY → Permissions → Location → Allow all the time',
+          style: TextStyle(color: t.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await p.setBool('android_always_upgrade_dismissed', true);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+            },
+            child: Text("DON'T ASK AGAIN", style: TextStyle(color: t.textDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('LATER', style: TextStyle(color: t.textDim)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await ph.openAppSettings();
             },
             child: const Text('OPEN SETTINGS', style: TextStyle(color: AppTheme.accent)),
           ),
@@ -193,12 +265,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     final db = ref.read(databaseProvider);
     final zones = await db.getWardriveExclusionGeofences();
     if (mounted) setState(() => _exclusionZones = zones);
-  }
-
-  @override
-  void dispose() {
-    _mapController.dispose();
-    super.dispose();
   }
 
   void _fitToSessionBounds(WardriveController wd, {bool includeCurrentPosition = false}) {
@@ -367,7 +433,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> {
     final mapStyle = ref.watch(mapStyleProvider);
     final wt = ref.watch(wardriveThemeDataProvider);
     final wd = ref.watch(wardriveProvider);
-    final gpsPos = ref.read(gpsProvider).lastPosition;
+    final gpsPos = ref.watch(gpsProvider).lastPosition;
     final center = wd.currentPosition != null
         ? LatLng(wd.currentPosition!.latitude, wd.currentPosition!.longitude)
         : gpsPos != null
