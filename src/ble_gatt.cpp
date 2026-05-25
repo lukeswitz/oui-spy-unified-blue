@@ -14,9 +14,12 @@
 #include "ble_gatt.h"
 #include "engine_registry.h"
 #include "mesh_espnow.h"
+#include "ota_handler.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <NimBLEDevice.h>
+#include <nvs_flash.h>
+#include <esp_ota_ops.h>
 
 // Forward declarations
 static NimBLEServer* pServer = nullptr;
@@ -32,6 +35,9 @@ static NimBLECharacteristic* chrFoxhunterConfig = nullptr;
 static NimBLECharacteristic* chrUnipwnCommand = nullptr;
 static NimBLECharacteristic* chrMeshConfig = nullptr;
 static NimBLECharacteristic* chrMeshStatus = nullptr;
+static NimBLECharacteristic* chrDfuControl = nullptr;
+static NimBLECharacteristic* chrDfuData = nullptr;
+static NimBLECharacteristic* chrSystemControl = nullptr;
 
 static bool phoneConnected = false;
 
@@ -259,6 +265,77 @@ class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.empty()) return;
+        otaOnDataWrite((const uint8_t*)val.data(), val.length());
+    }
+};
+
+// System control opcodes
+#define SYS_CMD_REBOOT            0x01
+#define SYS_CMD_FACTORY_RESET     0x02
+#define SYS_CMD_CONFIRM_OTA       0x03  // mark current image valid (cancels rollback)
+
+class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.empty()) return;
+        uint8_t cmd = (uint8_t)val[0];
+
+        // Magic byte required for destructive ops to avoid accidental triggers
+        // Format: [cmd][magic1][magic2] = 0xC0 0xDE
+        bool magicOk = val.length() >= 3
+                       && (uint8_t)val[1] == 0xC0
+                       && (uint8_t)val[2] == 0xDE;
+
+        switch (cmd) {
+            case SYS_CMD_REBOOT:
+                if (!magicOk) {
+                    Serial.println("[SYS] Reboot rejected — missing magic");
+                    return;
+                }
+                Serial.println("[SYS] Reboot requested via BLE");
+                delay(200);
+                esp_restart();
+                break;
+
+            case SYS_CMD_FACTORY_RESET:
+                if (!magicOk) {
+                    Serial.println("[SYS] Factory reset rejected — missing magic");
+                    return;
+                }
+                Serial.println("[SYS] FACTORY RESET — erasing NVS and rebooting");
+                nvs_flash_erase();
+                nvs_flash_init();
+                delay(200);
+                esp_restart();
+                break;
+
+            case SYS_CMD_CONFIRM_OTA: {
+                esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+                Serial.printf("[SYS] OTA confirm: %s\n",
+                              err == ESP_OK ? "OK" : esp_err_to_name(err));
+                uint8_t ack = (err == ESP_OK) ? 0x00 : 0x01;
+                chr->setValue(&ack, 1);
+                chr->notify();
+                break;
+            }
+
+            default:
+                Serial.printf("[SYS] Unknown command: 0x%02X\n", cmd);
+                break;
+        }
+    }
+};
+
+static void dfuNotifyTrampoline(const uint8_t* data, size_t len) {
+    if (chrDfuControl == nullptr) return;
+    chrDfuControl->setValue((uint8_t*)data, len);
+    chrDfuControl->notify();
+}
+
 // ============================================================================
 // Static callback instances
 // ============================================================================
@@ -270,6 +347,8 @@ static GpsReceiveCallbacks gpsReceiveCb;
 static HardwareConfigCallbacks hwConfigCb;
 static AlertConfigCallbacks alertConfigCb;
 static MeshConfigCallbacks meshConfigCb;
+static DfuDataCallbacks dfuDataCb;
+static SystemControlCallbacks systemControlCb;
 
 // ============================================================================
 // Init
@@ -374,6 +453,29 @@ void bleGattInit(void) {
         CHR_MESH_STATUS,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
+
+    // -- DFU Control (NOTIFY) — firmware -> phone progress/status --
+    chrDfuControl = svc->createCharacteristic(
+        CHR_DFU_CONTROL,
+        NIMBLE_PROPERTY::NOTIFY
+    );
+
+    // -- DFU Data (WRITE) — phone -> firmware chunked OTA stream --
+    chrDfuData = svc->createCharacteristic(
+        CHR_DFU_DATA,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+    );
+    chrDfuData->setCallbacks(&dfuDataCb);
+
+    // -- System Control (WRITE, NOTIFY) — reboot / factory reset / OTA confirm --
+    chrSystemControl = svc->createCharacteristic(
+        CHR_SYSTEM_CONTROL,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+    );
+    chrSystemControl->setCallbacks(&systemControlCb);
+
+    otaInit();
+    otaSetNotifyCallback(dfuNotifyTrampoline);
 
     svc->start();
 

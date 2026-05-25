@@ -27,8 +27,8 @@
 #define PIN_GPS_TX     43
 
 // Firmware version
-#define FW_VERSION     "3.1.0"
-#define FW_VERSION_NUM 0x030100
+#define FW_VERSION     "3.2.0"
+#define FW_VERSION_NUM 0x030200
 
 // ============================================================================
 // Engine IDs — bitmask-compatible
@@ -219,6 +219,9 @@ extern volatile uint8_t hwNeopixelBrightness;
 #define CHR_SKYSPY_TELEMETRY "00000140-" UUID_BASE
 #define CHR_UNIPWN_DEVICES   "00000150-" UUID_BASE
 #define CHR_UNIPWN_COMMAND   "00000151-" UUID_BASE
+#define CHR_DFU_CONTROL      "00000050-" UUID_BASE
+#define CHR_DFU_DATA         "00000051-" UUID_BASE
+#define CHR_SYSTEM_CONTROL   "00000052-" UUID_BASE
 
 // ============================================================================
 // Mesh Configuration

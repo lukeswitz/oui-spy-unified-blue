@@ -147,6 +147,9 @@ class GpsProvider {
   }
 
   void _onPosition(Position pos) {
+    DebugLog.log('GPS pos: lat=${pos.latitude.toStringAsFixed(5)} '
+        'lon=${pos.longitude.toStringAsFixed(5)} speed=${pos.speed.toStringAsFixed(2)}m/s '
+        'heading=${pos.heading.toStringAsFixed(1)} acc=${pos.accuracy.toStringAsFixed(1)}');
     _lastPosition = GpsPosition(
       latitude: pos.latitude,
       longitude: pos.longitude,

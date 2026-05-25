@@ -15,6 +15,7 @@ import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/ota/ota_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
@@ -551,24 +552,73 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'UPDATES'),
-        ConfigActionRow(
-          icon: Icons.system_update,
-          label: 'Check for Update',
-          subtitle: 'Compare against latest release',
-          onTap: () {},
-        ),
+        _OtaSection(currentVersion: _fwVersion),
 
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'DANGER ZONE'),
+        ConfigActionRow(
+          icon: Icons.refresh,
+          label: 'Reboot Device',
+          subtitle: 'Restart firmware without erasing settings',
+          onTap: _confirmReboot,
+        ),
         ConfigActionRow(
           icon: Icons.restart_alt,
           label: 'Factory Reset',
           subtitle: 'Erase all settings and reboot',
           destructive: true,
-          onTap: () {},
+          onTap: _confirmFactoryReset,
         ),
       ],
     );
+  }
+
+  Future<void> _confirmReboot() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reboot device?'),
+        content: const Text('Device will restart. BLE will reconnect automatically.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('REBOOT'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(bleManagerProvider).rebootDevice();
+  }
+
+  Future<void> _confirmFactoryReset() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Factory reset?'),
+        content: const Text(
+          'This will ERASE all settings (watchlists, WiFi credentials, '
+          'hardware config, mesh keys) and reboot the device. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('ERASE & REBOOT'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(bleManagerProvider).factoryReset();
   }
 
   void _writeHardwareConfig() {
@@ -3123,5 +3173,128 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
     if (diff.inDays == 0) return 'today';
     if (diff.inDays == 1) return 'yesterday';
     return '${diff.inDays}d ago';
+  }
+}
+
+class _OtaSection extends ConsumerStatefulWidget {
+  const _OtaSection({required this.currentVersion});
+  final String currentVersion;
+
+  @override
+  ConsumerState<_OtaSection> createState() => _OtaSectionState();
+}
+
+class _OtaSectionState extends ConsumerState<_OtaSection> {
+  OtaRelease? _availableRelease;
+  OtaProgress? _progress;
+  StreamSubscription<OtaProgress>? _sub;
+  String? _checkStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    final ota = ref.read(otaServiceProvider);
+    _sub = ota.progress.listen((p) {
+      if (mounted) setState(() => _progress = p);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    setState(() {
+      _checkStatus = 'Checking...';
+      _availableRelease = null;
+    });
+    try {
+      final ota = ref.read(otaServiceProvider);
+      final r = await ota.checkForUpdate(widget.currentVersion);
+      if (!mounted) return;
+      setState(() {
+        _availableRelease = r;
+        _checkStatus = r == null
+            ? 'Already up to date'
+            : 'Update available: ${r.tag}';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _checkStatus = 'Check failed: $e');
+    }
+  }
+
+  Future<void> _install() async {
+    final release = _availableRelease;
+    if (release == null) return;
+    final ota = ref.read(otaServiceProvider);
+    await ota.performUpdate(release);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final busy = _progress != null &&
+        _progress!.phase != OtaPhase.idle &&
+        _progress!.phase != OtaPhase.upToDate &&
+        _progress!.phase != OtaPhase.error &&
+        _progress!.phase != OtaPhase.rebooting;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ConfigActionRow(
+          icon: Icons.system_update,
+          label: 'Check for Update',
+          subtitle: 'Compare against latest GitHub release',
+          onTap: busy ? null : _check,
+        ),
+        if (_checkStatus != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Text(_checkStatus!,
+                style: TextStyle(color: t.textSecondary, fontSize: 11)),
+          ),
+        if (_availableRelease != null && !busy)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: ElevatedButton.icon(
+              onPressed: _install,
+              icon: const Icon(Icons.download, size: 16),
+              label: Text('Install ${_availableRelease!.tag}'),
+            ),
+          ),
+        if (_progress != null && busy) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: LinearProgressIndicator(
+              value: _progress!.fraction > 0 ? _progress!.fraction : null,
+              backgroundColor: t.border,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _progress!.message,
+              style: TextStyle(color: t.textSecondary, fontSize: 11),
+            ),
+          ),
+        ],
+        if (_progress?.phase == OtaPhase.rebooting)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text('Device rebooting — reconnect in a few seconds.',
+                style: TextStyle(color: AppTheme.accent, fontSize: 11)),
+          ),
+        if (_progress?.phase == OtaPhase.error)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(_progress!.error ?? 'Update failed',
+                style: const TextStyle(color: AppTheme.warning, fontSize: 11)),
+          ),
+      ],
+    );
   }
 }

@@ -32,24 +32,30 @@ jobs:
       - name: Install PlatformIO
         run: pip install platformio
 
-      - name: Build firmware
-        run: pio run
+      - name: Build firmware (v3_app_controlled)
+        run: pio run -e v3_app_controlled
 
       - name: Package firmware
         run: |
           VERSION="${GITHUB_REF_NAME:-dev}"
           mkdir -p dist
-          cp .pio/build/seeed_xiao_esp32s3/bootloader.bin dist/
-          cp .pio/build/seeed_xiao_esp32s3/partitions.bin dist/
-          cp .pio/build/seeed_xiao_esp32s3/firmware.bin "dist/oui-spy-unified-blue.bin"
-          # boot_app0.bin from framework
+          # OTA asset: bare app image — must end in .bin and match name
+          # expected by companion/lib/core/ota/ota_service.dart
+          cp .pio/build/v3_app_controlled/firmware.bin "dist/oui-spy-${VERSION}.bin"
+          # Full USB-flash bundle for initial provisioning (needs new partition table)
+          cp .pio/build/v3_app_controlled/bootloader.bin dist/
+          cp .pio/build/v3_app_controlled/partitions.bin dist/
+          cp .pio/build/v3_app_controlled/firmware.bin dist/
           find ~/.platformio -name "boot_app0.bin" -path "*/partitions/*" | head -1 | xargs -I{} cp {} dist/
-          cd dist && tar czf "../oui-spy-firmware-${VERSION}.tar.gz" *.bin
+          cd dist && tar czf "../oui-spy-firmware-usb-${VERSION}.tar.gz" \
+            bootloader.bin partitions.bin firmware.bin boot_app0.bin
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: firmware
-          path: oui-spy-firmware-*.tar.gz
+          path: |
+            dist/oui-spy-*.bin
+            oui-spy-firmware-usb-*.tar.gz
 
   release:
     name: Create GitHub Release

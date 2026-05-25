@@ -39,6 +39,9 @@ class BleManager {
   BluetoothCharacteristic? _meshConfig;
   BluetoothCharacteristic? _meshStatus;
   BluetoothCharacteristic? _orchestration;
+  BluetoothCharacteristic? _dfuControl;
+  BluetoothCharacteristic? _dfuData;
+  BluetoothCharacteristic? _systemControl;
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
   final _detections = StreamController<Detection>.broadcast();
@@ -91,8 +94,16 @@ class BleManager {
     if (uuid == GattUuids.meshConfig) return _meshConfig;
     if (uuid == GattUuids.meshStatus) return _meshStatus;
     if (uuid == GattUuids.deviceInfo) return _deviceInfoChar;
+    if (uuid == GattUuids.dfuControl) return _dfuControl;
+    if (uuid == GattUuids.dfuData) return _dfuData;
+    if (uuid == GattUuids.systemControl) return _systemControl;
     return null;
   }
+
+  int get mtu => _mtu;
+  BluetoothCharacteristic? get dfuControl => _dfuControl;
+  BluetoothCharacteristic? get dfuData => _dfuData;
+  BluetoothCharacteristic? get systemControl => _systemControl;
 
   BluetoothCharacteristic? _deviceInfoChar;
 
@@ -216,6 +227,9 @@ class BleManager {
       if (c.uuid == GattUuids.meshConfig) _meshConfig = c;
       if (c.uuid == GattUuids.meshStatus) _meshStatus = c;
       if (c.uuid == GattUuids.orchestration) _orchestration = c;
+      if (c.uuid == GattUuids.dfuControl) _dfuControl = c;
+      if (c.uuid == GattUuids.dfuData) _dfuData = c;
+      if (c.uuid == GattUuids.systemControl) _systemControl = c;
     }
 
     // Read device info to get node ID
@@ -272,6 +286,41 @@ class BleManager {
 
 
     _currentState = NodeConnectionState.ready; _connectionState.add(NodeConnectionState.ready);
+
+    // Confirm previously-flashed OTA image (idempotent — no-op unless image is
+    // PENDING_VERIFY on the firmware side). Successful GATT handshake means
+    // the new image works; cancel rollback.
+    if (_systemControl != null) {
+      try {
+        await _systemControl!.write(
+          Uint8List.fromList([0x03]),
+          withoutResponse: false,
+        );
+        DebugLog.log('BLE: sent OTA confirm');
+      } on FlutterBluePlusException catch (e) {
+        DebugLog.log('BLE: OTA confirm write failed: ${e.description}');
+      }
+    }
+  }
+
+  // -- System control --
+
+  /// Reboot device. Magic bytes prevent accidental triggers.
+  Future<void> rebootDevice() async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(
+      Uint8List.fromList([0x01, 0xC0, 0xDE]),
+      withoutResponse: false,
+    );
+  }
+
+  /// Factory reset: erase NVS and reboot. Magic bytes required.
+  Future<void> factoryReset() async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(
+      Uint8List.fromList([0x02, 0xC0, 0xDE]),
+      withoutResponse: false,
+    );
   }
 
   // -- Engine control --

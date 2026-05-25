@@ -67,53 +67,66 @@ class NotificationService extends ChangeNotifier {
   final List<DateTime> _recentNotifications = [];
 
   /// Initialize the notification plugin and request permissions.
+  /// Safe to call multiple times — re-checks permission every call.
   Future<void> init() async {
-    if (_initialized) return;
+    if (!_initialized) {
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const darwinSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
+      const settings = InitializationSettings(
+        android: androidSettings,
+        iOS: darwinSettings,
+        macOS: darwinSettings,
+      );
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const darwinSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
-    const settings = InitializationSettings(
-      android: androidSettings,
-      iOS: darwinSettings,
-      macOS: darwinSettings,
-    );
+      await _plugin.initialize(
+        settings,
+        onDidReceiveNotificationResponse: _onNotificationTap,
+      );
 
-    await _plugin.initialize(
-      settings,
-      onDidReceiveNotificationResponse: _onNotificationTap,
-    );
+      await _createAndroidChannels();
+      _initialized = true;
+    }
 
-    await _createAndroidChannels();
-    _initialized = true;
+    await _refreshPermission();
+    DebugLog.log('NOTIF: initialized=$_initialized permission=$_permissionGranted');
+    notifyListeners();
+  }
 
-    // Request permission on iOS/macOS
-    if (Platform.isIOS || Platform.isMacOS) {
-      _permissionGranted = await _plugin
-              .resolvePlatformSpecificImplementation<
-                  IOSFlutterLocalNotificationsPlugin>()
+  /// Re-query OS for current permission state. Called by RETRY button after
+  /// user toggles permission in system settings. iOS/macOS: calling
+  /// requestPermissions after the first prompt returns the current grant state
+  /// without re-prompting. Android 13+: checkPermission if available, fall
+  /// back to request.
+  Future<void> _refreshPermission() async {
+    if (Platform.isIOS) {
+      final ios = _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+      _permissionGranted = await ios
               ?.requestPermissions(alert: true, badge: true, sound: true) ??
           false;
-      if (!_permissionGranted && Platform.isMacOS) {
-        _permissionGranted = await _plugin
-                .resolvePlatformSpecificImplementation<
-                    MacOSFlutterLocalNotificationsPlugin>()
-                ?.requestPermissions(alert: true, badge: true, sound: true) ??
-            false;
-      }
+    } else if (Platform.isMacOS) {
+      final mac = _plugin.resolvePlatformSpecificImplementation<
+          MacOSFlutterLocalNotificationsPlugin>();
+      _permissionGranted = await mac
+              ?.requestPermissions(alert: true, badge: true, sound: true) ??
+          false;
     } else if (Platform.isAndroid) {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-      _permissionGranted =
-          await android?.requestNotificationsPermission() ?? false;
+      final enabled = await android?.areNotificationsEnabled();
+      if (enabled == true) {
+        _permissionGranted = true;
+      } else {
+        _permissionGranted =
+            await android?.requestNotificationsPermission() ?? false;
+      }
+    } else {
+      _permissionGranted = true;
     }
-
-    DebugLog.log(
-        'NOTIF: initialized, permission=$_permissionGranted');
-    notifyListeners();
   }
 
   Future<void> _createAndroidChannels() async {

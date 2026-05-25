@@ -50,6 +50,9 @@ class GattUuids {
   /// WRITE_NR: OTA data chunks
   static final dfuData = Guid('00000051-$_base');
 
+  /// WRITE, NOTIFY: system control — reboot, factory reset, OTA confirm
+  static final systemControl = Guid('00000052-$_base');
+
   // -- Engine-specific characteristics --
 
   /// READ, WRITE: Detector watchlist (chunked)
