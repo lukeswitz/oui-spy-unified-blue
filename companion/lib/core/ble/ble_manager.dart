@@ -179,13 +179,32 @@ class BleManager {
 
     _currentState = NodeConnectionState.negotiating; _connectionState.add(NodeConnectionState.negotiating);
 
-    // Negotiate MTU (Android only — macOS/iOS handle automatically)
+    // Negotiate MTU. Android: requestMtu works. iOS/macOS: automatic — read
+    // the stream value instead. Falling back to 23 on iOS would cap OTA
+    // payload at 17 bytes/chunk and make firmware uploads take hours.
     try {
       _mtu = await device.requestMtu(512);
-      DebugLog.log('BLE: MTU=$_mtu');
-    } catch (e) {
-      DebugLog.log('BLE: MTU request skipped (platform handles): $e');
+      DebugLog.log('BLE: MTU negotiated=$_mtu');
+    } on FlutterBluePlusException catch (e) {
+      DebugLog.log('BLE: requestMtu unsupported (${e.description}) — reading actual');
+      // iOS auto-negotiates; mtuNow is populated after connect.
+      _mtu = device.mtuNow;
+      DebugLog.log('BLE: MTU (auto)=$_mtu');
+    }
+    if (_mtu < 23) {
+      DebugLog.log('BLE: MTU $_mtu too low, defaulting to 23');
       _mtu = 23;
+    }
+
+    // Request high connection priority — drops conn interval to ~15ms on
+    // Android, big win for OTA throughput. No-op on iOS (Apple chooses).
+    try {
+      await device.requestConnectionPriority(
+        connectionPriorityRequest: ConnectionPriority.high,
+      );
+      DebugLog.log('BLE: requested high conn priority');
+    } on FlutterBluePlusException catch (e) {
+      DebugLog.log('BLE: conn priority unsupported: ${e.description}');
     }
 
     // Discover services
