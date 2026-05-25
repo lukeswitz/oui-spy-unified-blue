@@ -88,7 +88,7 @@ class NotificationSettingsBody extends ConsumerWidget {
         ConfigToggleRow(
           icon: Icons.emoji_events,
           label: 'Milestone Alerts',
-          subtitle: 'Notify every 100 unique networks',
+          subtitle: 'Notify every 1000 unique networks',
           color: AppTheme.accent,
           value: notif.milestoneAlertsEnabled,
           onChanged: notif.setMilestoneAlertsEnabled,

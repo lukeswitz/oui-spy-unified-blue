@@ -53,15 +53,25 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   String _nodeId = '--';
   String _heapFree = '--';
 
+  StreamSubscription<NodeConnectionState>? _connStateSub;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 8, vsync: this);
     _readDeviceConfig();
+    final ble = ref.read(bleManagerProvider);
+    _connStateSub = ble.connectionState.listen((s) {
+      if (s == NodeConnectionState.ready) {
+        DebugLog.log('CONFIG: reconnect detected, re-reading device info');
+        _readDeviceConfig();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _connStateSub?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -486,6 +496,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             style: TextStyle(color: t.textDim, fontSize: 11),
           ),
         ),
+        _WifiStatusPanel(),
+        const SizedBox(height: 12),
         ConfigTextField(
           icon: Icons.wifi,
           label: 'WiFi SSID',
@@ -500,37 +512,143 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         const SizedBox(height: 8),
         ConfigActionRow(
           icon: Icons.save,
-          label: 'Save & Connect',
-          subtitle: 'Push credentials to node',
+          label: 'Save credentials',
+          subtitle: 'Push SSID + password to node and connect',
           color: AppTheme.success,
           onTap: _writeWifiConfig,
           trailing: const Icon(Icons.arrow_forward, size: 16, color: AppTheme.success),
         ),
         ConfigActionRow(
-          icon: Icons.radar,
-          label: 'Scan Networks',
-          subtitle: 'List nearby access points',
-          onTap: _scanNetworks,
+          icon: Icons.link_off,
+          label: 'Disconnect',
+          subtitle: 'Drop STA but keep credentials',
+          onTap: _wifiDisconnect,
+        ),
+        ConfigActionRow(
+          icon: Icons.delete_forever,
+          label: 'Wipe credentials',
+          subtitle: 'Disconnect and erase SSID/password from device',
+          destructive: true,
+          onTap: _confirmWipeWifi,
         ),
       ],
     );
   }
 
-  void _writeWifiConfig() {
-    final ssid = _ssidController.text.trim();
-    final pass = _passController.text;
-    if (ssid.isEmpty) return;
-    DebugLog.log('CONFIG: WiFi STA config: $ssid');
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('WiFi credentials saved'), backgroundColor: AppTheme.success),
-    );
+  Future<void> _wifiDisconnect() async {
+    try {
+      await ref.read(bleManagerProvider).wifiDisconnect();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WiFi disconnected'), backgroundColor: AppTheme.warning),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: AppTheme.error),
+      );
+    }
   }
 
-  void _scanNetworks() {
-    DebugLog.log('CONFIG: WiFi scan requested');
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Network scan requires WiFi command GATT char'), backgroundColor: AppTheme.warning),
+  Future<void> _confirmWipeWifi() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wipe WiFi credentials?'),
+        content: const Text(
+          'Device will disconnect from WiFi and forget SSID + password. '
+          'You will need to re-enter them to use WiFi OTA again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text('WIPE'),
+          ),
+        ],
+      ),
     );
+    if (ok != true) return;
+    try {
+      await ref.read(bleManagerProvider).wifiWipeCreds();
+      _ssidController.clear();
+      _passController.clear();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WiFi credentials wiped'), backgroundColor: AppTheme.error),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: AppTheme.error),
+      );
+    }
+  }
+
+  Future<void> _writeWifiConfig() async {
+    final ssid = _ssidController.text.trim();
+    final pass = _passController.text;
+    if (ssid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('SSID required'), backgroundColor: AppTheme.warning),
+      );
+      return;
+    }
+    final ble = ref.read(bleManagerProvider);
+    if (ble.wifiConfig == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Firmware too old — no WiFi config characteristic. Flash latest via webflasher.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+    try {
+      await ble.writeWifiConfig(ssid, pass);
+      DebugLog.log('CONFIG: WiFi creds pushed: $ssid');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved. Connecting to AP (up to 20s)...'),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+      // Poll the live status — firmware brings up STA on save.
+      for (int i = 0; i < 12; i++) {
+        await Future.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+        final r = await ble.readWifiConfig();
+        DebugLog.log('CONFIG: WiFi poll ${i+1}: connected=${r.connected} ssid=${r.ssid} ip=${r.ip}');
+        if (r.connected) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Connected: ${r.ssid} · ${r.ip} · ${r.rssi}dBm'),
+              backgroundColor: AppTheme.success,
+            ),
+          );
+          return;
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved, but could not connect — verify creds/range'),
+          backgroundColor: AppTheme.warning,
+        ),
+      );
+    } catch (e) {
+      DebugLog.log('CONFIG: WiFi config write failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: AppTheme.error),
+      );
+    }
   }
 
   Widget _buildFirmwareTab() {
@@ -3188,7 +3306,16 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   OtaRelease? _availableRelease;
   OtaProgress? _progress;
   StreamSubscription<OtaProgress>? _sub;
+  StreamSubscription<({int status, int bytesRead})>? _wifiSub;
   String? _checkStatus;
+  bool _wifiConfigured = false;
+  bool _wifiConnected = false;
+  String _wifiSsid = '';
+  String _wifiIp = '';
+  int _wifiRssi = 0;
+  int _wifiBytesRead = 0;
+  int? _wifiStatus;
+  Timer? _wifiPoll;
 
   @override
   void initState() {
@@ -3197,11 +3324,41 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     _sub = ota.progress.listen((p) {
       if (mounted) setState(() => _progress = p);
     });
+    _wifiSub = ref.read(bleManagerProvider).wifiOtaUpdates.listen((evt) {
+      if (mounted) {
+        setState(() {
+          _wifiStatus = evt.status;
+          _wifiBytesRead = evt.bytesRead;
+        });
+      }
+    });
+    _readWifiState();
+    // Poll WiFi status every 3s so user sees connection state change
+    _wifiPoll = Timer.periodic(const Duration(seconds: 3), (_) => _readWifiState());
+  }
+
+  Future<void> _readWifiState() async {
+    try {
+      final res = await ref.read(bleManagerProvider).readWifiConfig();
+      if (!mounted) return;
+      setState(() {
+        _wifiConfigured = res.hasCreds;
+        _wifiConnected = res.connected;
+        _wifiSsid = res.ssid;
+        _wifiIp = res.ip;
+        _wifiRssi = res.rssi;
+      });
+    } on Exception catch (e) {
+      // Older firmware: char absent — leave _wifiConfigured = false
+      DebugLog.log('OTA: wifi status read failed: $e');
+    }
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _wifiSub?.cancel();
+    _wifiPoll?.cancel();
     super.dispose();
   }
 
@@ -3226,11 +3383,34 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     }
   }
 
-  Future<void> _install() async {
+  Future<void> _installBle() async {
     final release = _availableRelease;
     if (release == null) return;
     final ota = ref.read(otaServiceProvider);
     await ota.performUpdate(release);
+  }
+
+  Future<void> _installWifi() async {
+    final release = _availableRelease;
+    if (release == null) return;
+    final ota = ref.read(otaServiceProvider);
+    await ota.performWifiUpdate(release);
+  }
+
+  String _wifiStatusLabel(int status) {
+    switch (status) {
+      case 0: return 'Idle';
+      case 1: return 'Connecting to $_wifiSsid...';
+      case 2: return 'Connected to $_wifiSsid';
+      case 3: return 'Downloading: ${(_wifiBytesRead / 1024).toStringAsFixed(0)} KB';
+      case 4: return 'Rebooting into new firmware';
+      case 0x80: return 'Error: no WiFi credentials';
+      case 0x81: return 'Error: WiFi join failed';
+      case 0x82: return 'Error: HTTP/HTTPS request failed';
+      case 0x83: return 'Error: image validation failed';
+      case 0x84: return 'Error: flash write failed';
+      default: return 'Status 0x${status.toRadixString(16)}';
+    }
   }
 
   @override
@@ -3257,13 +3437,98 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             child: Text(_checkStatus!,
                 style: TextStyle(color: t.textSecondary, fontSize: 11)),
           ),
-        if (_availableRelease != null && !busy)
+        if (_availableRelease != null && !busy) ...[
+          if (_wifiConnected)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi, size: 14, color: AppTheme.success),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'WiFi: $_wifiSsid · $_wifiIp · ${_wifiRssi}dBm',
+                      style: const TextStyle(
+                        color: AppTheme.success, fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_wifiConfigured)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.wifi_off, size: 14, color: AppTheme.warning),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'WiFi: $_wifiSsid (not connected — out of range?)',
+                      style: const TextStyle(
+                        color: AppTheme.warning, fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: _wifiConnected
+                ? ElevatedButton.icon(
+                    onPressed: _installWifi,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                    ),
+                    icon: const Icon(Icons.wifi, size: 16),
+                    label: Text(
+                        'Install via WiFi (fast) — ${_availableRelease!.tag}'),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: _installBle,
+                    icon: const Icon(Icons.bluetooth, size: 16),
+                    label: Text('Install ${_availableRelease!.tag}'),
+                  ),
+          ),
+          if (!_wifiConfigured)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Tip: configure WiFi in the WIFI tab for ~10x faster updates.',
+                style: TextStyle(
+                  color: AppTheme.of(context).textDim, fontSize: 10,
+                ),
+              ),
+            ),
+          if (_wifiConnected)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextButton(
+                onPressed: _installBle,
+                child: Text(
+                  'Use BLE instead (slow)',
+                  style: TextStyle(
+                    color: AppTheme.of(context).textDim,
+                    fontSize: 11,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ),
+        ],
+        if (_wifiStatus != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: ElevatedButton.icon(
-              onPressed: _install,
-              icon: const Icon(Icons.download, size: 16),
-              label: Text('Install ${_availableRelease!.tag}'),
+            child: Text(
+              'WiFi OTA: ${_wifiStatusLabel(_wifiStatus!)}',
+              style: TextStyle(
+                color: _wifiStatus! >= 0x80
+                    ? AppTheme.error
+                    : AppTheme.of(context).textSecondary,
+                fontSize: 11,
+              ),
             ),
           ),
         if (_progress != null && busy) ...[
@@ -3282,10 +3547,10 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             ),
           ),
         ],
-        if (_progress?.phase == OtaPhase.rebooting)
+        if (_wifiStatus == 4)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text('Device rebooting — reconnect in a few seconds.',
+            child: Text('Device rebooting into new firmware.',
                 style: TextStyle(color: AppTheme.accent, fontSize: 11)),
           ),
         if (_progress?.phase == OtaPhase.error)
@@ -3295,6 +3560,102 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                 style: const TextStyle(color: AppTheme.warning, fontSize: 11)),
           ),
       ],
+    );
+  }
+}
+
+class _WifiStatusPanel extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_WifiStatusPanel> createState() => _WifiStatusPanelState();
+}
+
+class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
+  bool _hasCreds = false;
+  bool _connected = false;
+  String _ssid = '';
+  String _ip = '';
+  int _rssi = 0;
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final r = await ref.read(bleManagerProvider).readWifiConfig();
+      if (!mounted) return;
+      setState(() {
+        _hasCreds = r.hasCreds;
+        _connected = r.connected;
+        _ssid = r.ssid;
+        _ip = r.ip;
+        _rssi = r.rssi;
+      });
+    } on Exception {
+      if (!mounted) return;
+      setState(() {
+        _hasCreds = false;
+        _connected = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final Color color;
+    final IconData icon;
+    final String title;
+    final String? subtitle;
+    if (_connected) {
+      color = AppTheme.success;
+      icon = Icons.wifi;
+      title = 'Connected: $_ssid';
+      subtitle = '$_ip · ${_rssi}dBm';
+    } else if (_hasCreds) {
+      color = AppTheme.warning;
+      icon = Icons.wifi_off;
+      title = 'Saved: $_ssid (not connected)';
+      subtitle = 'Out of range or wrong password';
+    } else {
+      color = t.textDim;
+      icon = Icons.signal_wifi_off;
+      title = 'No WiFi credentials saved';
+      subtitle = null;
+    }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+                if (subtitle != null)
+                  Text(subtitle, style: TextStyle(color: t.textSecondary, fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

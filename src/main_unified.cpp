@@ -19,6 +19,7 @@
 #include "engine_registry.h"
 #include "ble_gatt.h"
 #include "mesh_espnow.h"
+#include "wifi_ota_handler.h"
 #include "engines/flock_ble.h"
 #include "engines/detector.h"
 #include "engines/foxhunter.h"
@@ -314,8 +315,13 @@ void setup() {
     // Initialize mesh subsystem
     meshInit();
 
-    // Initialize BLE GATT server
     bleGattInit();
+
+    if (wifiStaConnect()) {
+        Serial.println("[INIT] WiFi STA up");
+    } else {
+        Serial.println("[INIT] WiFi STA: no creds or join failed");
+    }
 
     // Create FreeRTOS tasks
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);

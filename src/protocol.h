@@ -222,6 +222,7 @@ extern volatile uint8_t hwNeopixelBrightness;
 #define CHR_DFU_CONTROL      "00000050-" UUID_BASE
 #define CHR_DFU_DATA         "00000051-" UUID_BASE
 #define CHR_SYSTEM_CONTROL   "00000052-" UUID_BASE
+#define CHR_WIFI_CONFIG      "00000040-" UUID_BASE
 
 // ============================================================================
 // Mesh Configuration

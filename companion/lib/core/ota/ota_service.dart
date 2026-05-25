@@ -271,6 +271,44 @@ class OtaService {
     }
   }
 
+  /// Trigger device-side WiFi OTA. Device persists URL+flag to NVS,
+  /// reboots into WiFi-OTA mode (BLE skipped), downloads via HTTPS,
+  /// reboots into the new image. Total time ~15-30s depending on WiFi.
+  ///
+  /// Device is offline from BLE for the entire operation. UI must show
+  /// the disconnection as expected. App's reconnect loop catches device
+  /// when it comes back.
+  Future<bool> performWifiUpdate(OtaRelease release) async {
+    if (_running) return false;
+    _running = true;
+    try {
+      _progress.add(const OtaProgress(
+        phase: OtaPhase.uploading,
+        message: 'Sending OTA URL to device...',
+      ));
+      await _ble.triggerWifiOta(release.assetUrl);
+      _progress.add(const OtaProgress(
+        phase: OtaPhase.downloading,
+        message: 'Device downloading via WiFi — watch progress below',
+      ));
+      return true;
+    } on StateError catch (e) {
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: e.message,
+      ));
+      return false;
+    } on FlutterBluePlusException catch (e) {
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: 'BLE write failed: ${e.description}',
+      ));
+      return false;
+    } finally {
+      _running = false;
+    }
+  }
+
   /// Push a pre-fetched firmware image (e.g. user-selected .bin) via DFU.
   Future<bool> pushLocalImage(Uint8List image) async {
     if (_running) return false;

@@ -42,12 +42,17 @@ class BleManager {
   BluetoothCharacteristic? _dfuControl;
   BluetoothCharacteristic? _dfuData;
   BluetoothCharacteristic? _systemControl;
+  BluetoothCharacteristic? _wifiConfig;
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
   final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})>.broadcast();
+
+  // WiFi OTA progress notifications: opcode 0x06, status[1], bytes[4 LE]
+  final _wifiOtaStream = StreamController<({int status, int bytesRead})>.broadcast();
+  Stream<({int status, int bytesRead})> get wifiOtaUpdates => _wifiOtaStream.stream;
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -97,6 +102,7 @@ class BleManager {
     if (uuid == GattUuids.dfuControl) return _dfuControl;
     if (uuid == GattUuids.dfuData) return _dfuData;
     if (uuid == GattUuids.systemControl) return _systemControl;
+    if (uuid == GattUuids.wifiConfig) return _wifiConfig;
     return null;
   }
 
@@ -104,6 +110,7 @@ class BleManager {
   BluetoothCharacteristic? get dfuControl => _dfuControl;
   BluetoothCharacteristic? get dfuData => _dfuData;
   BluetoothCharacteristic? get systemControl => _systemControl;
+  BluetoothCharacteristic? get wifiConfig => _wifiConfig;
 
   BluetoothCharacteristic? _deviceInfoChar;
 
@@ -249,6 +256,7 @@ class BleManager {
       if (c.uuid == GattUuids.dfuControl) _dfuControl = c;
       if (c.uuid == GattUuids.dfuData) _dfuData = c;
       if (c.uuid == GattUuids.systemControl) _systemControl = c;
+      if (c.uuid == GattUuids.wifiConfig) _wifiConfig = c;
     }
 
     // Read device info to get node ID
@@ -306,6 +314,25 @@ class BleManager {
 
     _currentState = NodeConnectionState.ready; _connectionState.add(NodeConnectionState.ready);
 
+    // Subscribe to systemControl notifications: OTA confirm ACKs +
+    // WiFi OTA progress (opcode 0x06).
+    if (_systemControl != null) {
+      await _systemControl!.setNotifyValue(true);
+      _subscriptions.add(
+        _systemControl!.onValueReceived.listen((data) {
+          if (data.isEmpty) return;
+          if (data[0] == 0x06 && data.length >= 6) {
+            final status = data[1];
+            final bytes = data[2]
+                | (data[3] << 8)
+                | (data[4] << 16)
+                | (data[5] << 24);
+            _wifiOtaStream.add((status: status, bytesRead: bytes));
+          }
+        }),
+      );
+    }
+
     // Confirm previously-flashed OTA image (idempotent — no-op unless image is
     // PENDING_VERIFY on the firmware side). Successful GATT handshake means
     // the new image works; cancel rollback.
@@ -340,6 +367,83 @@ class BleManager {
       Uint8List.fromList([0x02, 0xC0, 0xDE]),
       withoutResponse: false,
     );
+  }
+
+  /// Push WiFi STA credentials to device. Format:
+  /// [ssid_len][ssid bytes][pass_len][pass bytes]
+  Future<void> writeWifiConfig(String ssid, String pass) async {
+    if (_wifiConfig == null) {
+      throw StateError('WiFi config characteristic not found — firmware too old');
+    }
+    final ssidBytes = ssid.codeUnits;
+    final passBytes = pass.codeUnits;
+    if (ssidBytes.length > 32) {
+      throw ArgumentError('SSID too long (max 32 bytes)');
+    }
+    if (passBytes.length > 64) {
+      throw ArgumentError('Password too long (max 64 bytes)');
+    }
+    final payload = Uint8List(2 + ssidBytes.length + passBytes.length);
+    payload[0] = ssidBytes.length;
+    payload.setRange(1, 1 + ssidBytes.length, ssidBytes);
+    payload[1 + ssidBytes.length] = passBytes.length;
+    payload.setRange(2 + ssidBytes.length,
+                     2 + ssidBytes.length + passBytes.length, passBytes);
+    await _wifiConfig!.write(payload, withoutResponse: false);
+  }
+
+  /// Read stored WiFi config + live STA status.
+  /// Firmware payload: [hasCreds:1][connected:1][ip:4 LE][rssi:1][ssidLen:1][ssid]
+  Future<({bool hasCreds, bool connected, String ssid, String ip, int rssi})> readWifiConfig() async {
+    const empty = (hasCreds: false, connected: false, ssid: '', ip: '', rssi: 0);
+    if (_wifiConfig == null) return empty;
+    final data = await _wifiConfig!.read();
+    if (data.length < 8) return empty;
+    final has = data[0] == 1;
+    final connected = data[1] == 1;
+    final ip = '${data[2]}.${data[3]}.${data[4]}.${data[5]}';
+    final rssi = data[6] >= 128 ? data[6] - 256 : data[6]; // signed int8
+    final ssidLen = data[7];
+    if (data.length < 8 + ssidLen) {
+      return (hasCreds: has, connected: connected, ssid: '', ip: ip, rssi: rssi);
+    }
+    final ssid = String.fromCharCodes(data.sublist(8, 8 + ssidLen));
+    return (
+      hasCreds: has,
+      connected: connected,
+      ssid: ssid,
+      ip: connected ? ip : '',
+      rssi: connected ? rssi : 0,
+    );
+  }
+
+  Future<void> wifiDisconnect() async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(
+      Uint8List.fromList([0x06, 0xC0, 0xDE]),
+      withoutResponse: false,
+    );
+  }
+
+  Future<void> wifiWipeCreds() async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(
+      Uint8List.fromList([0x07, 0xC0, 0xDE]),
+      withoutResponse: false,
+    );
+  }
+
+  Future<void> triggerWifiOta(String url) async {
+    if (_systemControl == null) {
+      throw StateError('System control characteristic not found');
+    }
+    final urlBytes = url.codeUnits;
+    final payload = Uint8List(3 + urlBytes.length);
+    payload[0] = 0x04; // SYS_CMD_OTA_VIA_WIFI
+    payload[1] = 0xC0;
+    payload[2] = 0xDE;
+    payload.setRange(3, 3 + urlBytes.length, urlBytes);
+    await _systemControl!.write(payload, withoutResponse: false);
   }
 
   // -- Engine control --
@@ -543,6 +647,7 @@ class BleManager {
     _foxhunterRssiStream.close();
     _engineStates.close();
     _meshStatusStream.close();
+    _wifiOtaStream.close();
   }
 
   // -- Private --

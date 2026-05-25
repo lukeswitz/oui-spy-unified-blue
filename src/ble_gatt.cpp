@@ -15,6 +15,7 @@
 #include "engine_registry.h"
 #include "mesh_espnow.h"
 #include "ota_handler.h"
+#include "wifi_ota_handler.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <NimBLEDevice.h>
@@ -38,6 +39,7 @@ static NimBLECharacteristic* chrMeshStatus = nullptr;
 static NimBLECharacteristic* chrDfuControl = nullptr;
 static NimBLECharacteristic* chrDfuData = nullptr;
 static NimBLECharacteristic* chrSystemControl = nullptr;
+static NimBLECharacteristic* chrWifiConfig = nullptr;
 
 static bool phoneConnected = false;
 
@@ -284,6 +286,9 @@ class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
 #define SYS_CMD_REBOOT            0x01
 #define SYS_CMD_FACTORY_RESET     0x02
 #define SYS_CMD_CONFIRM_OTA       0x03  // mark current image valid (cancels rollback)
+#define SYS_CMD_OTA_VIA_WIFI      0x04
+#define SYS_CMD_WIFI_DISCONNECT   0x06
+#define SYS_CMD_WIFI_WIPE         0x07
 
 class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
@@ -330,10 +335,87 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 break;
             }
 
+            case SYS_CMD_OTA_VIA_WIFI: {
+                if (!magicOk) {
+                    Serial.println("[SYS] WiFi OTA rejected");
+                    return;
+                }
+                if (val.length() < 4) return;
+                std::string url(val.data() + 3, val.length() - 3);
+                Serial.printf("[SYS] WiFi OTA dispatch: %s\n", url.c_str());
+                wifiOtaDispatch(url.c_str());
+                break;
+            }
+
+            case SYS_CMD_WIFI_DISCONNECT: {
+                if (!magicOk) return;
+                Serial.println("[SYS] WiFi disconnect");
+                wifiStaDisconnect();
+                break;
+            }
+
+            case SYS_CMD_WIFI_WIPE: {
+                if (!magicOk) return;
+                Serial.println("[SYS] WiFi wipe creds + disconnect");
+                wifiStaDisconnect();
+                wifiOtaWipeCreds();
+                break;
+            }
+
             default:
                 Serial.printf("[SYS] Unknown command: 0x%02X\n", cmd);
                 break;
         }
+    }
+};
+
+class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.length() < 2) return;
+        const uint8_t* data = (const uint8_t*)val.data();
+        uint8_t ssidLen = data[0];
+        if (ssidLen == 0 || ssidLen > 32 || val.length() < 1u + ssidLen + 1u) {
+            Serial.println("[WIFI] bad payload");
+            return;
+        }
+        char ssid[33] = {0};
+        memcpy(ssid, data + 1, ssidLen);
+        uint8_t passLen = data[1 + ssidLen];
+        if (passLen > 64 || val.length() < 1u + ssidLen + 1u + passLen) {
+            Serial.println("[WIFI] bad pass len");
+            return;
+        }
+        char pass[65] = {0};
+        if (passLen > 0) memcpy(pass, data + 2 + ssidLen, passLen);
+        wifiOtaSaveCreds(ssid, pass);
+        wifiStaConnect();
+    }
+
+    void onRead(NimBLECharacteristic* chr) override {
+        char ssid[33] = {0};
+        char pass[65] = {0};
+        bool hasCreds = wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass));
+        bool connected = wifiStaIsConnected();
+        char liveSsid[33] = {0};
+        wifiStaGetSsid(liveSsid, sizeof(liveSsid));
+        uint32_t ip = wifiStaGetIp();
+        int8_t rssi = wifiStaGetRssi();
+        const char* reportSsid = connected ? liveSsid : ssid;
+        size_t slen = strlen(reportSsid);
+        if (slen > 32) slen = 32;
+
+        uint8_t buf[40] = {0};
+        buf[0] = hasCreds ? 1 : 0;
+        buf[1] = connected ? 1 : 0;
+        buf[2] = (uint8_t)(ip & 0xFF);
+        buf[3] = (uint8_t)((ip >> 8) & 0xFF);
+        buf[4] = (uint8_t)((ip >> 16) & 0xFF);
+        buf[5] = (uint8_t)((ip >> 24) & 0xFF);
+        buf[6] = (uint8_t)rssi;
+        buf[7] = (uint8_t)slen;
+        memcpy(buf + 8, reportSsid, slen);
+        chr->setValue(buf, 8 + slen);
     }
 };
 
@@ -356,6 +438,13 @@ static AlertConfigCallbacks alertConfigCb;
 static MeshConfigCallbacks meshConfigCb;
 static DfuDataCallbacks dfuDataCb;
 static SystemControlCallbacks systemControlCb;
+static WifiConfigCallbacks wifiConfigCb;
+
+static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
+    if (chrSystemControl == nullptr) return;
+    chrSystemControl->setValue((uint8_t*)data, len);
+    chrSystemControl->notify();
+}
 
 // ============================================================================
 // Init
@@ -461,28 +550,32 @@ void bleGattInit(void) {
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
 
-    // -- DFU Control (NOTIFY) — firmware -> phone progress/status --
     chrDfuControl = svc->createCharacteristic(
         CHR_DFU_CONTROL,
         NIMBLE_PROPERTY::NOTIFY
     );
 
-    // -- DFU Data (WRITE) — phone -> firmware chunked OTA stream --
     chrDfuData = svc->createCharacteristic(
         CHR_DFU_DATA,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
     chrDfuData->setCallbacks(&dfuDataCb);
 
-    // -- System Control (WRITE, NOTIFY) — reboot / factory reset / OTA confirm --
     chrSystemControl = svc->createCharacteristic(
         CHR_SYSTEM_CONTROL,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
     );
     chrSystemControl->setCallbacks(&systemControlCb);
 
+    chrWifiConfig = svc->createCharacteristic(
+        CHR_WIFI_CONFIG,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+    );
+    chrWifiConfig->setCallbacks(&wifiConfigCb);
+
     otaInit();
     otaSetNotifyCallback(dfuNotifyTrampoline);
+    wifiOtaSetNotifyCallback(wifiOtaNotifyTrampoline);
 
     svc->start();
 
