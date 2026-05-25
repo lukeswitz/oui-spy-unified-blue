@@ -23,7 +23,7 @@
 
 
 > [!NOTE]
-> Early beta, bugs and unexpected behavior can be reported in Issues. Android has known issues, iOS is stable. 
+> Early beta, bugs and unexpected behavior can be reported in Issues.
 ---
 
 ## What It Detects
