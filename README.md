@@ -17,10 +17,12 @@
 
 **About this fork:**
 
-- Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
+- Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs eight scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
 - Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run **concurrently without rebooting or switching modes**.
+- Record raw WiFi & BLE traffic to `.pcap` files on device, manually or auto-triggered by any detection — open in Wireshark.
 - Import and export `.CSV` files (wigle.net format) from detections and wardrives. Matches current FlockYou and your own detection OUIs for mapping and review.
-- Wigle.net API integration: upload and view your stats right from the app
+- Wigle.net API integration: upload and view your stats right from the app.
+- Update firmware from inside the app over WiFi or BLE — no USB cable needed.
 
 
 > [!NOTE]
@@ -38,6 +40,7 @@
 | **Custom Watchlist Targets** | OUI prefix, full MAC, device name patterns — on both WiFi and BLE |
 | **WiFi Infrastructure** | Station-mode AP scan — SSID, BSSID, channel, auth mode, signal |
 | **All BLE Devices** | Advertisement capture with name, manufacturer data, service UUIDs |
+| **Raw WiFi / BLE traffic** | On-device PCAP capture (radiotap + BLE LL PHDR) — open in Wireshark |
 
 All engines can run concurrently, with some limitations.
 
@@ -69,13 +72,45 @@ Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All 
 
 ### Core Features
 
-- **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate
-- **Wardrive mapping** with 5 target modes (WiGLE, Flock, Drone, Detector, WiGLE+Flock), WiFi/BLE/both radio selection, WiGLE CSV export, direct WiGLE upload, session history
+- **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate. Filter by engine, radio, search any field
+- **Wardrive mapping** with 5 target modes (WiGLE, Flock, Drone, Detector, WiGLE+Flock), WiFi/BLE/both radio selection, follow-mode camera that keeps you centered, adaptive map plotting, color-graded route path, WiGLE CSV export, direct WiGLE upload, session history
+- **Detector hits on the map** — your watchlist matches appear as live markers on the wardrive map alongside Flock cameras
 - **WiGLE CSV import & review** — load any WiGLE-format CSV, auto-match every BSSID against the bundled OUI/Flock database, flag surveillance hits (Flock, Raven, watchlist OUIs) on the map and in the feed
-- **Per-engine control** — enable/disable any of the 7 engines independently, configure scan timing, radio modes, watchlist entries
+- **PCAP capture (WiFi & BLE)** — record raw 802.11 (radiotap) and BLE LL (PHDR) packets on demand or automatically when a target is detected. Files saved on device, browse + share to Wireshark from `Settings → Detections → Saved PCAPs`. See [PCAP Capture](#pcap-capture)
+- **Over-the-air firmware updates** — flash the latest firmware from inside the app over WiFi (fast) or BLE (slow, no router needed). No re-flashing with a cable. See [OTA Updates](#ota-firmware-updates)
+- **Per-engine control** — enable/disable any of the 8 engines independently, configure scan timing, radio modes, watchlist entries
+- **Watchlist persistence** — saved targets survive reboots; per-target hit counter shown next to each entry
 - **Mesh overlay** — see peer node names and per-node detection counts during ESP-NOW coordinated wardrives
 - **Ignore list** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles
 - **Metric/imperial** units throughout (km/mi, km/h/mph, m/ft)
+
+### PCAP Capture
+
+Record raw wireless packets straight to a `.pcap` file on the device, no laptop required.
+
+| Mode | What it records |
+|------|------|
+| **WiFi 802.11 (radiotap)** | Beacons, probes (req + resp), deauth, disassoc, data, control, management frames across your chosen channels |
+| **BLE LL (PHDR)** | Advertisement PDUs, scan requests/responses with proper Bluetooth Low Energy Link Layer headers |
+
+**Manual capture** — pick mode, set channel range (WiFi only), tap START. Live stats: per-type frame counts, current channel, file size.
+
+**Auto-PCAP on detection** — toggle once. Every time a Flock camera, watchlist target, drone, or Unitree robot is detected, the device automatically captures the next *N* seconds (3–120s, configurable) on the matching radio + channel, then resumes normal scanning. The setting persists across reboots. A green `AUTO` badge with countdown shows on the home screen any time it's armed or actively capturing.
+
+**Saved library** — every capture appears in `Settings → Detections` with timestamp, size, and live LIVE badge on the in-progress file. Tap to share to Wireshark, AirDrop, email, or any iOS share target. One-tap delete or delete-all.
+
+**Built-in safety** — auto-PCAP automatically pauses your other scans for the capture window then restores them. Geofence exclusion zones also suppress auto-PCAP — no scanning inside your home/office zones.
+
+### OTA Firmware Updates
+
+Update the device firmware without USB cable or `pio` install.
+
+| Method | Speed | Requires |
+|--------|-------|----------|
+| **WiFi (STA mode)** | Fast (~30s) | Provide WiFi credentials in app once; device joins your network and pulls the latest release |
+| **BLE** | Slow (~5 min) | Nothing — works anywhere, no router needed |
+
+App detects when a newer firmware is available, shows release notes, and applies in one tap. Settings deliberately survive the update.
 
 ### Geofence Exclusion Zones
 
