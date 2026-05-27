@@ -17,9 +17,10 @@
 
 **About this fork:**
 
-- Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
-
 - Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
+- Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run **concurrently without rebooting or switching modes**.
+- Import and export `.CSV` files (wigle.net format) from detections and wardrives. Matches current FlockYou and your own detection OUIs for mapping and review.
+- Wigle.net API integration: upload and view your stats right from the app
 
 
 > [!NOTE]
@@ -62,62 +63,6 @@ The companion app resolves every Flock OUI to its surveillance label (e.g. "Floc
 
 ---
 
-## Radio Architecture
-
-ESP32-S3 has one WiFi radio and one BLE radio. Multiple engines need both. Here's how they share:
-
-### WiFi Radio
-
-Five engines use WiFi. Only one can **own** the radio:
-
-| Engine | WiFi Mode | Channels | Dwell |
-|--------|-----------|----------|-------|
-| **Wardrive** | Station-mode AP scan | All | Per scan cycle |
-| **Flock-WiFi** | Promiscuous | 1, 6, 11 | 350ms |
-| **Sky Spy** | Promiscuous | 6 (ODID NAN + Beacon) | Fixed |
-| **Detector** | Promiscuous | 1-14 | 120ms |
-| **Foxhunter** | Promiscuous | 1-14 (priority dwell on hint + 1/6/11) | 120ms normal, 350ms priority |
-
-**Automatic handoff:** The engine registry auto-stops conflicting WiFi engines when you enable another. Wardrive, Sky Spy, and Flock-WiFi are registered as WiFi-exclusive in the registry. Foxhunter additionally pauses Detector, Flock-WiFi, and Sky Spy on start since it needs exclusive promiscuous access to hunt a target across all channels.
-
-### BLE Radio (shared)
-
-BLE is shared across all engines concurrently. NimBLE handles interleaved scanning and GATT server duties.
-
-- **Flock-BLE** — OUI prefix, device name, manufacturer ID `0x09C8`, Raven service UUIDs
-- **Foxhunter** — BLE scan for target MAC (when not fed by wardrive)
-- **Detector** — BLE scan for watchlist matches
-- **Sky Spy** — ODID BLE advertisements
-- **Wardrive** — BLE advertisement capture for wardriving database
-- **UniPwn** — BLE discovery + GATT connection for Unitree robot exploitation
-
-### Deduplication & Scan Caching
-
-All engines share a templated `DedupRing` (with an ISR-safe variant for promiscuous callbacks) that suppresses duplicate MAC reports within a configurable cooldown window. Ring-buffer design — fixed memory, no heap allocation, O(n) scan with small n. Engines reuse NimBLE scan instances and WiFi scan results across cycles instead of re-initializing each pass.
-
-### Passive Feeding (wardrive active)
-
-When wardrive owns WiFi, Detector and Foxhunter don't start their own scans. Instead wardrive feeds them via callbacks:
-
-- Wardrive WiFi scan results dispatch to `foxhunterCheckWifiDevice()` and detector's watchlist matcher
-- Wardrive BLE advertisements dispatch to Foxhunter, Detector, and Flock-BLE
-- Foxhunter auto-learns hint channel from first WiFi match for priority dwell when it next runs standalone
-
----
-
-## ESP-NOW Mesh & Node Orchestration
-
-> Not stable, coming in v0.0.4
-
-Multiple OUI-SPY nodes form an encrypted mesh using ESP-NOW. Detections from any node relay to all peers and appear on every connected phone.
-
-- **Up to 6 peers** per node
-- **AES-GCM encryption** (mbedtls) — 32-byte key, 12-byte nonce derived from node ID + counter
-- **5-character node IDs** — every detection carries source attribution so you know which node saw it
-- **No infrastructure required** — ESP-NOW peer-to-peer, no router or internet needed
-
----
-
 ## Companion App
 
 Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All control and display happens in the app.
@@ -131,6 +76,14 @@ Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All 
 - **Mesh overlay** — see peer node names and per-node detection counts during ESP-NOW coordinated wardrives
 - **Ignore list** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles
 - **Metric/imperial** units throughout (km/mi, km/h/mph, m/ft)
+
+### Geofence Exclusion Zones
+
+Circle or polygon zones suppress detections near sensitive locations (home, office). Excluded from feed, map, database, and CSV exports. Managed from the fence icon on the wardrive screen. 
+
+### OUI Vendor Lookup
+
+Ships with a 39k+ entry OUI database ([Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety OUIs resolve to surveillance labels while preserving chip manufacturer — e.g. "`Flock Safety (Falcon) · Liteon Technology`".
 
 ### Notifications
 
@@ -148,22 +101,7 @@ Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen
 
 On iPhone 14 Pro+ (iOS 16.2+), active sessions show in the Dynamic Island and Lock Screen with engine-specific icons and live stats. All 7 engines supported — wardrive gets priority when multiple are active, but combined counts from all engines always visible in the expanded view.
 
-| Engine | Icon | Compact shows | Expanded adds |
-|--------|------|---------------|---------------|
-| Wardrive | `wifi` | Unique count | Flock, drones, distance, speed |
-| Foxhunter | `scope` | RSSI dBm | Target MAC, signal bar |
-| Flock BLE/WiFi | `video` | Flock count | Total detections, distance |
-| Sky Spy | `airplane` | Drone count | Total detections |
-| Detector | `radar` | Hit count | Total detections |
-| UniPwn | `cpu` | Status | Robot type, exploit phase |
 
-### Geofence Exclusion Zones
-
-Circle or polygon zones suppress detections near sensitive locations (home, office). Excluded from feed, map, database, and CSV exports. Managed from the fence icon on the wardrive screen. 
-
-### OUI Vendor Lookup
-
-Ships with a 39k+ entry OUI database ([Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety OUIs resolve to surveillance labels while preserving chip manufacturer — e.g. "`Flock Safety (Falcon) · Liteon Technology`".
 
 ### Install
 
