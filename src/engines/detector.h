@@ -9,8 +9,10 @@
 
 extern const EngineCallbacks detectorCallbacks;
 
-/// Check a BLE device against detector's watchlist. Called by wardrive when
-/// detector is active but wardrive owns the BLE scan.
 void detectorCheckBleDevice(const uint8_t* mac, int rssi);
+void detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t channel);
+void detectorClearFilters(void);
+void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* desc);
+int detectorFilterCount(void);
 
 #endif

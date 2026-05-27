@@ -29,7 +29,7 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         if (!flockShouldConsiderAddr(dev)) return;
 
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAddrToMac(dev->getAddress().getNative(), mac);
 
         int rssi = dev->getRSSI();
         std::string name = dev->haveName() ? dev->getName() : "";

@@ -271,6 +271,16 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         }
     }
 
+    if (wdDetectorActive) {
+        detectorCheckWifiDeviceISR(addr2, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel);
+        if (!(addr1[0] & 0x01)) {
+            detectorCheckWifiDeviceISR(addr1, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel);
+        }
+        if (frameType == 0) {
+            detectorCheckWifiDeviceISR(addr3, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel);
+        }
+    }
+
     // Beacons / probe-resp only beyond this point
     if (frameType != 0 || (frameSubtype != 8 && frameSubtype != 5)) {
         // Foxhunter still wants any frame from a target. Cheap when inactive.
@@ -331,7 +341,7 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         if (!wardriveActive) return;
 
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAddrToMac(dev->getAddress().getNative(), mac);
         if (wardriveDedup.check(mac)) return;
 
         int rssi = dev->getRSSI();

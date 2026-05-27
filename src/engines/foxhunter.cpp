@@ -41,7 +41,7 @@ class FoxhunterCallback : public NimBLEAdvertisedDeviceCallbacks {
         if (!hasTarget || !scanning) return;
 
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAddrToMac(dev->getAddress().getNative(), mac);
         if (memcmp(mac, targetMac, 6) != 0) return;
 
         currentRssi = dev->getRSSI();

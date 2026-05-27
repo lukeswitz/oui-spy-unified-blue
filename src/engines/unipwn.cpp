@@ -37,7 +37,7 @@ class UnipwnCallback : public NimBLEAdvertisedDeviceCallbacks {
         if (!isUnitreeDevice(name.c_str())) return;
 
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAddrToMac(dev->getAddress().getNative(), mac);
         if (dedup.check(mac)) return;
 
         DetectionEvent evt = {};

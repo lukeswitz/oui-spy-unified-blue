@@ -115,8 +115,10 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
                       UAS_data.SystemValid || UAS_data.OperatorIDValid;
         if (!useful) return;
 
-        uint8_t* mac = (uint8_t*)dev->getAddress().getNative();
-        if (!mac) return;
+        const uint8_t* native = dev->getAddress().getNative();
+        if (!native) return;
+        uint8_t mac[6];
+        bleAddrToMac(native, mac);
 
         DroneData* d = findOrAllocDrone(mac);
         if (!d->active) {
