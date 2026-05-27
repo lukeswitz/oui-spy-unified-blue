@@ -244,6 +244,7 @@ class NotificationService extends ChangeNotifier {
       Engine.foxhunter => foxhuntEnabled,
       Engine.wardrive => false, // wardrive uses milestone alerts instead
       Engine.uniPwn => false,
+      Engine.pcap => false,
     };
   }
 

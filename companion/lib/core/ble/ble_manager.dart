@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +12,7 @@ import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/features/pcap/pcap_stats.dart';
 /// BLE connection state.
 enum NodeConnectionState {
   disconnected,
@@ -43,12 +48,18 @@ class BleManager {
   BluetoothCharacteristic? _dfuData;
   BluetoothCharacteristic? _systemControl;
   BluetoothCharacteristic? _wifiConfig;
+  BluetoothCharacteristic? _pcapControl;
+  BluetoothCharacteristic? _pcapStats;
+  BluetoothCharacteristic? _pcapData;
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
   final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})>.broadcast();
+  final _pcapStatsStream = StreamController<PcapStats>.broadcast();
+  final _pcapDataStream = StreamController<Uint8List>.broadcast();
+  PcapStats _latestPcapStats = PcapStats.empty;
 
   // WiFi OTA progress notifications: opcode 0x06, status[1], bytes[4 LE]
   final _wifiOtaStream = StreamController<({int status, int bytesRead})>.broadcast();
@@ -71,6 +82,133 @@ class BleManager {
       _engineStates.stream;
   Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})> get meshStatusUpdates =>
       _meshStatusStream.stream;
+  Stream<PcapStats> get pcapStats => _pcapStatsStream.stream;
+  Stream<Uint8List> get pcapData => _pcapDataStream.stream;
+  PcapStats get latestPcapStats => _latestPcapStats;
+
+  File? _pcapFile;
+  IOSink? _pcapSink;
+  int _pcapFileMode = 0;
+  int _pcapBytesWritten = 0;
+  final List<int> _pcapRx = <int>[];
+  bool _pcapPrevActive = false;
+
+  final _pcapBytesStream = StreamController<int>.broadcast();
+  final _pcapSavedStream = StreamController<File>.broadcast();
+  Stream<int> get pcapBytesWritten => _pcapBytesStream.stream;
+  Stream<File> get pcapCaptureSaved => _pcapSavedStream.stream;
+  File? get currentPcapFile => _pcapFile;
+  int get pcapBytesWrittenLatest => _pcapBytesWritten;
+
+  static const int _kPcapLtWifi = 127;
+  static const int _kPcapLtBle = 256;
+  static const int _kPcapSnap = 2500;
+  static const int _kPcapMagic = 0xCAFEBABE;
+  static const int _kPcapEnd = 0xDEADBEEF;
+
+  Future<Directory> _pcapDir() async {
+    final base = await getApplicationDocumentsDirectory();
+    final d = Directory('${base.path}/pcaps');
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  Uint8List _buildPcapHeader(int linkType) {
+    final bd = ByteData(24);
+    bd.setUint32(0, 0xa1b2c3d4, Endian.little);
+    bd.setUint16(4, 2, Endian.little);
+    bd.setUint16(6, 4, Endian.little);
+    bd.setInt32(8, 0, Endian.little);
+    bd.setUint32(12, 0, Endian.little);
+    bd.setUint32(16, _kPcapSnap, Endian.little);
+    bd.setUint32(20, linkType, Endian.little);
+    return bd.buffer.asUint8List();
+  }
+
+  Future<void> _openPcapFile(int mode) async {
+    await _closePcapFile(silent: true);
+    final dir = await _pcapDir();
+    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final suffix = mode == 1 ? 'ble' : 'wifi';
+    _pcapFile = File('${dir.path}/oui_spy_${suffix}_$ts.pcap');
+    _pcapSink = _pcapFile!.openWrite(mode: FileMode.writeOnly);
+    final lt = mode == 1 ? _kPcapLtBle : _kPcapLtWifi;
+    _pcapSink!.add(_buildPcapHeader(lt));
+    _pcapFileMode = mode;
+    _pcapBytesWritten = 24;
+    _pcapRx.clear();
+    _pcapBytesStream.add(_pcapBytesWritten);
+  }
+
+  Future<void> _closePcapFile({bool silent = false}) async {
+    if (_pcapSink == null) {
+      _pcapFile = null;
+      return;
+    }
+    final f = _pcapFile;
+    final bytes = _pcapBytesWritten;
+    try {
+      await _pcapSink!.flush();
+      await _pcapSink!.close();
+    } on Exception catch (e) {
+      DebugLog.log('pcap close error: $e');
+    }
+    _pcapSink = null;
+    _pcapRx.clear();
+    if (!silent && f != null && bytes > 24) {
+      _pcapSavedStream.add(f);
+    }
+    _pcapFile = null;
+  }
+
+  void _handlePcapStatsTransition(PcapStats stats) {
+    final active = stats.state == 1;
+    if (active && !_pcapPrevActive) {
+      _openPcapFile(stats.mode);
+    } else if (!active && _pcapPrevActive) {
+      _closePcapFile();
+    }
+    _pcapPrevActive = active;
+  }
+
+  void _ingestPcapBytes(Uint8List bytes) {
+    if (_pcapSink == null || bytes.isEmpty) return;
+    _pcapRx.addAll(bytes);
+    while (true) {
+      while (_pcapRx.length >= 4) {
+        final m = _pcapRx[0] |
+            (_pcapRx[1] << 8) |
+            (_pcapRx[2] << 16) |
+            (_pcapRx[3] << 24);
+        if (m == _kPcapMagic) break;
+        _pcapRx.removeAt(0);
+      }
+      if (_pcapRx.length < 8) return;
+      final recLen = _pcapRx[4] |
+          (_pcapRx[5] << 8) |
+          (_pcapRx[6] << 16) |
+          (_pcapRx[7] << 24);
+      if (recLen < 16 || recLen > _kPcapSnap + 16) {
+        _pcapRx.removeAt(0);
+        continue;
+      }
+      if (_pcapRx.length < 8 + recLen + 4) return;
+      final endOff = 8 + recLen;
+      final endMark = _pcapRx[endOff] |
+          (_pcapRx[endOff + 1] << 8) |
+          (_pcapRx[endOff + 2] << 16) |
+          (_pcapRx[endOff + 3] << 24);
+      if (endMark != _kPcapEnd) {
+        _pcapRx.removeAt(0);
+        continue;
+      }
+      final rec = Uint8List.fromList(_pcapRx.sublist(8, 8 + recLen));
+      _pcapRx.removeRange(0, 8 + recLen + 4);
+      _pcapSink!.add(rec);
+      _pcapBytesWritten += rec.length;
+      _pcapBytesStream.add(_pcapBytesWritten);
+    }
+  }
 
   NodeConnectionState _currentState = NodeConnectionState.disconnected;
 
@@ -257,6 +395,9 @@ class BleManager {
       if (c.uuid == GattUuids.dfuData) _dfuData = c;
       if (c.uuid == GattUuids.systemControl) _systemControl = c;
       if (c.uuid == GattUuids.wifiConfig) _wifiConfig = c;
+      if (c.uuid == GattUuids.pcapControl) _pcapControl = c;
+      if (c.uuid == GattUuids.pcapStats) _pcapStats = c;
+      if (c.uuid == GattUuids.pcapData) _pcapData = c;
     }
 
     // Read device info to get node ID
@@ -311,6 +452,31 @@ class BleManager {
       );
     }
 
+
+    if (_pcapStats != null) {
+      await _pcapStats!.setNotifyValue(true);
+      _subscriptions.add(
+        _pcapStats!.onValueReceived.listen((data) {
+          final stats = PcapStats.decode(data);
+          if (stats != null) {
+            _latestPcapStats = stats;
+            _pcapStatsStream.add(stats);
+            _handlePcapStatsTransition(stats);
+          }
+        }),
+      );
+    }
+
+    if (_pcapData != null) {
+      await _pcapData!.setNotifyValue(true);
+      _subscriptions.add(
+        _pcapData!.onValueReceived.listen((data) {
+          final bytes = Uint8List.fromList(data);
+          _pcapDataStream.add(bytes);
+          _ingestPcapBytes(bytes);
+        }),
+      );
+    }
 
     _currentState = NodeConnectionState.ready; _connectionState.add(NodeConnectionState.ready);
 
@@ -392,28 +558,65 @@ class BleManager {
     await _wifiConfig!.write(payload, withoutResponse: false);
   }
 
-  /// Read stored WiFi config + live STA status.
-  /// Firmware payload: [hasCreds:1][connected:1][ip:4 LE][rssi:1][ssidLen:1][ssid]
-  Future<({bool hasCreds, bool connected, String ssid, String ip, int rssi})> readWifiConfig() async {
-    const empty = (hasCreds: false, connected: false, ssid: '', ip: '', rssi: 0);
+  Future<({bool hasCreds, bool connected, bool enabled, String ssid, String ip, int rssi})> readWifiConfig() async {
+    const empty = (hasCreds: false, connected: false, enabled: false, ssid: '', ip: '', rssi: 0);
     if (_wifiConfig == null) return empty;
     final data = await _wifiConfig!.read();
     if (data.length < 8) return empty;
     final has = data[0] == 1;
     final connected = data[1] == 1;
     final ip = '${data[2]}.${data[3]}.${data[4]}.${data[5]}';
-    final rssi = data[6] >= 128 ? data[6] - 256 : data[6]; // signed int8
+    final rssi = data[6] >= 128 ? data[6] - 256 : data[6];
     final ssidLen = data[7];
     if (data.length < 8 + ssidLen) {
-      return (hasCreds: has, connected: connected, ssid: '', ip: ip, rssi: rssi);
+      return (hasCreds: has, connected: connected, enabled: false, ssid: '', ip: ip, rssi: rssi);
     }
     final ssid = String.fromCharCodes(data.sublist(8, 8 + ssidLen));
+    final enabled = (data.length >= 8 + ssidLen + 1) ? data[8 + ssidLen] == 1 : false;
     return (
       hasCreds: has,
       connected: connected,
+      enabled: enabled,
       ssid: ssid,
       ip: connected ? ip : '',
       rssi: connected ? rssi : 0,
+    );
+  }
+
+  Future<void> setWifiStaEnabled(bool enabled) async {
+    if (_wifiConfig == null) return;
+    await _wifiConfig!.write(
+      Uint8List.fromList([0xF1, enabled ? 1 : 0]),
+      withoutResponse: false,
+    );
+  }
+
+  Future<void> wipeWifiCreds() async {
+    if (_wifiConfig == null) return;
+    await _wifiConfig!.write(
+      Uint8List.fromList([0xF2]),
+      withoutResponse: false,
+    );
+  }
+
+  Future<void> setAutoPcap(bool enabled) async {
+    if (_engineControl == null) return;
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x10, enabled ? 1 : 0]),
+      ),
+    );
+  }
+
+  Future<void> setAutoPcapDuration(int seconds) async {
+    if (_engineControl == null) return;
+    final s = seconds.clamp(1, 65535);
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x11, s & 0xFF, (s >> 8) & 0xFF]),
+      ),
     );
   }
 
@@ -648,7 +851,59 @@ class BleManager {
     _engineStates.close();
     _meshStatusStream.close();
     _wifiOtaStream.close();
+    _pcapStatsStream.close();
+    _pcapDataStream.close();
   }
+
+  // -- PCAP --
+
+  /// Start PCAP capture. mode 0 = WiFi radiotap, 1 = BLE LL PHDR.
+  /// channelStart/End used only in WiFi mode (1..14).
+  Future<void> startPcap({
+    int mode = 0,
+    int channelStart = 1,
+    int channelEnd = 11,
+  }) async {
+    if (_engineControl == null) return;
+    if (mode == 0) {
+      // WiFi: stop other WiFi engines first.
+      for (final conflict in [Engine.flockWifi, Engine.skySpy, Engine.wardrive]) {
+        await _engineControl!.write(
+          BleProtocol.encodeEngineControl(engine: conflict, enable: false),
+        );
+      }
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+    // PCAP config: [PCAP_CTRL_START=0x01][mode][chan_s][chan_e]
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x01, mode, channelStart, channelEnd]),
+      ),
+    );
+    await Future.delayed(const Duration(milliseconds: 100));
+    await _engineControl!.write(
+      BleProtocol.encodeEngineControl(engine: Engine.pcap, enable: true),
+    );
+  }
+
+  Future<void> stopPcap() async {
+    if (_engineControl == null) return;
+    await _engineControl!.write(
+      BleProtocol.encodeEngineControl(engine: Engine.pcap, enable: false),
+    );
+  }
+
+  Future<void> clearPcap() async {
+    if (_engineControl == null) return;
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x03]), // PCAP_CTRL_CLEAR
+      ),
+    );
+  }
+
 
   // -- Private --
 

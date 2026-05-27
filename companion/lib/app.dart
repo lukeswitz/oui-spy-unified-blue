@@ -10,6 +10,8 @@ import 'package:oui_spy/features/export/export_screen.dart';
 import 'package:oui_spy/features/feed/feed_screen.dart';
 import 'package:oui_spy/features/home/home_screen.dart';
 import 'package:oui_spy/features/onboarding/scan_screen.dart';
+import 'package:oui_spy/features/pcap/pcap_screen.dart';
+import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -74,6 +76,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/export',
         builder: (context, state) => const ExportScreen(),
       ),
+      GoRoute(
+        path: '/engine/pcap',
+        builder: (context, state) => const PcapScreen(),
+      ),
     ],
   );
 });
@@ -118,7 +124,74 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
       themeMode: themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) => _GlobalPcapBannerOverlay(child: child ?? const SizedBox.shrink()),
     );
+  }
+}
+
+class _GlobalPcapBannerOverlay extends ConsumerWidget {
+  const _GlobalPcapBannerOverlay({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ble = ref.watch(bleManagerProvider);
+    return StreamBuilder(
+      stream: ble.pcapStats,
+      initialData: ble.latestPcapStats,
+      builder: (context, snap) {
+        final s = snap.data;
+        final showing = s != null && s.state == 1;
+        return Stack(
+          children: [
+            Positioned.fill(child: child),
+            if (showing)
+              Positioned(
+                left: 12, right: 12, bottom: 12,
+                child: SafeArea(
+                  top: false,
+                  child: Material(
+                    color: const Color(0xFF1E2A28),
+                    elevation: 6,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => GoRouter.of(context).push('/engine/pcap'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.fiber_manual_record, color: Color(0xFF4AFFCC), size: 12),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${s.uptimeMs ~/ 1000}s, ${_humanBytes(s.bytesWritten)}',
+                                style: const TextStyle(
+                                  color: Color(0xFF4AFFCC),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.open_in_new, color: Colors.white70, size: 14),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _humanBytes(int n) {
+    if (n < 1024) return '${n}B';
+    if (n < 1024 * 1024) return '${(n / 1024).toStringAsFixed(1)}KB';
+    return '${(n / 1024 / 1024).toStringAsFixed(2)}MB';
   }
 }
 

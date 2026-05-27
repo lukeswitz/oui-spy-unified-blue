@@ -153,47 +153,29 @@ class DetectionRow extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    // RSSI bar
                     _RssiIndicator(rssi: detection.rssi),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () => _startFoxhunt(context, ref),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.foxhunter.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Icon(
-                          Icons.gps_fixed,
-                          size: 14,
-                          color: AppTheme.foxhunter,
-                        ),
+                    const SizedBox(width: 10),
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        color: t.textDim,
+                        fontSize: 10,
+                        fontFamily: 'monospace',
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    _ActionButton(
+                      icon: Icons.gps_fixed,
+                      color: AppTheme.foxhunter,
+                      tooltip: 'Foxhunt',
+                      onTap: () => _startFoxhunt(context, ref),
+                    ),
                     const SizedBox(width: 6),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          timeStr,
-                          style: TextStyle(
-                            color: t.textDim,
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        GestureDetector(
-                          onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
-                          child: Icon(
-                            Icons.location_on,
-                            size: 10,
-                            color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
-                          ),
-                        ),
-                      ],
+                    _ActionButton(
+                      icon: Icons.location_on,
+                      color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
+                      tooltip: hasGps ? 'Show on map' : 'No GPS fix',
+                      onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
                     ),
                   ],
                 ),
@@ -318,6 +300,7 @@ class DetectionRow extends ConsumerWidget {
         }
 
       case Engine.foxhunter:
+      case Engine.pcap:
         break;
     }
 
@@ -735,6 +718,40 @@ class _DetailSummary extends StatelessWidget {
       6 => 'WPA3-SAE',
       _ => 'WPA2-PSK',
     };
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: enabled ? color.withValues(alpha: 0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(icon, size: 18, color: color),
+          ),
+        ),
+      ),
+    );
   }
 }
 

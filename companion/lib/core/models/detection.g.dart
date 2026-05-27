@@ -85,6 +85,7 @@ const _$EngineEnumMap = {
   Engine.skySpy: 'skySpy',
   Engine.uniPwn: 'uniPwn',
   Engine.wardrive: 'wardrive',
+  Engine.pcap: 'pcap',
 };
 
 _$FlockExtensionImpl _$$FlockExtensionImplFromJson(Map<String, dynamic> json) =>

@@ -27,8 +27,8 @@
 #define PIN_GPS_TX     43
 
 // Firmware version
-#define FW_VERSION     "0.3.8"
-#define FW_VERSION_NUM 0x000308
+#define FW_VERSION     "0.3.9"
+#define FW_VERSION_NUM 0x000309
 
 // ============================================================================
 // Engine IDs — bitmask-compatible
@@ -41,7 +41,8 @@ enum EngineId : uint8_t {
     ENGINE_SKYSPY     = 4,  // bitmask 0x10
     ENGINE_UNIPWN     = 5,  // bitmask 0x20
     ENGINE_WARDRIVE   = 6,  // bitmask 0x40
-    ENGINE_COUNT      = 7
+    ENGINE_PCAP       = 7,  // bitmask 0x80
+    ENGINE_COUNT      = 8
 };
 
 #define ENGINE_BITMASK(id) (1 << (id))
@@ -197,14 +198,7 @@ extern volatile uint8_t hwNeopixelBrightness;
 // ============================================================================
 // Base UUID matches Flutter app: 0000XXXX-0ui5-4py0-bad0-c010ne1pan1c
 // NimBLE needs valid hex — "0ui5" isn't valid hex. Use the app's literal strings.
-// flutter_blue_plus Guid accepts arbitrary strings; NimBLE needs valid 128-bit UUIDs.
 // Canonical form: lowercase hex only. Map app UUIDs to valid hex.
-//
-// App uses: 0000XXXX-0ui5-4py0-bad0-c010ne1pan1c  (not valid hex)
-// We must use the SAME bytes on both sides.
-// flutter_blue_plus Guid() auto-lowercases and parses as string match.
-// NimBLE parses as 128-bit UUID from hex string.
-// Solution: use valid hex that both sides agree on.
 #define UUID_BASE            "0a15-4b70-ba00-c010ae1ba01c"
 #define SVC_UUID             "00000001-" UUID_BASE
 #define CHR_DEVICE_INFO      "00000001-" UUID_BASE
@@ -223,6 +217,53 @@ extern volatile uint8_t hwNeopixelBrightness;
 #define CHR_DFU_DATA         "00000051-" UUID_BASE
 #define CHR_SYSTEM_CONTROL   "00000052-" UUID_BASE
 #define CHR_WIFI_CONFIG      "00000040-" UUID_BASE
+// PCAP engine
+#define CHR_PCAP_CONTROL     "00000160-" UUID_BASE
+#define CHR_PCAP_STATS       "00000161-" UUID_BASE
+#define CHR_PCAP_DATA        "00000162-" UUID_BASE
+
+// ============================================================================
+// PCAP — live capture stats (notified over CHR_PCAP_STATS)
+// ============================================================================
+// Modes:
+//   0 = WIFI radiotap (LINKTYPE_IEEE80211_RADIOTAP=127)
+//   1 = BLE LE LL with PHDR (LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR=256)
+#define PCAP_MODE_WIFI 0
+#define PCAP_MODE_BLE  1
+
+typedef struct __attribute__((packed)) {
+    uint8_t  state;             // 0=idle, 1=capturing, 2=full, 3=error
+    uint8_t  mode;              // PCAP_MODE_WIFI / PCAP_MODE_BLE
+    uint8_t  current_channel;   // wifi: current hop channel  ble: last seen primary adv chan
+    uint8_t  _reserved;
+    uint32_t beacon_count;
+    uint32_t probe_req_count;
+    uint32_t probe_resp_count;
+    uint32_t deauth_count;
+    uint32_t disassoc_count;
+    uint32_t data_count;
+    uint32_t ctrl_count;
+    uint32_t mgmt_other_count;
+    uint32_t ble_adv_count;     // ADV_IND/ADV_NONCONN_IND/ADV_SCAN_IND
+    uint32_t ble_scan_count;    // SCAN_REQ/SCAN_RSP
+    uint32_t bytes_written;
+    uint32_t dropped_frames;
+    uint32_t file_size;
+    uint32_t uptime_ms;
+} PcapStats;
+
+// PCAP control opcodes (write to CHR_PCAP_CONTROL)
+#define PCAP_CTRL_START          0x01  // payload: channel_start[1] channel_end[1] radio_mask[1]
+#define PCAP_CTRL_STOP           0x02
+#define PCAP_CTRL_CLEAR          0x03  // delete on-flash capture file
+#define PCAP_CTRL_DOWNLOAD       0x10  // begin download via CHR_PCAP_DATA notifies
+#define PCAP_CTRL_DOWNLOAD_ABORT 0x11
+
+// PCAP data chunk opcodes (notified on CHR_PCAP_DATA)
+#define PCAP_DATA_START          0x01  // [op][len:4 LE][crc32:4 LE]
+#define PCAP_DATA_CHUNK          0x02  // [op][seq:2 LE][payload]
+#define PCAP_DATA_COMMIT         0x03  // [op]
+#define PCAP_DATA_ABORT          0x04  // [op][reason:1]
 
 // ============================================================================
 // Mesh Configuration
@@ -335,4 +376,4 @@ static inline bool pushDetectionFromISR(const DetectionEvent* evt) {
     return ok;
 }
 
-#endif // PROTOCOL_H
+#endif

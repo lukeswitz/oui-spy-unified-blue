@@ -164,6 +164,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
       Engine.skySpy => '/engine/skyspy',
       Engine.uniPwn => '/engine/unipwn',
       Engine.wardrive => '/wardrive',
+      Engine.pcap => '/engine/pcap',
       _ => null,
     };
     if (route != null) context.push(route);

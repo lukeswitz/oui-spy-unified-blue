@@ -11,7 +11,9 @@ enum Engine {
   uniPwn(
       'UniPwn', 'Unitree robot exploitation', Color(0xFFFF4A4A), 0x20),
   wardrive(
-      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8C4A), 0x40);
+      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8C4A), 0x40),
+  pcap(
+      'PCAP', 'WiFi radiotap PCAP capture + live stats', Color(0xFF4AFFCC), 0x80);
 
   const Engine(this.label, this.description, this.color, this.bitmask);
 
@@ -29,10 +31,12 @@ enum Engine {
   bool get isWifi =>
       this == flockWifi ||
       this == skySpy ||
-      this == wardrive;
+      this == wardrive ||
+      this == pcap;
 
   /// Engines that scan both WiFi and BLE radios.
-  bool get isDualRadio => this == detector || this == foxhunter || this == wardrive;
+  bool get isDualRadio =>
+      this == detector || this == foxhunter || this == wardrive;
 
   IconData get icon {
     return switch (this) {
@@ -43,6 +47,7 @@ enum Engine {
       Engine.skySpy => Icons.flight,
       Engine.uniPwn => Icons.smart_toy,
       Engine.wardrive => Icons.drive_eta,
+      Engine.pcap => Icons.fiber_manual_record,
     };
   }
 }
@@ -67,7 +72,7 @@ class EngineCompatibility {
 
   /// WiFi engines are mutually exclusive — except wardrive+flockWifi which
   /// coexist via firmware passive mode (flockWifi rides wardrive's sniffer).
-  static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive};
+  static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive, Engine.pcap};
 
   static bool _wifiCompatible(Engine a, Engine b) {
     return (a == Engine.wardrive && b == Engine.flockWifi) ||

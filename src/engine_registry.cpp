@@ -2,6 +2,7 @@
  * Engine Registry implementation.
  */
 #include "engine_registry.h"
+#include "engines/pcap.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -135,7 +136,78 @@ uint8_t engineGetAvailableMask(void) {
     return mask;
 }
 
+static bool autoPcapEnabled = false;
+static uint16_t autoPcapDurationSec = 10;
+static unsigned long autoPcapDeadline = 0;
+static EngineId autoPcapOrigin = ENGINE_COUNT;
+static bool autoPcapPending = false;
+static uint32_t autoPcapTriggers = 0;
+
+void engineSetAutoPcap(bool en) { autoPcapEnabled = en; }
+bool engineAutoPcapEnabled(void) { return autoPcapEnabled; }
+void engineSetAutoPcapDuration(uint16_t s) { autoPcapDurationSec = (s == 0 ? 10 : s); }
+uint16_t engineGetAutoPcapDuration(void) { return autoPcapDurationSec; }
+uint32_t engineGetAutoPcapTriggerCount(void) { return autoPcapTriggers; }
+
+void engineRequestAutoPcap(EngineId src, uint8_t channel) {
+    if (!autoPcapEnabled) return;
+    if (src == ENGINE_FOXHUNTER || src == ENGINE_PCAP || src == ENGINE_WARDRIVE) return;
+    if (states[ENGINE_PCAP] != ESTATE_DISABLED) return;
+    if (autoPcapPending) return;
+
+    bool isBle;
+    switch (src) {
+        case ENGINE_FLOCK_BLE:
+        case ENGINE_UNIPWN:
+            isBle = true; break;
+        case ENGINE_FLOCK_WIFI:
+            isBle = false; break;
+        default:
+            isBle = (channel == 0);
+    }
+
+    uint8_t chan = isBle ? 1 : ((channel >= 1 && channel <= 14) ? channel : 6);
+    uint8_t cfg[4] = {
+        PCAP_CTRL_START,
+        (uint8_t)(isBle ? PCAP_MODE_BLE : PCAP_MODE_WIFI),
+        chan, chan
+    };
+    if (engines[ENGINE_PCAP] && engines[ENGINE_PCAP]->config) {
+        engines[ENGINE_PCAP]->config(cfg, 4);
+    }
+
+    autoPcapOrigin = src;
+    autoPcapTriggers++;
+
+    engineDisable(src);
+    engineEnable(ENGINE_PCAP);
+    autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
+    autoPcapPending = true;
+    Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us\n",
+                  engines[src] ? engines[src]->name : "?",
+                  chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec);
+}
+
+static void autoPcapTick(void) {
+    if (!autoPcapPending) return;
+    if (states[ENGINE_PCAP] == ESTATE_DISABLED) {
+        if (autoPcapOrigin < ENGINE_COUNT && engines[autoPcapOrigin]) {
+            Serial.printf("[ENGINE] auto-pcap window done, restoring %s\n",
+                          engines[autoPcapOrigin]->name);
+            engineEnable(autoPcapOrigin);
+        }
+        autoPcapPending = false;
+        autoPcapOrigin = (EngineId)ENGINE_COUNT;
+        return;
+    }
+    if (millis() >= autoPcapDeadline) {
+        Serial.println("[ENGINE] auto-pcap deadline, stopping PCAP");
+        engineDisable(ENGINE_PCAP);
+    }
+}
+
 void engineLoopAll(void) {
+    autoPcapTick();
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (states[i] != ESTATE_DISABLED && engines[i] != nullptr && engines[i]->loop) {
             engines[i]->loop();

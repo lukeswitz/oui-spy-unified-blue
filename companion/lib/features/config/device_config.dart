@@ -498,6 +498,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
         _WifiStatusPanel(),
         const SizedBox(height: 12),
+        _WifiEnableToggle(),
+        const SizedBox(height: 12),
         ConfigTextField(
           icon: Icons.wifi,
           label: 'WiFi SSID',
@@ -3564,6 +3566,7 @@ class _WifiStatusPanel extends ConsumerStatefulWidget {
 class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
   bool _hasCreds = false;
   bool _connected = false;
+  bool _enabled = false;
   String _ssid = '';
   String _ip = '';
   int _rssi = 0;
@@ -3589,6 +3592,7 @@ class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
       setState(() {
         _hasCreds = r.hasCreds;
         _connected = r.connected;
+        _enabled = r.enabled;
         _ssid = r.ssid;
         _ip = r.ip;
         _rssi = r.rssi;
@@ -3618,7 +3622,7 @@ class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
       color = AppTheme.warning;
       icon = Icons.wifi_off;
       title = 'Saved: $_ssid (not connected)';
-      subtitle = 'Out of range or wrong password';
+      subtitle = 'Disconnected or out of range';
     } else {
       color = t.textDim;
       icon = Icons.signal_wifi_off;
@@ -3645,6 +3649,96 @@ class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
                   Text(subtitle, style: TextStyle(color: t.textSecondary, fontSize: 11)),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WifiEnableToggle extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_WifiEnableToggle> createState() => _WifiEnableToggleState();
+}
+
+class _WifiEnableToggleState extends ConsumerState<_WifiEnableToggle> {
+  bool _enabled = false;
+  bool _busy = false;
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 4), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final r = await ref.read(bleManagerProvider).readWifiConfig();
+      if (!mounted) return;
+      setState(() => _enabled = r.enabled);
+    } on Exception {
+    }
+  }
+
+  Future<void> _toggle(bool v) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(bleManagerProvider).setWifiStaEnabled(v);
+      if (mounted) setState(() => _enabled = v);
+    } on Exception catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Toggle failed: $e'), backgroundColor: AppTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.power_settings_new,
+              color: _enabled ? AppTheme.success : t.textDim, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('WiFi STA',
+                    style: TextStyle(color: t.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(
+                  _enabled
+                      ? 'Connects automatically using saved credentials'
+                      : 'Off — node will not join WiFi until you enable it',
+                  style: TextStyle(color: t.textSecondary, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _enabled,
+            onChanged: _busy ? null : _toggle,
+            activeThumbColor: AppTheme.success,
           ),
         ],
       ),

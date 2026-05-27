@@ -18,6 +18,7 @@
 #define NS              "ouispy-wifi"
 #define K_SSID          "ssid"
 #define K_PASS          "pass"
+#define K_STA_ENABLED   "sta_en"
 #define JOIN_TIMEOUT_MS 20000
 #define SNTP_WAIT_MS    15000
 #define OP_NOTIFY       0x06
@@ -99,6 +100,9 @@ bool waitForTime(uint32_t timeoutMs) {
 bool joinStation(const char* ssid, const char* pass) {
     Serial.printf("[WIFI] begin('%s')\n", ssid);
     WiFi.onEvent(wifiEvent);
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(false);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, pass);
     uint32_t start = millis();
@@ -248,7 +252,29 @@ extern "C" void wifiStaDisconnect(void) {
     }
 }
 
+extern "C" bool wifiStaIsEnabled(void) {
+    Preferences p;
+    if (!p.begin(NS, true)) return false;
+    bool en = p.getBool(K_STA_ENABLED, false);
+    p.end();
+    return en;
+}
+
+extern "C" bool wifiStaSetEnabled(bool en) {
+    Preferences p;
+    if (!p.begin(NS, false)) return false;
+    p.putBool(K_STA_ENABLED, en);
+    p.end();
+    Serial.printf("[WIFI] sta_enabled=%d\n", en ? 1 : 0);
+    if (!en) wifiStaDisconnect();
+    return true;
+}
+
 extern "C" bool wifiStaConnect(void) {
+    if (!wifiStaIsEnabled()) {
+        Serial.println("[WIFI] STA disabled in settings; not connecting");
+        return false;
+    }
     char ssid[33], pass[65];
     if (!wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass))) return false;
     if (g_staConnected && strcmp(ssid, g_staSsid) == 0) return true;

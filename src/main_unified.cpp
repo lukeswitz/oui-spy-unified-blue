@@ -11,6 +11,8 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
@@ -27,6 +29,7 @@
 #include "engines/flock_wifi.h"
 #include "engines/unipwn.h"
 #include "engines/wardrive.h"
+#include "engines/pcap.h"
 
 // ============================================================================
 // Global queues and GPS state
@@ -210,6 +213,8 @@ static void detectionNotifyTask(void* param) {
             // Send BLE notification
             bleGattNotifyDetection(&evt);
 
+            engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel);
+
             // LED off after notification sent
             if (hwLedEnabled) {
                 digitalWrite(PIN_LED, HIGH);
@@ -255,6 +260,7 @@ static void statusHeartbeatTask(void* param) {
 
         if (bleGattIsConnected()) {
             bleGattNotifyEngineState();
+            bleGattNotifyPcapStats();
             if (meshIsEnabled()) {
                 bleGattNotifyMeshStatus();
             }
@@ -280,7 +286,13 @@ void setup() {
     Serial.println("  No boot selector. BLE GATT only.");
     Serial.println("========================================\n");
 
-    // Initialize hardware
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(false);
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(true, true);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    WiFi.mode(WIFI_OFF);
+
     initHardware();
 
     // Load hardware config (buzzer/LED/neopixel) from NVS
@@ -307,6 +319,7 @@ void setup() {
     engineRegister(ENGINE_SKYSPY, &skyspyCallbacks);
     engineRegister(ENGINE_UNIPWN, &unipwnCallbacks);
     engineRegister(ENGINE_WARDRIVE, &wardriveCallbacks);
+    engineRegister(ENGINE_PCAP, &pcapCallbacks);
 
     // Force all engines disabled at boot — no stale radio state
     engineDisableAll();

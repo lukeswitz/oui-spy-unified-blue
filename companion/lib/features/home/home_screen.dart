@@ -37,17 +37,19 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _DisconnectedView extends StatelessWidget {
+class _DisconnectedView extends ConsumerWidget {
   const _DisconnectedView({required this.state});
   final AppState state;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final isConnecting =
         state.connectionState == NodeConnectionState.connecting ||
             state.connectionState == NodeConnectionState.negotiating ||
             state.connectionState == NodeConnectionState.syncing;
+    final isReconnecting =
+        state.connectionState == NodeConnectionState.reconnecting;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final horizontalPad = (screenWidth * 0.08).clamp(24.0, 64.0);
@@ -83,9 +85,32 @@ class _DisconnectedView extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
-            if (isConnecting)
-              const _ConnectingIndicator()
-            else
+            if (isConnecting) ...[
+              const _ConnectingIndicator(),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      ref.read(bleManagerProvider).disconnect(),
+                  icon: const Icon(Icons.close, size: 14),
+                  label: const Text(
+                    'CANCEL',
+                    style: TextStyle(letterSpacing: 2, fontSize: 12),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.error,
+                    side: BorderSide(
+                      color: AppTheme.error.withValues(alpha: 0.4),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ] else
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -107,7 +132,7 @@ class _DisconnectedView extends StatelessWidget {
                   ),
                 ),
               ),
-            if (state.connectionState == NodeConnectionState.reconnecting) ...[
+            if (isReconnecting) ...[
               const SizedBox(height: 20),
               Container(
                 width: double.infinity,
@@ -131,7 +156,7 @@ class _DisconnectedView extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     const Text(
-                      'CONNECTION LOST',
+                      'CONNECTION LOST — RETRYING',
                       style: TextStyle(
                         color: AppTheme.error,
                         fontSize: 10,
@@ -140,6 +165,29 @@ class _DisconnectedView extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      ref.read(bleManagerProvider).disconnect(),
+                  icon: const Icon(Icons.close, size: 14),
+                  label: const Text(
+                    'STOP RECONNECT',
+                    style: TextStyle(letterSpacing: 2, fontSize: 12),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.error,
+                    side: BorderSide(
+                      color: AppTheme.error.withValues(alpha: 0.4),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -406,6 +454,8 @@ class _ConnectedView extends ConsumerWidget {
           _sizedCard(Engine.skySpy, CardSize.compact, state, wd),
           const SizedBox(height: 6),
           _sizedCard(Engine.uniPwn, CardSize.compact, state, wd),
+          const SizedBox(height: 6),
+          _sizedCard(Engine.pcap, CardSize.compact, state, wd),
 
           SizedBox(height: pad),
 

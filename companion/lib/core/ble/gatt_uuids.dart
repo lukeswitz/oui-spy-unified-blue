@@ -87,4 +87,15 @@ class GattUuids {
 
   /// WRITE, NOTIFY: Orchestration — relay commands to peers, receive peer status
   static final orchestration = Guid('00000070-$_base');
+
+  // -- PCAP capture --
+
+  /// WRITE: PCAP control (download_start, download_abort)
+  static final pcapControl = Guid('00000160-$_base');
+
+  /// READ, NOTIFY: PCAP live stats (binary PcapStats struct)
+  static final pcapStats = Guid('00000161-$_base');
+
+  /// NOTIFY: PCAP chunked file download (start/chunk/commit/abort opcodes)
+  static final pcapData = Guid('00000162-$_base');
 }

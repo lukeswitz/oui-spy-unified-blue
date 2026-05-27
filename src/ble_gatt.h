@@ -25,4 +25,7 @@ bool bleGattIsConnected(void);
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);
 
+void bleGattNotifyPcapStats(void);
+void bleGattStreamPcapBytes(const uint8_t* buf, size_t len);
+
 #endif // BLE_GATT_H

@@ -32,6 +32,8 @@ void wifiStaDisconnect(void);
 
 bool wifiStaConnect(void);
 bool wifiStaIsConnected(void);
+bool wifiStaIsEnabled(void);
+bool wifiStaSetEnabled(bool enabled);
 void wifiStaGetSsid(char* out, size_t outLen);
 uint32_t wifiStaGetIp(void);
 int8_t wifiStaGetRssi(void);

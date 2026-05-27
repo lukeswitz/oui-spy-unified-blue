@@ -807,6 +807,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 top: _statsHeight + 8, right: 12,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     _IconBtn(
                       icon: _followMode

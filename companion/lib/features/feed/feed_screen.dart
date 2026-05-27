@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/export/detections_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -9,6 +13,8 @@ import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/features/feed/feed_stats_header.dart';
 import 'package:oui_spy/features/feed/filter_bar.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 enum FeedMetric {
   time('TIME'),
@@ -139,6 +145,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       color: _showStats ? AppTheme.accent : t.textDim,
                     ),
                   ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: filtered.isEmpty ? null : () => _exportCsv(context, filtered),
+                    child: Icon(
+                      Icons.ios_share,
+                      size: 16,
+                      color: filtered.isEmpty ? t.textDim.withValues(alpha: 0.4) : AppTheme.accent,
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   if (sourceNodes.isNotEmpty) ...[
                     const Icon(Icons.hub, size: 10, color: AppTheme.warning),
@@ -191,5 +206,29 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _exportCsv(BuildContext context, List<Detection> detections) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final csv = DetectionsCsv.generate(detections);
+      final dir = await getTemporaryDirectory();
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final filename = 'oui_spy_feed_$ts.csv';
+      final file = File('${dir.path}/$filename');
+      await file.writeAsString(csv);
+
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 100, 100);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'OUI-SPY Feed Export (${detections.length} detections)',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    }
   }
 }

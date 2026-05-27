@@ -13,6 +13,7 @@
  */
 #include "ble_gatt.h"
 #include "engine_registry.h"
+#include "engines/pcap.h"
 #include "mesh_espnow.h"
 #include "ota_handler.h"
 #include "wifi_ota_handler.h"
@@ -21,6 +22,8 @@
 #include <NimBLEDevice.h>
 #include <nvs_flash.h>
 #include <esp_ota_ops.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // Forward declarations
 static NimBLEServer* pServer = nullptr;
@@ -40,8 +43,12 @@ static NimBLECharacteristic* chrDfuControl = nullptr;
 static NimBLECharacteristic* chrDfuData = nullptr;
 static NimBLECharacteristic* chrSystemControl = nullptr;
 static NimBLECharacteristic* chrWifiConfig = nullptr;
+static NimBLECharacteristic* chrPcapControl = nullptr;
+static NimBLECharacteristic* chrPcapStats = nullptr;
+static NimBLECharacteristic* chrPcapData = nullptr;
 
 static bool phoneConnected = false;
+static volatile bool pcapDownloadRunning = false;
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
@@ -372,8 +379,24 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
 class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
-        if (val.length() < 2) return;
+        if (val.length() < 1) return;
         const uint8_t* data = (const uint8_t*)val.data();
+
+        if (data[0] == 0xF1) {
+            if (val.length() < 2) return;
+            bool en = data[1] != 0;
+            wifiStaSetEnabled(en);
+            if (en) wifiStaConnect();
+            return;
+        }
+        if (data[0] == 0xF2) {
+            wifiStaDisconnect();
+            wifiOtaWipeCreds();
+            wifiStaSetEnabled(false);
+            return;
+        }
+
+        if (val.length() < 2) return;
         uint8_t ssidLen = data[0];
         if (ssidLen == 0 || ssidLen > 32 || val.length() < 1u + ssidLen + 1u) {
             Serial.println("[WIFI] bad payload");
@@ -389,6 +412,7 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
         char pass[65] = {0};
         if (passLen > 0) memcpy(pass, data + 2 + ssidLen, passLen);
         wifiOtaSaveCreds(ssid, pass);
+        wifiStaSetEnabled(true);
         wifiStaConnect();
     }
 
@@ -397,6 +421,7 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
         char pass[65] = {0};
         bool hasCreds = wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass));
         bool connected = wifiStaIsConnected();
+        bool enabled = wifiStaIsEnabled();
         char liveSsid[33] = {0};
         wifiStaGetSsid(liveSsid, sizeof(liveSsid));
         uint32_t ip = wifiStaGetIp();
@@ -405,7 +430,7 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
         size_t slen = strlen(reportSsid);
         if (slen > 32) slen = 32;
 
-        uint8_t buf[40] = {0};
+        uint8_t buf[41] = {0};
         buf[0] = hasCreds ? 1 : 0;
         buf[1] = connected ? 1 : 0;
         buf[2] = (uint8_t)(ip & 0xFF);
@@ -415,7 +440,8 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
         buf[6] = (uint8_t)rssi;
         buf[7] = (uint8_t)slen;
         memcpy(buf + 8, reportSsid, slen);
-        chr->setValue(buf, 8 + slen);
+        buf[8 + slen] = enabled ? 1 : 0;
+        chr->setValue(buf, 8 + slen + 1);
     }
 };
 
@@ -424,6 +450,22 @@ static void dfuNotifyTrampoline(const uint8_t* data, size_t len) {
     chrDfuControl->setValue((uint8_t*)data, len);
     chrDfuControl->notify();
 }
+
+void bleGattStreamPcapBytes(const uint8_t* buf, size_t len) {
+    if (!phoneConnected || chrPcapData == nullptr || len == 0) return;
+    const size_t CHUNK = 500;
+    while (len > 0) {
+        size_t n = (len > CHUNK) ? CHUNK : len;
+        chrPcapData->setValue((uint8_t*)buf, n);
+        chrPcapData->notify();
+        buf += n;
+        len -= n;
+    }
+}
+
+class PcapControlCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override { }
+};
 
 // ============================================================================
 // Static callback instances
@@ -439,6 +481,7 @@ static MeshConfigCallbacks meshConfigCb;
 static DfuDataCallbacks dfuDataCb;
 static SystemControlCallbacks systemControlCb;
 static WifiConfigCallbacks wifiConfigCb;
+static PcapControlCallbacks pcapControlCb;
 
 static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
     if (chrSystemControl == nullptr) return;
@@ -573,6 +616,25 @@ void bleGattInit(void) {
     );
     chrWifiConfig->setCallbacks(&wifiConfigCb);
 
+    // -- PCAP Control (WRITE) --
+    chrPcapControl = svc->createCharacteristic(
+        CHR_PCAP_CONTROL,
+        NIMBLE_PROPERTY::WRITE
+    );
+    chrPcapControl->setCallbacks(&pcapControlCb);
+
+    // -- PCAP Stats (NOTIFY) --
+    chrPcapStats = svc->createCharacteristic(
+        CHR_PCAP_STATS,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+    );
+
+    // -- PCAP Data (NOTIFY) — chunked file download --
+    chrPcapData = svc->createCharacteristic(
+        CHR_PCAP_DATA,
+        NIMBLE_PROPERTY::NOTIFY
+    );
+
     otaInit();
     otaSetNotifyCallback(dfuNotifyTrampoline);
     wifiOtaSetNotifyCallback(wifiOtaNotifyTrampoline);
@@ -697,4 +759,12 @@ void bleGattNotifyMeshStatus(void) {
 
     chrMeshStatus->setValue(buf, 11);
     chrMeshStatus->notify();
+}
+
+void bleGattNotifyPcapStats(void) {
+    if (!phoneConnected || chrPcapStats == nullptr) return;
+    PcapStats st;
+    pcapGetStats(&st);
+    chrPcapStats->setValue((uint8_t*)&st, sizeof(st));
+    chrPcapStats->notify();
 }
