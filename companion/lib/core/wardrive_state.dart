@@ -233,6 +233,10 @@ class WardriveController extends ChangeNotifier {
   StreamSubscription<Detection>? _detSub;
   StreamSubscription<GpsPosition>? _gpsSub;
   Timer? _statsTimer;
+  bool _inExclusion = false;
+  bool get inExclusion => _inExclusion;
+  Set<Engine> _pausedByExclusion = {};
+  bool _autoPcapPausedByExclusion = false;
 
   bool get isRunning => state == WardriveState.running;
   bool get isActive => state != WardriveState.idle;
@@ -867,6 +871,30 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _applyExclusionGate(GpsPosition pos) {
+    final excluded = _geofenceFilter.isExcludedNullable(pos.latitude, pos.longitude);
+    if (excluded == _inExclusion) return;
+    _inExclusion = excluded;
+    if (excluded) {
+      DebugLog.log('WARDRIVE: entered exclusion zone — pausing radios');
+      _pausedByExclusion = Set<Engine>.from(activeEngines);
+      for (final e in _pausedByExclusion) {
+        _ble.disableEngine(e);
+      }
+      _autoPcapPausedByExclusion = true;
+      _ble.setAutoPcap(false);
+    } else {
+      DebugLog.log('WARDRIVE: exited exclusion zone — restoring radios');
+      _enableEnginesSequentially(_pausedByExclusion.toList());
+      _pausedByExclusion = {};
+      if (_autoPcapPausedByExclusion) {
+        _ble.setAutoPcap(true);
+        _autoPcapPausedByExclusion = false;
+      }
+    }
+    notifyListeners();
+  }
+
   void _onGpsUpdate(GpsPosition pos) {
     // Validate GPS position before using
     if (!pos.latitude.isFinite || !pos.longitude.isFinite) {
@@ -876,6 +904,10 @@ class WardriveController extends ChangeNotifier {
 
     currentPosition = pos;
     final ll = LatLng(pos.latitude, pos.longitude);
+
+    if (state == WardriveState.running) {
+      _applyExclusionGate(pos);
+    }
 
     if (state == WardriveState.running) {
       // Guard against GPS jumps (stale restore, satellite reacquisition)

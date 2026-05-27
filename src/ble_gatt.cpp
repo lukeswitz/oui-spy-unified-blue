@@ -453,9 +453,17 @@ static void dfuNotifyTrampoline(const uint8_t* data, size_t len) {
 
 void bleGattStreamPcapBytes(const uint8_t* buf, size_t len) {
     if (!phoneConnected || chrPcapData == nullptr || len == 0) return;
-    const size_t CHUNK = 500;
+    size_t chunk = 180;
+    if (pServer != nullptr) {
+        auto peers = pServer->getPeerDevices();
+        if (!peers.empty()) {
+            uint16_t mtu = pServer->getPeerMTU(peers.front());
+            if (mtu > 23) chunk = (size_t)(mtu - 3);
+            if (chunk > 500) chunk = 500;
+        }
+    }
     while (len > 0) {
-        size_t n = (len > CHUNK) ? CHUNK : len;
+        size_t n = (len > chunk) ? chunk : len;
         chrPcapData->setValue((uint8_t*)buf, n);
         chrPcapData->notify();
         buf += n;

@@ -21,21 +21,31 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   int _chanStart = 1;
   int _chanEnd = 11;
   bool _toggling = false;
-  bool _autoPcap = false;
+  bool? _autoPcapOverride;
+  int? _autoDurationOverride;
   int _autoDurationSec = 10;
 
   File? _lastSaved;
   int _bytesWritten = 0;
   StreamSubscription<int>? _bytesSub;
   StreamSubscription<File>? _savedSub;
+  Timer? _bytesTimer;
+  int _pendingBytes = 0;
 
   @override
   void initState() {
     super.initState();
     final ble = ref.read(bleManagerProvider);
     _bytesWritten = ble.pcapBytesWrittenLatest;
+    _pendingBytes = _bytesWritten;
     _bytesSub = ble.pcapBytesWritten.listen((v) {
-      if (mounted) setState(() => _bytesWritten = v);
+      _pendingBytes = v;
+    });
+    _bytesTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      if (_pendingBytes != _bytesWritten) {
+        setState(() => _bytesWritten = _pendingBytes);
+      }
     });
     _savedSub = ble.pcapCaptureSaved.listen((f) {
       if (mounted) setState(() => _lastSaved = f);
@@ -46,6 +56,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   void dispose() {
     _bytesSub?.cancel();
     _savedSub?.cancel();
+    _bytesTimer?.cancel();
     super.dispose();
   }
 
@@ -88,24 +99,14 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   Future<void> _stop() async {
     if (_toggling) return;
     setState(() => _toggling = true);
-    Object? lastErr;
     try {
-      final ble = ref.read(bleManagerProvider);
-      for (int i = 0; i < 4; i++) {
-        try {
-          await ble.stopPcap();
-          lastErr = null;
-          break;
-        } on Exception catch (e) {
-          lastErr = e;
-          await Future.delayed(const Duration(milliseconds: 300));
-        }
+      await ref.read(bleManagerProvider).stopPcap();
+    } on Exception catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stop failed: $e')));
       }
     } finally {
       if (mounted) setState(() => _toggling = false);
-    }
-    if (mounted && lastErr != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stop failed: $lastErr')));
     }
   }
 
@@ -138,6 +139,15 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
           final isCapturing = s.state == 1;
           final activeMode = isCapturing ? s.modeEnum : _mode;
           final hasFile = _lastSaved != null && !isCapturing;
+          if (_autoPcapOverride != null && _autoPcapOverride == s.autoEnabled) {
+            _autoPcapOverride = null;
+          }
+          if (_autoDurationOverride != null && _autoDurationOverride == s.autoDurationSec) {
+            _autoDurationOverride = null;
+          }
+          final autoEnabled = _autoPcapOverride ?? s.autoEnabled;
+          final autoDuration = _autoDurationOverride
+              ?? (s.autoDurationSec > 0 ? s.autoDurationSec : _autoDurationSec);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -147,14 +157,15 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 _StateCard(stats: s, t: t, localBytes: _bytesWritten),
                 const SizedBox(height: 16),
                 _AutoPcapCard(
-                  enabled: _autoPcap,
-                  durationSec: _autoDurationSec,
+                  enabled: autoEnabled,
+                  durationSec: autoDuration,
                   onToggle: (v) async {
-                    setState(() => _autoPcap = v);
+                    setState(() => _autoPcapOverride = v);
                     try {
                       await ble.setAutoPcap(v);
                     } on Exception catch (e) {
                       if (mounted) {
+                        setState(() => _autoPcapOverride = null);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Auto-PCAP set failed: $e')),
                         );
@@ -162,11 +173,15 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                     }
                   },
                   onDuration: (v) async {
-                    setState(() => _autoDurationSec = v);
+                    setState(() {
+                      _autoDurationOverride = v;
+                      _autoDurationSec = v;
+                    });
                     try {
                       await ble.setAutoPcapDuration(v);
                     } on Exception catch (e) {
                       if (mounted) {
+                        setState(() => _autoDurationOverride = null);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Duration set failed: $e')),
                         );

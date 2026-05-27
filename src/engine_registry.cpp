@@ -5,6 +5,7 @@
 #include "engines/pcap.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
@@ -12,7 +13,14 @@ static bool initialized[ENGINE_COUNT] = {false};
 
 // WiFi engines are mutually exclusive
 static bool isWifiEngine(EngineId id) {
-    return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY || id == ENGINE_WARDRIVE;
+    return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY ||
+           id == ENGINE_WARDRIVE   || id == ENGINE_PCAP;
+}
+
+static bool isBleScanEngine(EngineId id) {
+    return id == ENGINE_FLOCK_BLE || id == ENGINE_UNIPWN ||
+           id == ENGINE_FOXHUNTER || id == ENGINE_DETECTOR ||
+           id == ENGINE_PCAP;
 }
 
 // Wardrive coexists with Flock-WiFi/Flock-BLE via passive mode (those engines
@@ -28,10 +36,16 @@ void engineRegistryInit(void) {
         states[i] = ESTATE_DISABLED;
         initialized[i] = false;
     }
+    autoPcapLoad();
     Serial.println("[ENGINE] Registry initialized (all engines disabled)");
 }
 
+static bool autoPcapPending;
+static uint8_t autoPcapPausedMask;
+
 void engineDisableAll(void) {
+    autoPcapPending = false;
+    autoPcapPausedMask = 0;
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (states[i] != ESTATE_DISABLED && engines[i] != nullptr && engines[i]->stop) {
             Serial.printf("[ENGINE] Force-stopping %s\n", engines[i]->name);
@@ -138,20 +152,62 @@ uint8_t engineGetAvailableMask(void) {
 
 static bool autoPcapEnabled = false;
 static uint16_t autoPcapDurationSec = 10;
+
+static void autoPcapSave(void) {
+    Preferences p;
+    p.begin("ouispy-ap", false);
+    p.putBool("en", autoPcapEnabled);
+    p.putUShort("dur", autoPcapDurationSec);
+    p.end();
+}
+
+static void autoPcapLoad(void) {
+    Preferences p;
+    p.begin("ouispy-ap", true);
+    autoPcapEnabled = p.getBool("en", false);
+    autoPcapDurationSec = p.getUShort("dur", 10);
+    if (autoPcapDurationSec == 0) autoPcapDurationSec = 10;
+    p.end();
+    Serial.printf("[AUTO-PCAP] loaded en=%d dur=%us\n",
+                  (int)autoPcapEnabled, autoPcapDurationSec);
+}
 static unsigned long autoPcapDeadline = 0;
-static EngineId autoPcapOrigin = ENGINE_COUNT;
-static bool autoPcapPending = false;
 static uint32_t autoPcapTriggers = 0;
 
-void engineSetAutoPcap(bool en) { autoPcapEnabled = en; }
+void engineSetAutoPcap(bool en) {
+    if (autoPcapEnabled == en) return;
+    autoPcapEnabled = en;
+    autoPcapSave();
+}
 bool engineAutoPcapEnabled(void) { return autoPcapEnabled; }
-void engineSetAutoPcapDuration(uint16_t s) { autoPcapDurationSec = (s == 0 ? 10 : s); }
+void engineSetAutoPcapDuration(uint16_t s) {
+    uint16_t v = (s == 0 ? 10 : s);
+    if (autoPcapDurationSec == v) return;
+    autoPcapDurationSec = v;
+    autoPcapSave();
+}
 uint16_t engineGetAutoPcapDuration(void) { return autoPcapDurationSec; }
 uint32_t engineGetAutoPcapTriggerCount(void) { return autoPcapTriggers; }
+uint8_t engineGetAutoPcapPausedMask(void) { return autoPcapPending ? autoPcapPausedMask : 0; }
+
+uint32_t engineGetAutoPcapRemainingMs(void) {
+    if (!autoPcapPending) return 0;
+    long rem = (long)(autoPcapDeadline - millis());
+    return rem > 0 ? (uint32_t)rem : 0;
+}
 
 void engineRequestAutoPcap(EngineId src, uint8_t channel) {
     if (!autoPcapEnabled) return;
-    if (src == ENGINE_FOXHUNTER || src == ENGINE_PCAP || src == ENGINE_WARDRIVE) return;
+    switch (src) {
+        case ENGINE_DETECTOR:
+        case ENGINE_FLOCK_BLE:
+        case ENGINE_FLOCK_WIFI:
+        case ENGINE_SKYSPY:
+        case ENGINE_UNIPWN:
+            break;
+        default:
+            return;
+    }
     if (states[ENGINE_PCAP] != ESTATE_DISABLED) return;
     if (autoPcapPending) return;
 
@@ -176,33 +232,47 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel) {
         engines[ENGINE_PCAP]->config(cfg, 4);
     }
 
-    autoPcapOrigin = src;
-    autoPcapTriggers++;
+    autoPcapPausedMask = 0;
+    for (int i = 0; i < ENGINE_COUNT; i++) {
+        if (i == ENGINE_PCAP) continue;
+        if (states[i] == ESTATE_DISABLED) continue;
+        bool conflict = isBle ? isBleScanEngine((EngineId)i)
+                              : isWifiEngine((EngineId)i);
+        if (!conflict) continue;
+        autoPcapPausedMask |= ENGINE_BITMASK(i);
+        engineDisable((EngineId)i);
+    }
 
-    engineDisable(src);
+    autoPcapTriggers++;
     engineEnable(ENGINE_PCAP);
     autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
     autoPcapPending = true;
-    Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us\n",
+    Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
                   engines[src] ? engines[src]->name : "?",
-                  chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec);
+                  chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec, autoPcapPausedMask);
 }
 
 static void autoPcapTick(void) {
     if (!autoPcapPending) return;
-    if (states[ENGINE_PCAP] == ESTATE_DISABLED) {
-        if (autoPcapOrigin < ENGINE_COUNT && engines[autoPcapOrigin]) {
-            Serial.printf("[ENGINE] auto-pcap window done, restoring %s\n",
-                          engines[autoPcapOrigin]->name);
-            engineEnable(autoPcapOrigin);
-        }
-        autoPcapPending = false;
-        autoPcapOrigin = (EngineId)ENGINE_COUNT;
-        return;
-    }
-    if (millis() >= autoPcapDeadline) {
+
+    bool pcapDown = (states[ENGINE_PCAP] == ESTATE_DISABLED);
+    bool deadlineHit = (long)(millis() - autoPcapDeadline) >= 0;
+
+    if (!pcapDown && deadlineHit) {
         Serial.println("[ENGINE] auto-pcap deadline, stopping PCAP");
         engineDisable(ENGINE_PCAP);
+        pcapDown = true;
+    }
+
+    if (pcapDown) {
+        for (int i = 0; i < ENGINE_COUNT; i++) {
+            if ((autoPcapPausedMask & ENGINE_BITMASK(i)) == 0) continue;
+            if (engines[i] == nullptr) continue;
+            Serial.printf("[ENGINE] auto-pcap restore %s\n", engines[i]->name);
+            engineEnable((EngineId)i);
+        }
+        autoPcapPending = false;
+        autoPcapPausedMask = 0;
     }
 }
 

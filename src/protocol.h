@@ -27,8 +27,8 @@
 #define PIN_GPS_TX     43
 
 // Firmware version
-#define FW_VERSION     "0.3.9"
-#define FW_VERSION_NUM 0x000309
+#define FW_VERSION     "0.4.0"
+#define FW_VERSION_NUM 0x000400
 
 // ============================================================================
 // Engine IDs — bitmask-compatible
@@ -250,6 +250,10 @@ typedef struct __attribute__((packed)) {
     uint32_t dropped_frames;
     uint32_t file_size;
     uint32_t uptime_ms;
+    uint8_t  auto_enabled;
+    uint16_t auto_duration_sec;
+    uint8_t  paused_mask;
+    uint32_t auto_remaining_ms;
 } PcapStats;
 
 // PCAP control opcodes (write to CHR_PCAP_CONTROL)

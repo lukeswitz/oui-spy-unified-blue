@@ -54,6 +54,8 @@ bool engineAutoPcapEnabled(void);
 void engineSetAutoPcapDuration(uint16_t seconds);
 uint16_t engineGetAutoPcapDuration(void);
 uint32_t engineGetAutoPcapTriggerCount(void);
+uint8_t  engineGetAutoPcapPausedMask(void);
+uint32_t engineGetAutoPcapRemainingMs(void);
 
 // Called by the detection notify task on every event. No-op if disabled.
 void engineRequestAutoPcap(EngineId src, uint8_t channel);

@@ -22,6 +22,9 @@ import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
@@ -2439,8 +2442,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           ),
         ),
         const Divider(height: 1),
-        // Detection list or map
         Expanded(
+          flex: 3,
           child: _showMap
               ? _buildMapView(items, t)
               : ListView.builder(
@@ -2456,6 +2459,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                   ),
                 ),
         ),
+        const Divider(height: 1, thickness: 1),
+        const Expanded(flex: 2, child: _PcapInlineSection()),
       ],
     );
   }
@@ -3745,3 +3750,241 @@ class _WifiEnableToggleState extends ConsumerState<_WifiEnableToggle> {
     );
   }
 }
+
+class _PcapInlineSection extends ConsumerStatefulWidget {
+  const _PcapInlineSection();
+  @override
+  ConsumerState<_PcapInlineSection> createState() => _PcapInlineSectionState();
+}
+
+class _PcapInlineSectionState extends ConsumerState<_PcapInlineSection> {
+  late Future<List<_PcapEntry>> _entries;
+  final Set<String> _deleting = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _entries = _load();
+  }
+
+  Future<Directory> _pcapDir() async {
+    final base = await getApplicationDocumentsDirectory();
+    final d = Directory("${base.path}/pcaps");
+    if (!await d.exists()) await d.create(recursive: true);
+    return d;
+  }
+
+  Future<List<_PcapEntry>> _load() async {
+    final d = await _pcapDir();
+    final files = await d
+        .list()
+        .where((e) => e is File && e.path.endsWith(".pcap"))
+        .cast<File>()
+        .toList();
+    final out = <_PcapEntry>[];
+    for (final f in files) {
+      final st = await f.stat();
+      out.add(_PcapEntry(file: f, size: st.size, modified: st.modified));
+    }
+    out.sort((a, b) => b.modified.compareTo(a.modified));
+    return out;
+  }
+
+  void _refresh() => setState(() => _entries = _load());
+
+  bool _isActive(File f) {
+    final ble = ref.read(bleManagerProvider);
+    return ble.currentPcapFile?.path == f.path;
+  }
+
+  Future<bool> _doDelete(File f) async {
+    if (_isActive(f)) {
+      try { await ref.read(bleManagerProvider).abortActivePcap(); } catch (_) {}
+    }
+    try {
+      if (await f.exists()) await f.delete();
+      return true;
+    } catch (_) { return false; }
+  }
+
+  Future<void> _delete(File f) async {
+    setState(() => _deleting.add(f.path));
+    final ok = await _doDelete(f);
+    if (!mounted) return;
+    setState(() => _deleting.remove(f.path));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 1),
+      content: Text(ok ? "Deleted" : "Delete failed"),
+    ));
+    _refresh();
+  }
+
+  Future<void> _deleteAll() async {
+    final list = await _entries;
+    if (list.isEmpty) return;
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete all captures?"),
+        content: Text("${list.length} file(s) will be deleted."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("CANCEL")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.error),
+            child: const Text("DELETE ALL"),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _deleting.addAll(list.map((e) => e.file.path)));
+    int failed = 0;
+    for (final e in list) {
+      if (!await _doDelete(e.file)) failed++;
+    }
+    if (!mounted) return;
+    setState(() => _deleting.clear());
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 1),
+      content: Text(failed == 0 ? "All deleted" : "$failed failed"),
+    ));
+    _refresh();
+  }
+
+  Future<void> _share(File f) async {
+    if (!await f.exists()) return;
+    final size = await f.length();
+    if (!mounted) return;
+    final s = MediaQuery.of(context).size;
+    final origin = Rect.fromLTWH(s.width / 2 - 1, s.height / 2 - 1, 2, 2);
+    await Share.shareXFiles(
+      [XFile(f.path, mimeType: "application/vnd.tcpdump.pcap")],
+      subject: "OUI-SPY PCAP ($size bytes)",
+      sharePositionOrigin: origin,
+    );
+  }
+
+  String _humanBytes(int n) {
+    if (n < 1024) return "${n}B";
+    if (n < 1024 * 1024) return "${(n / 1024).toStringAsFixed(1)}KB";
+    if (n < 1024 * 1024 * 1024) return "${(n / 1024 / 1024).toStringAsFixed(2)}MB";
+    return "${(n / 1024 / 1024 / 1024).toStringAsFixed(2)}GB";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
+          child: Row(
+            children: [
+              Text("SAVED PCAPS",
+                  style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.refresh, size: 18),
+                onPressed: _refresh,
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.delete_sweep, size: 18, color: AppTheme.error),
+                tooltip: "Delete all",
+                onPressed: _deleteAll,
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<List<_PcapEntry>>(
+            future: _entries,
+            builder: (context, snap) {
+              if (snap.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final list = snap.data ?? const <_PcapEntry>[];
+              if (list.isEmpty) {
+                return Center(
+                  child: Text("No captures yet",
+                      style: TextStyle(color: t.textDim, fontSize: 12)),
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: list.length,
+                separatorBuilder: (_, _) => Divider(height: 1, color: t.surface),
+                itemBuilder: (context, i) {
+                  final e = list[i];
+                  final name = e.file.path.split("/").last;
+                  final isBle = name.contains("_ble_");
+                  final active = _isActive(e.file);
+                  final deleting = _deleting.contains(e.file.path);
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      isBle ? Icons.bluetooth : Icons.wifi,
+                      color: isBle ? AppTheme.flockBle : AppTheme.accent,
+                    ),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(name,
+                              style: TextStyle(color: t.textPrimary, fontSize: 11, fontFamily: "monospace")),
+                        ),
+                        if (active)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppTheme.success.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: const Text("LIVE",
+                                style: TextStyle(color: AppTheme.success, fontSize: 8, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                          ),
+                      ],
+                    ),
+                    subtitle: Text(
+                      "${_humanBytes(e.size)}  ·  ${DateFormat("MM-dd HH:mm:ss").format(e.modified)}",
+                      style: TextStyle(color: t.textDim, fontSize: 10),
+                    ),
+                    trailing: deleting
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: Icon(Icons.ios_share, size: 18, color: t.textPrimary),
+                                onPressed: () => _share(e.file),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.error),
+                                onPressed: () => _delete(e.file),
+                              ),
+                            ],
+                          ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PcapEntry {
+  _PcapEntry({required this.file, required this.size, required this.modified});
+  final File file;
+  final int size;
+  final DateTime modified;
+}
+

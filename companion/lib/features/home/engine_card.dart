@@ -8,6 +8,7 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 enum CardSize { hero, medium, compact }
@@ -329,6 +330,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
                             ),
                           ],
                           const Spacer(),
+                          if (widget.engine == Engine.pcap) _autoPcapBadge(),
                           _stateBadge(active, t),
                         ],
                       ),
@@ -553,6 +555,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
                   ),
                   const SizedBox(width: 6),
                 ],
+                if (widget.engine == Engine.pcap) _autoPcapBadge(),
                 _stateBadge(active, t),
                 const SizedBox(width: 4),
                 Transform.scale(
@@ -571,6 +574,43 @@ class _EngineCardState extends ConsumerState<EngineCard>
           );
         },
       ),
+    );
+  }
+
+  Widget _autoPcapBadge() {
+    final ble = ref.read(bleManagerProvider);
+    return StreamBuilder<PcapStats>(
+      stream: ble.pcapStats,
+      initialData: ble.latestPcapStats,
+      builder: (context, snap) {
+        final s = snap.data ?? PcapStats.empty;
+        if (!s.autoEnabled) return const SizedBox.shrink();
+        final live = s.autoRemainingMs > 0;
+        return Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: (live ? AppTheme.success : AppTheme.accent).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: (live ? AppTheme.success : AppTheme.accent).withValues(alpha: 0.5),
+                width: 0.8,
+              ),
+            ),
+            child: Text(
+              live ? 'AUTO ${(s.autoRemainingMs / 1000).ceil()}s' : 'AUTO ${s.autoDurationSec}s',
+              style: TextStyle(
+                color: live ? AppTheme.success : AppTheme.accent,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

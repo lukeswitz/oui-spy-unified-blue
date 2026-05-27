@@ -1,6 +1,7 @@
 #include "pcap.h"
 #include "../protocol.h"
 #include "../ble_gatt.h"
+#include "../engine_registry.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -81,6 +82,10 @@ static bool IRAM_ATTR appendFrame(const uint8_t* frame, uint32_t flen) {
     memcpy(endMarker, &emval, 4);
 
     portENTER_CRITICAL_ISR(&pcapBufMux);
+    if (bufA == nullptr || bufB == nullptr) {
+        portEXIT_CRITICAL_ISR(&pcapBufMux);
+        return false;
+    }
     uint32_t need = 24 + flen + 4;
     if (useA) {
         if (bufSizeA + need > PCAP_BUF_SIZE) {
@@ -331,10 +336,16 @@ static bool allocBuffers(void) {
 }
 
 static void freeBuffers(void) {
-    if (bufA) { free(bufA); bufA = nullptr; }
-    if (bufB) { free(bufB); bufB = nullptr; }
+    uint8_t* a = nullptr;
+    uint8_t* b = nullptr;
+    portENTER_CRITICAL(&pcapBufMux);
+    a = bufA; bufA = nullptr;
+    b = bufB; bufB = nullptr;
     bufSizeA = bufSizeB = 0;
     useA = true;
+    portEXIT_CRITICAL(&pcapBufMux);
+    if (a) free(a);
+    if (b) free(b);
 }
 
 static void pcapInit(void) {
@@ -347,6 +358,7 @@ static void pcapStart(void) {
     if (!allocBuffers()) {
         Serial.println("[PCAP] buffer alloc failed");
         pcapState = 3;
+        engineSetState(ENGINE_PCAP, ESTATE_DISABLED);
         bleGattNotifyPcapStats();
         return;
     }
@@ -366,13 +378,15 @@ static void pcapStart(void) {
         Serial.println("[PCAP] task create failed");
         pcapActive = false;
         pcapState = 3;
+        freeBuffers();
+        engineSetState(ENGINE_PCAP, ESTATE_DISABLED);
         bleGattNotifyPcapStats();
         return;
     }
 
     if (pcapMode == PCAP_MODE_WIFI) {
         WiFi.mode(WIFI_STA);
-        WiFi.disconnect(false, true);
+        WiFi.disconnect(false, false);
         vTaskDelay(pdMS_TO_TICKS(50));
         wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
                                     .policy = WIFI_COUNTRY_POLICY_MANUAL };
@@ -412,7 +426,6 @@ static void pcapStop(void) {
     if (pcapMode == PCAP_MODE_WIFI) {
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
-        WiFi.disconnect(true, true);
     } else {
         if (pPcapScan) {
             if (pPcapScan->isScanning()) pPcapScan->stop();
@@ -424,17 +437,14 @@ static void pcapStop(void) {
     }
 
     if (pcapSenderHandle) xTaskNotifyGive(pcapSenderHandle);
-    for (int i = 0; i < 100 && pcapSenderHandle != nullptr; i++) {
+    for (int i = 0; i < 15 && pcapSenderHandle != nullptr; i++) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     freeBuffers();
     if (pcapState != 2) pcapState = 0;
     engineSetState(ENGINE_PCAP, ESTATE_DISABLED);
-    for (int i = 0; i < 10; i++) {
-        bleGattNotifyPcapStats();
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
+    bleGattNotifyPcapStats();
     Serial.printf("[PCAP] Stopped bytes=%lu dropped=%lu\n",
                   (unsigned long)cntBytes, (unsigned long)cntDropped);
 }
@@ -485,12 +495,14 @@ static void pcapConfig(const uint8_t* payload, uint8_t len) {
         case PCAP_CTRL_STOP:  pcapStop(); break;
         case 0x10:
             if (len >= 2) engineSetAutoPcap(payload[1] != 0);
+            bleGattNotifyPcapStats();
             break;
         case 0x11:
             if (len >= 3) {
                 uint16_t s = payload[1] | (payload[2] << 8);
                 engineSetAutoPcapDuration(s);
             }
+            bleGattNotifyPcapStats();
             break;
         default: break;
     }
@@ -516,6 +528,10 @@ void pcapGetStats(PcapStats* out) {
     out->dropped_frames   = cntDropped;
     out->file_size        = pcapStreamedBytes;
     out->uptime_ms        = pcapActive ? (uint32_t)(millis() - pcapStartedAt) : 0u;
+    out->auto_enabled     = engineAutoPcapEnabled() ? 1 : 0;
+    out->auto_duration_sec = engineGetAutoPcapDuration();
+    out->paused_mask      = engineGetAutoPcapPausedMask();
+    out->auto_remaining_ms = engineGetAutoPcapRemainingMs();
 }
 
 bool pcapBeginDownload(uint32_t*, uint32_t*) { return false; }

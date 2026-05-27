@@ -90,7 +90,8 @@ class BleManager {
   IOSink? _pcapSink;
   int _pcapFileMode = 0;
   int _pcapBytesWritten = 0;
-  final List<int> _pcapRx = <int>[];
+  Uint8List _pcapRx = Uint8List(0);
+  int _pcapRxStart = 0;
   bool _pcapPrevActive = false;
 
   final _pcapBytesStream = StreamController<int>.broadcast();
@@ -99,6 +100,15 @@ class BleManager {
   Stream<File> get pcapCaptureSaved => _pcapSavedStream.stream;
   File? get currentPcapFile => _pcapFile;
   int get pcapBytesWrittenLatest => _pcapBytesWritten;
+
+  Future<void> abortActivePcap() async {
+    try {
+      await stopPcap();
+    } on Exception {
+      // proceed to close locally regardless
+    }
+    await _closePcapFile(silent: true);
+  }
 
   static const int _kPcapLtWifi = 127;
   static const int _kPcapLtBle = 256;
@@ -136,7 +146,8 @@ class BleManager {
     _pcapSink!.add(_buildPcapHeader(lt));
     _pcapFileMode = mode;
     _pcapBytesWritten = 24;
-    _pcapRx.clear();
+    _pcapRx = Uint8List(0);
+    _pcapRxStart = 0;
     _pcapBytesStream.add(_pcapBytesWritten);
   }
 
@@ -154,7 +165,8 @@ class BleManager {
       DebugLog.log('pcap close error: $e');
     }
     _pcapSink = null;
-    _pcapRx.clear();
+    _pcapRx = Uint8List(0);
+    _pcapRxStart = 0;
     if (!silent && f != null && bytes > 24) {
       _pcapSavedStream.add(f);
     }
@@ -173,39 +185,68 @@ class BleManager {
 
   void _ingestPcapBytes(Uint8List bytes) {
     if (_pcapSink == null || bytes.isEmpty) return;
-    _pcapRx.addAll(bytes);
-    while (true) {
-      while (_pcapRx.length >= 4) {
-        final m = _pcapRx[0] |
-            (_pcapRx[1] << 8) |
-            (_pcapRx[2] << 16) |
-            (_pcapRx[3] << 24);
-        if (m == _kPcapMagic) break;
-        _pcapRx.removeAt(0);
+    final avail = _pcapRx.length - _pcapRxStart;
+    final needed = avail + bytes.length;
+    if (_pcapRxStart > 0 && _pcapRx.length - avail >= 4096) {
+      final compact = Uint8List(needed);
+      compact.setRange(0, avail, _pcapRx, _pcapRxStart);
+      compact.setRange(avail, needed, bytes);
+      _pcapRx = compact;
+      _pcapRxStart = 0;
+    } else if (_pcapRx.length < _pcapRxStart + needed) {
+      int cap = _pcapRx.length == 0 ? 4096 : _pcapRx.length * 2;
+      while (cap < _pcapRxStart + needed) {
+        cap *= 2;
       }
-      if (_pcapRx.length < 8) return;
-      final recLen = _pcapRx[4] |
-          (_pcapRx[5] << 8) |
-          (_pcapRx[6] << 16) |
-          (_pcapRx[7] << 24);
+      final grown = Uint8List(cap);
+      grown.setRange(0, _pcapRx.length, _pcapRx);
+      _pcapRx = grown;
+    }
+    _pcapRx.setRange(_pcapRxStart + avail, _pcapRxStart + needed, bytes);
+    final end = _pcapRxStart + needed;
+
+    int i = _pcapRxStart;
+    int totalWritten = 0;
+    while (true) {
+      while (end - i >= 4) {
+        final m = _pcapRx[i] |
+            (_pcapRx[i + 1] << 8) |
+            (_pcapRx[i + 2] << 16) |
+            (_pcapRx[i + 3] << 24);
+        if (m == _kPcapMagic) break;
+        i++;
+      }
+      if (end - i < 8) break;
+      final recLen = _pcapRx[i + 4] |
+          (_pcapRx[i + 5] << 8) |
+          (_pcapRx[i + 6] << 16) |
+          (_pcapRx[i + 7] << 24);
       if (recLen < 16 || recLen > _kPcapSnap + 16) {
-        _pcapRx.removeAt(0);
+        i++;
         continue;
       }
-      if (_pcapRx.length < 8 + recLen + 4) return;
-      final endOff = 8 + recLen;
+      if (end - i < 8 + recLen + 4) break;
+      final endOff = i + 8 + recLen;
       final endMark = _pcapRx[endOff] |
           (_pcapRx[endOff + 1] << 8) |
           (_pcapRx[endOff + 2] << 16) |
           (_pcapRx[endOff + 3] << 24);
       if (endMark != _kPcapEnd) {
-        _pcapRx.removeAt(0);
+        i++;
         continue;
       }
-      final rec = Uint8List.fromList(_pcapRx.sublist(8, 8 + recLen));
-      _pcapRx.removeRange(0, 8 + recLen + 4);
+      final rec = Uint8List.sublistView(_pcapRx, i + 8, i + 8 + recLen);
       _pcapSink!.add(rec);
-      _pcapBytesWritten += rec.length;
+      totalWritten += recLen;
+      i += 8 + recLen + 4;
+    }
+    _pcapRxStart = i;
+    if (_pcapRxStart >= end) {
+      _pcapRxStart = 0;
+      _pcapRx = Uint8List(0);
+    }
+    if (totalWritten > 0) {
+      _pcapBytesWritten += totalWritten;
       _pcapBytesStream.add(_pcapBytesWritten);
     }
   }
@@ -865,23 +906,12 @@ class BleManager {
     int channelEnd = 11,
   }) async {
     if (_engineControl == null) return;
-    if (mode == 0) {
-      // WiFi: stop other WiFi engines first.
-      for (final conflict in [Engine.flockWifi, Engine.skySpy, Engine.wardrive]) {
-        await _engineControl!.write(
-          BleProtocol.encodeEngineControl(engine: conflict, enable: false),
-        );
-      }
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-    // PCAP config: [PCAP_CTRL_START=0x01][mode][chan_s][chan_e]
     await _engineControl!.write(
       BleProtocol.encodeEngineConfig(
         engine: Engine.pcap,
         payload: Uint8List.fromList([0x01, mode, channelStart, channelEnd]),
       ),
     );
-    await Future.delayed(const Duration(milliseconds: 100));
     await _engineControl!.write(
       BleProtocol.encodeEngineControl(engine: Engine.pcap, enable: true),
     );

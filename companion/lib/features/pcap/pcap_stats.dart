@@ -22,6 +22,10 @@ class PcapStats {
     required this.droppedFrames,
     required this.fileSize,
     required this.uptimeMs,
+    this.autoEnabled = false,
+    this.autoDurationSec = 10,
+    this.pausedMask = 0,
+    this.autoRemainingMs = 0,
   });
 
   /// 0=idle, 1=capturing, 2=full, 3=error
@@ -44,6 +48,10 @@ class PcapStats {
   final int droppedFrames;
   final int fileSize;
   final int uptimeMs;
+  final bool autoEnabled;
+  final int autoDurationSec;
+  final int pausedMask;
+  final int autoRemainingMs;
 
   PcapMode get modeEnum => mode == 1 ? PcapMode.ble : PcapMode.wifi;
 
@@ -89,6 +97,10 @@ class PcapStats {
       droppedFrames: bd.getUint32(48, Endian.little),
       fileSize: bd.getUint32(52, Endian.little),
       uptimeMs: bd.getUint32(56, Endian.little),
+      autoEnabled: raw.length >= 61 ? bd.getUint8(60) != 0 : false,
+      autoDurationSec: raw.length >= 63 ? bd.getUint16(61, Endian.little) : 10,
+      pausedMask: raw.length >= 64 ? bd.getUint8(63) : 0,
+      autoRemainingMs: raw.length >= 68 ? bd.getUint32(64, Endian.little) : 0,
     );
   }
 

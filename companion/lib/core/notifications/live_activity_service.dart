@@ -26,6 +26,7 @@ class LiveActivityService {
   bool get supported => _supported;
 
   String? _activityId;
+  Future<String?>? _startInFlight;
   bool get isActive => _activityId != null;
 
   /// Check if Live Activities are supported on this device.
@@ -87,14 +88,29 @@ class LiveActivityService {
     };
 
     try {
-      if (_activityId == null) {
-        _activityId = await _channel.invokeMethod<String>('startActivity', payload);
-        DebugLog.log('LIVE_ACTIVITY: started activity=$_activityId mode=$primaryMode');
-      } else {
+      if (_activityId != null) {
         payload['activityId'] = _activityId;
         await _channel.invokeMethod('updateActivity', payload);
+        return;
+      }
+      if (_startInFlight != null) {
+        final id = await _startInFlight!;
+        if (id != null) {
+          final upd = Map<String, Object?>.from(payload);
+          upd['activityId'] = id;
+          await _channel.invokeMethod('updateActivity', upd);
+        }
+        return;
+      }
+      _startInFlight = _channel.invokeMethod<String>('startActivity', payload);
+      try {
+        _activityId = await _startInFlight!;
+        DebugLog.log('LIVE_ACTIVITY: started activity=$_activityId mode=$primaryMode');
+      } finally {
+        _startInFlight = null;
       }
     } catch (e) {
+      _startInFlight = null;
       DebugLog.log('LIVE_ACTIVITY: update error: $e');
     }
   }

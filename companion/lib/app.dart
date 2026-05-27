@@ -156,7 +156,7 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(10),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(10),
-                      onTap: () => GoRouter.of(context).push('/engine/pcap'),
+                      onTap: () => ref.read(routerProvider).push('/engine/pcap'),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         child: Row(
@@ -165,7 +165,9 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${s.uptimeMs ~/ 1000}s, ${_humanBytes(s.bytesWritten)}',
+                                s.autoRemainingMs > 0
+                                    ? 'AUTO-PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${(s.autoRemainingMs / 1000).ceil()}s left, ${_humanBytes(s.bytesWritten)}'
+                                    : 'PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${s.uptimeMs ~/ 1000}s, ${_humanBytes(s.bytesWritten)}',
                                 style: const TextStyle(
                                   color: Color(0xFF4AFFCC),
                                   fontSize: 12,
