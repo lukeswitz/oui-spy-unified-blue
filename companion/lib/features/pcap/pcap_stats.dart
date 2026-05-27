@@ -28,6 +28,8 @@ class PcapStats {
     this.autoRemainingMs = 0,
     this.autoTriggerSrc = 0xFF,
     this.autoTriggerMac = const [0, 0, 0, 0, 0, 0],
+    this.autoCooldownSec = 0,
+    this.autoCooldownRemainingMs = 0,
   });
 
   /// 0=idle, 1=capturing, 2=full, 3=error
@@ -60,6 +62,12 @@ class PcapStats {
 
   /// MAC (6 bytes) that triggered auto-PCAP. All-zero when manual/idle.
   final List<int> autoTriggerMac;
+
+  /// Cooldown seconds after auto-PCAP ends before another can begin. 0=off.
+  final int autoCooldownSec;
+
+  /// Remaining cooldown in ms. 0 when not in cooldown.
+  final int autoCooldownRemainingMs;
 
   PcapMode get modeEnum => mode == 1 ? PcapMode.ble : PcapMode.wifi;
 
@@ -134,6 +142,10 @@ class PcapStats {
       autoTriggerMac: raw.length >= 75
           ? List<int>.unmodifiable(raw.sublist(69, 75))
           : const [0, 0, 0, 0, 0, 0],
+      autoCooldownSec:
+          raw.length >= 77 ? bd.getUint16(75, Endian.little) : 0,
+      autoCooldownRemainingMs:
+          raw.length >= 81 ? bd.getUint32(77, Endian.little) : 0,
     );
   }
 

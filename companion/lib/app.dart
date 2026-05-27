@@ -166,7 +166,9 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
                             Expanded(
                               child: Text(
                                 s.autoRemainingMs > 0
-                                    ? 'AUTO-PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${(s.autoRemainingMs / 1000).ceil()}s left, ${_humanBytes(s.bytesWritten)}'
+                                    ? (s.isAutoTriggered
+                                        ? 'AUTO-PCAP ${s.mode == 1 ? "BLE" : "WiFi"} · ${s.autoTriggerEngineName.toUpperCase()} ${s.autoTriggerMacStr} — ${(s.autoRemainingMs / 1000).ceil()}s left, ${_humanBytes(s.bytesWritten)}'
+                                        : 'AUTO-PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${(s.autoRemainingMs / 1000).ceil()}s left, ${_humanBytes(s.bytesWritten)}')
                                     : 'PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${s.uptimeMs ~/ 1000}s, ${_humanBytes(s.bytesWritten)}',
                                 style: const TextStyle(
                                   color: Color(0xFF4AFFCC),

@@ -13,7 +13,7 @@ enum Engine {
   wardrive(
       'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8C4A), 0x40),
   pcap(
-      'PCAP', 'WiFi radiotap PCAP capture + live stats', Color(0xFF4AFFCC), 0x80);
+      'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF4AFFCC), 0x80);
 
   const Engine(this.label, this.description, this.color, this.bitmask);
 

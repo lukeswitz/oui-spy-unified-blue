@@ -10,6 +10,8 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection, Session;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
+import 'package:oui_spy/core/export/wigle_csv_import.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
@@ -228,6 +230,22 @@ class WardriveController extends ChangeNotifier {
   GpsPosition? currentPosition;
   int droneCount = 0;
 
+  List<WatchlistEntry> Function()? _watchlistGetter;
+  void setWatchlistGetter(List<WatchlistEntry> Function() g) {
+    _watchlistGetter = g;
+  }
+
+  String? _rescanSessionId;
+  int _rescanCur = 0;
+  int _rescanTotal = 0;
+  int _rescanNewDetector = 0;
+  int _rescanNewFlock = 0;
+  String? get rescanSessionId => _rescanSessionId;
+  int get rescanCur => _rescanCur;
+  int get rescanTotal => _rescanTotal;
+  int get rescanNewDetector => _rescanNewDetector;
+  int get rescanNewFlock => _rescanNewFlock;
+
   List<Detection> get dedupedDetections => _dedupedOrdered;
 
   StreamSubscription<Detection>? _detSub;
@@ -366,6 +384,34 @@ class WardriveController extends ChangeNotifier {
       await _saveCsv(sessionId, detections);
 
       DebugLog.log('WARDRIVE: saved $sessionId (${detections.length} det, ${uniqueMacs.length} unique, ${_flockMacs.length} flock)');
+
+      final wl = _watchlistGetter?.call() ?? const <WatchlistEntry>[];
+      _rescanSessionId = sessionId;
+      _rescanCur = 0;
+      _rescanTotal = detections.length;
+      _rescanNewDetector = 0;
+      _rescanNewFlock = 0;
+      notifyListeners();
+      try {
+        final res = await WigleCsvRescan.rescanSession(
+          _db,
+          sessionId,
+          watchlist: wl,
+          onProgress: (cur, total, newDet, newFlock) {
+            _rescanCur = cur;
+            _rescanTotal = total;
+            _rescanNewDetector = newDet;
+            _rescanNewFlock = newFlock;
+            notifyListeners();
+          },
+        );
+        DebugLog.log(
+            'WARDRIVE: rescan $sessionId scanned=${res.rowsScanned} updated=${res.rowsUpdated} det=${res.newDetectorMacs} flock=${res.newFlockMacs}');
+      } catch (e) {
+        DebugLog.log('WARDRIVE: rescan failed $e');
+      }
+      _rescanSessionId = null;
+      notifyListeners();
     }
 
     _lastCompletedSessionId = sessionId;
@@ -983,6 +1029,7 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final notif = ref.watch(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
   final controller = WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
+  controller.setWatchlistGetter(() => ref.read(watchlistProvider).entries);
   controller.isImperial = ref.read(unitSystemProvider) == UnitSystem.imperial;
   ref.listen<UnitSystem>(unitSystemProvider, (_, next) {
     controller.isImperial = next == UnitSystem.imperial;

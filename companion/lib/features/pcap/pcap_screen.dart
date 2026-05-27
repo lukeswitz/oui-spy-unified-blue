@@ -24,6 +24,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   bool? _autoPcapOverride;
   int? _autoDurationOverride;
   int _autoDurationSec = 10;
+  int? _autoCooldownOverride;
+  int _autoCooldownSec = 0;
 
   File? _lastSaved;
   int _bytesWritten = 0;
@@ -145,9 +147,13 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
           if (_autoDurationOverride != null && _autoDurationOverride == s.autoDurationSec) {
             _autoDurationOverride = null;
           }
+          if (_autoCooldownOverride != null && _autoCooldownOverride == s.autoCooldownSec) {
+            _autoCooldownOverride = null;
+          }
           final autoEnabled = _autoPcapOverride ?? s.autoEnabled;
           final autoDuration = _autoDurationOverride
               ?? (s.autoDurationSec > 0 ? s.autoDurationSec : _autoDurationSec);
+          final autoCooldown = _autoCooldownOverride ?? s.autoCooldownSec;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -159,6 +165,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 _AutoPcapCard(
                   enabled: autoEnabled,
                   durationSec: autoDuration,
+                  cooldownSec: autoCooldown,
+                  cooldownRemainingMs: s.autoCooldownRemainingMs,
                   onToggle: (v) async {
                     setState(() => _autoPcapOverride = v);
                     try {
@@ -184,6 +192,22 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                         setState(() => _autoDurationOverride = null);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Duration set failed: $e')),
+                        );
+                      }
+                    }
+                  },
+                  onCooldown: (v) async {
+                    setState(() {
+                      _autoCooldownOverride = v;
+                      _autoCooldownSec = v;
+                    });
+                    try {
+                      await ble.setAutoPcapCooldown(v);
+                    } on Exception catch (e) {
+                      if (mounted) {
+                        setState(() => _autoCooldownOverride = null);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Cooldown set failed: $e')),
                         );
                       }
                     }
@@ -305,6 +329,60 @@ class _StateCard extends StatelessWidget {
             'uptime ${uptimeS}s  •  Sent ${_humanBytes(stats.bytesWritten)}  •  Received ${_humanBytes(localBytes)}  •  dropped ${stats.droppedFrames}',
             style: TextStyle(color: t.textDim, fontSize: 12, fontFamily: 'monospace'),
           ),
+          if (stats.isAutoTriggered) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.warning.withValues(alpha: 0.10),
+                border: Border.all(color: AppTheme.warning.withValues(alpha: 0.35)),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.bolt, size: 13, color: AppTheme.warning),
+                  const SizedBox(width: 4),
+                  Text(
+                    'AUTO',
+                    style: const TextStyle(
+                      color: AppTheme.warning, fontSize: 10,
+                      fontFamily: 'monospace', fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    stats.autoTriggerEngineName.toUpperCase(),
+                    style: TextStyle(
+                      color: t.textPrimary, fontSize: 11,
+                      fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      stats.autoTriggerMacStr,
+                      style: TextStyle(
+                        color: AppTheme.accent, fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (stats.autoRemainingMs > 0) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${(stats.autoRemainingMs / 1000).ceil()}s',
+                      style: TextStyle(
+                        color: t.textDim, fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -740,13 +818,19 @@ class _AutoPcapCard extends StatelessWidget {
   const _AutoPcapCard({
     required this.enabled,
     required this.durationSec,
+    required this.cooldownSec,
+    required this.cooldownRemainingMs,
     required this.onToggle,
     required this.onDuration,
+    required this.onCooldown,
   });
   final bool enabled;
   final int durationSec;
+  final int cooldownSec;
+  final int cooldownRemainingMs;
   final ValueChanged<bool> onToggle;
   final ValueChanged<int> onDuration;
+  final ValueChanged<int> onCooldown;
 
   @override
   Widget build(BuildContext context) {
@@ -774,7 +858,7 @@ class _AutoPcapCard extends StatelessWidget {
                         style: TextStyle(color: t.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
                     Text(
                       enabled
-                          ? 'Any detection (except Foxhunter) starts a capture'
+                          ? 'Any detection (OUI/Flock) starts a capture'
                           : 'Off — detections are not auto-captured',
                       style: TextStyle(color: t.textSecondary, fontSize: 11),
                     ),
@@ -807,6 +891,46 @@ class _AutoPcapCard extends StatelessWidget {
                 ),
               ],
             ),
+            Row(
+              children: [
+                Text('Cooldown', style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 2)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Slider(
+                    value: cooldownSec.toDouble().clamp(0, 600),
+                    min: 0, max: 600, divisions: 60,
+                    label: cooldownSec == 0 ? 'off' : '${cooldownSec}s',
+                    activeColor: AppTheme.warning,
+                    onChanged: (v) => onCooldown(v.round()),
+                  ),
+                ),
+                SizedBox(
+                  width: 56,
+                  child: Text(
+                    cooldownSec == 0 ? 'off' : '${cooldownSec}s',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: t.textPrimary, fontFamily: 'monospace'),
+                  ),
+                ),
+              ],
+            ),
+            if (cooldownRemainingMs > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.hourglass_bottom, size: 12, color: AppTheme.warning),
+                    const SizedBox(width: 4),
+                    Text(
+                      'cooldown active — ${(cooldownRemainingMs / 1000).ceil()}s remaining',
+                      style: const TextStyle(
+                        color: AppTheme.warning, fontSize: 10,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ],
       ),

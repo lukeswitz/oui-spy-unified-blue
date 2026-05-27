@@ -138,14 +138,14 @@ class BleManager {
   Future<void> _openPcapFile(int mode, {PcapStats? stats}) async {
     await _closePcapFile(silent: true);
     final dir = await _pcapDir();
-    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final ts = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now().toLocal());
     final suffix = mode == 1 ? 'ble' : 'wifi';
     String name;
     if (stats != null && stats.isAutoTriggered) {
       final macFlat = stats.autoTriggerMac
           .map((b) => b.toRadixString(16).padLeft(2, '0'))
           .join();
-      name = 'ouispy_${ts}_${macFlat}_${stats.autoTriggerEngineName}.pcap';
+      name = 'ouispy_${ts}_${macFlat}_${stats.autoTriggerEngineName}_$suffix.pcap';
     } else {
       name = 'oui_spy_${suffix}_$ts.pcap';
     }
@@ -666,6 +666,17 @@ class BleManager {
       BleProtocol.encodeEngineConfig(
         engine: Engine.pcap,
         payload: Uint8List.fromList([0x11, s & 0xFF, (s >> 8) & 0xFF]),
+      ),
+    );
+  }
+
+  Future<void> setAutoPcapCooldown(int seconds) async {
+    if (_engineControl == null) return;
+    final s = seconds.clamp(0, 65535);
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x12, s & 0xFF, (s >> 8) & 0xFF]),
       ),
     );
   }

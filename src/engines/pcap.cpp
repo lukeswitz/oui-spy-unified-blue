@@ -504,6 +504,13 @@ static void pcapConfig(const uint8_t* payload, uint8_t len) {
             }
             bleGattNotifyPcapStats();
             break;
+        case 0x12:
+            if (len >= 3) {
+                uint16_t s = payload[1] | (payload[2] << 8);
+                engineSetAutoPcapCooldown(s);
+            }
+            bleGattNotifyPcapStats();
+            break;
         default: break;
     }
 }
@@ -536,6 +543,8 @@ void pcapGetStats(PcapStats* out) {
     const uint8_t* tm = engineGetAutoPcapTriggerMac();
     if (tm) memcpy(out->auto_trigger_mac, tm, 6);
     else memset(out->auto_trigger_mac, 0, 6);
+    out->auto_cooldown_sec = engineGetAutoPcapCooldown();
+    out->auto_cooldown_remaining_ms = engineGetAutoPcapCooldownRemainingMs();
 }
 
 bool pcapBeginDownload(uint32_t*, uint32_t*) { return false; }

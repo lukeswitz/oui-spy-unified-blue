@@ -2882,7 +2882,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                     final wigle = ref.watch(wigleProvider);
                     return ListView.builder(
                       controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       itemCount: sessions.length,
                       itemBuilder: (_, i) {
                         final sid = sessions[i].id;
@@ -3178,6 +3178,8 @@ class _SessionRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final units = ref.watch(unitSystemProvider);
+    final wd = ref.watch(wardriveProvider);
+    final isRescanning = wd.rescanSessionId == session.id;
     final start = DateTime.fromMillisecondsSinceEpoch(session.startedAt);
     final dateStr = DateFormat('MMM d, yyyy  HH:mm').format(start);
     final duration = session.endedAt != null
@@ -3189,8 +3191,8 @@ class _SessionRow extends ConsumerWidget {
       onTap: onTap,
       onLongPress: onLongPress,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: selected
               ? AppTheme.accent.withValues(alpha: 0.12)
@@ -3218,142 +3220,154 @@ class _SessionRow extends ConsumerWidget {
                 ],
                 const Icon(Icons.route, size: 16, color: AppTheme.accent),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(dateStr, style: TextStyle(
-                        color: t.textPrimary, fontSize: 11,
-                        fontFamily: 'monospace', fontWeight: FontWeight.w500,
-                      )),
-                      const SizedBox(height: 2),
-                      FutureBuilder<({int wifi, int ble})>(
-                        future: wifiBleFuture,
-                        builder: (_, wbSnap) {
-                          final wb = wbSnap.data;
-                          return Row(
-                            children: [
-                              Text(
-                                '$durStr  \u00b7  ',
-                                style: TextStyle(
-                                  color: t.textDim, fontSize: 9,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                              Icon(Icons.wifi, size: 10, color: AppTheme.accent),
-                              const SizedBox(width: 2),
-                              Text(
-                                '${wb?.wifi ?? session.uniqueMacCount}',
-                                style: TextStyle(
-                                  color: AppTheme.accent, fontSize: 9,
-                                  fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Icon(Icons.bluetooth, size: 10, color: Colors.blue),
-                              const SizedBox(width: 1),
-                              Text(
-                                '${wb?.ble ?? 0}',
-                                style: const TextStyle(
-                                  color: Colors.blue, fontSize: 9,
-                                  fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  '\u00b7  ${UnitFormatter.distance(session.distanceKm, units)}',
-                                  style: TextStyle(
-                                    color: t.textDim, fontSize: 9,
-                                    fontFamily: 'monospace',
-                                  ),
-                                ),
-                              ),
-                              if (flockCountFuture != null)
-                                FutureBuilder<int>(
-                                  future: flockCountFuture,
-                                  builder: (_, snap) {
-                                    final fc = snap.data ?? 0;
-                                    if (fc == 0) return const SizedBox.shrink();
-                                    return Padding(
-                                      padding: const EdgeInsets.only(left: 6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.videocam, size: 10, color: AppTheme.flockBle),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            '$fc',
-                                            style: const TextStyle(
-                                              color: AppTheme.flockBle, fontSize: 9,
-                                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              if (detectorCountFuture != null)
-                                FutureBuilder<int>(
-                                  future: detectorCountFuture,
-                                  builder: (_, snap) {
-                                    final dc = snap.data ?? 0;
-                                    if (dc == 0) return const SizedBox.shrink();
-                                    return Padding(
-                                      padding: const EdgeInsets.only(left: 6),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.radar, size: 10, color: AppTheme.detector),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            '$dc',
-                                            style: const TextStyle(
-                                              color: AppTheme.detector, fontSize: 9,
-                                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
+                Text(dateStr, style: TextStyle(
+                  color: t.textPrimary, fontSize: 11,
+                  fontFamily: 'monospace', fontWeight: FontWeight.w500,
+                )),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 46,
+                  child: Text(durStr, style: TextStyle(
+                    color: t.textDim, fontSize: 10,
+                    fontFamily: 'monospace',
+                  )),
+                ),
+                SizedBox(
+                  width: 44,
+                  child: FutureBuilder<({int wifi, int ble})>(
+                    future: wifiBleFuture,
+                    builder: (_, wbSnap) {
+                      final wb = wbSnap.data;
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.wifi, size: 11, color: AppTheme.accent),
+                          const SizedBox(width: 2),
+                          Text(
+                            '${wb?.wifi ?? session.uniqueMacCount}',
+                            style: TextStyle(
+                              color: AppTheme.accent, fontSize: 10,
+                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                _SessionActionBtn(
+                SizedBox(
+                  width: 40,
+                  child: FutureBuilder<({int wifi, int ble})>(
+                    future: wifiBleFuture,
+                    builder: (_, wbSnap) {
+                      final wb = wbSnap.data;
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.bluetooth, size: 11, color: Colors.blue),
+                          const SizedBox(width: 1),
+                          Text(
+                            '${wb?.ble ?? 0}',
+                            style: const TextStyle(
+                              color: Colors.blue, fontSize: 10,
+                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 48,
+                  child: Text(
+                    UnitFormatter.distance(session.distanceKm, units),
+                    style: TextStyle(
+                      color: t.textDim, fontSize: 10,
+                      fontFamily: 'monospace',
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                SizedBox(
+                  width: 32,
+                  child: flockCountFuture == null
+                      ? const SizedBox.shrink()
+                      : FutureBuilder<int>(
+                          future: flockCountFuture,
+                          builder: (_, snap) {
+                            final fc = snap.data ?? 0;
+                            if (fc == 0) return const SizedBox.shrink();
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.videocam, size: 11, color: AppTheme.flockBle),
+                                const SizedBox(width: 2),
+                                Text(
+                                  '$fc',
+                                  style: const TextStyle(
+                                    color: AppTheme.flockBle, fontSize: 10,
+                                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                ),
+                SizedBox(
+                  width: 32,
+                  child: detectorCountFuture == null
+                      ? const SizedBox.shrink()
+                      : FutureBuilder<int>(
+                          future: detectorCountFuture,
+                          builder: (_, snap) {
+                            final dc = snap.data ?? 0;
+                            if (dc == 0) return const SizedBox.shrink();
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.radar, size: 11, color: AppTheme.detector),
+                                const SizedBox(width: 2),
+                                Text(
+                                  '$dc',
+                                  style: const TextStyle(
+                                    color: AppTheme.detector, fontSize: 10,
+                                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                ),
+                const Spacer(),
+                _SessionIconBtn(
                   icon: Icons.file_download_outlined,
                   label: 'CSV',
                   color: AppTheme.accent,
                   onTap: onShare,
                 ),
-                const SizedBox(width: 6),
-                if (onUploadWigle != null)
-                  wigleUploading
-                      ? _SessionActionBtn(
-                          icon: Icons.cloud_sync,
-                          label: 'SENDING',
-                          color: AppTheme.warning,
-                          isLoading: true,
-                        )
-                      : _SessionActionBtn(
-                          icon: wigleUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined,
-                          label: wigleUploaded ? 'SENT' : 'WIGLE',
-                          color: wigleUploaded ? AppTheme.success : AppTheme.warning,
-                          onTap: wigleUploaded ? null : onUploadWigle,
-                        ),
-                const Spacer(),
-                _SessionActionBtn(
+                const SizedBox(width: 4),
+                if (onUploadWigle != null) ...[
+                  _SessionIconBtn(
+                    icon: wigleUploading
+                        ? Icons.cloud_sync
+                        : (wigleUploaded
+                            ? Icons.cloud_done
+                            : Icons.cloud_upload_outlined),
+                    label: wigleUploading
+                        ? 'SENDING'
+                        : (wigleUploaded ? 'SENT' : 'WIGLE'),
+                    color: wigleUploading
+                        ? AppTheme.warning
+                        : (wigleUploaded ? AppTheme.success : AppTheme.warning),
+                    onTap: (wigleUploaded || wigleUploading) ? null : onUploadWigle,
+                    isLoading: wigleUploading,
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                _SessionIconBtn(
                   icon: Icons.delete_forever_outlined,
                   label: 'DEL',
                   color: AppTheme.error,
@@ -3361,6 +3375,35 @@ class _SessionRow extends ConsumerWidget {
                 ),
               ],
             ),
+            if (isRescanning) ...[
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 9,
+                    height: 9,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: AppTheme.detector,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    wd.rescanTotal == 0
+                        ? 'CHECKING OUIs'
+                        : 'CHECK ${wd.rescanCur}/${wd.rescanTotal}'
+                            '${wd.rescanNewDetector > 0 ? ' +${wd.rescanNewDetector}d' : ''}'
+                            '${wd.rescanNewFlock > 0 ? ' +${wd.rescanNewFlock}f' : ''}',
+                    style: const TextStyle(
+                      color: AppTheme.detector,
+                      fontSize: 9,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -3368,17 +3411,17 @@ class _SessionRow extends ConsumerWidget {
   }
 }
 
-class _SessionActionBtn extends StatelessWidget {
-  const _SessionActionBtn({
+class _SessionIconBtn extends StatelessWidget {
+  const _SessionIconBtn({
     required this.icon,
-    required this.label,
     required this.color,
+    this.label,
     this.onTap,
     this.isLoading = false,
   });
   final IconData icon;
-  final String label;
   final Color color;
+  final String? label;
   final VoidCallback? onTap;
   final bool isLoading;
 
@@ -3390,36 +3433,45 @@ class _SessionActionBtn extends StatelessWidget {
       onTap: isLoading ? null : onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        constraints: const BoxConstraints(minWidth: 56, minHeight: 36),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        height: 26,
+        padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 5),
+        constraints: BoxConstraints(minWidth: label == null ? 26 : 0),
         decoration: BoxDecoration(
           color: c.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: c.withValues(alpha: 0.25)),
         ),
+        alignment: Alignment.center,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (isLoading)
               SizedBox(
-                width: 12, height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5, color: c,
-                ),
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: c),
               )
             else
-              Icon(icon, size: 14, color: c),
-            const SizedBox(width: 4),
-            Text(label, style: TextStyle(
-              color: c, fontSize: 9,
-              fontWeight: FontWeight.w700, letterSpacing: 0.5,
-            )),
+              Icon(icon, size: 15, color: c),
+            if (label != null) ...[
+              const SizedBox(width: 3),
+              Text(
+                label!,
+                style: TextStyle(
+                  color: c,
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 }
+
 
 class _ToolbarChip extends StatelessWidget {
   const _ToolbarChip({

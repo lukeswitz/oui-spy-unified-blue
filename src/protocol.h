@@ -256,6 +256,8 @@ typedef struct __attribute__((packed)) {
     uint32_t auto_remaining_ms;
     uint8_t  auto_trigger_src;
     uint8_t  auto_trigger_mac[6];
+    uint16_t auto_cooldown_sec;
+    uint32_t auto_cooldown_remaining_ms;
 } PcapStats;
 
 // PCAP control opcodes (write to CHR_PCAP_CONTROL)

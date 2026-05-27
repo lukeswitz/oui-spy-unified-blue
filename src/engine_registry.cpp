@@ -68,12 +68,21 @@ void engineRegistryInit(void) {
 }
 
 static bool autoPcapPending;
+static bool autoPcapObservedActive;
 static uint8_t autoPcapPausedMask;
 static uint8_t autoPcapTriggerSrc = 0xFF;
 static uint8_t autoPcapTriggerMac[6] = {0,0,0,0,0,0};
 
+static portMUX_TYPE autoPcapReqMux = portMUX_INITIALIZER_UNLOCKED;
+static volatile bool autoPcapReqPending = false;
+static uint8_t  autoPcapReqSrc = 0xFF;
+static uint8_t  autoPcapReqChan = 0;
+static uint8_t  autoPcapReqMac[6] = {0,0,0,0,0,0};
+static bool     autoPcapReqHasMac = false;
+
 void engineDisableAll(void) {
     autoPcapPending = false;
+    autoPcapObservedActive = false;
     autoPcapPausedMask = 0;
     autoPcapTriggerSrc = 0xFF;
     memset(autoPcapTriggerMac, 0, 6);
@@ -183,12 +192,15 @@ uint8_t engineGetAvailableMask(void) {
 
 static bool autoPcapEnabled = false;
 static uint16_t autoPcapDurationSec = 10;
+static uint16_t autoPcapCooldownSec = 0;
+static unsigned long autoPcapCooldownUntilMs = 0;
 
 static void autoPcapSave(void) {
     Preferences p;
     p.begin("ouispy-ap", false);
     p.putBool("en", autoPcapEnabled);
     p.putUShort("dur", autoPcapDurationSec);
+    p.putUShort("cool", autoPcapCooldownSec);
     p.end();
 }
 
@@ -198,9 +210,10 @@ static void autoPcapLoad(void) {
     autoPcapEnabled = p.getBool("en", false);
     autoPcapDurationSec = p.getUShort("dur", 10);
     if (autoPcapDurationSec == 0) autoPcapDurationSec = 10;
+    autoPcapCooldownSec = p.getUShort("cool", 0);
     p.end();
-    Serial.printf("[AUTO-PCAP] loaded en=%d dur=%us\n",
-                  (int)autoPcapEnabled, autoPcapDurationSec);
+    Serial.printf("[AUTO-PCAP] loaded en=%d dur=%us cool=%us\n",
+                  (int)autoPcapEnabled, autoPcapDurationSec, autoPcapCooldownSec);
 }
 static unsigned long autoPcapDeadline = 0;
 static uint32_t autoPcapTriggers = 0;
@@ -218,6 +231,20 @@ void engineSetAutoPcapDuration(uint16_t s) {
     autoPcapSave();
 }
 uint16_t engineGetAutoPcapDuration(void) { return autoPcapDurationSec; }
+
+void engineSetAutoPcapCooldown(uint16_t s) {
+    if (autoPcapCooldownSec == s) return;
+    autoPcapCooldownSec = s;
+    if (s == 0) autoPcapCooldownUntilMs = 0;
+    autoPcapSave();
+}
+uint16_t engineGetAutoPcapCooldown(void) { return autoPcapCooldownSec; }
+uint32_t engineGetAutoPcapCooldownRemainingMs(void) {
+    if (autoPcapCooldownUntilMs == 0) return 0;
+    long rem = (long)(autoPcapCooldownUntilMs - millis());
+    return rem > 0 ? (uint32_t)rem : 0;
+}
+
 uint32_t engineGetAutoPcapTriggerCount(void) { return autoPcapTriggers; }
 uint8_t engineGetAutoPcapPausedMask(void) { return autoPcapPending ? autoPcapPausedMask : 0; }
 
@@ -278,8 +305,18 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
         default:
             return;
     }
-    if (states[ENGINE_PCAP] != ESTATE_DISABLED) return;
     if (autoPcapPending) return;
+    if (autoPcapReqPending) return;
+    if (states[ENGINE_PCAP] != ESTATE_DISABLED) return;
+
+    if (autoPcapCooldownUntilMs != 0) {
+        long rem = (long)(autoPcapCooldownUntilMs - millis());
+        if (rem > 0) {
+            Serial.printf("[ENGINE] auto-pcap suppress: cooldown active rem=%ldms\n", rem);
+            return;
+        }
+        autoPcapCooldownUntilMs = 0;
+    }
 
     if (mac != nullptr && autoPcapMacRecent(mac, g_rediscoverMs)) {
         Serial.printf("[ENGINE] auto-pcap suppress mac=%02X:%02X:%02X:%02X:%02X:%02X (within rediscover=%lums)\n",
@@ -287,6 +324,36 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
                       (unsigned long)g_rediscoverMs);
         return;
     }
+
+    portENTER_CRITICAL(&autoPcapReqMux);
+    autoPcapReqSrc = (uint8_t)src;
+    autoPcapReqChan = channel;
+    autoPcapReqHasMac = (mac != nullptr);
+    if (mac != nullptr) memcpy(autoPcapReqMac, mac, 6);
+    else memset(autoPcapReqMac, 0, 6);
+    autoPcapReqPending = true;
+    portEXIT_CRITICAL(&autoPcapReqMux);
+}
+
+static void autoPcapDispatchRequest(void) {
+    if (!autoPcapReqPending) return;
+    if (autoPcapPending) return;
+    if (states[ENGINE_PCAP] != ESTATE_DISABLED) {
+        autoPcapReqPending = false;
+        return;
+    }
+
+    EngineId src;
+    uint8_t channel;
+    uint8_t mac[6];
+    bool hasMac;
+    portENTER_CRITICAL(&autoPcapReqMux);
+    src = (EngineId)autoPcapReqSrc;
+    channel = autoPcapReqChan;
+    hasMac = autoPcapReqHasMac;
+    memcpy(mac, autoPcapReqMac, 6);
+    autoPcapReqPending = false;
+    portEXIT_CRITICAL(&autoPcapReqMux);
 
     bool isBle;
     switch (src) {
@@ -322,20 +389,24 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
 
     autoPcapTriggers++;
     autoPcapTriggerSrc = (uint8_t)src;
-    if (mac != nullptr) memcpy(autoPcapTriggerMac, mac, 6);
+    if (hasMac) memcpy(autoPcapTriggerMac, mac, 6);
     else memset(autoPcapTriggerMac, 0, 6);
     autoPcapPending = true;
+    autoPcapObservedActive = false;
     autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
-    engineEnable(ENGINE_PCAP);
+    uint8_t maskSnap = autoPcapPausedMask;
     Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
                   engines[src] ? engines[src]->name : "?",
-                  chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec, autoPcapPausedMask);
+                  chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec, maskSnap);
+    engineEnable(ENGINE_PCAP);
 }
 
 static void autoPcapTick(void) {
+    autoPcapDispatchRequest();
     if (!autoPcapPending) return;
 
     bool pcapDown = (states[ENGINE_PCAP] == ESTATE_DISABLED);
+    if (!pcapDown) autoPcapObservedActive = true;
     bool deadlineHit = (long)(millis() - autoPcapDeadline) >= 0;
 
     if (!pcapDown && deadlineHit) {
@@ -344,17 +415,24 @@ static void autoPcapTick(void) {
         pcapDown = true;
     }
 
-    if (pcapDown) {
-        for (int i = 0; i < ENGINE_COUNT; i++) {
-            if ((autoPcapPausedMask & ENGINE_BITMASK(i)) == 0) continue;
-            if (engines[i] == nullptr) continue;
-            Serial.printf("[ENGINE] auto-pcap restore %s\n", engines[i]->name);
-            engineEnable((EngineId)i);
-        }
+    if (pcapDown && autoPcapObservedActive) {
+        uint8_t mask = autoPcapPausedMask;
         autoPcapPending = false;
+        autoPcapObservedActive = false;
         autoPcapPausedMask = 0;
         autoPcapTriggerSrc = 0xFF;
         memset(autoPcapTriggerMac, 0, 6);
+        if (autoPcapCooldownSec > 0) {
+            autoPcapCooldownUntilMs = millis() + (unsigned long)autoPcapCooldownSec * 1000UL;
+            Serial.printf("[ENGINE] auto-pcap cooldown armed %us\n", autoPcapCooldownSec);
+        }
+        for (int i = 0; i < ENGINE_COUNT; i++) {
+            if ((mask & ENGINE_BITMASK(i)) == 0) continue;
+            if (engines[i] == nullptr) continue;
+            if (states[i] != ESTATE_DISABLED) continue;
+            Serial.printf("[ENGINE] auto-pcap restore %s\n", engines[i]->name);
+            engineEnable((EngineId)i);
+        }
     }
 }
 
