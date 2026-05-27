@@ -30,6 +30,9 @@ static bool wifiCoexCompatible(EngineId a, EngineId b) {
            (a == ENGINE_FLOCK_WIFI && b == ENGINE_WARDRIVE);
 }
 
+static void autoPcapLoad(void);
+static void autoPcapSave(void);
+
 void engineRegistryInit(void) {
     for (int i = 0; i < ENGINE_COUNT; i++) {
         engines[i] = nullptr;
