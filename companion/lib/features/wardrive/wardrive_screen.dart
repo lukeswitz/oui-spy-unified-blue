@@ -3203,154 +3203,151 @@ class _SessionRow extends ConsumerWidget {
             width: selected ? 1.5 : 1,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                if (selectable) ...[
-                  Icon(
-                    selected
-                        ? Icons.check_box
-                        : Icons.check_box_outline_blank,
-                    size: 18,
-                    color: selected ? AppTheme.accent : t.textDim,
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                const Icon(Icons.route, size: 16, color: AppTheme.accent),
-                const SizedBox(width: 8),
-                Text(dateStr, style: TextStyle(
-                  color: t.textPrimary, fontSize: 11,
-                  fontFamily: 'monospace', fontWeight: FontWeight.w500,
-                )),
-                const SizedBox(width: 10),
-                SizedBox(
-                  width: 46,
-                  child: Text(durStr, style: TextStyle(
-                    color: t.textDim, fontSize: 10,
-                    fontFamily: 'monospace',
-                  )),
-                ),
-                SizedBox(
-                  width: 44,
-                  child: FutureBuilder<({int wifi, int ble})>(
-                    future: wifiBleFuture,
-                    builder: (_, wbSnap) {
-                      final wb = wbSnap.data;
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.wifi, size: 11, color: AppTheme.accent),
-                          const SizedBox(width: 2),
-                          Text(
-                            '${wb?.wifi ?? session.uniqueMacCount}',
-                            style: TextStyle(
-                              color: AppTheme.accent, fontSize: 10,
-                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 40,
-                  child: FutureBuilder<({int wifi, int ble})>(
-                    future: wifiBleFuture,
-                    builder: (_, wbSnap) {
-                      final wb = wbSnap.data;
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.bluetooth, size: 11, color: Colors.blue),
-                          const SizedBox(width: 1),
-                          Text(
-                            '${wb?.ble ?? 0}',
-                            style: const TextStyle(
-                              color: Colors.blue, fontSize: 10,
-                              fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 48,
-                  child: Text(
-                    UnitFormatter.distance(session.distanceKm, units),
-                    style: TextStyle(
-                      color: t.textDim, fontSize: 10,
-                      fontFamily: 'monospace',
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 440;
+            final selectBox = selectable
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(
+                      selected
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      size: 18,
+                      color: selected ? AppTheme.accent : t.textDim,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                SizedBox(
-                  width: 32,
-                  child: flockCountFuture == null
-                      ? const SizedBox.shrink()
-                      : FutureBuilder<int>(
-                          future: flockCountFuture,
-                          builder: (_, snap) {
-                            final fc = snap.data ?? 0;
-                            if (fc == 0) return const SizedBox.shrink();
-                            return Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.videocam, size: 11, color: AppTheme.flockBle),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '$fc',
-                                  style: const TextStyle(
-                                    color: AppTheme.flockBle, fontSize: 10,
-                                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+                  )
+                : const SizedBox.shrink();
+            final routeIcon = const Icon(Icons.route, size: 16, color: AppTheme.accent);
+            final dateText = Text(dateStr, style: TextStyle(
+              color: t.textPrimary, fontSize: 11,
+              fontFamily: 'monospace', fontWeight: FontWeight.w500,
+            ));
+            final durText = SizedBox(
+              width: 46,
+              child: Text(durStr, style: TextStyle(
+                color: t.textDim, fontSize: 10,
+                fontFamily: 'monospace',
+              )),
+            );
+            final wifiStat = SizedBox(
+              width: 44,
+              child: FutureBuilder<({int wifi, int ble})>(
+                future: wifiBleFuture,
+                builder: (_, wbSnap) {
+                  final wb = wbSnap.data;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.wifi, size: 11, color: AppTheme.accent),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${wb?.wifi ?? session.uniqueMacCount}',
+                        style: TextStyle(
+                          color: AppTheme.accent, fontSize: 10,
+                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
                         ),
-                ),
-                SizedBox(
-                  width: 32,
-                  child: detectorCountFuture == null
-                      ? const SizedBox.shrink()
-                      : FutureBuilder<int>(
-                          future: detectorCountFuture,
-                          builder: (_, snap) {
-                            final dc = snap.data ?? 0;
-                            if (dc == 0) return const SizedBox.shrink();
-                            return Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.radar, size: 11, color: AppTheme.detector),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '$dc',
-                                  style: const TextStyle(
-                                    color: AppTheme.detector, fontSize: 10,
-                                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+            final bleStat = SizedBox(
+              width: 40,
+              child: FutureBuilder<({int wifi, int ble})>(
+                future: wifiBleFuture,
+                builder: (_, wbSnap) {
+                  final wb = wbSnap.data;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bluetooth, size: 11, color: Colors.blue),
+                      const SizedBox(width: 1),
+                      Text(
+                        '${wb?.ble ?? 0}',
+                        style: const TextStyle(
+                          color: Colors.blue, fontSize: 10,
+                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
                         ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+            final distText = SizedBox(
+              width: 48,
+              child: Text(
+                UnitFormatter.distance(session.distanceKm, units),
+                style: TextStyle(
+                  color: t.textDim, fontSize: 10,
+                  fontFamily: 'monospace',
                 ),
-                const Spacer(),
-                _SessionIconBtn(
-                  icon: Icons.file_download_outlined,
-                  label: 'CSV',
-                  color: AppTheme.accent,
-                  onTap: onShare,
-                ),
-                const SizedBox(width: 4),
-                if (onUploadWigle != null) ...[
-                  _SessionIconBtn(
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+            final flockStat = SizedBox(
+              width: 32,
+              child: flockCountFuture == null
+                  ? const SizedBox.shrink()
+                  : FutureBuilder<int>(
+                      future: flockCountFuture,
+                      builder: (_, snap) {
+                        final fc = snap.data ?? 0;
+                        if (fc == 0) return const SizedBox.shrink();
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam, size: 11, color: AppTheme.flockBle),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$fc',
+                              style: const TextStyle(
+                                color: AppTheme.flockBle, fontSize: 10,
+                                fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            );
+            final detectorStat = SizedBox(
+              width: 32,
+              child: detectorCountFuture == null
+                  ? const SizedBox.shrink()
+                  : FutureBuilder<int>(
+                      future: detectorCountFuture,
+                      builder: (_, snap) {
+                        final dc = snap.data ?? 0;
+                        if (dc == 0) return const SizedBox.shrink();
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.radar, size: 11, color: AppTheme.detector),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$dc',
+                              style: const TextStyle(
+                                color: AppTheme.detector, fontSize: 10,
+                                fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            );
+            final csvBtn = _SessionIconBtn(
+              icon: Icons.file_download_outlined,
+              label: 'CSV',
+              color: AppTheme.accent,
+              onTap: onShare,
+            );
+            final wigleBtn = onUploadWigle == null
+                ? null
+                : _SessionIconBtn(
                     icon: wigleUploading
                         ? Icons.cloud_sync
                         : (wigleUploaded
@@ -3364,47 +3361,102 @@ class _SessionRow extends ConsumerWidget {
                         : (wigleUploaded ? AppTheme.success : AppTheme.warning),
                     onTap: (wigleUploaded || wigleUploading) ? null : onUploadWigle,
                     isLoading: wigleUploading,
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                _SessionIconBtn(
-                  icon: Icons.delete_forever_outlined,
-                  label: 'DEL',
-                  color: AppTheme.error,
-                  onTap: onDelete,
-                ),
+                  );
+            final delBtn = _SessionIconBtn(
+              icon: Icons.delete_forever_outlined,
+              label: 'DEL',
+              color: AppTheme.error,
+              onTap: onDelete,
+            );
+            final actionButtons = <Widget>[
+              csvBtn,
+              const SizedBox(width: 4),
+              if (wigleBtn != null) ...[
+                wigleBtn,
+                const SizedBox(width: 4),
               ],
-            ),
-            if (isRescanning) ...[
-              const SizedBox(height: 3),
-              Row(
-                children: [
-                  const SizedBox(
-                    width: 9,
-                    height: 9,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: AppTheme.detector,
-                    ),
+              delBtn,
+            ];
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (narrow) ...[
+                  Row(
+                    children: [
+                      selectBox,
+                      routeIcon,
+                      const SizedBox(width: 8),
+                      Expanded(child: dateText),
+                      durText,
+                    ],
                   ),
-                  const SizedBox(width: 5),
-                  Text(
-                    wd.rescanTotal == 0
-                        ? 'CHECKING OUIs'
-                        : 'CHECK ${wd.rescanCur}/${wd.rescanTotal}'
-                            '${wd.rescanNewDetector > 0 ? ' +${wd.rescanNewDetector}d' : ''}'
-                            '${wd.rescanNewFlock > 0 ? ' +${wd.rescanNewFlock}f' : ''}',
-                    style: const TextStyle(
-                      color: AppTheme.detector,
-                      fontSize: 9,
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.w600,
-                    ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      wifiStat,
+                      bleStat,
+                      distText,
+                      flockStat,
+                      detectorStat,
+                      const Spacer(),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: actionButtons,
+                  ),
+                ] else
+                  Row(
+                    children: [
+                      selectBox,
+                      routeIcon,
+                      const SizedBox(width: 8),
+                      dateText,
+                      const SizedBox(width: 10),
+                      durText,
+                      wifiStat,
+                      bleStat,
+                      distText,
+                      flockStat,
+                      detectorStat,
+                      const Spacer(),
+                      ...actionButtons,
+                    ],
+                  ),
+                if (isRescanning) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 9,
+                        height: 9,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: AppTheme.detector,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        wd.rescanTotal == 0
+                            ? 'CHECKING OUIs'
+                            : 'CHECK ${wd.rescanCur}/${wd.rescanTotal}'
+                                '${wd.rescanNewDetector > 0 ? ' +${wd.rescanNewDetector}d' : ''}'
+                                '${wd.rescanNewFlock > 0 ? ' +${wd.rescanNewFlock}f' : ''}',
+                        style: const TextStyle(
+                          color: AppTheme.detector,
+                          fontSize: 9,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
-          ],
+              ],
+            );
+          },
         ),
       ),
     );

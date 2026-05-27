@@ -110,13 +110,13 @@ class _FilterBarState extends State<FilterBar> {
             : '$activeCount';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Wrap(
-            spacing: 4,
-            runSpacing: 4,
+            spacing: 6,
+            runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               for (final preset in FilterPreset.values)
@@ -424,26 +424,30 @@ class _PresetChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        constraints: const BoxConstraints(minHeight: 36),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: active
               ? AppTheme.accent.withValues(alpha: 0.18)
               : t.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: active
                 ? AppTheme.accent.withValues(alpha: 0.7)
                 : t.border,
-            width: active ? 1.0 : 0.5,
+            width: active ? 1.2 : 0.6,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? AppTheme.accent : t.textSecondary,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1,
+        child: Center(
+          widthFactor: 1,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? AppTheme.accent : t.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
           ),
         ),
       ),
@@ -472,35 +476,36 @@ class _DropdownButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        constraints: const BoxConstraints(minHeight: 36),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: t.surface,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: t.border, width: 0.5),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: t.border, width: 0.6),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 11, color: t.textDim),
-            const SizedBox(width: 5),
+            Icon(icon, size: 14, color: t.textDim),
+            const SizedBox(width: 6),
             Text(label,
                 style: TextStyle(
                   color: t.textDim,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 1,
                 )),
-            const SizedBox(width: 5),
+            const SizedBox(width: 6),
             Text(value,
                 style: TextStyle(
                   color: accent,
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.5,
                   fontFamily: 'monospace',
                 )),
             const SizedBox(width: 2),
-            Icon(Icons.arrow_drop_down, size: 12, color: t.textDim),
+            Icon(Icons.arrow_drop_down, size: 16, color: t.textDim),
           ],
         ),
       ),
@@ -524,21 +529,22 @@ class _IconToggle extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(6),
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           color: active
               ? AppTheme.accent.withValues(alpha: 0.18)
               : t.surface,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: active
                 ? AppTheme.accent.withValues(alpha: 0.6)
                 : t.border,
-            width: active ? 1.0 : 0.5,
+            width: active ? 1.2 : 0.6,
           ),
         ),
         child: Icon(icon,
-            size: 13, color: active ? AppTheme.accent : t.textDim),
+            size: 18, color: active ? AppTheme.accent : t.textDim),
       ),
     );
   }
@@ -550,8 +556,8 @@ class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         width: 1,
-        height: 18,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: 6),
         color: t.border,
       );
 }

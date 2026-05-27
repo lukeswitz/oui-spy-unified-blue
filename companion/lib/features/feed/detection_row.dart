@@ -21,7 +21,7 @@ class DetectionRow extends ConsumerWidget {
     final hasGps = detection.latitude != null;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
-    final manufacturer = ref.read(ouiLookupProvider).lookup(detection.macAddress);
+    final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
 
     return Listener(
       onPointerDown: (event) {
@@ -43,43 +43,44 @@ class DetectionRow extends ConsumerWidget {
       child: IntrinsicHeight(
         child: Row(
           children: [
-            // Engine color accent bar
             Container(
-              width: 3,
+              width: 4,
               color: engine.color,
             ),
-            // Content
             Expanded(
               child: Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
+                    const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // MAC + name + method + details
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Row 1: MAC address + manufacturer
-                          Row(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Row(
                             children: [
-                              Text(
-                                detection.macAddress.toUpperCase(),
-                                style: TextStyle(
-                                  color: t.textPrimary,
-                                  fontSize: 13,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w500,
+                              Flexible(
+                                child: Text(
+                                  detection.macAddress.toUpperCase(),
+                                  style: TextStyle(
+                                    color: t.textPrimary,
+                                    fontSize: 14,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               if (manufacturer != null) ...[
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 8),
                                 Flexible(
                                   child: Text(
                                     manufacturer,
                                     style: TextStyle(
                                       color: t.textDim,
-                                      fontSize: 10,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w400,
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -88,97 +89,104 @@ class DetectionRow extends ConsumerWidget {
                               ],
                             ],
                           ),
-                          const SizedBox(height: 2),
-                          // Row 2: Method badge + count + mesh node + device name
-                          Row(
-                            children: [
-                              _MethodBadge(
-                                method: detection.method,
-                                color: engine.color,
-                              ),
-                              if (detection.channel > 0) ...[
-                                const SizedBox(width: 4),
-                                _InfoChip(
-                                  icon: Icons.wifi,
-                                  label: 'CH${detection.channel}',
-                                  color: t.textDim,
-                                  bgColor: t.textDim.withValues(alpha: 0.1),
-                                ),
-                              ],
-                              if (detection.count > 1) ...[
-                                const SizedBox(width: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: t.textDim.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                  child: Text(
-                                    '\u00d7${detection.count}',
-                                    style: TextStyle(
-                                      color: t.textDim,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'monospace',
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (detection.sourceNodeId.isNotEmpty) ...[
-                                const SizedBox(width: 4),
-                                _InfoChip(
-                                  icon: Icons.hub,
-                                  label: detection.sourceNodeId,
-                                  color: AppTheme.warning,
-                                  bgColor: AppTheme.warning.withValues(alpha: 0.15),
-                                ),
-                              ],
-                              if (detection.deviceName.isNotEmpty) ...[
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    detection.deviceName,
-                                    style: TextStyle(
-                                      color: t.textSecondary,
-                                      fontSize: 11,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ],
+                        ),
+                        const SizedBox(width: 8),
+                        _RssiIndicator(rssi: detection.rssi),
+                        const SizedBox(width: 10),
+                        Text(
+                          timeStr,
+                          style: TextStyle(
+                            color: t.textDim,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600,
                           ),
-                          // Row 3: Engine-specific details
-                          _buildDetailsRow(t),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _MethodBadge(
+                          method: detection.method,
+                          color: engine.color,
+                        ),
+                        if (detection.channel > 0) ...[
+                          const SizedBox(width: 4),
+                          _InfoChip(
+                            icon: Icons.wifi,
+                            label: 'CH${detection.channel}',
+                            color: t.textDim,
+                            bgColor: t.textDim.withValues(alpha: 0.1),
+                          ),
                         ],
-                      ),
+                        if (detection.count > 1) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: t.textDim.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              '\u00d7${detection.count}',
+                              style: TextStyle(
+                                color: t.textDim,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (detection.sourceNodeId.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          _InfoChip(
+                            icon: Icons.hub,
+                            label: detection.sourceNodeId,
+                            color: AppTheme.warning,
+                            bgColor: AppTheme.warning.withValues(alpha: 0.15),
+                          ),
+                        ],
+                        if (detection.deviceName.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              detection.deviceName,
+                              style: TextStyle(
+                                color: t.textSecondary,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    _RssiIndicator(rssi: detection.rssi),
-                    const SizedBox(width: 10),
-                    Text(
-                      timeStr,
-                      style: TextStyle(
-                        color: t.textDim,
-                        fontSize: 10,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _ActionButton(
-                      icon: Icons.gps_fixed,
-                      color: AppTheme.foxhunter,
-                      tooltip: 'Foxhunt',
-                      onTap: () => _startFoxhunt(context, ref),
-                    ),
-                    const SizedBox(width: 6),
-                    _ActionButton(
-                      icon: Icons.location_on,
-                      color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
-                      tooltip: hasGps ? 'Show on map' : 'No GPS fix',
-                      onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
-                    ),
+                    _buildDetailsRow(t),
                   ],
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 8, 10, 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _ActionButton(
+                    icon: Icons.gps_fixed,
+                    color: AppTheme.foxhunter,
+                    tooltip: 'Foxhunt',
+                    onTap: () => _startFoxhunt(context, ref),
+                  ),
+                  const SizedBox(height: 6),
+                  _ActionButton(
+                    icon: Icons.location_on,
+                    color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
+                    tooltip: hasGps ? 'Show on map' : 'No GPS fix',
+                    onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
+                  ),
+                ],
               ),
             ),
           ],
@@ -462,22 +470,22 @@ class _InfoChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 8, color: color),
-          const SizedBox(width: 2),
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 3),
           Flexible(
             child: Text(
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
                 fontFamily: 'monospace',
               ),
@@ -513,17 +521,17 @@ class _AddrBadge extends StatelessWidget {
     return Tooltip(
       message: hint,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         decoration: BoxDecoration(
           color: t.textDim.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           label,
           style: TextStyle(
             color: t.textDim,
-            fontSize: 8,
-            fontWeight: FontWeight.w600,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
             letterSpacing: 0.5,
           ),
         ),
@@ -551,12 +559,12 @@ class _AuthBadge extends StatelessWidget {
       _ => ('WPA2', AppTheme.success),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(3),
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
         border: authMode == 0
-            ? Border.all(color: color.withValues(alpha: 0.4), width: 0.5)
+            ? Border.all(color: color.withValues(alpha: 0.5), width: 0.8)
             : null,
       ),
       child: Row(
@@ -564,15 +572,15 @@ class _AuthBadge extends StatelessWidget {
         children: [
           Icon(
             authMode == 0 ? Icons.lock_open : Icons.lock,
-            size: 8,
+            size: 10,
             color: color,
           ),
-          const SizedBox(width: 2),
+          const SizedBox(width: 3),
           Text(
             label,
             style: TextStyle(
               color: color,
-              fontSize: 8,
+              fontSize: 9,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.5,
             ),
@@ -739,15 +747,26 @@ class _ActionButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: enabled ? color.withValues(alpha: 0.12) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: enabled ? color.withValues(alpha: 0.14) : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           onTap: onTap,
-          child: SizedBox(
-            width: 36,
-            height: 36,
-            child: Icon(icon, size: 18, color: color),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: enabled
+                    ? color.withValues(alpha: 0.45)
+                    : color.withValues(alpha: 0.15),
+                width: 1,
+              ),
+            ),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(icon, size: 22, color: color),
+            ),
           ),
         ),
       ),
@@ -763,17 +782,17 @@ class _MethodBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(3),
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         method.toUpperCase(),
         style: TextStyle(
           color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
           letterSpacing: 0.5,
         ),
       ),
@@ -793,27 +812,28 @@ class _RssiIndicator extends StatelessWidget {
     final color = Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
 
     return SizedBox(
-      width: 30,
+      width: 38,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
             '$rssi',
             style: TextStyle(
               color: color,
-              fontSize: 10,
+              fontSize: 13,
               fontFamily: 'monospace',
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           ClipRRect(
-            borderRadius: BorderRadius.circular(1),
+            borderRadius: BorderRadius.circular(2),
             child: LinearProgressIndicator(
               value: normalized,
               backgroundColor: t.border,
               color: color,
-              minHeight: 2,
+              minHeight: 3,
             ),
           ),
         ],

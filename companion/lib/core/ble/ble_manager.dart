@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,6 +14,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 /// BLE connection state.
 enum NodeConnectionState {
   disconnected,
@@ -51,6 +53,12 @@ class BleManager {
   BluetoothCharacteristic? _pcapControl;
   BluetoothCharacteristic? _pcapStats;
   BluetoothCharacteristic? _pcapData;
+  BluetoothCharacteristic? _detectorConfig;
+  List<WatchlistEntry> Function()? _watchlistGetter;
+
+  void setWatchlistGetter(List<WatchlistEntry> Function() getter) {
+    _watchlistGetter = getter;
+  }
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
   final _detections = StreamController<Detection>.broadcast();
@@ -448,6 +456,7 @@ class BleManager {
       if (c.uuid == GattUuids.pcapControl) _pcapControl = c;
       if (c.uuid == GattUuids.pcapStats) _pcapStats = c;
       if (c.uuid == GattUuids.pcapData) _pcapData = c;
+      if (c.uuid == GattUuids.detectorConfig) _detectorConfig = c;
     }
 
     // Read device info to get node ID
@@ -529,6 +538,15 @@ class BleManager {
     }
 
     _currentState = NodeConnectionState.ready; _connectionState.add(NodeConnectionState.ready);
+
+    final getter = _watchlistGetter;
+    if (getter != null && _detectorConfig != null) {
+      try {
+        await syncDetectorWatchlist(getter());
+      } catch (e) {
+        DebugLog.log('BLE: watchlist sync failed: $e');
+      }
+    }
 
     // Subscribe to systemControl notifications: OTA confirm ACKs +
     // WiFi OTA progress (opcode 0x06).
@@ -756,6 +774,36 @@ class BleManager {
     await _engineControl!.write(
       BleProtocol.encodeEngineConfig(engine: engine, payload: payload),
     );
+  }
+
+  Future<void> syncDetectorWatchlist(List<WatchlistEntry> entries) async {
+    if (_detectorConfig == null) {
+      DebugLog.log('BLE: detectorConfig char missing; skip watchlist sync');
+      return;
+    }
+    await _detectorConfig!.write(Uint8List.fromList([0x00]), withoutResponse: false);
+    int pushed = 0;
+    for (final e in entries) {
+      if (e.isName) continue;
+      final mac = _parseMac(e.identifier);
+      if (mac == null) continue;
+      final prefixLen = e.isFullMac ? 6 : 3;
+      final descBytes = utf8.encode(e.description).take(31).toList();
+      final pkt = <int>[0x01, prefixLen, ...mac, ...descBytes];
+      await _detectorConfig!.write(Uint8List.fromList(pkt), withoutResponse: false);
+      pushed++;
+    }
+    DebugLog.log('BLE: synced $pushed/${entries.length} watchlist entries to detector');
+  }
+
+  static Uint8List? _parseMac(String s) {
+    final clean = s.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    if (clean.length < 6 || clean.length > 12 || clean.length.isOdd) return null;
+    final out = Uint8List(6);
+    for (int i = 0; i < clean.length; i += 2) {
+      out[i ~/ 2] = int.parse(clean.substring(i, i + 2), radix: 16);
+    }
+    return out;
   }
 
   Future<void> disableAllEngines() async {
@@ -1010,9 +1058,14 @@ class BleManager {
   }
 }
 
-/// Riverpod provider for BleManager singleton.
 final bleManagerProvider = Provider<BleManager>((ref) {
   final manager = BleManager();
+  manager.setWatchlistGetter(() => ref.read(watchlistProvider).entries);
+  ref.listen(watchlistProvider, (prev, next) {
+    if (manager.currentConnectionState == NodeConnectionState.ready) {
+      manager.syncDetectorWatchlist(next.entries);
+    }
+  });
   ref.onDispose(manager.dispose);
   return manager;
 });

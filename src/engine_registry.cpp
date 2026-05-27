@@ -72,19 +72,14 @@ static bool autoPcapObservedActive;
 static uint8_t autoPcapPausedMask;
 static uint8_t autoPcapTriggerSrc = 0xFF;
 static uint8_t autoPcapTriggerMac[6] = {0,0,0,0,0,0};
-
-static portMUX_TYPE autoPcapReqMux = portMUX_INITIALIZER_UNLOCKED;
-static volatile bool autoPcapReqPending = false;
-static uint8_t  autoPcapReqSrc = 0xFF;
-static uint8_t  autoPcapReqChan = 0;
-static uint8_t  autoPcapReqMac[6] = {0,0,0,0,0,0};
-static bool     autoPcapReqHasMac = false;
+static bool autoPcapUserCancelled = false;
 
 void engineDisableAll(void) {
     autoPcapPending = false;
     autoPcapObservedActive = false;
     autoPcapPausedMask = 0;
     autoPcapTriggerSrc = 0xFF;
+    autoPcapUserCancelled = false;
     memset(autoPcapTriggerMac, 0, 6);
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (states[i] != ESTATE_DISABLED && engines[i] != nullptr && engines[i]->stop) {
@@ -306,7 +301,6 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
             return;
     }
     if (autoPcapPending) return;
-    if (autoPcapReqPending) return;
     if (states[ENGINE_PCAP] != ESTATE_DISABLED) return;
 
     if (autoPcapCooldownUntilMs != 0) {
@@ -324,36 +318,6 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
                       (unsigned long)g_rediscoverMs);
         return;
     }
-
-    portENTER_CRITICAL(&autoPcapReqMux);
-    autoPcapReqSrc = (uint8_t)src;
-    autoPcapReqChan = channel;
-    autoPcapReqHasMac = (mac != nullptr);
-    if (mac != nullptr) memcpy(autoPcapReqMac, mac, 6);
-    else memset(autoPcapReqMac, 0, 6);
-    autoPcapReqPending = true;
-    portEXIT_CRITICAL(&autoPcapReqMux);
-}
-
-static void autoPcapDispatchRequest(void) {
-    if (!autoPcapReqPending) return;
-    if (autoPcapPending) return;
-    if (states[ENGINE_PCAP] != ESTATE_DISABLED) {
-        autoPcapReqPending = false;
-        return;
-    }
-
-    EngineId src;
-    uint8_t channel;
-    uint8_t mac[6];
-    bool hasMac;
-    portENTER_CRITICAL(&autoPcapReqMux);
-    src = (EngineId)autoPcapReqSrc;
-    channel = autoPcapReqChan;
-    hasMac = autoPcapReqHasMac;
-    memcpy(mac, autoPcapReqMac, 6);
-    autoPcapReqPending = false;
-    portEXIT_CRITICAL(&autoPcapReqMux);
 
     bool isBle;
     switch (src) {
@@ -389,10 +353,11 @@ static void autoPcapDispatchRequest(void) {
 
     autoPcapTriggers++;
     autoPcapTriggerSrc = (uint8_t)src;
-    if (hasMac) memcpy(autoPcapTriggerMac, mac, 6);
+    if (mac != nullptr) memcpy(autoPcapTriggerMac, mac, 6);
     else memset(autoPcapTriggerMac, 0, 6);
     autoPcapPending = true;
     autoPcapObservedActive = false;
+    autoPcapUserCancelled = false;
     autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
     uint8_t maskSnap = autoPcapPausedMask;
     Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
@@ -402,7 +367,6 @@ static void autoPcapDispatchRequest(void) {
 }
 
 static void autoPcapTick(void) {
-    autoPcapDispatchRequest();
     if (!autoPcapPending) return;
 
     bool pcapDown = (states[ENGINE_PCAP] == ESTATE_DISABLED);
@@ -415,14 +379,16 @@ static void autoPcapTick(void) {
         pcapDown = true;
     }
 
-    if (pcapDown && autoPcapObservedActive) {
-        uint8_t mask = autoPcapPausedMask;
+    if (pcapDown) {
+        uint8_t mask = autoPcapUserCancelled ? 0 : autoPcapPausedMask;
+        bool cancelled = autoPcapUserCancelled;
         autoPcapPending = false;
         autoPcapObservedActive = false;
+        autoPcapUserCancelled = false;
         autoPcapPausedMask = 0;
         autoPcapTriggerSrc = 0xFF;
         memset(autoPcapTriggerMac, 0, 6);
-        if (autoPcapCooldownSec > 0) {
+        if (!cancelled && autoPcapCooldownSec > 0) {
             autoPcapCooldownUntilMs = millis() + (unsigned long)autoPcapCooldownSec * 1000UL;
             Serial.printf("[ENGINE] auto-pcap cooldown armed %us\n", autoPcapCooldownSec);
         }
@@ -450,9 +416,22 @@ void engineProcessCommand(const EngineCommand* cmd) {
 
     switch (cmd->command) {
         case 0x01: // Enable
+            if (autoPcapPausedMask & ENGINE_BITMASK(cmd->engine_id)) {
+                autoPcapPausedMask &= ~ENGINE_BITMASK(cmd->engine_id);
+            }
             engineEnable((EngineId)cmd->engine_id);
             break;
         case 0x00: // Disable
+            if (autoPcapPausedMask & ENGINE_BITMASK(cmd->engine_id)) {
+                autoPcapPausedMask &= ~ENGINE_BITMASK(cmd->engine_id);
+                Serial.printf("[ENGINE] user-disabled paused engine %d; dropped from restore mask\n",
+                              cmd->engine_id);
+            }
+            if (cmd->engine_id == ENGINE_PCAP && autoPcapPending) {
+                autoPcapUserCancelled = true;
+                autoPcapPausedMask = 0;
+                Serial.println("[ENGINE] user cancelled auto-pcap; restore skipped");
+            }
             engineDisable((EngineId)cmd->engine_id);
             break;
         case 0x0F: // Disable ALL engines

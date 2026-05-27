@@ -14,6 +14,7 @@
 #include "ble_gatt.h"
 #include "engine_registry.h"
 #include "engines/pcap.h"
+#include "engines/detector.h"
 #include "mesh_espnow.h"
 #include "ota_handler.h"
 #include "wifi_ota_handler.h"
@@ -210,6 +211,36 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 extern void foxhunterSetTarget(const uint8_t* mac, uint8_t channel);
+
+class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        if (val.length() < 1) return;
+        const uint8_t* data = (const uint8_t*)val.data();
+        uint8_t op = data[0];
+        switch (op) {
+            case 0x00:
+                detectorClearFilters();
+                break;
+            case 0x01: {
+                if (val.length() < 8) return;
+                uint8_t prefixLen = data[1];
+                const uint8_t* mac = &data[2];
+                char desc[32] = {0};
+                if (val.length() > 8) {
+                    size_t dlen = val.length() - 8;
+                    if (dlen > 31) dlen = 31;
+                    memcpy(desc, &data[8], dlen);
+                }
+                detectorAddFilter(mac, prefixLen, desc);
+                break;
+            }
+            default:
+                Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
+                break;
+        }
+    }
+};
 
 class FoxhunterConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
@@ -482,6 +513,7 @@ class PcapControlCallbacks : public NimBLECharacteristicCallbacks {
 // ============================================================================
 static ServerCallbacks serverCb;
 static FoxhunterConfigCallbacks foxhunterConfigCb;
+static DetectorConfigCallbacks detectorConfigCb;
 static UnipwnCommandCallbacks unipwnCommandCb;
 static EngineControlCallbacks engineControlCb;
 static GpsReceiveCallbacks gpsReceiveCb;
@@ -576,6 +608,12 @@ void bleGattInit(void) {
         NIMBLE_PROPERTY::WRITE
     );
     chrFoxhunterConfig->setCallbacks(&foxhunterConfigCb);
+
+    NimBLECharacteristic* chrDetectorConfig = svc->createCharacteristic(
+        CHR_DETECTOR_CONFIG,
+        NIMBLE_PROPERTY::WRITE
+    );
+    chrDetectorConfig->setCallbacks(&detectorConfigCb);
 
     // -- Foxhunter RSSI (NOTIFY) --
     chrFoxhunterRssi = svc->createCharacteristic(

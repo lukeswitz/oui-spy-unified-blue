@@ -133,34 +133,30 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
-                  Text('FEED', style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        letterSpacing: 3, color: t.textDim,
+                  Text('FEED', style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        letterSpacing: 3, color: t.textDim, fontWeight: FontWeight.w700,
                       )),
                   const Spacer(),
-                  GestureDetector(
+                  _HeaderIconButton(
+                    icon: _showStats ? Icons.analytics : Icons.analytics_outlined,
+                    active: _showStats,
+                    enabled: true,
                     onTap: () => setState(() => _showStats = !_showStats),
-                    child: Icon(
-                      _showStats ? Icons.analytics : Icons.analytics_outlined,
-                      size: 16,
-                      color: _showStats ? AppTheme.accent : t.textDim,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: filtered.isEmpty ? null : () => _exportCsv(context, filtered),
-                    child: Icon(
-                      Icons.ios_share,
-                      size: 16,
-                      color: filtered.isEmpty ? t.textDim.withValues(alpha: 0.4) : AppTheme.accent,
-                    ),
                   ),
                   const SizedBox(width: 8),
+                  _HeaderIconButton(
+                    icon: Icons.ios_share,
+                    active: false,
+                    enabled: filtered.isNotEmpty,
+                    onTap: filtered.isEmpty ? null : () => _exportCsv(context, filtered),
+                  ),
+                  const SizedBox(width: 10),
                   if (sourceNodes.isNotEmpty) ...[
-                    const Icon(Icons.hub, size: 10, color: AppTheme.warning),
+                    const Icon(Icons.hub, size: 14, color: AppTheme.warning),
                     const SizedBox(width: 4),
                   ],
-                  Text('${filtered.length}', style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.accent, fontFamily: 'monospace',
+                  Text('${filtered.length}', style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: AppTheme.accent, fontFamily: 'monospace', fontWeight: FontWeight.w700,
                       )),
                 ],
               ),
@@ -230,5 +226,41 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.active,
+    required this.enabled,
+    required this.onTap,
+  });
+  final IconData icon;
+  final bool active;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final color = !enabled
+        ? t.textDim.withValues(alpha: 0.4)
+        : active
+            ? AppTheme.accent
+            : t.textSecondary;
+    return Material(
+      color: active ? AppTheme.accent.withValues(alpha: 0.14) : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 18, color: color),
+        ),
+      ),
+    );
   }
 }

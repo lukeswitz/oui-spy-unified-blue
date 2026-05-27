@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,11 +10,11 @@ import 'package:dio/dio.dart';
 /// Provides manufacturer name lookup from MAC address OUI prefix.
 /// Loads 39k+ unique OUIs from bundled asset (gzipped TSV).
 /// Supports runtime updates from Ringmast4r GitHub repo.
-final ouiLookupProvider = Provider<OuiLookupService>((ref) {
+final ouiLookupProvider = ChangeNotifierProvider<OuiLookupService>((ref) {
   return OuiLookupService();
 });
 
-class OuiLookupService {
+class OuiLookupService extends ChangeNotifier {
   static const _assetPath = 'assets/oui_vendors.tsv.gz';
   static const _updateUrl =
       'https://raw.githubusercontent.com/Ringmast4r/OUI-Master-Database/master/LISTS/master_oui.txt';
@@ -101,6 +102,7 @@ class OuiLookupService {
     }
 
     _loaded = true;
+    notifyListeners();
   }
 
   /// Look up manufacturer by MAC address string.
@@ -169,6 +171,7 @@ class OuiLookupService {
         _db.clear();
         _db.addAll(newDb);
         _lastUpdated = DateTime.now();
+        notifyListeners();
         return true;
       }
     } catch (_) {

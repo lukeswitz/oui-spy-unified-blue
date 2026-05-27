@@ -5,7 +5,6 @@
 #include <NimBLEDevice.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
-#include <Preferences.h>
 
 struct TargetFilter {
     uint8_t macBytes[6];
@@ -22,6 +21,7 @@ static const unsigned long SCAN_INTERVAL_MS = 3000;
 static const int SCAN_DURATION_S = 2;
 
 static volatile bool wifiActive = false;
+static uint8_t detectorRadioMask = 0x03;
 static const uint8_t channels[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
 static const int channelCount = 14;
 static int channelIdx = 0;
@@ -29,55 +29,6 @@ static unsigned long lastChannelHop = 0;
 static const unsigned long DWELL_MS = 120;
 
 static DedupRing<32, 3000> dedup;
-
-static void parseHexMac(const char* str, uint8_t* out, uint8_t* outLen) {
-    uint8_t buf[6] = {};
-    int n = 0;
-    const char* p = str;
-    while (*p && n < 6) {
-        char hi = *p++;
-        if (hi == ':' || hi == '-' || hi == '.') continue;
-        char lo = *p ? *p++ : '0';
-        uint8_t val = 0;
-        if (hi >= '0' && hi <= '9') val = (hi - '0') << 4;
-        else if (hi >= 'a' && hi <= 'f') val = (hi - 'a' + 10) << 4;
-        else if (hi >= 'A' && hi <= 'F') val = (hi - 'A' + 10) << 4;
-        if (lo >= '0' && lo <= '9') val |= (lo - '0');
-        else if (lo >= 'a' && lo <= 'f') val |= (lo - 'a' + 10);
-        else if (lo >= 'A' && lo <= 'F') val |= (lo - 'A' + 10);
-        buf[n++] = val;
-    }
-    memcpy(out, buf, 6);
-    *outLen = (uint8_t)n;
-}
-
-static void loadFilters() {
-    Preferences p;
-    p.begin("ouispy", true);
-    int count = p.getInt("filterCount", 0);
-    filterCount = 0;
-    for (int i = 0; i < count && i < 50; i++) {
-        char key[16];
-        snprintf(key, sizeof(key), "id_%d", i);
-        String id = p.getString(key, "");
-        if (id.length() == 0) continue;
-
-        snprintf(key, sizeof(key), "mac_%d", i);
-        bool isFullMAC = p.getBool(key, false);
-
-        TargetFilter f = {};
-        parseHexMac(id.c_str(), f.macBytes, &f.prefixLen);
-        if (!isFullMAC && f.prefixLen > 3) f.prefixLen = 3;
-
-        snprintf(key, sizeof(key), "desc_%d", i);
-        String desc = p.getString(key, "");
-        strncpy(f.desc, desc.c_str(), sizeof(f.desc) - 1);
-
-        filters[filterCount++] = f;
-    }
-    p.end();
-    Serial.printf("[DETECTOR] Loaded %d filters\n", filterCount);
-}
 
 static const TargetFilter* matchFilterBytes(const uint8_t* mac) {
     for (int i = 0; i < filterCount; i++) {
@@ -92,7 +43,7 @@ class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
         if (!scanning) return;
         uint8_t mac[6];
-        memcpy(mac, dev->getAddress().getNative(), 6);
+        bleAddrToMac(dev->getAddress().getNative(), mac);
 
         const TargetFilter* hit = matchFilterBytes(mac);
         if (!hit) return;
@@ -159,18 +110,56 @@ void detectorCheckBleDevice(const uint8_t* mac, int rssi) {
                   rssi, hit->prefixLen == 6 ? "MAC" : "OUI", hit->desc);
 }
 
+void IRAM_ATTR detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t channel) {
+    if (!scanning) return;
+    const TargetFilter* hit = matchFilterBytes(mac);
+    if (!hit) return;
+
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, mac, 6);
+    evt.rssi = rssi;
+    evt.channel = channel;
+    evt.timestamp_ms = millis();
+    evt.method = 1;
+    evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
+    strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
+    pushDetectionFromISR(&evt);
+}
+
+void detectorClearFilters(void) {
+    filterCount = 0;
+    Serial.println("[DETECTOR] Filters cleared");
+}
+
+void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* desc) {
+    if (filterCount >= 50) return;
+    if (prefixLen == 0 || prefixLen > 6) return;
+    TargetFilter f = {};
+    memcpy(f.macBytes, macBytes, 6);
+    f.prefixLen = prefixLen;
+    if (desc) strncpy(f.desc, desc, sizeof(f.desc) - 1);
+    filters[filterCount++] = f;
+    Serial.printf("[DETECTOR] +filter %02x:%02x:%02x len=%u desc=%s (total=%d)\n",
+                  macBytes[0], macBytes[1], macBytes[2], prefixLen,
+                  f.desc, filterCount);
+}
+
+int detectorFilterCount(void) { return filterCount; }
+
 static void detectorInit(void) {
-    loadFilters();
     dedup.reset();
-    Serial.println("[DETECTOR] Initialized");
+    Serial.printf("[DETECTOR] Initialized (preserved filters=%d)\n", filterCount);
 }
 
 static void detectorStart(void) {
     scanning = true;
     dedup.setCooldownMs(engineGetRediscoverMs());
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
+    bool wantBle  = (detectorRadioMask & 0x02) != 0;
+    bool wantWifi = (detectorRadioMask & 0x01) != 0;
 
-    if (!wardriveOwns) {
+    if (!wardriveOwns && wantBle) {
         bleScan = NimBLEDevice::getScan();
         bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
         bleScan->setActiveScan(true);
@@ -179,10 +168,8 @@ static void detectorStart(void) {
         lastScanStart = 0;
     }
 
-    if (!wardriveOwns) {
+    if (!wardriveOwns && wantWifi) {
         WiFi.mode(WIFI_STA);
-        // MGMT+DATA only. CTRL frame flood drops legitimate captures by
-        // overloading the ISR — same regression that hurt wardrive scans.
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                            WIFI_PROMIS_FILTER_MASK_DATA
@@ -195,7 +182,19 @@ static void detectorStart(void) {
         wifiActive = true;
     }
 
-    Serial.printf("[DETECTOR] Started (%s)\n", wardriveOwns ? "passive — wardrive feeds" : "WiFi+BLE");
+    const char* mode = wardriveOwns ? "passive — wardrive feeds"
+                     : (wantWifi && wantBle) ? "WiFi+BLE"
+                     : wantWifi ? "WiFi only"
+                     : wantBle  ? "BLE only" : "no radio";
+    Serial.printf("[DETECTOR] Started (%s) filters=%d\n", mode, filterCount);
+}
+
+static void detectorConfig(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    uint8_t mask = payload[0] & 0x03;
+    if (mask == 0) mask = 0x03;
+    detectorRadioMask = mask;
+    Serial.printf("[DETECTOR] Config radio mask=0x%02x\n", detectorRadioMask);
 }
 
 static void detectorStop(void) {
@@ -245,7 +244,7 @@ const EngineCallbacks detectorCallbacks = {
     .start      = detectorStart,
     .stop       = detectorStop,
     .loop       = detectorLoop,
-    .config     = NULL,
+    .config     = detectorConfig,
     .applyPrefs = detectorApplyPrefs,
     .name       = "Detector"
 };

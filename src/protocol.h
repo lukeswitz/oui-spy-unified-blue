@@ -47,6 +47,10 @@ enum EngineId : uint8_t {
 
 #define ENGINE_BITMASK(id) (1 << (id))
 
+static inline void bleAddrToMac(const uint8_t* native, uint8_t* out) {
+    for (int i = 0; i < 6; i++) out[i] = native[5 - i];
+}
+
 // ============================================================================
 // Engine State
 // ============================================================================
@@ -221,6 +225,7 @@ extern volatile uint8_t hwNeopixelBrightness;
 #define CHR_PCAP_CONTROL     "00000160-" UUID_BASE
 #define CHR_PCAP_STATS       "00000161-" UUID_BASE
 #define CHR_PCAP_DATA        "00000162-" UUID_BASE
+#define CHR_DETECTOR_CONFIG  "00000100-" UUID_BASE
 
 // ============================================================================
 // PCAP — live capture stats (notified over CHR_PCAP_STATS)

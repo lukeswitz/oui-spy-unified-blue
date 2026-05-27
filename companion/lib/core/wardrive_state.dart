@@ -363,9 +363,15 @@ class WardriveController extends ChangeNotifier {
     _gpsSub = null;
     _statsTimer = null;
 
-    // Snapshot engines before clearing state
-    final enginesToStop = activeEngines.toList();
-    for (final engine in enginesToStop) {
+    const wardriveEngines = [
+      Engine.wardrive,
+      Engine.flockWifi,
+      Engine.flockBle,
+      Engine.skySpy,
+      Engine.detector,
+      Engine.pcap,
+    ];
+    for (final engine in wardriveEngines) {
       await _ble.disableEngine(engine);
     }
 
