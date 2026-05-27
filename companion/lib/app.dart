@@ -14,6 +14,8 @@ import 'package:oui_spy/features/pcap/pcap_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/notifications/live_activity_service.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -110,6 +112,8 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
     if (state == AppLifecycleState.detached) {
       final ble = ref.read(bleManagerProvider);
       ble.disableAllEngines();
+      ref.read(liveActivityServiceProvider).endAll();
+      ref.read(notificationServiceProvider).cancelAll();
     }
   }
 

@@ -1,3 +1,4 @@
+import ActivityKit
 import Flutter
 import UIKit
 
@@ -9,7 +10,22 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    if #available(iOS 16.2, *) {
+      Task { await LiveActivityHandler.endAllActivitiesNow() }
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func applicationWillTerminate(_ application: UIApplication) {
+    if #available(iOS 16.2, *) {
+      let semaphore = DispatchSemaphore(value: 0)
+      Task {
+        await LiveActivityHandler.endAllActivitiesNow()
+        semaphore.signal()
+      }
+      _ = semaphore.wait(timeout: .now() + 2.0)
+    }
+    super.applicationWillTerminate(application)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {

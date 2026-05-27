@@ -28,6 +28,9 @@ class LiveActivityHandler {
             case "endActivity":
                 self.handleEnd(call: call, result: result)
 
+            case "endAllActivities":
+                self.handleEndAll(result: result)
+
             default:
                 result(FlutterMethodNotImplemented)
             }
@@ -44,7 +47,7 @@ class LiveActivityHandler {
         let attributes = OuiSpyLiveActivityAttributes()
 
         do {
-            let content = ActivityContent(state: state, staleDate: nil)
+            let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
             let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
             currentActivity = activity
             result(activity.id)
@@ -60,7 +63,7 @@ class LiveActivityHandler {
         }
 
         let state = contentState(from: args)
-        let content = ActivityContent(state: state, staleDate: nil)
+        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
 
         Task {
             await currentActivity?.update(content)
@@ -73,6 +76,23 @@ class LiveActivityHandler {
             await currentActivity?.end(nil, dismissalPolicy: .immediate)
             currentActivity = nil
             result(nil)
+        }
+    }
+
+    private func handleEndAll(result: @escaping FlutterResult) {
+        Task {
+            await Self.endAllActivitiesNow()
+            currentActivity = nil
+            result(nil)
+        }
+    }
+
+    /// End every Live Activity of our type, regardless of which process started it.
+    /// Used on app launch (cleanup stale activities from prior runs) and
+    /// applicationWillTerminate (cleanup on graceful exit).
+    static func endAllActivitiesNow() async {
+        for activity in Activity<OuiSpyLiveActivityAttributes>.activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 

@@ -130,6 +130,22 @@ class LiveActivityService {
     }
   }
 
+  /// End every Live Activity of our type (including any stale ones from
+  /// prior runs the Dart side doesn't know about). Safe to call any time.
+  Future<void> endAll() async {
+    if (!Platform.isIOS) return;
+    try {
+      await _channel.invokeMethod('endAllActivities');
+      DebugLog.log('LIVE_ACTIVITY: endAll');
+      _activityId = null;
+    } on MissingPluginException {
+      // legacy handler / unsupported iOS — fall back to single-end
+      await end();
+    } catch (e) {
+      DebugLog.log('LIVE_ACTIVITY: endAll error: $e');
+    }
+  }
+
   /// Determine primary display mode from set of active engines.
   ///
   /// Combinations collapse to dedicated modes so the title reflects every

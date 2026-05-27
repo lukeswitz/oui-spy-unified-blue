@@ -53,6 +53,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <service
+            android:name=".KillTaskService"
+            android:exported="false"
+            android:stopWithTask="false" />
     </application>
     <queries>
         <intent>

@@ -356,6 +356,15 @@ class NotificationService extends ChangeNotifier {
     await _plugin.show(id, title, body, details);
   }
 
+  Future<void> cancelAll() async {
+    try {
+      await _plugin.cancelAll();
+      DebugLog.log('NOTIF: cancelAll');
+    } catch (e) {
+      DebugLog.log('NOTIF: cancelAll error: $e');
+    }
+  }
+
   void _onNotificationTap(NotificationResponse response) {
     DebugLog.log('NOTIF: tapped ${response.id} payload=${response.payload}');
     // Navigation handled by app-level callback if needed
