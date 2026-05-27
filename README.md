@@ -17,9 +17,10 @@
 
 **About this fork:**
 
-- Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run concurrently without rebooting or switching modes.
-
 - Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs seven scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
+- Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run **concurrently without rebooting or switching modes**.
+- Import and export `.CSV` files (wigle.net format) from detections and wardrives. Matches current FlockYou and your own detection OUIs for mapping and review.
+- Wigle.net API integration: upload and view your stats right from the app
 
 
 > [!NOTE]
