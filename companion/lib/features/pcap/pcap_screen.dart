@@ -7,6 +7,7 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 
 class PcapScreen extends ConsumerStatefulWidget {
@@ -52,6 +53,25 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
     _savedSub = ble.pcapCaptureSaved.listen((f) {
       if (mounted) setState(() => _lastSaved = f);
     });
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _chanStart = (p.getInt('pcap_chanStart') ?? 1).clamp(1, 14);
+      _chanEnd = (p.getInt('pcap_chanEnd') ?? 11).clamp(_chanStart, 14);
+      final modeIdx = p.getInt('pcap_mode') ?? 0;
+      _mode = modeIdx == 1 ? PcapMode.ble : PcapMode.wifi;
+    });
+  }
+
+  Future<void> _savePrefs() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setInt('pcap_chanStart', _chanStart);
+    await p.setInt('pcap_chanEnd', _chanEnd);
+    await p.setInt('pcap_mode', _mode == PcapMode.ble ? 1 : 0);
   }
 
   @override
@@ -217,7 +237,10 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 _ModeSelector(
                   mode: _mode,
                   enabled: !isCapturing,
-                  onChanged: (m) => setState(() => _mode = m),
+                  onChanged: (m) {
+                    setState(() => _mode = m);
+                    _savePrefs();
+                  },
                 ),
                 if (_mode == PcapMode.wifi) ...[
                   const SizedBox(height: 12),
@@ -225,11 +248,17 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                     chanStart: _chanStart,
                     chanEnd: _chanEnd,
                     enabled: !isCapturing,
-                    onChanStart: (v) => setState(() {
-                      _chanStart = v;
-                      if (v > _chanEnd) _chanEnd = v;
-                    }),
-                    onChanEnd: (v) => setState(() => _chanEnd = v),
+                    onChanStart: (v) {
+                      setState(() {
+                        _chanStart = v;
+                        if (v > _chanEnd) _chanEnd = v;
+                      });
+                      _savePrefs();
+                    },
+                    onChanEnd: (v) {
+                      setState(() => _chanEnd = v);
+                      _savePrefs();
+                    },
                   ),
                 ],
                 const SizedBox(height: 16),

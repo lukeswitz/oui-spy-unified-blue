@@ -7,6 +7,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -40,147 +41,101 @@ class DetectionRow extends ConsumerWidget {
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          children: [
-            Container(
-              width: 4,
-              color: engine.color,
-            ),
-            Expanded(
-              child: Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(12, 10, 8, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  detection.macAddress.toUpperCase(),
-                                  style: TextStyle(
-                                    color: t.textPrimary,
-                                    fontSize: 14,
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (manufacturer != null) ...[
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    manufacturer,
-                                    style: TextStyle(
-                                      color: t.textDim,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _RssiIndicator(rssi: detection.rssi),
-                        const SizedBox(width: 10),
-                        Text(
-                          timeStr,
-                          style: TextStyle(
-                            color: t.textDim,
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _MethodBadge(
-                          method: detection.method,
-                          color: engine.color,
-                        ),
-                        if (detection.channel > 0) ...[
-                          const SizedBox(width: 4),
-                          _InfoChip(
-                            icon: Icons.wifi,
-                            label: 'CH${detection.channel}',
-                            color: t.textDim,
-                            bgColor: t.textDim.withValues(alpha: 0.1),
-                          ),
-                        ],
-                        if (detection.count > 1) ...[
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: t.textDim.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                            child: Text(
-                              '\u00d7${detection.count}',
-                              style: TextStyle(
-                                color: t.textDim,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (detection.sourceNodeId.isNotEmpty) ...[
-                          const SizedBox(width: 4),
-                          _InfoChip(
-                            icon: Icons.hub,
-                            label: detection.sourceNodeId,
-                            color: AppTheme.warning,
-                            bgColor: AppTheme.warning.withValues(alpha: 0.15),
-                          ),
-                        ],
-                        if (detection.deviceName.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              detection.deviceName,
-                              style: TextStyle(
-                                color: t.textSecondary,
-                                fontSize: 12,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    _buildDetailsRow(t),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0, 8, 10, 8),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: engine.color, width: 3),
+          ),
+        ),
+        child: Builder(builder: (_) {
+          final headline = _headline(detection, manufacturer);
+          final headlineIsMac = headline == detection.macAddress.toUpperCase();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _ActionButton(
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                          text: headline,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 15,
+                            fontFamily: headlineIsMac ? 'monospace' : null,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: headlineIsMac ? 0.5 : 0,
+                            height: 1.1,
+                          ),
+                        ),
+                        if (manufacturer != null && manufacturer.isNotEmpty) ...[
+                          TextSpan(
+                            text: '  ·  ',
+                            style: TextStyle(
+                              color: t.textDim.withValues(alpha: 0.55),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(
+                            text: manufacturer,
+                            style: TextStyle(
+                              color: t.textDim,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ]),
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _RssiBlock(rssi: detection.rssi),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: _DetailLine(
+                        detection: detection,
+                        engine: engine,
+                        manufacturer: manufacturer,
+                        showMac: !headlineIsMac,
+                        t: t,
+                      ),
+                    ),
+                  ),
+                  if (detection.wardrive != null && detection.isWifiDetection) ...[
+                    const SizedBox(width: 8),
+                    _AuthPill(authMode: detection.wardrive!.authMode),
+                  ],
+                  const SizedBox(width: 8),
+                  Text(timeStr,
+                      style: TextStyle(
+                        color: t.textDim,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w700,
+                      )),
+                  const SizedBox(width: 4),
+                  _ActionIcon(
                     icon: Icons.gps_fixed,
                     color: AppTheme.foxhunter,
                     tooltip: 'Foxhunt',
                     onTap: () => _startFoxhunt(context, ref),
                   ),
-                  const SizedBox(height: 6),
-                  _ActionButton(
+                  _ActionIcon(
                     icon: Icons.location_on,
                     color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
                     tooltip: hasGps ? 'Show on map' : 'No GPS fix',
@@ -188,139 +143,12 @@ class DetectionRow extends ConsumerWidget {
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     ),
     ),
-    );
-  }
-
-  /// Build engine-specific detail chips row.
-  Widget _buildDetailsRow(ResolvedTheme t) {
-    final chips = <Widget>[];
-
-    switch (detection.engine) {
-      case Engine.flockBle:
-      case Engine.flockWifi:
-        if (detection.flock != null) {
-          if (detection.flock!.isRaven) {
-            chips.add(_InfoChip(
-              icon: Icons.memory,
-              label: 'RAVEN',
-              color: AppTheme.warning,
-              bgColor: AppTheme.warning.withValues(alpha: 0.12),
-            ));
-            if (detection.flock!.ravenFirmware != null &&
-                detection.flock!.ravenFirmware!.isNotEmpty) {
-              chips.add(_InfoChip(
-                icon: Icons.info_outline,
-                label: detection.flock!.ravenFirmware!,
-                color: t.textDim,
-                bgColor: t.textDim.withValues(alpha: 0.1),
-              ));
-            }
-          }
-        }
-        // Show which addr field matched
-        chips.add(_AddrBadge(method: detection.method, t: t));
-
-      case Engine.wardrive:
-        if (detection.wardrive != null) {
-          if (detection.wardrive!.ssid.isNotEmpty) {
-            chips.add(_InfoChip(
-              icon: Icons.wifi,
-              label: detection.wardrive!.ssid,
-              color: t.textSecondary,
-              bgColor: t.textDim.withValues(alpha: 0.1),
-              maxWidth: 120,
-            ));
-          }
-          chips.add(_AuthBadge(authMode: detection.wardrive!.authMode, t: t));
-        }
-
-      case Engine.skySpy:
-        if (detection.odid != null) {
-          if (detection.odid!.uavId != null && detection.odid!.uavId!.isNotEmpty) {
-            chips.add(_InfoChip(
-              icon: Icons.flight,
-              label: detection.odid!.uavId!,
-              color: Engine.skySpy.color,
-              bgColor: Engine.skySpy.color.withValues(alpha: 0.12),
-              maxWidth: 100,
-            ));
-          }
-          if (detection.odid!.altitudeMsl != null) {
-            chips.add(_InfoChip(
-              icon: Icons.height,
-              label: '${detection.odid!.altitudeMsl}m',
-              color: t.textDim,
-              bgColor: t.textDim.withValues(alpha: 0.1),
-            ));
-          }
-          if (detection.odid!.droneSpeed != null && detection.odid!.droneSpeed! > 0) {
-            chips.add(_InfoChip(
-              icon: Icons.speed,
-              label: '${detection.odid!.droneSpeed}m/s',
-              color: t.textDim,
-              bgColor: t.textDim.withValues(alpha: 0.1),
-            ));
-          }
-        }
-
-      case Engine.uniPwn:
-        if (detection.unipwn != null) {
-          chips.add(_InfoChip(
-            icon: Icons.smart_toy,
-            label: detection.unipwn!.robotType.toUpperCase(),
-            color: Engine.uniPwn.color,
-            bgColor: Engine.uniPwn.color.withValues(alpha: 0.12),
-          ));
-          if (detection.unipwn!.exploited) {
-            chips.add(_InfoChip(
-              icon: Icons.verified,
-              label: 'PWNED',
-              color: AppTheme.success,
-              bgColor: AppTheme.success.withValues(alpha: 0.12),
-            ));
-          }
-        }
-
-      case Engine.detector:
-        if (detection.detector != null) {
-          if (detection.detector!.filterDescription != null &&
-              detection.detector!.filterDescription!.isNotEmpty) {
-            chips.add(_InfoChip(
-              icon: Icons.filter_alt,
-              label: detection.detector!.filterDescription!,
-              color: t.textDim,
-              bgColor: t.textDim.withValues(alpha: 0.1),
-              maxWidth: 120,
-            ));
-          }
-          chips.add(_InfoChip(
-            icon: detection.detector!.isFullMac ? Icons.fingerprint : Icons.blur_on,
-            label: detection.detector!.isFullMac ? 'FULL MAC' : 'OUI',
-            color: t.textDim,
-            bgColor: t.textDim.withValues(alpha: 0.1),
-          ));
-        }
-
-      case Engine.foxhunter:
-      case Engine.pcap:
-        break;
-    }
-
-    if (chips.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 3),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 2,
-        children: chips,
-      ),
     );
   }
 
@@ -452,145 +280,6 @@ class DetectionRow extends ConsumerWidget {
 }
 
 /// Compact info chip with icon + label.
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.bgColor,
-    this.maxWidth,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-  final Color bgColor;
-  final double? maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: maxWidth != null ? BoxConstraints(maxWidth: maxWidth!) : null,
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 10, color: color),
-          const SizedBox(width: 3),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'monospace',
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Badge showing which 802.11 address field triggered detection.
-class _AddrBadge extends StatelessWidget {
-  const _AddrBadge({required this.method, required this.t});
-  final String method;
-  final ResolvedTheme t;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, hint) = switch (method) {
-      'oui_addr1' => ('ADDR1', 'dst'),
-      'oui_addr2' => ('ADDR2', 'src'),
-      'oui_addr3' => ('ADDR3', 'bssid'),
-      'wildcard_probe' => ('PROBE', 'empty SSID'),
-      'oui_match' => ('OUI', 'ble prefix'),
-      'name_match' => ('NAME', 'ble name'),
-      'mfg_id' => ('MFG', 'mfg data'),
-      'raven_uuid' => ('UUID', 'raven svc'),
-      _ => ('', ''),
-    };
-    if (label.isEmpty) return const SizedBox.shrink();
-    return Tooltip(
-      message: hint,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-        decoration: BoxDecoration(
-          color: t.textDim.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: t.textDim,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Auth mode badge for wardrive detections.
-class _AuthBadge extends StatelessWidget {
-  const _AuthBadge({required this.authMode, required this.t});
-  final int authMode;
-  final ResolvedTheme t;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (authMode) {
-      0 => ('OPEN', AppTheme.error),
-      1 => ('WEP', AppTheme.warning),
-      2 => ('WPA', AppTheme.warning),
-      3 => ('WPA2', AppTheme.success),
-      4 => ('WPA/2', AppTheme.success),
-      5 => ('ENT', AppTheme.accent),
-      6 => ('WPA3', AppTheme.success),
-      _ => ('WPA2', AppTheme.success),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(4),
-        border: authMode == 0
-            ? Border.all(color: color.withValues(alpha: 0.5), width: 0.8)
-            : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            authMode == 0 ? Icons.lock_open : Icons.lock,
-            size: 10,
-            color: color,
-          ),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Detail summary shown in bottom sheet.
 class _DetailSummary extends StatelessWidget {
   const _DetailSummary({required this.detection, required this.t, this.manufacturer});
@@ -729,8 +418,13 @@ class _DetailSummary extends StatelessWidget {
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
+Color _rssiColor(int rssi) {
+  final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
+  return Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
+}
+
+class _ActionIcon extends StatelessWidget {
+  const _ActionIcon({
     required this.icon,
     required this.color,
     required this.tooltip,
@@ -744,29 +438,19 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
+    final fg = enabled ? color : color.withValues(alpha: 0.3);
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: enabled ? color.withValues(alpha: 0.14) : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        color: Colors.transparent,
+        shape: const CircleBorder(),
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          customBorder: const CircleBorder(),
           onTap: onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: enabled
-                    ? color.withValues(alpha: 0.45)
-                    : color.withValues(alpha: 0.15),
-                width: 1,
-              ),
-            ),
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: Icon(icon, size: 22, color: color),
-            ),
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Icon(icon, size: 19, color: fg),
           ),
         ),
       ),
@@ -774,70 +458,244 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-class _MethodBadge extends StatelessWidget {
-  const _MethodBadge({required this.method, required this.color});
-  final String method;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        method.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
+String _headline(Detection d, String? manufacturer) {
+  if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;
+  if (d.deviceName.isNotEmpty) return d.deviceName;
+  return d.macAddress.toUpperCase();
 }
 
-class _RssiIndicator extends StatelessWidget {
-  const _RssiIndicator({required this.rssi});
+class _RssiBlock extends StatelessWidget {
+  const _RssiBlock({required this.rssi});
   final int rssi;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    // Normalize RSSI from -100..0 to 0..1
-    final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
-    final color = Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
+    final color = _rssiColor(rssi);
+    final norm = ((rssi + 100) / 70).clamp(0.0, 1.0);
+    final activeBars = (norm * 5).round().clamp(0, 5);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          '$rssi',
+          style: TextStyle(
+            color: color,
+            fontSize: 16,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w800,
+            height: 1.0,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: List.generate(5, (i) {
+            final on = i < activeBars;
+            return Container(
+              width: 2.5,
+              height: 3.0 + i * 1.8,
+              margin: const EdgeInsets.only(right: 1.2),
+              decoration: BoxDecoration(
+                color: on ? color : t.border,
+                borderRadius: BorderRadius.circular(0.5),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
 
-    return SizedBox(
-      width: 38,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '$rssi',
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({
+    required this.detection,
+    required this.engine,
+    required this.manufacturer,
+    required this.showMac,
+    required this.t,
+  });
+  final Detection detection;
+  final Engine engine;
+  final String? manufacturer;
+  final bool showMac;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = <Widget>[];
+    if (showMac) {
+      tokens.add(Text(
+        detection.macAddress.toUpperCase(),
+        style: TextStyle(
+          color: t.textSecondary,
+          fontSize: 11,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ));
+      tokens.add(_pipe());
+    }
+    tokens.add(Icon(
+      detection.isWifiDetection ? Icons.wifi : Icons.bluetooth,
+      size: 13,
+      color: engine.color,
+    ));
+    if (detection.channel > 0) {
+      tokens.add(const SizedBox(width: 5));
+      tokens.add(_mono('CH-${detection.channel}'));
+    }
+    if (detection.count > 1) {
+      tokens.add(_pipe());
+      tokens.add(_mono('x${detection.count}'));
+    }
+    if (detection.flock?.isRaven == true) {
+      tokens.add(_pipe());
+      tokens.add(Icon(Icons.memory, size: 12, color: AppTheme.warning));
+      tokens.add(const SizedBox(width: 3));
+      tokens.add(Text('RAVEN',
+          style: TextStyle(
+              color: AppTheme.warning,
+              fontSize: 11,
               fontFamily: 'monospace',
+              fontWeight: FontWeight.w800)));
+      final fw = detection.flock?.ravenFirmware;
+      if (fw != null && fw.isNotEmpty) {
+        tokens.add(_pipe());
+        tokens.add(_mono(fw));
+      }
+    }
+    if (detection.unipwn != null) {
+      tokens.add(_pipe());
+      tokens.add(Icon(Icons.smart_toy, size: 12, color: Engine.uniPwn.color));
+      tokens.add(const SizedBox(width: 3));
+      tokens.add(Text(detection.unipwn!.robotType.toUpperCase(),
+          style: TextStyle(
+              color: Engine.uniPwn.color,
+              fontSize: 11,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w800)));
+      if (detection.unipwn!.exploited) {
+        tokens.add(_pipe());
+        tokens.add(Icon(Icons.verified, size: 12, color: AppTheme.success));
+        tokens.add(const SizedBox(width: 3));
+        tokens.add(Text('PWNED',
+            style: TextStyle(
+                color: AppTheme.success,
+                fontSize: 11,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w800)));
+      }
+    }
+    if (detection.odid?.uavId != null && detection.odid!.uavId!.isNotEmpty) {
+      tokens.add(_pipe());
+      tokens.add(Icon(Icons.flight, size: 12, color: Engine.skySpy.color));
+      tokens.add(const SizedBox(width: 3));
+      tokens.add(Text(detection.odid!.uavId!,
+          style: TextStyle(
+              color: Engine.skySpy.color,
+              fontSize: 11,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w700)));
+      if (detection.odid!.altitudeMsl != null) {
+        tokens.add(_pipe());
+        tokens.add(_mono('${detection.odid!.altitudeMsl}m'));
+      }
+    }
+    if (detection.detector != null) {
+      final d = detection.detector!;
+      if (d.filterDescription != null && d.filterDescription!.isNotEmpty) {
+        tokens.add(_pipe());
+        tokens.add(Text(d.filterDescription!,
+            style: TextStyle(
+                color: AppTheme.accent,
+                fontSize: 11,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w700)));
+      }
+      tokens.add(_pipe());
+      tokens.add(_mono(d.isFullMac ? 'FULL' : 'OUI'));
+    }
+    if (detection.sourceNodeId.isNotEmpty) {
+      tokens.add(_pipe());
+      tokens.add(Icon(Icons.hub, size: 12, color: AppTheme.warning));
+      tokens.add(const SizedBox(width: 3));
+      tokens.add(Text(detection.sourceNodeId,
+          style: TextStyle(
+              color: AppTheme.warning,
+              fontSize: 11,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w700)));
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: tokens);
+  }
+
+  Widget _mono(String s) => Text(s,
+      style: TextStyle(
+        color: t.textDim,
+        fontSize: 11,
+        fontFamily: 'monospace',
+        fontWeight: FontWeight.w600,
+      ));
+
+  Widget _pipe() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: Text('•',
+            style: TextStyle(
+              color: t.textDim.withValues(alpha: 0.45),
+              fontSize: 10,
               fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 3),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: normalized,
-              backgroundColor: t.border,
-              color: color,
-              minHeight: 3,
-            ),
-          ),
+            )),
+      );
+
+}
+
+(String, Color) _authMeta(int mode) => switch (mode) {
+      0 => ('OPEN', AppTheme.error),
+      1 => ('WEP', AppTheme.warning),
+      2 => ('WPA', AppTheme.warning),
+      3 => ('WPA2', AppTheme.success),
+      4 => ('WPA/2', AppTheme.success),
+      5 => ('ENT', AppTheme.accent),
+      6 => ('WPA3', AppTheme.success),
+      _ => ('WPA2', AppTheme.success),
+    };
+
+class _AuthPill extends StatelessWidget {
+  const _AuthPill({required this.authMode});
+  final int authMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _authMeta(authMode);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(authMode == 0 ? Icons.lock_open : Icons.lock,
+              size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              )),
         ],
       ),
     );
   }
 }
+

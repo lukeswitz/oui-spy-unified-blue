@@ -5,7 +5,6 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
-/// Compact stats rows: top vendors (line 1), top flock devices (line 2).
 class FeedStatsHeader extends ConsumerWidget {
   const FeedStatsHeader({super.key, required this.detections});
   final List<Detection> detections;
@@ -15,41 +14,47 @@ class FeedStatsHeader extends ConsumerWidget {
     final t = AppTheme.of(context);
     final oui = ref.read(ouiLookupProvider);
     final topVendors = _topVendors(detections, oui, 4);
-    final topFlock = _topFlock(detections, 1);
+    final topFlock = _topFlock(detections, 2);
 
     if (topVendors.isEmpty && topFlock.isEmpty) return const SizedBox.shrink();
 
+    final items = <Widget>[];
+    if (topVendors.isNotEmpty) {
+      items.add(_Section(
+        label: 'VENDORS',
+        icon: Icons.router,
+        color: AppTheme.accent,
+        entries: topVendors,
+        t: t,
+      ));
+    }
+    if (topFlock.isNotEmpty) {
+      items.add(_Section(
+        label: 'FLOCK',
+        icon: Icons.videocam,
+        color: Engine.flockWifi.color,
+        entries: topFlock,
+        t: t,
+      ));
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (topVendors.isNotEmpty)
-            _ChipRow(
-              icon: Icons.router,
-              iconColor: AppTheme.accent,
-              label: 'VENDORS',
-              entries: topVendors,
-              chipColor: AppTheme.accent,
-              t: t,
-            ),
-          if (topVendors.isNotEmpty && topFlock.isNotEmpty)
-            const SizedBox(height: 3),
-          if (topFlock.isNotEmpty)
-            _ChipRow(
-              icon: Icons.videocam,
-              iconColor: Engine.flockWifi.color,
-              label: 'FLOCK',
-              entries: topFlock,
-              chipColor: Engine.flockWifi.color,
-              t: t,
-            ),
-        ],
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: SizedBox(
+        height: 22,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: items.length,
+          separatorBuilder: (_, _) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Container(width: 1, color: t.border),
+          ),
+          itemBuilder: (_, i) => items[i],
+        ),
       ),
     );
   }
 
-  /// Group detections by resolved vendor name, return top N.
   static List<_ChipEntry> _topVendors(
     List<Detection> dets,
     OuiLookupService oui,
@@ -58,11 +63,9 @@ class FeedStatsHeader extends ConsumerWidget {
     final vendorCounts = <String, int>{};
     for (final d in dets) {
       final vendor = oui.lookup(d.macAddress) ?? 'Unknown';
-      // Normalize Flock sub-types to single entry
-      final name = vendor.startsWith('Flock') ? 'Flock' : vendor;
+      final name = vendor.startsWith('Flock') ? 'Flock' : _shortenVendor(vendor);
       vendorCounts[name] = (vendorCounts[name] ?? 0) + d.count;
     }
-    // Drop "Unknown" from display — not useful
     vendorCounts.remove('Unknown');
     final sorted = vendorCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -72,7 +75,6 @@ class FeedStatsHeader extends ConsumerWidget {
         .toList();
   }
 
-  /// Top flock device by detection count — single entry for one-line display.
   static List<_ChipEntry> _topFlock(List<Detection> dets, int n) {
     final flockDets = dets.where((d) =>
         d.engine == Engine.flockBle ||
@@ -104,16 +106,22 @@ class FeedStatsHeader extends ConsumerWidget {
       final agg = e.value;
       final suffix = agg.isRaven ? ' RVN' : '';
       final mac = _shortenMac(e.key);
-      return _ChipEntry(
-        label: '$mac ${agg.method}$suffix',
-        count: agg.count,
-      );
+      return _ChipEntry(label: '$mac$suffix', count: agg.count);
     }).toList();
+  }
+
+  static String _shortenVendor(String v) {
+    var s = v
+        .replaceAll(RegExp(r',?\s+(Inc|Inc\.|LLC|Ltd|Ltd\.|Corp|Corp\.|Corporation|Co\.|Co|GmbH|S\.A\.|S\.r\.l\.|AG|KG|Limited|Solutions|Networks|Communications|Technology|Technologies|Systems|International|Electronics|Industries)\.?\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*&\s*Co\.?\s*KG', caseSensitive: false), '')
+        .trim();
+    if (s.length > 18) s = '${s.substring(0, 17)}…';
+    return s.isEmpty ? v : s;
   }
 
   static String _shortenMac(String mac) {
     if (mac.length < 17) return mac;
-    return '${mac.substring(0, 8)}..${mac.substring(15)}';
+    return mac.substring(9);
   }
 }
 
@@ -136,88 +144,68 @@ class _ChipEntry {
   final int count;
 }
 
-/// Single-line row: icon + label + scrollable chip list.
-class _ChipRow extends StatelessWidget {
-  const _ChipRow({
-    required this.icon,
-    required this.iconColor,
+class _Section extends StatelessWidget {
+  const _Section({
     required this.label,
+    required this.icon,
+    required this.color,
     required this.entries,
-    required this.chipColor,
     required this.t,
   });
-  final IconData icon;
-  final Color iconColor;
   final String label;
+  final IconData icon;
+  final Color color;
   final List<_ChipEntry> entries;
-  final Color chipColor;
   final ResolvedTheme t;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 22,
-      child: Row(
-        children: [
-          Icon(icon, size: 10, color: iconColor),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: iconColor,
-              fontSize: 8,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-            ),
+    return Row(
+      children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
           ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: entries.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 4),
-              itemBuilder: (_, i) => _buildChip(entries[i]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChip(_ChipEntry entry) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: chipColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: chipColor.withValues(alpha: 0.25),
-          width: 0.5,
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+        const SizedBox(width: 8),
+        for (int i = 0; i < entries.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text('·',
+                  style: TextStyle(
+                    color: t.textDim.withValues(alpha: 0.5),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  )),
+            ),
           Text(
-            entry.label,
+            entries[i].label,
             style: TextStyle(
               color: t.textPrimary,
-              fontSize: 9,
+              fontSize: 10,
               fontWeight: FontWeight.w500,
+              fontFamily: 'monospace',
             ),
           ),
           const SizedBox(width: 4),
           Text(
-            '${entry.count}',
+            '${entries[i].count}',
             style: TextStyle(
-              color: chipColor,
-              fontSize: 9,
+              color: color,
+              fontSize: 10,
               fontWeight: FontWeight.w700,
               fontFamily: 'monospace',
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 }
