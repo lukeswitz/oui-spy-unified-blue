@@ -3214,14 +3214,6 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'OUI DATABASE',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 2,
-                color: t.textDim,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(
           'MAC vendor lookup database (Ringmast4r/OUI-Master-Database)',
           style: TextStyle(color: t.textDim, fontSize: 11),
         ),
