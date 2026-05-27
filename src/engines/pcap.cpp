@@ -532,6 +532,10 @@ void pcapGetStats(PcapStats* out) {
     out->auto_duration_sec = engineGetAutoPcapDuration();
     out->paused_mask      = engineGetAutoPcapPausedMask();
     out->auto_remaining_ms = engineGetAutoPcapRemainingMs();
+    out->auto_trigger_src = engineGetAutoPcapTriggerSrc();
+    const uint8_t* tm = engineGetAutoPcapTriggerMac();
+    if (tm) memcpy(out->auto_trigger_mac, tm, 6);
+    else memset(out->auto_trigger_mac, 0, 6);
 }
 
 bool pcapBeginDownload(uint32_t*, uint32_t*) { return false; }

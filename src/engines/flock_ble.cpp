@@ -3,6 +3,7 @@
 #include "flock_match.h"
 #include "dedup_ring.h"
 #include "wardrive.h"
+#include "../engine_registry.h"
 #include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -111,6 +112,7 @@ static void flockBleInit(void) {
 
 static void flockBleStart(void) {
     scanning = true;
+    dedup.setCooldownMs(engineGetRediscoverMs());
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) {
         Serial.println("[FLOCK-BLE] Started (passive — wardrive handles BLE scan)");
         return;
@@ -158,11 +160,16 @@ static void flockBleLoop(void) {
     }
 }
 
+static void flockBleApplyPrefs(void) {
+    dedup.setCooldownMs(engineGetRediscoverMs());
+}
+
 const EngineCallbacks flockBleCallbacks = {
-    .init   = flockBleInit,
-    .start  = flockBleStart,
-    .stop   = flockBleStop,
-    .loop   = flockBleLoop,
-    .config = NULL,
-    .name   = "Flock-BLE"
+    .init       = flockBleInit,
+    .start      = flockBleStart,
+    .stop       = flockBleStop,
+    .loop       = flockBleLoop,
+    .config     = NULL,
+    .applyPrefs = flockBleApplyPrefs,
+    .name       = "Flock-BLE"
 };

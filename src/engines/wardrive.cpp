@@ -433,6 +433,10 @@ static void wardriveStart(void) {
     wardriveDedup.reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
+    uint32_t relog = engineGetRediscoverMs();
+    wardriveDedup.setCooldownMs(relog);
+    wifiDedup.setCooldownMs(relog);
+    isrFlockWifiDedup.setCooldownMs(relog);
     wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
     wdFlockWifiActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
@@ -576,11 +580,19 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
 uint16_t wardriveGetBleScanDurationMs(void) { return bleScanDurationMs; }
 uint16_t wardriveGetBleScanIntervalMs(void) { return bleScanIntervalMs; }
 
+static void wardriveApplyPrefs(void) {
+    uint32_t relog = engineGetRediscoverMs();
+    wardriveDedup.setCooldownMs(relog);
+    wifiDedup.setCooldownMs(relog);
+    isrFlockWifiDedup.setCooldownMs(relog);
+}
+
 const EngineCallbacks wardriveCallbacks = {
-    .init   = wardriveInit,
-    .start  = wardriveStart,
-    .stop   = wardriveStop,
-    .loop   = wardriveLoop,
-    .config = wardriveConfig,
-    .name   = "Wardrive",
+    .init       = wardriveInit,
+    .start      = wardriveStart,
+    .stop       = wardriveStop,
+    .loop       = wardriveLoop,
+    .config     = wardriveConfig,
+    .applyPrefs = wardriveApplyPrefs,
+    .name       = "Wardrive",
 };

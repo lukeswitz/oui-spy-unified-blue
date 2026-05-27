@@ -13,6 +13,7 @@ typedef struct {
     void (*stop)(void);          // Disable and clean up
     void (*loop)(void);          // Called every main loop iteration while active
     void (*config)(const uint8_t* payload, uint8_t len);  // Runtime config update (nullable)
+    void (*applyPrefs)(void);    // Re-apply runtime prefs (alert cooldown/rediscover/etc). Nullable.
     const char* name;            // Human-readable name
 } EngineCallbacks;
 
@@ -56,8 +57,19 @@ uint16_t engineGetAutoPcapDuration(void);
 uint32_t engineGetAutoPcapTriggerCount(void);
 uint8_t  engineGetAutoPcapPausedMask(void);
 uint32_t engineGetAutoPcapRemainingMs(void);
+uint8_t  engineGetAutoPcapTriggerSrc(void);
+const uint8_t* engineGetAutoPcapTriggerMac(void);
 
 // Called by the detection notify task on every event. No-op if disabled.
-void engineRequestAutoPcap(EngineId src, uint8_t channel);
+// `mac` may be nullptr; when provided, a per-MAC cooldown (rediscover pref)
+// suppresses repeated auto-pcap triggers on the same device.
+void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac);
+
+// ---- Alert prefs (cooldown / rediscover) ----------------------------------
+// Loaded from `ouispy-alert` NVS at boot; reload via engineLoadAlertPrefs()
+// after the BLE alert-config write callback so changes take effect live.
+void engineLoadAlertPrefs(void);
+uint32_t engineGetNotifyCooldownMs(void);
+uint32_t engineGetRediscoverMs(void);
 
 #endif // ENGINE_REGISTRY_H

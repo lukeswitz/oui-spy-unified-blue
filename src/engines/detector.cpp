@@ -167,6 +167,7 @@ static void detectorInit(void) {
 
 static void detectorStart(void) {
     scanning = true;
+    dedup.setCooldownMs(engineGetRediscoverMs());
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
 
     if (!wardriveOwns) {
@@ -235,11 +236,16 @@ static void detectorLoop(void) {
     }
 }
 
+static void detectorApplyPrefs(void) {
+    dedup.setCooldownMs(engineGetRediscoverMs());
+}
+
 const EngineCallbacks detectorCallbacks = {
-    .init   = detectorInit,
-    .start  = detectorStart,
-    .stop   = detectorStop,
-    .loop   = detectorLoop,
-    .config = NULL,
-    .name   = "Detector"
+    .init       = detectorInit,
+    .start      = detectorStart,
+    .stop       = detectorStop,
+    .loop       = detectorLoop,
+    .config     = NULL,
+    .applyPrefs = detectorApplyPrefs,
+    .name       = "Detector"
 };

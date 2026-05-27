@@ -185,6 +185,8 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
         p.putUShort("hb_active", hbActive);
         p.end();
 
+        engineLoadAlertPrefs();
+
         Serial.printf("[BLE] Alert config: cool=%d hb=%d redis=%d active=%d\n",
                       cooldown, heartbeat, rediscover, hbActive);
     }

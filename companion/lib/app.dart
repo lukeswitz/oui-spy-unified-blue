@@ -147,9 +147,9 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
             Positioned.fill(child: child),
             if (showing)
               Positioned(
-                left: 12, right: 12, bottom: 12,
+                left: 12, right: 12, top: 12,
                 child: SafeArea(
-                  top: false,
+                  bottom: false,
                   child: Material(
                     color: const Color(0xFF1E2A28),
                     elevation: 6,

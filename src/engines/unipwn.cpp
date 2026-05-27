@@ -67,6 +67,7 @@ static void unipwnInit(void) {
 
 static void unipwnStart(void) {
     scanning = true;
+    dedup.setCooldownMs(engineGetRediscoverMs());
     lastScanStart = 0;
     Serial.println("[UNIPWN] Started — scanning for Unitree robots");
 }
@@ -87,11 +88,16 @@ static void unipwnLoop(void) {
     }
 }
 
+static void unipwnApplyPrefs(void) {
+    dedup.setCooldownMs(engineGetRediscoverMs());
+}
+
 const EngineCallbacks unipwnCallbacks = {
-    .init   = unipwnInit,
-    .start  = unipwnStart,
-    .stop   = unipwnStop,
-    .loop   = unipwnLoop,
-    .config = NULL,
-    .name   = "UniPwn"
+    .init       = unipwnInit,
+    .start      = unipwnStart,
+    .stop       = unipwnStop,
+    .loop       = unipwnLoop,
+    .config     = NULL,
+    .applyPrefs = unipwnApplyPrefs,
+    .name       = "UniPwn"
 };

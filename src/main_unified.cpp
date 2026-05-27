@@ -136,7 +136,7 @@ static void playBootMelody(void) {
 // Drains detectionQueue, deduplicates across engines, sends BLE notifications
 // ============================================================================
 #define NOTIFY_DEDUP_SIZE 48
-#define NOTIFY_DEDUP_COOLDOWN_MS 3000
+#define NOTIFY_DEDUP_COOLDOWN_MS_DEFAULT 5000
 static struct {
     uint8_t mac[6];
     uint8_t engine_id;
@@ -168,10 +168,12 @@ static uint8_t engineClass(uint8_t engine_id) {
 static bool isNotifyDedupCooldown(const uint8_t* mac, uint8_t engine_id) {
     unsigned long now = millis();
     uint8_t cls = engineClass(engine_id);
+    unsigned long cooldown = (unsigned long)engineGetNotifyCooldownMs();
+    if (cooldown == 0) cooldown = NOTIFY_DEDUP_COOLDOWN_MS_DEFAULT;
     for (int i = 0; i < notifyDedupCount; i++) {
         if (memcmp(notifyDedup[i].mac, mac, 6) == 0 &&
             engineClass(notifyDedup[i].engine_id) == cls) {
-            if (now - notifyDedup[i].ts < NOTIFY_DEDUP_COOLDOWN_MS) return true;
+            if (now - notifyDedup[i].ts < cooldown) return true;
             notifyDedup[i].ts = now;
             return false;
         }
@@ -213,7 +215,7 @@ static void detectionNotifyTask(void* param) {
             // Send BLE notification
             bleGattNotifyDetection(&evt);
 
-            engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel);
+            engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel, evt.mac);
 
             // LED off after notification sent
             if (hwLedEnabled) {

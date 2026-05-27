@@ -100,6 +100,7 @@ static void flockWifiInit(void) {
 
 static void flockWifiStart(void) {
     scanning = true;
+    wifiDedup.setCooldownMs(engineGetRediscoverMs());
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) {
         Serial.println("[FLOCK-WIFI] Started (passive — wardrive handles WiFi scan)");
         return;
@@ -142,11 +143,16 @@ static void flockWifiLoop(void) {
     }
 }
 
+static void flockWifiApplyPrefs(void) {
+    wifiDedup.setCooldownMs(engineGetRediscoverMs());
+}
+
 const EngineCallbacks flockWifiCallbacks = {
-    .init   = flockWifiInit,
-    .start  = flockWifiStart,
-    .stop   = flockWifiStop,
-    .loop   = flockWifiLoop,
-    .config = NULL,
-    .name   = "Flock-WiFi"
+    .init       = flockWifiInit,
+    .start      = flockWifiStart,
+    .stop       = flockWifiStop,
+    .loop       = flockWifiLoop,
+    .config     = NULL,
+    .applyPrefs = flockWifiApplyPrefs,
+    .name       = "Flock-WiFi"
 };
