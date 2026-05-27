@@ -23,6 +23,7 @@ import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -2219,6 +2220,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   bool _ascending = false;
   String? _engineFilter; // null = all, 'flock', 'detector'
   bool _showMap = false;
+  bool _pcapExpanded = true;
   final _mapController = MapController();
 
   Future<void> _rescan() async {
@@ -2254,6 +2256,15 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   void initState() {
     super.initState();
     _load();
+    _loadPcapExpanded();
+  }
+
+  Future<void> _loadPcapExpanded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool('pcaps_panel_expanded');
+    if (v != null && mounted && v != _pcapExpanded) {
+      setState(() => _pcapExpanded = v);
+    }
   }
 
   Future<void> _load() async {
@@ -2309,6 +2320,71 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         _ascending = false;
       }
     });
+  }
+
+  static final _csvTs = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
+
+  static String _csvEscape(String v) {
+    if (v.isEmpty) return '';
+    if (v.contains(',') || v.contains('"') || v.contains('\n') || v.contains('\r')) {
+      return '"${v.replaceAll('"', '""')}"';
+    }
+    return v;
+  }
+
+  String _buildCsv(List<Map<String, dynamic>> items) {
+    const cols = <String>[
+      'timestamp_utc', 'session_id', 'engine', 'method',
+      'mac', 'device_name', 'ssid', 'rssi_dbm', 'channel',
+      'lat', 'lon',
+    ];
+    final buf = StringBuffer()..writeln(cols.join(','));
+    for (final d in items) {
+      final tsMs = d['appTimestamp'] as int?;
+      final ts = tsMs == null
+          ? ''
+          : _csvTs.format(DateTime.fromMillisecondsSinceEpoch(tsMs).toUtc());
+      final lat = d['latitude'];
+      final lon = d['longitude'];
+      final row = <String>[
+        ts,
+        (d['sessionId'] as String?) ?? '',
+        (d['engine'] as String?) ?? '',
+        (d['detectionMethod'] as String?) ?? '',
+        (d['macAddress'] as String?) ?? '',
+        (d['deviceName'] as String?) ?? '',
+        (d['ssid'] as String?) ?? '',
+        (d['rssi']?.toString()) ?? '',
+        (d['channel']?.toString()) ?? '',
+        lat == null ? '' : lat.toString(),
+        lon == null ? '' : lon.toString(),
+      ].map(_csvEscape).toList();
+      buf.writeln(row.join(','));
+    }
+    return buf.toString();
+  }
+
+  Future<void> _exportCsv(
+      BuildContext context, List<Map<String, dynamic>> items) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final csv = _buildCsv(items);
+      final dir = await getTemporaryDirectory();
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File('${dir.path}/oui_spy_detections_$ts.csv');
+      await file.writeAsString(csv);
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 100, 100);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'OUI-SPY Detections Export (${items.length} detections)',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    }
   }
 
   @override
@@ -2410,6 +2486,17 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               ),
               const Spacer(),
               GestureDetector(
+                onTap: items.isEmpty ? null : () => _exportCsv(context, items),
+                child: Icon(
+                  Icons.ios_share,
+                  size: 16,
+                  color: items.isEmpty
+                      ? t.textDim.withValues(alpha: 0.4)
+                      : AppTheme.accent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
                 onTap: () => setState(() => _showMap = !_showMap),
                 child: Icon(
                   _showMap ? Icons.list : Icons.map,
@@ -2460,7 +2547,17 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 ),
         ),
         const Divider(height: 1, thickness: 1),
-        const Expanded(flex: 2, child: _PcapInlineSection()),
+        if (_pcapExpanded)
+          Expanded(
+            flex: 2,
+            child: _PcapInlineSection(
+              onExpandedChanged: (v) => setState(() => _pcapExpanded = v),
+            ),
+          )
+        else
+          _PcapInlineSection(
+            onExpandedChanged: (v) => setState(() => _pcapExpanded = v),
+          ),
       ],
     );
   }
@@ -3752,19 +3849,39 @@ class _WifiEnableToggleState extends ConsumerState<_WifiEnableToggle> {
 }
 
 class _PcapInlineSection extends ConsumerStatefulWidget {
-  const _PcapInlineSection();
+  const _PcapInlineSection({this.onExpandedChanged});
+  final ValueChanged<bool>? onExpandedChanged;
   @override
   ConsumerState<_PcapInlineSection> createState() => _PcapInlineSectionState();
 }
 
 class _PcapInlineSectionState extends ConsumerState<_PcapInlineSection> {
+  static const String _expandedPrefKey = 'pcaps_panel_expanded';
   late Future<List<_PcapEntry>> _entries;
   final Set<String> _deleting = {};
+  bool _expanded = true;
 
   @override
   void initState() {
     super.initState();
     _entries = _load();
+    _loadExpanded();
+  }
+
+  Future<void> _loadExpanded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool(_expandedPrefKey);
+    if (v != null && mounted && v != _expanded) {
+      setState(() => _expanded = v);
+      widget.onExpandedChanged?.call(_expanded);
+    }
+  }
+
+  Future<void> _toggleExpanded() async {
+    setState(() => _expanded = !_expanded);
+    widget.onExpandedChanged?.call(_expanded);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_expandedPrefKey, _expanded);
   }
 
   Future<Directory> _pcapDir() async {
@@ -3879,29 +3996,35 @@ class _PcapInlineSectionState extends ConsumerState<_PcapInlineSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
-          child: Row(
-            children: [
-              Text("SAVED PCAPS",
-                  style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.refresh, size: 18),
-                onPressed: _refresh,
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.delete_sweep, size: 18, color: AppTheme.error),
-                tooltip: "Delete all",
-                onPressed: _deleteAll,
-              ),
-            ],
+        InkWell(
+          onTap: _toggleExpanded,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
+            child: Row(
+              children: [
+                Icon(_expanded ? Icons.expand_more : Icons.chevron_right,
+                    size: 18, color: t.textDim),
+                const SizedBox(width: 4),
+                Text("SAVED PCAPS",
+                    style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  onPressed: _expanded ? _refresh : null,
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.delete_sweep, size: 18, color: AppTheme.error),
+                  tooltip: "Delete all",
+                  onPressed: _expanded ? _deleteAll : null,
+                ),
+              ],
+            ),
           ),
         ),
         const Divider(height: 1),
-        Expanded(
+        if (_expanded) Expanded(
           child: FutureBuilder<List<_PcapEntry>>(
             future: _entries,
             builder: (context, snap) {

@@ -395,6 +395,102 @@ class WigleCsvRescan {
       newFlockMacs: newFlock.length,
     );
   }
+
+  static Future<WigleRescanResult> rescanSession(
+    AppDatabase db,
+    String sessionId, {
+    List<WatchlistEntry> watchlist = const [],
+    void Function(int current, int total, int newDetector, int newFlock)?
+        onProgress,
+  }) async {
+    final wlIndex = _WatchlistIndex.build(watchlist);
+    final rows = await db.getDetectionsForSession(sessionId);
+    final total = rows.length;
+    int rowsScanned = 0;
+    int rowsUpdated = 0;
+    final newDetector = <String>{};
+    final newFlock = <String>{};
+
+    onProgress?.call(0, total, 0, 0);
+    const reportEvery = 25;
+
+    for (final r in rows) {
+      rowsScanned++;
+      final mac = r.macAddress;
+      final ssid = r.ssid;
+      final name = r.deviceName.isNotEmpty ? r.deviceName : ssid;
+      final method = r.detectionMethod;
+      final isBleRow = method == 'ble_adv' ||
+          method == 'ble_watchlist' ||
+          method == 'name_match' ||
+          method == 'oui_match' ||
+          method == 'ble_proximity' ||
+          method == 'mfg_id' ||
+          method == 'raven_uuid';
+
+      final wlHit = wlIndex.match(mac, name);
+      final isFlock = FlockOui.match(mac);
+
+      String targetEngine;
+      String targetMethod;
+      String? targetDesc;
+      bool? targetIsFullMac;
+
+      if (wlHit != null) {
+        targetEngine = Engine.detector.name;
+        targetMethod = isBleRow
+            ? (wlHit.byName ? 'name_match' : 'ble_watchlist')
+            : 'wifi_watchlist';
+        targetDesc = wlHit.description.isNotEmpty ? wlHit.description : null;
+        targetIsFullMac = wlHit.isFullMac;
+      } else if (isFlock) {
+        targetEngine =
+            isBleRow ? Engine.flockBle.name : Engine.flockWifi.name;
+        targetMethod = isBleRow ? 'ble_adv' : 'wifi_ap';
+        targetDesc = null;
+        targetIsFullMac = null;
+      } else {
+        targetEngine = Engine.wardrive.name;
+        targetMethod = isBleRow ? 'ble_adv' : 'wifi_ap';
+        targetDesc = null;
+        targetIsFullMac = null;
+      }
+
+      final changed = r.engine != targetEngine ||
+          r.detectionMethod != targetMethod ||
+          r.filterDescription != targetDesc ||
+          r.isFullMac != targetIsFullMac;
+      if (changed) {
+        await (db.update(db.detections)..where((d) => d.id.equals(r.id))).write(
+          DetectionsCompanion(
+            engine: drift.Value(targetEngine),
+            detectionMethod: drift.Value(targetMethod),
+            filterDescription: drift.Value(targetDesc),
+            isFullMac: drift.Value(targetIsFullMac),
+          ),
+        );
+        rowsUpdated++;
+        if (targetEngine == Engine.detector.name) newDetector.add(mac);
+        if (targetEngine == Engine.flockBle.name ||
+            targetEngine == Engine.flockWifi.name) {
+          newFlock.add(mac);
+        }
+      }
+
+      if (rowsScanned % reportEvery == 0 || rowsScanned == total) {
+        onProgress?.call(
+            rowsScanned, total, newDetector.length, newFlock.length);
+      }
+    }
+
+    return WigleRescanResult(
+      sessionsScanned: 1,
+      rowsScanned: rowsScanned,
+      rowsUpdated: rowsUpdated,
+      newDetectorMacs: newDetector.length,
+      newFlockMacs: newFlock.length,
+    );
+  }
 }
 
 class WigleImportResult {

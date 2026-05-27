@@ -302,7 +302,7 @@ class _StateCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'uptime ${uptimeS}s  •  device sent ${_humanBytes(stats.bytesWritten)}  •  app got ${_humanBytes(localBytes)}  •  dropped ${stats.droppedFrames}',
+            'uptime ${uptimeS}s  •  Sent ${_humanBytes(stats.bytesWritten)}  •  Received ${_humanBytes(localBytes)}  •  dropped ${stats.droppedFrames}',
             style: TextStyle(color: t.textDim, fontSize: 12, fontFamily: 'monospace'),
           ),
         ],

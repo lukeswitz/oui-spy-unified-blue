@@ -26,6 +26,8 @@ class PcapStats {
     this.autoDurationSec = 10,
     this.pausedMask = 0,
     this.autoRemainingMs = 0,
+    this.autoTriggerSrc = 0xFF,
+    this.autoTriggerMac = const [0, 0, 0, 0, 0, 0],
   });
 
   /// 0=idle, 1=capturing, 2=full, 3=error
@@ -53,7 +55,34 @@ class PcapStats {
   final int pausedMask;
   final int autoRemainingMs;
 
+  /// EngineId of trigger source for an auto-PCAP capture. 0xFF when manual/idle.
+  final int autoTriggerSrc;
+
+  /// MAC (6 bytes) that triggered auto-PCAP. All-zero when manual/idle.
+  final List<int> autoTriggerMac;
+
   PcapMode get modeEnum => mode == 1 ? PcapMode.ble : PcapMode.wifi;
+
+  bool get isAutoTriggered =>
+      autoTriggerSrc != 0xFF && autoTriggerMac.any((b) => b != 0);
+
+  String get autoTriggerMacStr => autoTriggerMac
+      .map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+      .join(':');
+
+  String get autoTriggerEngineName {
+    switch (autoTriggerSrc) {
+      case 0: return 'detector';
+      case 1:
+      case 2: return 'flock';
+      case 3: return 'foxhunter';
+      case 4: return 'skyspy';
+      case 5: return 'unipwn';
+      case 6: return 'wardrive';
+      case 7: return 'pcap';
+      default: return 'manual';
+    }
+  }
 
   static const empty = PcapStats(
     state: 0,
@@ -101,6 +130,10 @@ class PcapStats {
       autoDurationSec: raw.length >= 63 ? bd.getUint16(61, Endian.little) : 10,
       pausedMask: raw.length >= 64 ? bd.getUint8(63) : 0,
       autoRemainingMs: raw.length >= 68 ? bd.getUint32(64, Endian.little) : 0,
+      autoTriggerSrc: raw.length >= 69 ? bd.getUint8(68) : 0xFF,
+      autoTriggerMac: raw.length >= 75
+          ? List<int>.unmodifiable(raw.sublist(69, 75))
+          : const [0, 0, 0, 0, 0, 0],
     );
   }
 

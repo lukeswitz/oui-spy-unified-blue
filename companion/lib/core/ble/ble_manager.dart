@@ -135,12 +135,21 @@ class BleManager {
     return bd.buffer.asUint8List();
   }
 
-  Future<void> _openPcapFile(int mode) async {
+  Future<void> _openPcapFile(int mode, {PcapStats? stats}) async {
     await _closePcapFile(silent: true);
     final dir = await _pcapDir();
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
     final suffix = mode == 1 ? 'ble' : 'wifi';
-    _pcapFile = File('${dir.path}/oui_spy_${suffix}_$ts.pcap');
+    String name;
+    if (stats != null && stats.isAutoTriggered) {
+      final macFlat = stats.autoTriggerMac
+          .map((b) => b.toRadixString(16).padLeft(2, '0'))
+          .join();
+      name = 'ouispy_${ts}_${macFlat}_${stats.autoTriggerEngineName}.pcap';
+    } else {
+      name = 'oui_spy_${suffix}_$ts.pcap';
+    }
+    _pcapFile = File('${dir.path}/$name');
     _pcapSink = _pcapFile!.openWrite(mode: FileMode.writeOnly);
     final lt = mode == 1 ? _kPcapLtBle : _kPcapLtWifi;
     _pcapSink!.add(_buildPcapHeader(lt));
@@ -176,7 +185,7 @@ class BleManager {
   void _handlePcapStatsTransition(PcapStats stats) {
     final active = stats.state == 1;
     if (active && !_pcapPrevActive) {
-      _openPcapFile(stats.mode);
+      _openPcapFile(stats.mode, stats: stats);
     } else if (!active && _pcapPrevActive) {
       _closePcapFile();
     }
