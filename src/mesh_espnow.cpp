@@ -48,6 +48,53 @@ static MeshConfig         pendingInviteCfg = {};
 static SemaphoreHandle_t  inviteMutex = NULL;
 static SemaphoreHandle_t  txMutex = NULL;
 
+#define MESH_RENDEZVOUS_CH      1
+#define MESH_TX_QUEUE_DEPTH     32
+#define MESH_TX_MAX_LEN         224
+#define MESH_TX_DRAIN_PERIOD_MS 80
+#define MESH_TX_DRAIN_BURST     16
+
+#define MESH_TX_DEDUP_SLOTS     128
+#define MESH_TX_DEDUP_MS        60000
+
+struct TxDedupSlot {
+    uint32_t hash;
+    uint32_t ts;
+};
+static TxDedupSlot txDedup[MESH_TX_DEDUP_SLOTS] = {};
+
+static inline uint32_t fnv1a(const uint8_t* p, size_t n) {
+    uint32_t h = 0x811c9dc5u;
+    for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 0x01000193u; }
+    return h;
+}
+
+static bool txDedupCheck(uint8_t engine_id, const uint8_t mac[6], uint8_t channel) {
+    uint8_t buf[8] = { engine_id, channel, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5] };
+    uint32_t h = fnv1a(buf, sizeof(buf));
+    uint32_t now = millis();
+    uint32_t oldest = 0xFFFFFFFFu;
+    int oldestIdx = 0;
+    for (int i = 0; i < MESH_TX_DEDUP_SLOTS; i++) {
+        if (txDedup[i].hash == h && (now - txDedup[i].ts) < MESH_TX_DEDUP_MS) {
+            return true;
+        }
+        if (txDedup[i].ts < oldest) { oldest = txDedup[i].ts; oldestIdx = i; }
+    }
+    txDedup[oldestIdx].hash = h;
+    txDedup[oldestIdx].ts = now;
+    return false;
+}
+
+struct MeshTxItem {
+    uint16_t len;
+    uint8_t  data[MESH_TX_MAX_LEN];
+};
+static QueueHandle_t meshTxQueue = NULL;
+static TaskHandle_t  meshTxTaskHandle = NULL;
+static void meshTxTaskFn(void* arg);
+static bool enqueueTx(const uint8_t* data, size_t len);
+
 static void deriveNonce(uint8_t nonce[MESH_NONCE_LEN], uint64_t counter) {
     memcpy(nonce, localNodeId, 4);
     memcpy(nonce + 4, &counter, 8);
@@ -128,7 +175,11 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         MeshInvitePacket inv;
         memcpy(&inv, data, sizeof(inv));
         if (memcmp(inv.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
-        Serial.printf("[MESH-INVITE-RX] from=%.5s enc=%u ch=%u\n",
+        bool sameCfg =
+            (inv.encryption_enabled == meshCurrentConfig.encryption_enabled) &&
+            (memcmp(inv.key, (const void*)meshCurrentConfig.key, MESH_KEY_LEN) == 0);
+        if (sameCfg) return;
+        Serial.printf("[MESH-INVITE-RX] from=%.5s enc=%u ch=%u (new cfg)\n",
             inv.source_node_id, inv.encryption_enabled, inv.channel);
         if (inviteMutex && xSemaphoreTake(inviteMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
             MeshConfig newCfg = {};
@@ -275,7 +326,12 @@ void meshInit(void) {
     esp_read_mac(mac, ESP_MAC_BT);
     snprintf(localNodeId, MESH_NODE_ID_LEN, "%02X%02X", mac[4], mac[5]);
 
+    meshTxQueue = xQueueCreate(MESH_TX_QUEUE_DEPTH, sizeof(MeshTxItem));
+    if (!meshTxQueue) {
+        Serial.println("[MESH] tx queue create FAIL");
+    }
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
+    xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
 
     Serial.printf("[MESH] Initialized, localNodeId=%s\n", localNodeId);
 }
@@ -412,6 +468,7 @@ void meshDisable(void) {
 void meshBroadcastDetection(const DetectionEvent* evt) {
     if (!meshCurrentConfig.enabled) return;
     if (evt->source_node_id[0] != '\0') return;
+    if (txDedupCheck(evt->engine_id, evt->mac, evt->channel)) return;
 
     MeshDetectionPacket pkt = {};
     memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
@@ -466,10 +523,68 @@ void meshBroadcastDetection(const DetectionEvent* evt) {
     }
 }
 
+static bool enqueueTx(const uint8_t* data, size_t len) {
+    if (!meshTxQueue || len == 0 || len > MESH_TX_MAX_LEN) return false;
+    MeshTxItem item;
+    item.len = (uint16_t)len;
+    memcpy(item.data, data, len);
+    BaseType_t ok = xQueueSend(meshTxQueue, &item, 0);
+    if (ok != pdTRUE) {
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+            MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+            s.rx_errors++;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+            xSemaphoreGive(meshMutex);
+        }
+        return false;
+    }
+    return true;
+}
+
 static void sendOnRendezvous(const uint8_t* data, size_t len) {
-    if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
-    esp_now_send(kBroadcastDst, data, len);
-    if (txMutex) xSemaphoreGive(txMutex);
+    enqueueTx(data, len);
+}
+
+static void meshTxTaskFn(void* arg) {
+    (void)arg;
+    MeshTxItem item;
+    for (;;) {
+        if (xQueuePeek(meshTxQueue, &item, portMAX_DELAY) != pdTRUE) continue;
+        if (!meshCurrentConfig.enabled) {
+            xQueueReceive(meshTxQueue, &item, 0);
+            continue;
+        }
+
+        uint8_t cur_ch = 0; wifi_second_chan_t sec;
+        esp_wifi_get_channel(&cur_ch, &sec);
+        if (cur_ch != MESH_RENDEZVOUS_CH) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        if (!txMutex || xSemaphoreTake(txMutex, pdMS_TO_TICKS(20)) != pdTRUE) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
+
+        esp_wifi_get_channel(&cur_ch, &sec);
+        if (cur_ch != MESH_RENDEZVOUS_CH) {
+            xSemaphoreGive(txMutex);
+            vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
+
+        for (int i = 0; i < MESH_TX_DRAIN_BURST; i++) {
+            if (xQueueReceive(meshTxQueue, &item, 0) != pdTRUE) break;
+            esp_now_send(kBroadcastDst, item.data, item.len);
+            vTaskDelay(pdMS_TO_TICKS(2));
+            esp_wifi_get_channel(&cur_ch, &sec);
+            if (cur_ch != MESH_RENDEZVOUS_CH) break;
+        }
+
+        xSemaphoreGive(txMutex);
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
 }
 
 static void sendOneSweep(const uint8_t* data, size_t len) {

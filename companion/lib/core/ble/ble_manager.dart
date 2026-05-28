@@ -78,6 +78,8 @@ class BleManager {
   int _mtu = 23;
   String _sessionId = '';
   String _nodeId = '';
+  String _board = '';
+  String _role = '';
   String? _lastDeviceId;
   String? _primaryDeviceId;
   bool _userInitiatedDisconnect = false;
@@ -277,6 +279,8 @@ class BleManager {
 
   NodeConnectionState get currentConnectionState => _currentState;
   String get nodeId => _nodeId;
+  String get board => _board;
+  String get role => _role;
   String? get connectedDeviceId => _primaryDeviceId;
   bool get isManagerConnected =>
       (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR');
@@ -471,8 +475,11 @@ class BleManager {
       (c) => c.uuid == GattUuids.deviceInfo,
     );
     final infoData = await _deviceInfoChar!.read();
-    _nodeId = _extractNodeId(infoData);
-    DebugLog.log('BLE: nodeId=$_nodeId');
+    final parts = _parseDeviceInfo(infoData);
+    _nodeId = parts.length > 1 ? parts[1] : '';
+    _board = parts.length > 2 ? parts[2] : '';
+    _role = parts.length > 3 ? parts[3] : '';
+    DebugLog.log('BLE: nodeId=$_nodeId board=$_board role=$_role');
 
     // Subscribe to detection notifications
     if (_detectionEvents != null) {
@@ -1075,16 +1082,19 @@ class BleManager {
     });
   }
 
-  String _extractNodeId(List<int> data) {
-    // Format: version\0nodeId\0 — skip first string (firmware version)
-    final firstNull = data.indexOf(0);
-    if (firstNull < 0 || firstNull + 1 >= data.length) {
-      return String.fromCharCodes(data.take(16).toList());
+  List<String> _parseDeviceInfo(List<int> data) {
+    final out = <String>[];
+    int start = 0;
+    for (int i = 0; i < data.length; i++) {
+      if (data[i] == 0) {
+        out.add(String.fromCharCodes(data.sublist(start, i)));
+        start = i + 1;
+      }
     }
-    final rest = data.sublist(firstNull + 1);
-    final secondNull = rest.indexOf(0);
-    final nodeSlice = secondNull >= 0 ? rest.sublist(0, secondNull) : rest;
-    return String.fromCharCodes(nodeSlice);
+    if (start < data.length) {
+      out.add(String.fromCharCodes(data.sublist(start)));
+    }
+    return out;
   }
 }
 

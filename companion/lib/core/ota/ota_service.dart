@@ -110,7 +110,22 @@ class OtaService {
     return 0;
   }
 
-  Future<OtaRelease?> fetchLatestRelease() async {
+  /// Pick best asset matching board+role, falling back to generic.
+  /// Asset naming convention:
+  ///   oui-spy-{role}-{board}-v{ver}.bin   (e.g. oui-spy-mgr-wroom-v0.4.0.bin)
+  ///   oui-spy-{board}-v{ver}.bin          (board-only, role-agnostic)
+  ///   oui-spy-v{ver}.bin                  (legacy single-asset)
+  static int _scoreAsset(String name, String board, String role) {
+    final n = name.toLowerCase();
+    if (!n.endsWith('.bin')) return -1;
+    if (!n.contains('oui-spy')) return -1;
+    int score = 1;
+    if (board.isNotEmpty && n.contains(board.toLowerCase())) score += 10;
+    if (role.isNotEmpty && n.contains('-$role-')) score += 5;
+    return score;
+  }
+
+  Future<OtaRelease?> fetchLatestRelease({String board = '', String role = ''}) async {
     final url = 'https://api.github.com/repos/$githubOwner/$githubRepo/releases/latest';
     final resp = await _dio.get<Map<String, dynamic>>(
       url,
@@ -150,16 +165,15 @@ class OtaService {
     final assets = (data['assets'] as List?) ?? const [];
     String? assetName;
     String? assetUrl;
-    // Match only the app firmware bin (e.g. "oui-spy-v0.3.9.bin").
-    // Reject partitions.bin / bootloader.bin / boot_app0.bin — not app images.
-    final firmwarePattern = RegExp(r'oui-spy.*\.bin$', caseSensitive: false);
+    int bestScore = 0;
     for (final a in assets) {
       final m = a as Map<String, dynamic>;
       final name = m['name']?.toString() ?? '';
-      if (firmwarePattern.hasMatch(name)) {
+      final score = _scoreAsset(name, board, role);
+      if (score > bestScore) {
+        bestScore = score;
         assetName = name;
         assetUrl = m['browser_download_url']?.toString();
-        break;
       }
     }
     if (assetName == null || assetUrl == null) {
@@ -183,14 +197,14 @@ class OtaService {
 
   /// Compares latest GitHub release version to current firmware.
   /// Returns null if up to date, the release if newer is available.
-  Future<OtaRelease?> checkForUpdate(String currentVersion) async {
+  Future<OtaRelease?> checkForUpdate(String currentVersion, {String board = '', String role = ''}) async {
     _progress.add(const OtaProgress(
       phase: OtaPhase.checking,
       message: 'Fetching latest release...',
     ));
     final OtaRelease? latest;
     try {
-      latest = await fetchLatestRelease();
+      latest = await fetchLatestRelease(board: board, role: role);
     } on DioException catch (e) {
       DebugLog.log('OTA: GitHub fetch failed: ${e.type} ${e.message}');
       final msg = e.type == DioExceptionType.connectionTimeout

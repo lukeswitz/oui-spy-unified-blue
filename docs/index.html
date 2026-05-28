@@ -433,10 +433,23 @@
       </div>
 
       <div id="mainContent">
+        <select id="targetSelect" onchange="setTarget(this.value)"
+                style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface-light);color:var(--text-primary);border:1px solid var(--border);font-family:inherit;font-size:13px;">
+          <option value="node-xiao_s3">XIAO ESP32-S3 (node)</option>
+          <option value="mgr-wroom">ESP32 WROOM (manager)</option>
+          <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager)</option>
+        </select>
         <button class="flash-btn" id="flashBtn" onclick="startFlash()">
           CONNECT &amp; FLASH
         </button>
       </div>
+      <script>
+        (function(){
+          const t = localStorage.getItem('ouispy_target') || 'node-xiao_s3';
+          const s = document.getElementById('targetSelect');
+          if (s) s.value = t;
+        })();
+      </script>
 
       <div class="progress-container" id="progressContainer">
         <div class="progress-bar">
@@ -484,6 +497,25 @@
   <script type="module">
     import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.5.4/bundle.js';
 
+    const TARGETS = {
+      'node-xiao_s3': {
+        label: 'XIAO ESP32-S3 (node)',
+        path: 'node-xiao_s3/',
+        flashSize: '8MB', flashMode: 'qio', flashFreq: '80m',
+      },
+      'mgr-wroom': {
+        label: 'ESP32 WROOM (manager)',
+        path: 'mgr-wroom/',
+        flashSize: '4MB', flashMode: 'dio', flashFreq: '40m',
+      },
+      'mgr-xiao_c3': {
+        label: 'XIAO ESP32-C3 (manager)',
+        path: 'mgr-xiao_c3/',
+        flashSize: '4MB', flashMode: 'dio', flashFreq: '80m',
+      },
+    };
+    let currentTarget = localStorage.getItem('ouispy_target') || 'node-xiao_s3';
+
     const FLASH_CONFIG = [
       { name: 'bootloader.bin',  offset: 0x0000  },
       { name: 'partitions.bin',  offset: 0x8000  },
@@ -491,7 +523,49 @@
       { name: 'firmware.bin',    offset: 0x10000 },
     ];
 
-    const FIRMWARE_BASE = 'https://raw.githubusercontent.com/lukeswitz/oui-spy-unified-blue/companion/docs/firmware/';
+    const FIRMWARE_BASE_ROOT = 'https://raw.githubusercontent.com/lukeswitz/oui-spy-unified-blue/companion/docs/firmware/';
+    function firmwareBase() {
+      return FIRMWARE_BASE_ROOT + TARGETS[currentTarget].path;
+    }
+
+    // Optional: pull from latest GitHub release if local docs/firmware/<target>/ missing.
+    // Uses asset name convention: oui-spy-{role}-{board}-vX.Y.Z.bin + companion *-usb.tar.gz bundle.
+    // Falls back to docs/firmware on 404 (legacy) — keeps offline-friendly path working.
+    const GH_RELEASE_API = 'https://api.github.com/repos/lukeswitz/oui-spy-unified-blue/releases/latest';
+    let _releaseAssetsCache = null;
+    async function ghReleaseAssets() {
+      if (_releaseAssetsCache) return _releaseAssetsCache;
+      try {
+        const r = await fetch(GH_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } });
+        if (!r.ok) return null;
+        const j = await r.json();
+        _releaseAssetsCache = j.assets || [];
+        return _releaseAssetsCache;
+      } catch { return null; }
+    }
+    async function fetchFirmwareFromRelease(name) {
+      const assets = await ghReleaseAssets();
+      if (!assets) return null;
+      const dash = currentTarget.indexOf('-');
+      const role = currentTarget.slice(0, dash);
+      const board = currentTarget.slice(dash + 1);
+      const stemPrefix = `oui-spy-${role}-${board}-`.toLowerCase();
+      const isApp = name === 'firmware.bin';
+      const suffix = isApp ? '' : '-' + name.replace(/\.bin$/, '');
+      const match = assets.find(a => {
+        const n = a.name.toLowerCase();
+        if (!n.startsWith(stemPrefix) || !n.endsWith(suffix + '.bin')) return false;
+        if (isApp) {
+          const mid = n.slice(stemPrefix.length, -4);
+          return !mid.includes('-bootloader') && !mid.includes('-partitions') && !mid.includes('-boot_app0');
+        }
+        return true;
+      });
+      if (!match) return null;
+      const r = await fetch(match.browser_download_url);
+      if (!r.ok) return null;
+      return new Uint8Array(await r.arrayBuffer());
+    }
 
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
@@ -521,11 +595,20 @@
     }
 
     async function fetchFirmware(name) {
-      const resp = await fetch(`${FIRMWARE_BASE}${name}`);
-      if (!resp.ok) throw new Error(`Failed to fetch ${name}: ${resp.status}`);
-      const blob = await resp.arrayBuffer();
-      return new Uint8Array(blob);
+      const resp = await fetch(`${firmwareBase()}${name}`);
+      if (resp.ok) return new Uint8Array(await resp.arrayBuffer());
+      const fromRel = await fetchFirmwareFromRelease(name);
+      if (fromRel) return fromRel;
+      throw new Error(`Failed to fetch ${name}: ${resp.status}`);
     }
+
+    window.setTarget = function(key) {
+      if (!TARGETS[key]) return;
+      currentTarget = key;
+      localStorage.setItem('ouispy_target', key);
+      const sel = document.getElementById('targetSelect');
+      if (sel) sel.value = key;
+    };
 
     window.startFlash = async function() {
       if (!('serial' in navigator)) return;
@@ -575,11 +658,12 @@
         log('Erasing and writing flash...');
         setProgress(25, 'WRITING FLASH...');
 
+        const tgt = TARGETS[currentTarget];
         await esploader.writeFlash({
           fileArray: flashFiles,
-          flashSize: '8MB',
-          flashMode: 'qio',
-          flashFreq: '80m',
+          flashSize: tgt.flashSize,
+          flashMode: tgt.flashMode,
+          flashFreq: tgt.flashFreq,
           eraseAll: false,
           compress: true,
           reportProgress: (fileIndex, written, total) => {

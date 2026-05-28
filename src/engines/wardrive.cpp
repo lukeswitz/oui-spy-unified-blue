@@ -1,6 +1,8 @@
 #include "wardrive.h"
 #include "../protocol.h"
 #include "../mesh_espnow.h"
+
+#define MESH_RENDEZVOUS_CH 1
 #include "flock_match.h"
 #include "flock_auth_cache.h"
 #include "dedup_ring.h"
@@ -28,36 +30,59 @@ static unsigned long lastChannelHop = 0;
 static uint16_t priorityDwellMs = 250;
 static uint16_t normalDwellMs   = 150;
 
-static uint8_t hopSchedule[32];
-static uint8_t hopScheduleLen = 1;
-static uint8_t hopIdx = 0;
-static uint8_t currentChannel = 1;
+static uint8_t  hopSchedule[32];
+static uint16_t hopDwellMs[32];
+static uint8_t  hopScheduleLen = 1;
+static uint8_t  hopIdx = 0;
+static uint8_t  currentChannel = 1;
+
+#define MESH_RENDEZVOUS_DWELL_MS 40
 
 static bool isPriorityChannel(uint8_t ch) {
     return ch == 1 || ch == 6 || ch == 11;
 }
 
+static uint16_t scanDwellForChannel(uint8_t ch) {
+    return isPriorityChannel(ch) ? priorityDwellMs : normalDwellMs;
+}
+
 static void buildHopSchedule(void) {
     hopScheduleLen = 0;
+    bool meshOn = meshIsEnabled();
+    bool meshChInRange = meshOn &&
+        MESH_RENDEZVOUS_CH >= channelStart && MESH_RENDEZVOUS_CH <= channelEnd;
+
     for (uint16_t c = channelStart; c <= channelEnd && hopScheduleLen < 32; c++) {
-        hopSchedule[hopScheduleLen++] = (uint8_t)c;
+        hopSchedule[hopScheduleLen] = (uint8_t)c;
+        hopDwellMs[hopScheduleLen] = scanDwellForChannel((uint8_t)c);
+        hopScheduleLen++;
+        if (meshChInRange && (uint8_t)c != MESH_RENDEZVOUS_CH && hopScheduleLen < 32) {
+            hopSchedule[hopScheduleLen] = MESH_RENDEZVOUS_CH;
+            hopDwellMs[hopScheduleLen] = MESH_RENDEZVOUS_DWELL_MS;
+            hopScheduleLen++;
+        }
     }
-    const uint8_t kPri[3] = {1, 6, 11};
-    for (uint8_t i = 0; i < 3 && hopScheduleLen < 32; i++) {
-        if (kPri[i] >= channelStart && kPri[i] <= channelEnd) {
-            hopSchedule[hopScheduleLen++] = kPri[i];
+    if (!meshOn) {
+        const uint8_t kPri[3] = {1, 6, 11};
+        for (uint8_t i = 0; i < 3 && hopScheduleLen < 32; i++) {
+            if (kPri[i] >= channelStart && kPri[i] <= channelEnd) {
+                hopSchedule[hopScheduleLen] = kPri[i];
+                hopDwellMs[hopScheduleLen] = scanDwellForChannel(kPri[i]);
+                hopScheduleLen++;
+            }
         }
     }
     if (hopScheduleLen == 0) {
         hopSchedule[0] = channelStart;
+        hopDwellMs[0] = scanDwellForChannel(channelStart);
         hopScheduleLen = 1;
     }
     hopIdx = 0;
     currentChannel = hopSchedule[0];
 }
 
-static uint16_t dwellForChannel(uint8_t ch) {
-    return isPriorityChannel(ch) ? priorityDwellMs : normalDwellMs;
+static uint16_t currentSlotDwellMs(void) {
+    return hopDwellMs[hopIdx];
 }
 
 static uint16_t bleScanDurationMs  = 800;
@@ -548,7 +573,7 @@ static void wardriveLoop(void) {
     wdDetectorActive   = (engineGetState(ENGINE_DETECTOR)   != ESTATE_DISABLED) ? 1 : 0;
 
     if (wardriveRadio & 0x01) {
-        uint16_t dwell = dwellForChannel(currentChannel);
+        uint16_t dwell = currentSlotDwellMs();
         if (now - lastChannelHop >= dwell) {
             hopIdx++;
             if (hopIdx >= hopScheduleLen) hopIdx = 0;

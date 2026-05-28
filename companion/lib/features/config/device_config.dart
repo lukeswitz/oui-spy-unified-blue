@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:file_selector/file_selector.dart';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -305,13 +307,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         const ConfigInfoRow(
           icon: Icons.info_outline,
           label: 'Version',
-          value: '1.0.0',
+          value: '0.4.0',
         ),
         ConfigActionRow(
           icon: Icons.code,
           label: 'Source Code',
-          subtitle: 'github.com/colonelpanic/oui-spy',
-          onTap: () => _launchUrl('https://github.com/colonelpanic/oui-spy'),
+          subtitle: 'github.com/lukeswitz/oui-spy',
+          onTap: () => _launchUrl('https://github.com/lukeswitz/oui-spy-unified-blue'),
           trailing: Icon(Icons.open_in_new, size: 14, color: t.textDim),
         ),
       ],
@@ -728,8 +730,21 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ConfigInfoRow(
           icon: Icons.group,
           label: 'Peer slots',
-          value:
-              '${appState.meshPeerCount} / $maxPeers',
+          value: modePlain
+              ? 'broadcast (no table)'
+              : modeOff
+                  ? '—'
+                  : '${appState.meshPeerCount} / $maxPeers',
+        ),
+        ConfigInfoRow(
+          icon: Icons.sensors,
+          label: 'Nodes heard',
+          value: () {
+            final others = appState.meshSourceNodes
+                .where((n) => n.isNotEmpty && n != appState.nodeId)
+                .length;
+            return others.toString();
+          }(),
         ),
         if (modeEnc) ...[
           const SizedBox(height: 16),
@@ -3656,7 +3671,12 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     });
     try {
       final ota = ref.read(otaServiceProvider);
-      final r = await ota.checkForUpdate(widget.currentVersion);
+      final ble = ref.read(bleManagerProvider);
+      final r = await ota.checkForUpdate(
+        widget.currentVersion,
+        board: ble.board,
+        role: ble.role,
+      );
       if (!mounted) return;
       setState(() {
         _availableRelease = r;
@@ -3682,6 +3702,49 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     if (release == null) return;
     final ota = ref.read(otaServiceProvider);
     await ota.performWifiUpdate(release);
+  }
+
+  Future<void> _flashLocalBin() async {
+    const typeGroup = XTypeGroup(label: 'firmware', extensions: ['bin']);
+    final file = await openFile(acceptedTypeGroups: const [typeGroup]);
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    final ble = ref.read(bleManagerProvider);
+    final name = file.name;
+    final board = ble.board;
+    final role = ble.role;
+    bool mismatch = false;
+    String warn = '';
+    if (board.isNotEmpty && !name.toLowerCase().contains(board.toLowerCase())) {
+      mismatch = true;
+      warn = 'File does not include board "$board" in name. Wrong target = bricked device.';
+    }
+    if (role.isNotEmpty && !name.toLowerCase().contains('-$role-')) {
+      mismatch = true;
+      warn = warn.isEmpty
+          ? 'File does not include role "$role" in name.'
+          : '$warn Also role "$role" missing.';
+    }
+    if (mismatch) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Board mismatch'),
+          content: Text('$warn\n\nProceed anyway?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('FLASH ANYWAY', style: TextStyle(color: AppTheme.error)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    final ota = ref.read(otaServiceProvider);
+    await ota.pushLocalImage(bytes);
   }
 
   String _wifiStatusLabel(int status) {
@@ -3805,6 +3868,23 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
               ),
             ),
         ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: OutlinedButton.icon(
+            onPressed: busy ? null : _flashLocalBin,
+            icon: const Icon(Icons.upload_file, size: 16),
+            label: Builder(builder: (ctx) {
+              final ble = ref.read(bleManagerProvider);
+              final tag = [
+                if (ble.role.isNotEmpty) ble.role,
+                if (ble.board.isNotEmpty) ble.board,
+              ].join('-');
+              return Text(tag.isEmpty
+                  ? 'Flash local .bin (DFU)'
+                  : 'Flash local .bin ($tag)');
+            }),
+          ),
+        ),
         if (_wifiStatus != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
