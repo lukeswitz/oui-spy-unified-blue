@@ -1,5 +1,6 @@
 #include "wardrive.h"
 #include "../protocol.h"
+#include "../mesh_espnow.h"
 #include "flock_match.h"
 #include "flock_auth_cache.h"
 #include "dedup_ring.h"
@@ -463,8 +464,10 @@ static void wardriveStart(void) {
     lastChannelHop = millis();
 
     if (wardriveRadio & 0x01) {
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect(false, true);
+        if (!meshIsEnabled()) {
+            WiFi.mode(WIFI_STA);
+            WiFi.disconnect(false, true);
+        }
         vTaskDelay(pdMS_TO_TICKS(50));
 
         wifi_country_t country = {
@@ -524,7 +527,12 @@ static void wardriveStop(void) {
     esp_wifi_set_promiscuous_rx_cb(NULL);
     esp_wifi_set_promiscuous(false);
     vTaskDelay(pdMS_TO_TICKS(100));
-    WiFi.disconnect(true, true);
+    if (meshIsEnabled()) {
+        WiFi.disconnect(false, false);
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    } else {
+        WiFi.disconnect(true, true);
+    }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_DISABLED);
     Serial.println("[WARDRIVE] Stopped");

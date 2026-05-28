@@ -92,7 +92,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       setState(() {
         for (final r in results) {
           final name = r.device.platformName.toUpperCase();
-          if (name.contains('OUI') || name.contains('SPY')) {
+          final advName = r.advertisementData.advName.toUpperCase();
+          if (name.contains('OUI') || name.contains('SPY') ||
+              advName.contains('OUI') || advName.contains('SPY')) {
             _results[r.device.remoteId.toString()] = r;
           }
         }
@@ -166,17 +168,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final all = _results.values.toList();
-    final hasManager = all.any((r) =>
-        r.device.platformName.toUpperCase().contains('OUI-SPY-MGR'));
-    final filtered = hasManager
-        ? all
-            .where((r) => r.device.platformName.toUpperCase().contains('OUI-SPY-MGR'))
-            .toList()
-        : all;
+    String displayName(ScanResult r) {
+      final n = r.device.platformName;
+      if (n.isNotEmpty) return n.toUpperCase();
+      return r.advertisementData.advName.toUpperCase();
+    }
+    bool isMgr(ScanResult r) {
+      final n = displayName(r);
+      return n.contains('-MGR') || n.contains('OUI-SPY-MGR');
+    }
+    final hasManager = all.any(isMgr);
+    final filtered = hasManager ? all.where(isMgr).toList() : all;
     final sorted = filtered
-      ..sort((a, b) => a.device.platformName
-          .toUpperCase()
-          .compareTo(b.device.platformName.toUpperCase()));
+      ..sort((a, b) => displayName(a).compareTo(displayName(b)));
 
     return Scaffold(
       backgroundColor: t.background,
@@ -260,7 +264,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                 Expanded(child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(r.device.platformName,
+                                    Text(
+                                      r.device.platformName.isNotEmpty
+                                          ? r.device.platformName
+                                          : (r.advertisementData.advName.isNotEmpty
+                                              ? r.advertisementData.advName
+                                              : '(unnamed)'),
                                         style: const TextStyle(color: AppTheme.accent, fontSize: 14, fontWeight: FontWeight.w600)),
                                     Text(
                                       isThisConnecting

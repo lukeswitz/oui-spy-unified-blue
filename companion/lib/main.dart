@@ -39,15 +39,29 @@ void main() async {
 
   container.read(appStateProvider);
 
-  // _autoConnect disabled — multi-device deployments (OUI-SPY + OUI-SPY-MGR)
-  // need explicit user selection; remembered-device auto reconnect bypassed
-  // the chooser and picked whichever was system-cached.
-  // _autoConnect(container);
+  _forceCleanBleState();
 
   runApp(UncontrolledProviderScope(
     container: container,
     child: const OuiSpyApp(),
   ));
+}
+
+Future<void> _forceCleanBleState() async {
+  try {
+    await Future.delayed(const Duration(milliseconds: 500));
+    final connected = FlutterBluePlus.connectedDevices;
+    for (final d in connected) {
+      try {
+        await d.disconnect(queue: false);
+        DebugLog.log('BLE: force-disconnect on launch ${d.platformName}');
+      } on Exception catch (e) {
+        DebugLog.log('BLE: force-disconnect error $e');
+      }
+    }
+  } on Exception catch (e) {
+    DebugLog.log('BLE: force-clean failed $e');
+  }
 }
 
 Future<void> _autoConnect(ProviderContainer container) async {

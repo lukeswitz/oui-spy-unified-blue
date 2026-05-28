@@ -1,5 +1,6 @@
 #include "flock_wifi.h"
 #include "protocol.h"
+#include "../mesh_espnow.h"
 #include "flock_oui.h"
 #include "flock_auth_cache.h"
 #include "dedup_ring.h"
@@ -157,7 +158,9 @@ static void flockWifiStart(void) {
         Serial.println("[FLOCK-WIFI] Started (passive — wardrive handles WiFi scan)");
         return;
     }
-    WiFi.mode(WIFI_STA);
+    if (!meshIsEnabled()) {
+        WiFi.mode(WIFI_STA);
+    }
     wifi_promiscuous_filter_t filter = {
         .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                        WIFI_PROMIS_FILTER_MASK_DATA
@@ -179,8 +182,13 @@ static void flockWifiStop(void) {
     }
     esp_wifi_set_promiscuous_rx_cb(NULL);
     esp_wifi_set_promiscuous(false);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    if (meshIsEnabled()) {
+        WiFi.disconnect(false, false);
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    } else {
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+    }
     Serial.println("[FLOCK-WIFI] Stopped");
 }
 

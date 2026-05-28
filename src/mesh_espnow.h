@@ -5,7 +5,9 @@
 
 void meshInit(void);
 void meshEnable(const MeshConfig* cfg);
+void meshEnableEx(const MeshConfig* cfg, bool sendInvite);
 void meshDisable(void);
+void meshSendInvite(void);
 void meshBroadcastDetection(const DetectionEvent* evt);
 void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len);
 bool meshIsEnabled(void);

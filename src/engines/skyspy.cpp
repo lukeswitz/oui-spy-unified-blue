@@ -5,6 +5,7 @@
  */
 #include "skyspy.h"
 #include "protocol.h"
+#include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -217,8 +218,9 @@ static void skyspyInit(void) {
 }
 
 static void skyspyStart(void) {
-    // Start WiFi promiscuous for NAN/Beacon ODID
-    WiFi.mode(WIFI_STA);
+    if (!meshIsEnabled()) {
+        WiFi.mode(WIFI_STA);
+    }
     // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
     // bury the callback in irrelevant traffic and miss drone beacons.
     wifi_promiscuous_filter_t filter = {
@@ -237,6 +239,9 @@ static void skyspyStart(void) {
 static void skyspyStop(void) {
     if (bleScan && bleScan->isScanning()) bleScan->stop();
     esp_wifi_set_promiscuous(false);
+    if (meshIsEnabled()) {
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    }
     scanning = false;
     Serial.println("[SKYSPY] Stopped");
 }

@@ -83,8 +83,12 @@ enum WardriveRadio {
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
-      if (connState == NodeConnectionState.ready && isActive) {
-        _reEnableEngines();
+      if (connState == NodeConnectionState.ready) {
+        if (isActive) {
+          _reEnableEngines();
+        } else {
+          _disableStaleEngines();
+        }
       }
     });
     _loadPrefs();
@@ -777,6 +781,25 @@ class WardriveController extends ChangeNotifier {
       await _ble.enableEngine(engine, radio: radioBitmask);
       if (engine.isWifi) {
         await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+  }
+
+  Future<void> _disableStaleEngines() async {
+    const wardriveEngines = [
+      Engine.wardrive,
+      Engine.flockWifi,
+      Engine.flockBle,
+      Engine.skySpy,
+      Engine.detector,
+      Engine.pcap,
+    ];
+    DebugLog.log('WARDRIVE: reconciling firmware — app idle, disabling stale wardrive engines');
+    for (final e in wardriveEngines) {
+      try {
+        await _ble.disableEngine(e);
+      } catch (err) {
+        DebugLog.log('WARDRIVE: stale-disable $e error: $err');
       }
     }
   }

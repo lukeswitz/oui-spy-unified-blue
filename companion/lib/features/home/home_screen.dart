@@ -571,31 +571,33 @@ class _SummaryStrip extends ConsumerWidget {
             label: '/MIN',
             color: state.totalRate > 0 ? AppTheme.warning : t.textDim,
           ),
-          _divider(t),
-          InkWell(
-            onTap: () async {
-              if (state.meshEnabled) {
-                await state.disableMesh();
-              } else {
-                await state.enableMesh(encryption: false, peerMacs: const []);
-              }
-            },
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: _StatItem(
-                value: state.meshEnabled
-                    ? '${state.meshTxCount}/${state.meshRxCount}'
-                    : 'OFF',
-                label: 'MESH TX/RX',
-                color: state.meshEnabled
-                    ? ((state.meshTxCount + state.meshRxCount) > 0
-                        ? AppTheme.success
-                        : AppTheme.warning)
-                    : t.textDim,
+          if (state.isManagerConnected) ...[
+            _divider(t),
+            InkWell(
+              onTap: () async {
+                if (state.meshEnabled) {
+                  await state.disableMesh();
+                } else {
+                  await state.enableMesh(encryption: false, peerMacs: const []);
+                }
+              },
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: _StatItem(
+                  value: state.meshEnabled
+                      ? '${state.meshTxCount}/${state.meshRxCount}'
+                      : 'OFF',
+                  label: 'MESH TX/RX',
+                  color: state.meshEnabled
+                      ? ((state.meshTxCount + state.meshRxCount) > 0
+                          ? AppTheme.success
+                          : AppTheme.warning)
+                      : t.textDim,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

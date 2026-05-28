@@ -122,7 +122,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final wd = ref.watch(wardriveProvider);
     final merged = _mergeFlockFromWardrive(state.recentDetections, wd);
     final filtered = _sorted(_filter(merged));
-    final sourceNodes = state.meshSourceNodes;
+    final sourceNodes = state.isManagerConnected ? state.meshSourceNodes : const <String>{};
 
     return Scaffold(
       backgroundColor: t.background,
@@ -151,7 +151,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     onTap: filtered.isEmpty ? null : () => _exportCsv(context, filtered),
                   ),
                   const SizedBox(width: 10),
-                  if (sourceNodes.isNotEmpty) ...[
+                  if (state.isManagerConnected && sourceNodes.isNotEmpty) ...[
                     const Icon(Icons.hub, size: 14, color: AppTheme.warning),
                     const SizedBox(width: 4),
                   ],
@@ -183,6 +183,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               sourceNodes: sourceNodes,
               selectedNode: _selectedNode,
               onNodeChanged: (node) => setState(() => _selectedNode = node),
+              labelForNode: state.labelForNode,
             ),
             const Divider(height: 1),
             if (_showStats && filtered.length >= 2)

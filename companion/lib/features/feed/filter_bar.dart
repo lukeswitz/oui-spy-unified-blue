@@ -58,6 +58,7 @@ class FilterBar extends StatefulWidget {
     this.sourceNodes = const {},
     this.selectedNode,
     this.onNodeChanged,
+    this.labelForNode,
   });
 
   final Set<Engine> activeFilters;
@@ -72,6 +73,7 @@ class FilterBar extends StatefulWidget {
   final Set<String> sourceNodes;
   final String? selectedNode;
   final ValueChanged<String?>? onNodeChanged;
+  final String Function(String id)? labelForNode;
 
   @override
   State<FilterBar> createState() => _FilterBarState();
@@ -95,7 +97,8 @@ class _FilterBarState extends State<FilterBar> {
   String _nodeLabel() {
     if (widget.selectedNode == null) return 'ALL';
     if (widget.selectedNode!.isEmpty) return 'LOCAL';
-    return widget.selectedNode!;
+    final fn = widget.labelForNode;
+    return fn != null ? fn(widget.selectedNode!) : widget.selectedNode!;
   }
 
   @override
@@ -294,7 +297,7 @@ class _FilterBarState extends State<FilterBar> {
     final entries = <_NodeEntry>[
       const _NodeEntry(null, 'ALL'),
       const _NodeEntry('', 'LOCAL'),
-      ...widget.sourceNodes.map((n) => _NodeEntry(n, n)),
+      ...widget.sourceNodes.map((n) => _NodeEntry(n, widget.labelForNode?.call(n) ?? n)),
     ];
     await showMenu<String?>(
       context: context,

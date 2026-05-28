@@ -845,7 +845,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               ),
 
             // Active: node stats overlay (top-left, below map style btn)
-            if (wd.isActive && ref.watch(appStateProvider).meshEnabled)
+            if (wd.isActive && ref.watch(appStateProvider).isManagerConnected && ref.watch(appStateProvider).meshEnabled)
               Positioned(
                 top: _statsHeight + 48, left: 12,
                 child: _NodeStatsOverlay(ref: ref),

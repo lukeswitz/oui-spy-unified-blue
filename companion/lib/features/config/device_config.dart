@@ -62,7 +62,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 8, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
     _readDeviceConfig();
     final ble = ref.read(bleManagerProvider);
     _connStateSub = ble.connectionState.listen((s) {
@@ -190,6 +190,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 Tab(text: 'HARDWARE'),
                 Tab(text: 'ALERTS'),
                 Tab(text: 'WIFI'),
+                Tab(text: 'MESH'),
                 Tab(text: 'FIRMWARE'),
               ],
             ),
@@ -205,6 +206,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   _buildHardwareTab(),
                   _buildAlertsTab(),
                   _buildWifiTab(),
+                  _buildMeshTab(),
                   _buildFirmwareTab(),
                 ],
               ),
@@ -655,6 +657,191 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         SnackBar(content: Text('Failed: $e'), backgroundColor: AppTheme.error),
       );
     }
+  }
+
+  Widget _buildMeshTab() {
+    final appState = ref.watch(appStateProvider);
+    if (!appState.isConnected) return _buildDisconnectedPlaceholder();
+    final t = AppTheme.of(context);
+    final modeEnc = appState.meshEnabled && appState.meshEncryption;
+    final modePlain = appState.meshEnabled && !appState.meshEncryption;
+    final modeOff = !appState.meshEnabled;
+    final maxPeers = modeEnc ? 6 : (modePlain ? 12 : 0);
+    final keyHex = appState.meshKeyFingerprint;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: [
+        const ConfigSectionHeader(label: 'MODE'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12, left: 2),
+          child: Text(
+            'ESP-NOW peer slot limits per Espressif: 6 encrypted OR 12 unencrypted. Broadcast skips the peer table.',
+            style: TextStyle(color: t.textDim, fontSize: 11),
+          ),
+        ),
+        _MeshModeTile(
+          label: 'OFF',
+          subtitle: 'Mesh disabled — single-node operation',
+          selected: modeOff,
+          onTap: () => appState.disableMesh(),
+        ),
+        _MeshModeTile(
+          label: 'BROADCAST (PLAINTEXT)',
+          subtitle: 'No peer table. Unlimited nodes hear every packet. ch=1',
+          selected: modePlain,
+          onTap: () => appState.enableMesh(
+            encryption: false,
+            peerMacs: const [],
+          ),
+        ),
+        _MeshModeTile(
+          label: 'ENCRYPTED (AES-256-GCM)',
+          subtitle: 'Up to 6 unicast peers. Shared key. Per ESP-NOW limit.',
+          selected: modeEnc,
+          onTap: () async {
+            if (appState.meshKey == null) {
+              await appState.generateMeshKey();
+            }
+            await appState.enableMesh(
+              encryption: true,
+              peerMacs: const [],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'STATUS'),
+        ConfigInfoRow(
+          icon: Icons.hub,
+          label: 'State',
+          value: modeEnc
+              ? 'ENCRYPTED'
+              : modePlain
+                  ? 'BROADCAST'
+                  : 'OFF',
+        ),
+        ConfigInfoRow(
+          icon: Icons.swap_vert,
+          label: 'TX / RX',
+          value: '${appState.meshTxCount} / ${appState.meshRxCount}',
+        ),
+        ConfigInfoRow(
+          icon: Icons.group,
+          label: 'Peer slots',
+          value:
+              '${appState.meshPeerCount} / $maxPeers',
+        ),
+        if (modeEnc) ...[
+          const SizedBox(height: 16),
+          const ConfigSectionHeader(label: 'KEY'),
+          ConfigInfoRow(
+            icon: Icons.key,
+            label: 'Fingerprint',
+            value: keyHex.isEmpty ? '(no key)' : keyHex,
+          ),
+          ConfigActionRow(
+            icon: Icons.autorenew,
+            label: 'Generate New Key',
+            subtitle: 'Rotates the shared mesh key on this manager',
+            onTap: () async {
+              await appState.generateMeshKey();
+              await appState.enableMesh(
+                encryption: true,
+                peerMacs: const [],
+              );
+            },
+          ),
+        ],
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'NODES'),
+        ..._buildNodeManageRows(appState),
+      ],
+    );
+  }
+
+  List<Widget> _buildNodeManageRows(AppState appState) {
+    final perNode = appState.detectionsPerSourceNode;
+    final known = <String>{...appState.knownNodes};
+    if (appState.nodeId.isEmpty) known.add('LOCAL');
+    final ids = known.toList()
+      ..sort((a, b) {
+        if (a == 'LOCAL') return -1;
+        if (b == 'LOCAL') return 1;
+        if (a == appState.nodeId) return -1;
+        if (b == appState.nodeId) return 1;
+        return a.compareTo(b);
+      });
+    if (ids.isEmpty) {
+      return [
+        const ConfigInfoRow(
+          icon: Icons.hub_outlined,
+          label: 'No nodes yet',
+          value: '',
+        ),
+      ];
+    }
+    return ids.map((id) {
+      final dets = perNode[id] ?? 0;
+      final label = appState.labelForNode(id);
+      final hasCustom = appState.nodeLabels.containsKey(id);
+      final isSelf = id == appState.nodeId && id != 'LOCAL';
+      final parts = <String>[
+        if (hasCustom) id,
+        if (isSelf) 'this device',
+        '$dets dets',
+      ];
+      return ConfigActionRow(
+        icon: isSelf ? Icons.smartphone : Icons.memory,
+        label: label,
+        subtitle: parts.join('  ·  '),
+        onTap: () => _renameNodeDialog(appState, id),
+      );
+    }).toList();
+  }
+
+  Future<void> _renameNodeDialog(AppState appState, String id) async {
+    final controller = TextEditingController(text: appState.nodeLabels[id] ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Rename $id'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 32,
+          decoration: const InputDecoration(
+            hintText: 'Custom label (blank = reset)',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          if (id != 'LOCAL' && id != appState.nodeId)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, '__forget__'),
+              child: const Text('FORGET', style: TextStyle(color: AppTheme.error)),
+            ),
+          if (appState.nodeLabels.containsKey(id))
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, ''),
+              child: const Text('CLEAR'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('SAVE'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    if (result == '__forget__') {
+      appState.forgetNode(id);
+      return;
+    }
+    appState.setNodeLabel(id, result.trim());
   }
 
   Widget _buildFirmwareTab() {
@@ -4150,6 +4337,280 @@ class _ConfigAuthPill extends StatelessWidget {
             color: color, fontSize: 10,
             fontWeight: FontWeight.w700, letterSpacing: 0.5,
           )),
+        ],
+      ),
+    );
+  }
+}
+
+class _MeshModeTile extends StatelessWidget {
+  const _MeshModeTile({
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final color = selected ? AppTheme.success : t.textSecondary;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppTheme.success.withValues(alpha: 0.08)
+                : t.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.success.withValues(alpha: 0.5)
+                  : t.border,
+              width: 0.8,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: 16,
+                color: color,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: t.textDim,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NodesSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final appState = ref.watch(appStateProvider);
+    final perNode = appState.detectionsPerSourceNode;
+    final sorted = perNode.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final modeEnc = appState.meshEnabled && appState.meshEncryption;
+    final modePlain = appState.meshEnabled && !appState.meshEncryption;
+    final maxNodes = modeEnc ? 6 : (modePlain ? 12 : 0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12, left: 2),
+          child: Text(
+            'ESP-NOW caps: 6 peers with AES-256-GCM, or 12 peers plaintext. Broadcast plaintext has no peer table cap.',
+            style: TextStyle(color: t.textDim, fontSize: 11),
+          ),
+        ),
+        _MeshModeTile(
+          label: 'BROADCAST  (UNLIMITED)',
+          subtitle: 'No peer table. Plaintext only. ch=1.',
+          selected: modePlain,
+          onTap: () => appState.enableMesh(
+            encryption: false,
+            peerMacs: const [],
+          ),
+        ),
+        _MeshModeTile(
+          label: 'UNICAST PLAINTEXT  (12 MAX)',
+          subtitle: 'Per-node peer entries, plaintext payload.',
+          selected: false,
+          onTap: () async {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Unicast plaintext peer push not wired yet — using broadcast.')),
+            );
+            await appState.enableMesh(encryption: false, peerMacs: const []);
+          },
+        ),
+        _MeshModeTile(
+          label: 'UNICAST ENCRYPTED  (6 MAX, AES-GCM)',
+          subtitle: 'Per-node peer entries, AES-256-GCM. Key shared.',
+          selected: modeEnc,
+          onTap: () async {
+            if (appState.meshKey == null) {
+              await appState.generateMeshKey();
+            }
+            await appState.enableMesh(
+              encryption: true,
+              peerMacs: const [],
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        ConfigInfoRow(
+          icon: Icons.tag,
+          label: 'Peer slots used',
+          value: '${appState.meshPeerCount} / $maxNodes',
+        ),
+        const SizedBox(height: 12),
+        if (sorted.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'No nodes detected yet. Connect via manager + enable mesh.',
+              style: TextStyle(color: t.textDim, fontSize: 11),
+            ),
+          )
+        else
+          ...sorted.map((e) => _NodeRenameRow(
+                sourceId: e.key,
+                detectionCount: e.value,
+              )),
+      ],
+    );
+  }
+}
+
+class _NodeRenameRow extends ConsumerStatefulWidget {
+  const _NodeRenameRow({
+    required this.sourceId,
+    required this.detectionCount,
+  });
+  final String sourceId;
+  final int detectionCount;
+
+  @override
+  ConsumerState<_NodeRenameRow> createState() => _NodeRenameRowState();
+}
+
+class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
+  late TextEditingController _ctrl;
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final appState = ref.read(appStateProvider);
+    _ctrl = TextEditingController(
+      text: appState.labelForNode(widget.sourceId),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final appState = ref.read(appStateProvider);
+    appState.setNodeLabel(widget.sourceId, _ctrl.text.trim());
+    setState(() => _editing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final appState = ref.watch(appStateProvider);
+    final display = appState.labelForNode(widget.sourceId);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.memory, size: 14, color: AppTheme.success),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _editing
+                ? TextField(
+                    controller: _ctrl,
+                    autofocus: true,
+                    onSubmitted: (_) => _save(),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: widget.sourceId,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                      border: const UnderlineInputBorder(),
+                    ),
+                    style: TextStyle(color: t.textPrimary, fontSize: 13),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        display,
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      Text(
+                        widget.sourceId == display
+                            ? '${widget.detectionCount} dets'
+                            : '${widget.sourceId}  ·  ${widget.detectionCount} dets',
+                        style: TextStyle(
+                          color: t.textDim,
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          IconButton(
+            icon: Icon(
+              _editing ? Icons.check : Icons.edit,
+              size: 16,
+              color: _editing ? AppTheme.success : t.textDim,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: () {
+              if (_editing) {
+                _save();
+              } else {
+                setState(() => _editing = true);
+              }
+            },
+          ),
         ],
       ),
     );

@@ -319,6 +319,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_COMMAND   = 0x02,
     MESH_PKT_STATUS    = 0x03,
     MESH_PKT_INVITE    = 0x04,
+    MESH_PKT_ACK       = 0x06,
 };
 
 // Command relay: primary node -> peers (via ESP-NOW)
@@ -329,7 +330,18 @@ typedef struct __attribute__((packed)) {
     uint8_t  engine_id;
     uint8_t  payload[32];
     uint8_t  payload_len;
+    uint8_t  seq;                   // monotonic per-MGR; ACK matches on this
 } MeshCommandPacket;
+
+// ACK from a node back to manager when a command is executed.
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_ACK
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  ack_seq;
+    uint8_t  ack_cmd;
+    uint8_t  ack_engine_id;
+    uint8_t  reserved[2];
+} MeshAckPacket;
 
 // Status heartbeat: each node -> all peers (every 5s)
 typedef struct __attribute__((packed)) {

@@ -1,5 +1,6 @@
 #include "detector.h"
 #include "protocol.h"
+#include "../mesh_espnow.h"
 #include "dedup_ring.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -169,7 +170,9 @@ static void detectorStart(void) {
     }
 
     if (!wardriveOwns && wantWifi) {
-        WiFi.mode(WIFI_STA);
+        if (!meshIsEnabled()) {
+            WiFi.mode(WIFI_STA);
+        }
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                            WIFI_PROMIS_FILTER_MASK_DATA
@@ -204,8 +207,13 @@ static void detectorStop(void) {
         wifiActive = false;
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        if (meshIsEnabled()) {
+            WiFi.disconnect(false, false);
+            esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        } else {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
+        }
     }
 
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {

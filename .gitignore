@@ -55,3 +55,4 @@ companion/ios/Flutter/flutter_export_environment.sh
 companion/macos/Flutter/flutter_export_environment.sh
 companion/ios/Runner/GeneratedPluginRegistrant.*
 companion/macos/Flutter/GeneratedPluginRegistrant.swift
+.code-journal.md

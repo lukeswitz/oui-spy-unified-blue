@@ -1,6 +1,7 @@
 #include "foxhunter.h"
 #include "protocol.h"
 #include "ble_gatt.h"
+#include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -235,7 +236,9 @@ static void foxhunterStart(void) {
 
     // WiFi promiscuous only when wardrive doesn't own WiFi
     if (!wardriveOwns) {
-        WiFi.mode(WIFI_STA);
+        if (!meshIsEnabled()) {
+            WiFi.mode(WIFI_STA);
+        }
         // MGMT+DATA only. CTRL frames (ACK/CTS/RTS/BlockAck) outnumber legit
         // target frames 10-100x on busy networks; including them overloads
         // the ISR and drops the very frames foxhunter needs to track RSSI on.
@@ -265,8 +268,13 @@ static void foxhunterStop(void) {
         wifiActive = false;
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+        if (meshIsEnabled()) {
+            WiFi.disconnect(false, false);
+            esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        } else {
+            WiFi.disconnect(true);
+            WiFi.mode(WIFI_OFF);
+        }
     }
 
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {

@@ -23,6 +23,9 @@ class DetectionRow extends ConsumerWidget {
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
+    final nodeLabel = detection.sourceNodeId.isEmpty
+        ? ''
+        : ref.watch(appStateProvider).labelForNode(detection.sourceNodeId);
 
     return Listener(
       onPointerDown: (event) {
@@ -113,6 +116,7 @@ class DetectionRow extends ConsumerWidget {
                         manufacturer: manufacturer,
                         showMac: !headlineIsMac,
                         t: t,
+                        nodeLabel: nodeLabel,
                       ),
                     ),
                   ),
@@ -176,6 +180,9 @@ class DetectionRow extends ConsumerWidget {
   }
 
   void _showActions(BuildContext context, WidgetRef ref) {
+    final nodeLabel = detection.sourceNodeId.isEmpty
+        ? ''
+        : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
     final t = AppTheme.of(context);
     final vendor = ref.read(ouiLookupProvider).lookup(detection.macAddress);
     showModalBottomSheet(
@@ -211,7 +218,7 @@ class DetectionRow extends ConsumerWidget {
                   style: TextStyle(color: t.textSecondary, fontSize: 12)),
             const SizedBox(height: 8),
             // Detail summary in bottom sheet
-            _DetailSummary(detection: detection, t: t, manufacturer: vendor),
+            _DetailSummary(detection: detection, t: t, manufacturer: vendor, nodeLabel: nodeLabel),
             const SizedBox(height: 12),
             ListTile(
               leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
@@ -283,10 +290,11 @@ class DetectionRow extends ConsumerWidget {
 /// Compact info chip with icon + label.
 /// Detail summary shown in bottom sheet.
 class _DetailSummary extends StatelessWidget {
-  const _DetailSummary({required this.detection, required this.t, this.manufacturer});
+  const _DetailSummary({required this.detection, required this.t, this.manufacturer, this.nodeLabel = ''});
   final Detection detection;
   final ResolvedTheme t;
   final String? manufacturer;
+  final String nodeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +311,10 @@ class _DetailSummary extends StatelessWidget {
     }
     rows.add(_detailRow(context, 'Seen', '\u00d7${detection.count}'));
     if (detection.sourceNodeId.isNotEmpty) {
-      rows.add(_detailRow(context, 'Source Node', detection.sourceNodeId));
+      final lbl = nodeLabel.isNotEmpty && nodeLabel != detection.sourceNodeId
+          ? '$nodeLabel  (${detection.sourceNodeId})'
+          : detection.sourceNodeId;
+      rows.add(_detailRow(context, 'Source Node', lbl));
     }
     if (detection.ssid.isNotEmpty) {
       rows.add(_detailRow(context, 'SSID', detection.ssid));
@@ -518,12 +529,14 @@ class _DetailLine extends StatelessWidget {
     required this.manufacturer,
     required this.showMac,
     required this.t,
+    this.nodeLabel = '',
   });
   final Detection detection;
   final Engine engine;
   final String? manufacturer;
   final bool showMac;
   final ResolvedTheme t;
+  final String nodeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -625,7 +638,8 @@ class _DetailLine extends StatelessWidget {
       tokens.add(_pipe());
       tokens.add(Icon(Icons.hub, size: 12, color: AppTheme.warning));
       tokens.add(const SizedBox(width: 3));
-      tokens.add(Text(detection.sourceNodeId,
+      tokens.add(Text(
+          nodeLabel.isNotEmpty ? nodeLabel : detection.sourceNodeId,
           style: TextStyle(
               color: AppTheme.warning,
               fontSize: 11,

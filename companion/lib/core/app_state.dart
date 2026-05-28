@@ -33,6 +33,7 @@ class AppState extends ChangeNotifier {
   // Connection
   NodeConnectionState connectionState = NodeConnectionState.disconnected;
   bool get isConnected => connectionState == NodeConnectionState.ready;
+  bool get isManagerConnected => isConnected && _ble.isManagerConnected;
   String nodeId = '';
 
   // Engine states
@@ -126,6 +127,16 @@ class AppState extends ChangeNotifier {
   int meshRxCount = 0;
   int meshTxCount = 0;
   Uint8List? _meshKey;
+  Uint8List? get meshKey => _meshKey;
+  String get meshKeyFingerprint {
+    final k = _meshKey;
+    if (k == null || k.length < 4) return '';
+    return k
+        .take(4)
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join()
+        .toUpperCase();
+  }
 
   Set<String> get meshSourceNodes {
     final nodes = <String>{};
@@ -137,8 +148,9 @@ class AppState extends ChangeNotifier {
 
   Map<String, int> get detectionsPerSourceNode {
     final m = <String, int>{};
+    final selfBucket = nodeId.isNotEmpty ? nodeId : 'LOCAL';
     for (final d in recentDetections) {
-      final k = d.sourceNodeId.isEmpty ? 'LOCAL' : d.sourceNodeId;
+      final k = d.sourceNodeId.isEmpty ? selfBucket : d.sourceNodeId;
       m[k] = (m[k] ?? 0) + 1;
     }
     return m;
@@ -153,6 +165,42 @@ class AppState extends ChangeNotifier {
   }
 
   final Map<String, String> _nodeLabels = {};
+  final Set<String> _seenNodes = {};
+  Map<String, String> get nodeLabels => Map.unmodifiable(_nodeLabels);
+  Set<String> get knownNodes {
+    final s = <String>{};
+    s.addAll(detectionsPerSourceNode.keys);
+    s.addAll(_nodeLabels.keys);
+    s.addAll(_seenNodes);
+    if (nodeId.isNotEmpty) {
+      s.add(nodeId);
+      s.remove('LOCAL');
+    }
+    return s;
+  }
+  void _recordSeenNode(String id) {
+    if (id.isEmpty) return;
+    if (_seenNodes.add(id)) {
+      SharedPreferences.getInstance().then((p) {
+        p.setStringList('seenNodes', _seenNodes.toList());
+      });
+      notifyListeners();
+    }
+  }
+  void forgetNode(String id) {
+    var changed = false;
+    if (_seenNodes.remove(id)) changed = true;
+    if (_nodeLabels.remove(id) != null) changed = true;
+    if (!changed) return;
+    SharedPreferences.getInstance().then((p) {
+      p.setStringList('seenNodes', _seenNodes.toList());
+      p.setStringList(
+        'nodeLabels',
+        _nodeLabels.entries.map((e) => '${e.key}=${e.value}').toList(),
+      );
+    });
+    notifyListeners();
+  }
   void setNodeLabel(String id, String label) {
     if (label.isEmpty) {
       _nodeLabels.remove(id);
@@ -174,9 +222,17 @@ class AppState extends ChangeNotifier {
       final i = e.indexOf('=');
       if (i > 0) _nodeLabels[e.substring(0, i)] = e.substring(i + 1);
     }
+    _seenNodes.addAll(p.getStringList('seenNodes') ?? const []);
   }
 
   void _init() {
+    SharedPreferences.getInstance().then((p) {
+      _loadNodeLabels(p);
+      notifyListeners();
+    });
+    loadMeshKey().then((_) {
+      if (_meshKey != null) notifyListeners();
+    });
     // Connection state
     connectionState = _ble.currentConnectionState;
 
@@ -184,6 +240,7 @@ class AppState extends ChangeNotifier {
       connectionState = state;
       if (state == NodeConnectionState.ready) {
         nodeId = _ble.nodeId;
+        if (nodeId.isNotEmpty) _recordSeenNode(nodeId);
         sessionStartTime = DateTime.now();
         _gps.start().catchError((e) {
           DebugLog.log('GPS: start failed from BLE connect: $e');
@@ -221,6 +278,7 @@ class AppState extends ChangeNotifier {
       )) {
         return;
       }
+      if (det.sourceNodeId.isNotEmpty) _recordSeenNode(det.sourceNodeId);
       final isNewMac = !(_uniqueMacsPerEngine[det.engine]?.contains(det.macAddress) ?? false);
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
@@ -420,6 +478,7 @@ class AppState extends ChangeNotifier {
       value: _meshKey!.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
     );
     DebugLog.log('AppState: new mesh key generated');
+    notifyListeners();
   }
 
   Future<void> loadMeshKey() async {
@@ -431,8 +490,6 @@ class AppState extends ChangeNotifier {
       );
     }
   }
-
-  Uint8List? get meshKey => _meshKey;
 
   List<Detection> detectionsForNode(String sourceNodeId) {
     return recentDetections.where((d) => d.sourceNodeId == sourceNodeId).toList();

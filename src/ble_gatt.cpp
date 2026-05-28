@@ -77,6 +77,11 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     }
 };
 
+#ifdef OUISPY_ROLE_MANAGER
+static volatile uint8_t mgrCommandedMask = 0;
+static volatile uint8_t mgrCommandedStates[ENGINE_COUNT] = {0};
+#endif
+
 class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
@@ -92,16 +97,29 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
             memcpy(cmd.payload, val.data() + 2, cmd.payload_len);
         }
 
+#ifndef OUISPY_ROLE_MANAGER
         if (engineCmdQueue != NULL) {
             xQueueSend(engineCmdQueue, &cmd, pdMS_TO_TICKS(10));
         }
+#endif
 
         const char* cmdName = cmd.command == 0x01 ? "ENABLE"
                              : cmd.command == 0x0F ? "DISABLE_ALL"
+                             : cmd.command == 0x10 ? "CONFIG"
                              : "DISABLE";
         Serial.printf("[BLE] Engine command: %s engine %d\n", cmdName, cmd.engine_id);
 
 #ifdef OUISPY_ROLE_MANAGER
+        if (cmd.command == 0x01 && cmd.engine_id < ENGINE_COUNT) {
+            mgrCommandedMask |= (1u << cmd.engine_id);
+            mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_SCANNING;
+        } else if (cmd.command == 0x00 && cmd.engine_id < ENGINE_COUNT) {
+            mgrCommandedMask &= ~(1u << cmd.engine_id);
+            mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_DISABLED;
+        } else if (cmd.command == 0x0F) {
+            mgrCommandedMask = 0;
+            for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+        }
         if (meshIsEnabled()) {
             meshBroadcastCommand(cmd.command, cmd.engine_id,
                 cmd.payload_len > 0 ? cmd.payload : nullptr,
@@ -112,11 +130,19 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
 
     void onRead(NimBLECharacteristic* chr) override {
         uint8_t buf[2 + ENGINE_COUNT];
+#ifdef OUISPY_ROLE_MANAGER
+        buf[0] = (1u << ENGINE_COUNT) - 1u;
+        buf[1] = mgrCommandedMask;
+        for (int i = 0; i < ENGINE_COUNT; i++) {
+            buf[2 + i] = mgrCommandedStates[i];
+        }
+#else
         buf[0] = engineGetAvailableMask();
         buf[1] = engineGetActiveMask();
         for (int i = 0; i < ENGINE_COUNT; i++) {
             buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
         }
+#endif
         chr->setValue(buf, 2 + ENGINE_COUNT);
     }
 };

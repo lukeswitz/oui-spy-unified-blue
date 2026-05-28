@@ -80,6 +80,7 @@ class BleManager {
   String _nodeId = '';
   String? _lastDeviceId;
   String? _primaryDeviceId;
+  bool _userInitiatedDisconnect = false;
 
   // -- Public streams --
 
@@ -277,6 +278,8 @@ class BleManager {
   NodeConnectionState get currentConnectionState => _currentState;
   String get nodeId => _nodeId;
   String? get connectedDeviceId => _primaryDeviceId;
+  bool get isManagerConnected =>
+      (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR');
 
   void markAsPrimary() {
     _primaryDeviceId = _lastDeviceId;
@@ -369,13 +372,17 @@ class BleManager {
     );
     DebugLog.log('BLE: connected');
 
-    // Listen for disconnection
     _subscriptions.add(
       device.connectionState.listen((state) {
         DebugLog.log('BLE: connectionState=$state');
         if (state == BluetoothConnectionState.disconnected) {
           _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
-          _startReconnect();
+          if (_userInitiatedDisconnect) {
+            DebugLog.log('BLE: skipping reconnect (user-initiated)');
+            _userInitiatedDisconnect = false;
+          } else {
+            _startReconnect();
+          }
         }
       }),
     );
@@ -483,10 +490,14 @@ class BleManager {
           _engineStates.add(BleProtocol.decodeEngineStatus(data));
         }),
       );
-      // Always force DISABLE_ALL on connect — no stale engines
-      await _engineControl!.write(BleProtocol.encodeDisableAll());
-      DebugLog.log('BLE: sent DISABLE_ALL on connect');
-      await Future.delayed(const Duration(milliseconds: 300));
+      final isMgr = (device.platformName.toUpperCase()).contains('OUI-SPY-MGR');
+      if (!isMgr) {
+        await _engineControl!.write(BleProtocol.encodeDisableAll());
+        DebugLog.log('BLE: sent DISABLE_ALL on connect (node)');
+        await Future.delayed(const Duration(milliseconds: 300));
+      } else {
+        DebugLog.log('BLE: skipped DISABLE_ALL on connect (manager)');
+      }
       final refreshed = await _engineControl!.read();
       _engineStates.add(BleProtocol.decodeEngineStatus(refreshed));
     }
@@ -942,15 +953,19 @@ class BleManager {
   // -- Disconnect --
 
   Future<void> disconnect() async {
+    _userInitiatedDisconnect = true;
     final wasFullyConnected =
         _currentState == NodeConnectionState.ready;
+    final isMgr = (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR');
     _reconnectTimer?.cancel();
-    if (wasFullyConnected) {
+    if (wasFullyConnected && !isMgr) {
       try {
         await disableAllEngines();
       } on FlutterBluePlusException catch (e) {
         DebugLog.log('BLE: disableAllEngines on disconnect failed: ${e.description}');
       }
+    } else if (isMgr) {
+      DebugLog.log('BLE: skipped disableAllEngines on disconnect (manager)');
     } else {
       DebugLog.log('BLE: cancel mid-connect (state=$_currentState) — skipping engine writes');
     }
