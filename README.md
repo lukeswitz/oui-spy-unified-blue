@@ -1,314 +1,439 @@
 <div align="center">
-<h2>OUI SPY APEX</h2>
 
-[![Version](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases) [![Join TestFlight Beta](https://img.shields.io/badge/TestFlight-Join-blue.svg?style=f&logo=apple)](https://testflight.apple.com/join/5RCKgnJ2) ![Platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
-![Dart](https://img.shields.io/badge/Dart-Flutter%20App-0175C2)
-![C++](https://img.shields.io/badge/C%2B%2B-ESP32%20FW-ff6600)
+<img width="220" alt="OUI-SPY APEX" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
+
+# OUI SPY APEX
+
+**Eight surveillance-detection engines on one XIAO ESP32-S3. Controlled from your phone. No reboot to switch modes.**
+
+> Fork of [colonelpanichacks/oui-spy-unified-blue](https://github.com/colonelpanichacks/oui-spy-unified-blue). Upstream is a 4-mode firmware with a boot-time AP selector — you pick a mode, reboot, and use it. This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a single companion app over BLE GATT
+
+[![Release](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases)
+[![TestFlight](https://img.shields.io/badge/TestFlight-Join-blue.svg?logo=apple)](https://testflight.apple.com/join/5RCKgnJ2)
+![Platforms](https://img.shields.io/badge/iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
+![Firmware](https://img.shields.io/badge/firmware-ESP32--S3-ff6600)
 [![CodeQL](https://github.com/lukeswitz/oui-spy-unified-blue/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/lukeswitz/oui-spy-unified-blue/actions/workflows/github-code-scanning/codeql)
 
-<img width="500" alt="ouispy_appicon" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
-
-[Features](#what-it-detects) | [Get the App](#install) | [Flash Firmware](#flash-it)
+[**Quick Start**](#quick-start) · [**Engines**](#engines) · [**App**](#companion-app) · [**Gestures**](#gestures) · [**Flash**](#flash) · [**Hardware**](#hardware)
 
 </div>
 
 ---
 
+## TL;DR
 
-**About this fork:**
+- One firmware. **Eight scan engines** — Detector, Flock BLE, Flock WiFi, Foxhunter, Sky Spy, UniPwn, Wardrive, PCAP.
+- Runs them **concurrently** across WiFi promiscuous and BLE radios. Toggle from the app, live, no reboot.
+- **Flutter companion app** for iOS / macOS / Android — full control, live feed, wardrive map, PCAP browser, OTA updates.
+- PCAP capture streams over BLE to the phone — raw 802.11 (radiotap) and BLE LL (PHDR), saved as `.pcap` in the app, open in Wireshark.
+- Imports / exports WiGLE-format CSVs. Direct WiGLE upload.
 
-- Unified multi-engine surveillance detection firmware for the XIAO ESP32-S3. Runs eight scan engines simultaneously using both WiFi and BLE radios. Controlled entirely from a companion app over BLE GATT.
-- Combines all standalone OUI-SPY projects (Detector, Flock-You, Foxhunter, Sky-Spy, UniPwn, Wardrive) into a single firmware where engines run **concurrently without rebooting or switching modes**.
-- Record raw WiFi & BLE traffic to `.pcap` files on device, manually or auto-triggered by any detection — open in Wireshark.
-- Import and export `.CSV` files (wigle.net format) from detections and wardrives. Matches current FlockYou and your own detection OUIs for mapping and review.
-- Wigle.net API integration: upload and view your stats right from the app.
-- Update firmware from inside the app over WiFi or BLE — no USB cable needed.
-
-
-> [!NOTE]
-> Early beta, bugs and unexpected behavior can be reported in Issues.
----
-
-## What It Detects
-
-| Target | How |
-|--------|-----|
-| **Flock Safety ALPRs** | BLE MAC prefix, device name, manufacturer ID `0x09C8`, WiFi promiscuous OUI match (addr1/addr2/addr3), wildcard probe signature |
-| **Raven Gunshot Detectors** | BLE GATT service UUIDs, firmware version fingerprinting |
-| **Drones (FAA Remote ID)** | WiFi promiscuous + BLE — NAN action frames, vendor beacons, ODID advertisements |
-| **Unitree Robots** | BLE name prefix matching (Go2_, G1_, H1_, B2_, X1_), connect + exploit |
-| **Custom Watchlist Targets** | OUI prefix, full MAC, device name patterns — on both WiFi and BLE |
-| **WiFi Infrastructure** | Station-mode AP scan — SSID, BSSID, channel, auth mode, signal |
-| **All BLE Devices** | Advertisement capture with name, manufacturer data, service UUIDs |
-| **Raw WiFi / BLE traffic** | On-device PCAP capture (radiotap + BLE LL PHDR) — open in Wireshark |
-
-All engines can run concurrently, with some limitations.
+> Beta. File issues — bugs and odd behavior expected.
 
 ---
 
-## Flock Safety Detection
+## Highlights
 
-The Flock-WiFi engine runs in 802.11 promiscuous mode, hopping channels 1/6/11 at 350ms dwell. Three detection methods:
+| | |
+|---|---|
+| **No mode switching** | Upstream required selecting a mode at boot and rebooting. Here every engine runs together. |
+| **Auto-PCAP on hit** | Detector / Flock BLE / Flock WiFi / Sky Spy / UniPwn detection → device starts a capture, streams it to the phone for the configured duration (3–120 s), then resumes scanning. Cooldown + per-MAC rediscover window suppress repeats. |
+| **OTA updates** | WiFi (STA) or BLE — pick from inside the app. |
+| **39k+ OUI vendors** | Bundled IEEE database. Flock OUIs resolve to surveillance labels *and* the underlying chip vendor. |
+| **Geofences** | Circle / polygon zones — app-side filter on feed, map, CSV. |
+| **Dynamic Island** | iPhone 14 Pro+ / iOS 16.2+ — live counts on Lock Screen and Island. |
 
-- **addr2 OUI match** — transmitter-side match against 42 known Flock Safety OUI prefixes
-- **addr1 OUI match** — receiver-side technique that catches Flock STAs appearing only as the destination of probe responses during their burst-sleep windows. Skips multicast/broadcast addresses.
-- **Wildcard probe signature** — Probe Request (type=0 subtype=4) with zero-length SSID IE from a known-OUI addr2. High-precision Flock signature with FCS-trailer retry for driver compatibility. From [DeFlockJoplin](https://github.com/DeflockJoplin/flock-you) field research (Joplin drive-test: 11/12 cameras caught, 2 false positives).
+---
 
-The Flock-BLE engine scans for FS Ext Battery devices, Flock WiFi modules, and Raven gunshot detectors via BLE advertisements, manufacturer company ID, device name patterns, and GATT service UUIDs.
+## Quick Start
 
-Both engines share a sorted OUI table (`flock_oui.h`) with 43 prefixes:
-- 10 FS Ext Battery (BLE, Silicon Labs EFR32)
-- 26 Flock WiFi cameras — [@NitekryDPaul](https://github.com/nitekry) / OrdoOuroborous original promiscuous-mode set
-- 6 @NitekryDPaul April 2026 additions
-- 1 [DeFlockJoplin](https://github.com/DeflockJoplin/flock-you) wildcard-probe field discovery
+**1 · Flash the device** — open the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) in Chrome or Edge, plug in the XIAO ESP32-S3 via USB-C, hit Connect & Flash.
 
-The companion app resolves every Flock OUI to its surveillance label (e.g. "Flock Safety (Falcon)") while also showing the underlying chip manufacturer from the IEEE OUI database when available (e.g. "Flock Safety (Falcon) · Liteon Technology").
+**2 · Install the app** — [Android APK](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest), [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2), or [macOS signed .app](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest).
+
+**3 · Pair over BLE** — open the app, tap the device. Done. From here every engine, channel, watchlist, and PCAP is app-side.
+
+---
+
+## Engines
+
+Eight engines. Toggle independently from the home screen. All can run together (radio-time tradeoffs apply).
+
+| # | Engine | Radio | Detects |
+|---|--------|-------|---------|
+| 1 | **Detector** | WiFi + BLE | Custom watchlist — MAC, OUI prefix, name patterns |
+| 2 | **Flock BLE** | BLE | FS Ext Battery, Flock WiFi modules, Raven gunshot detectors — manuf ID `0x09C8`, GATT UUIDs, name |
+| 3 | **Flock WiFi** | WiFi promisc | Flock Safety cameras — addr1/addr2 OUI, wildcard probe signature |
+| 4 | **Foxhunter** | WiFi + BLE | RSSI proximity tracking of a chosen target — warm / close thresholds |
+| 5 | **Sky Spy** | WiFi + BLE | FAA Remote ID drones — NAN action frames, vendor beacons, ODID adverts |
+| 6 | **UniPwn** | BLE | Unitree robots (`Go2_`, `G1_`, `H1_`, `B2_`, `X1_`) — detect → connect → exploit |
+| 7 | **Wardrive** | WiFi + BLE | WiGLE-style logging — SSID, BSSID, channel, auth, GPS |
+| 8 | **PCAP** | WiFi or BLE | Raw 802.11 (radiotap) or BLE LL (PHDR), streamed live over BLE to the phone |
+
+<details>
+<summary><b>Flock detection — methodology</b></summary>
+
+Flock-WiFi runs 802.11 promiscuous, hops 1/6/11 at 350 ms dwell, applies three methods:
+
+- **addr2 OUI** — transmitter-side. 42 known Flock OUI prefixes.
+- **addr1 OUI** — receiver-side. Catches Flock STAs that only appear as probe-response targets during burst-sleep. Skips mcast/bcast.
+- **Wildcard probe** — Probe Request (type=0 sub=4), zero-length SSID IE, known addr2 OUI. From [DeFlockJoplin](https://github.com/DeflockJoplin/flock-you) field research (11/12 cameras, 2 FPs in Joplin drive-test).
+
+Flock-BLE matches FS Ext Battery, Flock WiFi modules, and Raven detectors by company ID, name, and GATT UUID.
+
+Both share `flock_oui.h` — **43 prefixes**: 10 FS Ext Battery (BLE, EFR32) · 26 [@NitekryDPaul](https://github.com/nitekry) original promiscuous-mode set · 6 April 2026 additions · 1 DeFlockJoplin wildcard-probe discovery.
+
+Flock OUIs resolve in-app to surveillance labels *and* chip vendor, e.g. `Flock Safety (Falcon) · Liteon Technology`.
+
+</details>
 
 ---
 
 ## Companion App
 
-Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All control and display happens in the app.
+Flutter app. iOS, macOS, Android. BLE GATT to the device. Every control, every readout.
 
-### Core Features
+### Home
 
-- **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate. Filter by engine, radio, search any field. Press and hold on any device to copy detailed info to clipboard. 
-- **Wardrive mapping** with 5 target modes (WiGLE, Flock, Drone, Detector, WiGLE+Flock), WiFi/BLE/both radio selection, follow-mode camera that keeps you centered, adaptive map plotting, color-graded route path, WiGLE CSV export, direct WiGLE upload, session history
-- **WiGLE CSV import & review** — load any WiGLE-format CSV, auto-match every BSSID against the bundled OUI/Flock database, flag surveillance hits (Flock, Raven, watchlist OUIs) on the map and in the feed
-- **PCAP capture (WiFi & BLE)** — record raw 802.11 (radiotap) and BLE LL (PHDR) packets on demand or automatically when a target is detected. Files saved on device, browse + share to Wireshark from `Settings → Detections → Saved PCAPs`. See [PCAP Capture](#pcap-capture)
-- **Over-the-air firmware updates** — flash the latest firmware from inside the app over WiFi (fast) or BLE (slow, no router needed). No re-flashing with a cable. See [OTA Updates](#ota-firmware-updates)
-- **Per-engine control** — enable/disable any of the 8 engines independently, configure scan timing, radio modes, watchlist entries
-- **Ignore list/Geofencing** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles. Draw circlular or polygon no scan zones to prevent logging sensitive areas. 
+- Per-engine cards — tap a card to open that engine's settings screen.
+- Connect / Cancel-connect / Stop-reconnect controls when the device drops.
+- Status bar — mesh node count, GPS state, connection state.
 
+### Live Feed
 
-### PCAP Capture
+The full detection list across all engines.
 
-Record raw wireless packets straight to a `.pcap` file on the device, no laptop required.
+| Control | What |
+|--------|------|
+| Stats toggle (`analytics` icon) | Show / hide vendor + engine breakdown header |
+| Export icon (`ios_share`) | **CSV export of the current filtered view** |
+| Preset chips | One-tap filter sets (all engines, surveillance only, etc.) |
+| ENGINES dropdown | Per-engine include / exclude |
+| SOURCE dropdown | Mesh node filter — `ALL` / `LOCAL` / specific remote node when mesh is active |
+| SORT dropdown | Time / RSSI / MAC, asc / desc |
+| Search | Free-text across MAC, name, vendor, SSID |
+| Tap a row | Foxhunt or map-locate the device (when GPS available) |
+| Long-press a row | Full copy sheet — MAC, vendor, RSSI, channel, manuf data, every field |
 
-| Mode | What it records |
-|------|------|
-| **WiFi 802.11 (radiotap)** | Beacons, probes (req + resp), deauth, disassoc, data, control, management frames across your chosen channels |
-| **BLE LL (PHDR)** | Advertisement PDUs, scan requests/responses with proper Bluetooth Low Energy Link Layer headers |
+### Wardrive
 
-**Manual capture** — pick mode, set channel range (WiFi only), tap START. Live stats: per-type frame counts, current channel, file size.
+The map screen — see detections plotted live as you drive / walk.
 
-**Auto-PCAP on detection** — toggle once. Every time a Flock camera, watchlist target, drone, or Unitree robot is detected, the device automatically captures the next *N* seconds (3–120s, configurable) on the matching radio + channel, then resumes normal scanning. The setting persists across reboots. A green `AUTO` badge with countdown shows on the home screen any time it's armed or actively capturing.
+**Controls bar:**
 
-**Saved library** — every capture appears in `Settings → Detections` with timestamp, size, and live LIVE badge on the in-progress file. Tap to share to Wireshark, AirDrop, email, or any iOS share target. One-tap delete or delete-all.
+| Control | What |
+|---------|------|
+| **START** / **PAUSE** / **RESUME** / **STOP** | Session lifecycle |
+| Target mode | WiGLE · Flock · Drone · Detector · WiGLE+Flock |
+| Radio | WiFi · BLE · both |
+| Follow-mode (`my_location`) | Toggle camera-tracks-you |
+| Layers (`layers` icon) | Map theme (dark / light) + tile source (CARTO Dark / Light / Voyager, OSM, OpenTopoMap, Stamen Toner / Terrain) |
+| Geofence (`fence` icon) | Open geofence editor |
+| History (`history` icon) | Saved sessions list |
 
-**Built-in safety** — auto-PCAP automatically pauses your other scans for the capture window then restores them. Geofence exclusion zones also suppress auto-PCAP — no scanning inside your home/office zones.
+**Live stats:** distance, session count, unique networks, route path color-graded by RSSI.
+
+**Flock + Detector panels** appear inline when hits land — tap to expand the list. Each row has a **CSV** badge to export just that one network and a long-press copy sheet.
+
+**Sessions list (history):**
+
+| Per-session action | What |
+|--------------------|------|
+| Tap | Load session, replay route on map |
+| Long-press | Enter multi-select |
+| Share (`file_download_outlined`) | Share / save WiGLE CSV |
+| WiGLE upload (`cloud_upload_outlined`) | Direct upload to WiGLE (your API key) — turns to `cloud_done` once accepted |
+| Delete (`delete_forever_outlined`) | Remove session |
+| **SELECT** / **CANCEL** / **DELETE** / **CLEAR ALL** | Bulk ops in select mode |
+
+**WiGLE CSV import** — `Settings → OUI Database` (or wardrive history) accepts any WiGLE-format CSV. Every BSSID is matched against bundled OUI / Flock tables; surveillance hits are flagged on map and in feed.
+
+### Per-Engine Screens
+
+Open from the engine card on the home screen.
+
+| Engine | Capabilities |
+|--------|--------------|
+| **Detector** | Live detection list (sort: TIME / RSSI / MAC). **Add Watchlist Target** dialog — full MAC or OUI prefix + name. |
+| **Foxhunter** | Pick a target (**HUNT** button), live RSSI bar and channel display. Buzzer cadence scales with proximity. |
+| **Sky Spy** | Live Remote-ID drone list — operator / UAV ID, lat-lon, altitude, ground speed, heading. |
+| **UniPwn** | Detected Unitree robots + **exploitation actions**: `ENABLE SSH`, `CHANGE ROOT PASSWORD`, `GET SERIAL NUMBER`, `GET SYSTEM INFO`, `REBOOT`, and an `EXEC` field for arbitrary command execution. |
+
+### PCAP
+
+The device has no filesystem for captures. Frames are written to a double-buffer in RAM and streamed live over the BLE GATT PCAP characteristic to the phone, which writes the `.pcap` file locally.
+
+| Mode | Captures |
+|------|----------|
+| **WiFi 802.11 (radiotap)** | Beacons, probes (req + resp), deauth, disassoc, data, control, management — hopping the chosen channel range (default 1–11, dwell 250 ms) |
+| **BLE LL (PHDR)** | Adverts and scan req/resp with synthesized BLE link-layer headers and CRC24. Channels handled by the NimBLE scanner — no channel arg from the app. |
+
+**Manual capture screen controls:**
+
+| Control | What |
+|---------|------|
+| **START / STOP** | Capture lifecycle |
+| WiFi / BLE mode toggle | Pick radio |
+| Channel range slider | WiFi only |
+| **SHARE LAST PCAP** | Re-share the last finished capture |
+| Saved Captures list | Per-row share + delete, list refresh, delete-all |
+| Live per-type counters | Beacons, probes, deauth, disassoc, data, ctrl, BLE adv, BLE scan, dropped frames, bytes |
+
+**Auto-PCAP** — toggle once. When a Detector / Flock BLE / Flock WiFi / Sky Spy / UniPwn engine reports a hit:
+
+- Firmware starts a capture for the configured duration (slider **3–120 s**).
+- Cooldown slider (**0–600 s**) blocks new auto-captures after one finishes.
+- Per-MAC rediscover window blocks the same target re-triggering.
+- WiFi-engine triggers forward the channel the target was seen on; BLE-engine triggers ignore channel.
+- Other engines pause for the capture window (`auto_pcap_paused_mask` reports which), resume after.
+
+**Saved PCAP library** — `Settings → Detections → Saved PCAPs` (also accessible from the PCAP screen). Refresh, Delete-all, per-row Share (Wireshark / AirDrop / email), per-row Delete. `LIVE` badge on the currently-streaming file. PCAPs are auto-labeled with the engine and MAC that triggered them.
 
 ### OTA Firmware Updates
 
-Update the device firmware without USB cable or `pio` install.
+In `Settings → Updates`:
 
-| Method | Speed | Requires |
-|--------|-------|----------|
-| **WiFi (STA mode)** | Fast (~30s) | Provide WiFi credentials in app once; device joins your network and pulls the latest release |
-| **BLE** | Slow (~5 min) | Nothing — works anywhere, no router needed |
+- **Install (WiFi)** — give the device credentials once (`STATION MODE` section). Device joins your LAN, pulls the firmware. Fast.
+- **Install (BLE)** — works anywhere, no router. Slow.
 
-App detects when a newer firmware is available, shows release notes, and applies in one tap. Settings deliberately survive the update.
+App fetches release notes from GitHub Releases and shows the version available.
 
-### Geofence Exclusion Zones
+### Geofences
 
-Circle or polygon zones suppress detections near sensitive locations (home, office). Excluded from feed, map, database, and CSV exports. Managed from the fence icon on the wardrive screen. 
+`Wardrive → fence icon` opens the geofence editor.
 
-### OUI Vendor Lookup
+| Control | What |
+|---------|------|
+| **CIRCLE** | Draw a circular zone (RADIUS slider) |
+| **POLYGON** | Tap-to-place vertices |
+| **UNDO** / **CANCEL** / **SAVE** | Editor controls |
+| Existing fences list | Edit / delete saved zones |
 
-Ships with a 39k+ entry OUI database ([Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database)), updatable at runtime. Flock Safety OUIs resolve to surveillance labels while preserving chip manufacturer — e.g. "`Flock Safety (Falcon) · Liteon Technology`".
+App-side filter: hits inside excluded zones are dropped from feed, map, DB, and CSV export.
+
+### Export
+
+`Settings → Export` — bulk export of all logged detections in:
+
+- **WiGLE CSV 1.6**
+- **JSON**
+- **KML**
 
 ### Notifications
 
-Per-engine local notifications on iOS, Android, and macOS. Fires on **first-seen MACs only**. Configure in settings.
+`Settings → Notifications`.
 
-| Engine | Default | What fires |
-|--------|---------|------------|
-| Flock Safety | On | New camera detected — method, channel, RSSI |
-| Watchlist / Detector | On | Watchlist MAC hit with device name |
-| Sky Spy / Drone | On | FAA Remote ID drone with UAV ID |
-| Foxhunter | Off | Signal crosses -65dBm (warm) or -50dBm (close) |
-| Wardrive | Milestones | Every 1000 unique networks |
+| Section | Controls |
+|---------|----------|
+| **Detection Alerts** | Per-engine toggles — Flock Safety, Watchlist / Detector, Drone / Sky Spy, Foxhunt Proximity |
+| **Wardrive** | Milestone Alerts (every 1000 unique networks) |
+| **Behavior** | Cooldown per device, Max alerts per minute |
+| **Output** | Sound, Vibration |
+
+### Device Settings (full section list)
+
+`Settings` aggregates everything not specific to a feed or session:
+
+| Section | What's in it |
+|---------|--------------|
+| **Appearance** | App theme, accent |
+| **Units** | Distance, speed |
+| **Wardrive — RSSI** | Min RSSI thresholds for logging |
+| **Scan Timing** | Per-engine dwell, hop intervals |
+| **Channel Range** | Default WiFi channel range |
+| **OUI Database** | View / update the 39k+ vendor DB; import WiGLE CSVs |
+| **WiGLE** | Log in / out, paste API token, view your WiGLE stats and rank |
+| **Audio** | Buzzer volume (PWM) |
+| **Lighting** | NeoPixel brightness |
+| **Firmware Timing** | Rediscover window, auto-PCAP cooldown |
+| **Station Mode** | WiFi credentials for OTA / mesh (with **WIPE** confirmation) |
+| **Node Info** | Mesh node ID, peer list, encryption status |
+| **Updates** | OTA Install (WiFi / BLE) |
+| **Danger Zone** | **REBOOT** device · **ERASE & REBOOT** (factory reset) |
+| **About** | Firmware build, app version |
+
+Also in Settings: **Ignore List** (add by MAC, OUI prefix, SSID, or name; per-scope WiFi / BLE / both toggle) and **Watchlist** (Detector targets).
 
 ### iOS Dynamic Island & Live Activity
 
-On iPhone 14 Pro+ (iOS 16.2+), active sessions show in the Dynamic Island and Lock Screen with engine-specific icons and live stats. All 7 engines supported — wardrive gets priority when multiple are active, but combined counts from all engines always visible in the expanded view.
-
-
-
-### Install
-
-| Platform | Method |
-|----------|--------|
-| **Android** | [APK from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) — enable "Install unknown apps" if needed|
-| **TestFlight: iOS & macOS Silicon** | [Join TestFlight beta](https://testflight.apple.com/join/5RCKgnJ2) |
-| **macOS** | [Signed .app from latest release](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) |
+iPhone 14 Pro+ on iOS 16.2+. Active sessions show in the Dynamic Island and Lock Screen with engine icons and live counts. Wardrive takes the priority slot when multiple engines run; expanded view shows combined counts for all.
 
 ---
 
-## Flash It
+## Gestures
 
-### Web Flasher (easiest)
+| Where | Action | Result |
+|-------|--------|--------|
+| Detection row | **Long-press** / right-click | Copy sheet — MAC, vendor, RSSI, channel, manuf data, every field |
+| Wardrive row | **Long-press** / right-click | Network copy sheet |
+| Flock item (wardrive) | **Long-press** | Flock-specific copy sheet |
+| Session in history | **Long-press** | Enter multi-select |
+| Device entry (config) | **Long-press** / right-click | Copy sheet |
+| Detection row | **Tap** | Foxhunt or map-locate (when GPS available) |
+| Engine card (home) | **Tap** | Per-engine settings |
 
-Open the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) in Chrome or Edge (89+). Plug in XIAO ESP32-S3 via USB-C. Click Connect & Flash. Requires Web Serial API (Chromium browsers only).
+---
 
-### Python Flasher
+## Flash
+
+### Web Flasher
+
+[lukeswitz.github.io/oui-spy-unified-blue](https://lukeswitz.github.io/oui-spy-unified-blue/) — Chrome / Edge 89+. Plug in via USB-C. Connect & Flash. *(Chromium only — Web Serial API.)*
+
+### Python
 
 ```bash
 pip install -r requirements.txt
 python3 flash.py              # single board, interactive
-python3 flash.py --batch      # hands-free batch mode for production
+python3 flash.py --batch      # hands-free batch
 python3 flash.py --erase      # full erase before write
 ```
 
-### Flash Layout
+### Layout
 
 | File | Offset | Purpose |
 |------|--------|---------|
 | `bootloader.bin` | `0x0000` | ESP32-S3 bootloader |
 | `partitions.bin` | `0x8000` | Partition table |
-| `boot_app0.bin` | `0xe000` | OTA data |
-| `firmware.bin` | `0x10000` | Application firmware (v3 app-controlled) |
+| `boot_app0.bin`  | `0xe000` | OTA data |
+| `firmware.bin`   | `0x10000` | App-controlled firmware |
+
+After the first flash, all updates come OTA from the app.
 
 ---
 
 ## Hardware
 
-**Board:** Seeed Studio XIAO ESP32-S3 — USB-C, 8MB flash, BLE 5 + WiFi, dual-core 240MHz
+**Seeed Studio XIAO ESP32-S3** — USB-C · 8 MB flash · BLE 5 + WiFi · dual-core 240 MHz.
 
 | Pin | Function |
 |-----|----------|
-| GPIO 3 | Piezo buzzer (PWM, volume-controllable from app) |
-| GPIO 4 | NeoPixel WS2812B (brightness-controllable from app) |
+| GPIO 3  | Piezo buzzer (PWM, app-controlled volume) |
+| GPIO 4  | NeoPixel WS2812B (app-controlled brightness) |
 | GPIO 21 | Onboard LED (active LOW) |
-| GPIO 43/44 | Optional hardware GPS TX/RX (if no phone GPS relay) |
+| GPIO 43/44 | Optional hardware GPS TX/RX (phone GPS relay otherwise) |
 
 ---
 
-## Building from Source
+<details>
+<summary><h2>Build from Source</h2></summary>
 
-### Firmware
-
-Requires [PlatformIO](https://platformio.org/).
+### Firmware (PlatformIO)
 
 ```bash
-pio run -e v3_app_controlled           # build
-pio run -e v3_app_controlled -t upload  # flash directly
-pio device monitor                      # serial output (115200)
+pio run -e v3_app_controlled            # build
+pio run -e v3_app_controlled -t upload  # flash
+pio device monitor                      # serial @ 115200
 ```
 
-**Dependency:** `NimBLE-Arduino` for BLE GATT server + scanning.
+Dep: `NimBLE-Arduino`.
 
-### Companion App
-
-Requires [Flutter](https://flutter.dev/docs/get-started/install) 3.32+.
+### Companion App (Flutter 3.32+)
 
 ```bash
 cd companion
 flutter pub get
-flutter run                             # debug on connected device
-flutter build apk --release             # Android APK
-flutter build ipa --release             # iOS archive
-flutter build macos --release           # macOS .app
+flutter run                  # debug on attached device
+flutter build apk --release
+flutter build ipa --release
+flutter build macos --release
 ```
 
-**iOS Live Activity (optional):** The `OuiSpyLiveActivity` Widget Extension target provides Dynamic Island support. In Xcode: File > New > Target > Widget Extension, name it `OuiSpyLiveActivity`, then add `OuiSpyLiveActivityAttributes.swift` to both Runner and extension target membership.
+**iOS Live Activity (optional):** the `OuiSpyLiveActivity` Widget Extension target provides Dynamic Island. In Xcode: File → New → Target → Widget Extension, name `OuiSpyLiveActivity`, add `OuiSpyLiveActivityAttributes.swift` to both Runner and the extension.
 
----
+</details>
 
-## Dependencies & Third-Party Services
+<details>
+<summary><h2>Dependencies & Services</h2></summary>
 
-### Firmware (PlatformIO)
+### Firmware
 
 | Library | Author | Purpose |
 |---------|--------|---------|
-| [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) | h2zero | BLE GATT server, scanning, ESP-NOW coexistence |
-| [ESP Async WebServer](https://github.com/mathieucarbou/ESPAsyncWebServer) | mathieucarbou | OTA update server (local network only) |
-| [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) | Adafruit | WS2812B LED control |
-| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | bblanchon | JSON serialization for config/mesh payloads |
-| [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus) | mikalhart | Hardware GPS NMEA parsing (optional module) |
+| [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino) | h2zero | BLE GATT server, scan, ESP-NOW coexist |
+| [ESP Async WebServer](https://github.com/mathieucarbou/ESPAsyncWebServer) | mathieucarbou | OTA update server (LAN-only) |
+| [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel) | Adafruit | WS2812B |
+| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | bblanchon | JSON config / mesh payloads |
+| [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus) | mikalhart | Hardware GPS (optional) |
 
-Built on **ESP-IDF** (via Arduino core for ESP32-S3) — WiFi promiscuous mode, ESP-NOW, mbedTLS (AES-GCM mesh encryption).
+Built on **ESP-IDF** via the Arduino core for ESP32-S3 — WiFi promisc, ESP-NOW, mbedTLS (AES-GCM mesh).
 
-### Companion App (Flutter)
+### App
 
 | Package | Purpose |
 |---------|---------|
-| [flutter_blue_plus](https://pub.dev/packages/flutter_blue_plus) | BLE GATT communication with hardware |
-| [flutter_map](https://pub.dev/packages/flutter_map) + [latlong2](https://pub.dev/packages/latlong2) | Map rendering and geolocation math |
-| [drift](https://pub.dev/packages/drift) + [sqlite3_flutter_libs](https://pub.dev/packages/sqlite3_flutter_libs) | Local SQLite database for sessions and detections |
-| [geolocator](https://pub.dev/packages/geolocator) | Phone GPS with background location |
-| [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) | Reactive state management |
-| [go_router](https://pub.dev/packages/go_router) | Declarative navigation |
-| [flutter_local_notifications](https://pub.dev/packages/flutter_local_notifications) | Local push notifications (iOS, Android, macOS) |
-| [dio](https://pub.dev/packages/dio) | HTTP client (WiGLE API uploads) |
-| [share_plus](https://pub.dev/packages/share_plus) | Native share sheet for CSV export |
-| [freezed](https://pub.dev/packages/freezed) + [json_serializable](https://pub.dev/packages/json_serializable) | Immutable data models with codegen |
-| [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) | Keychain/Keystore for mesh encryption keys |
-| [wakelock_plus](https://pub.dev/packages/wakelock_plus) | Prevent sleep during wardrive sessions |
-| [permission_handler](https://pub.dev/packages/permission_handler) | Runtime permission requests |
-| [shared_preferences](https://pub.dev/packages/shared_preferences) | Persisted user settings |
-| [intl](https://pub.dev/packages/intl) | Date/number formatting |
-| [uuid](https://pub.dev/packages/uuid) | Session ID generation |
-| [crypto](https://pub.dev/packages/crypto) | Hashing utilities |
+| [flutter_blue_plus](https://pub.dev/packages/flutter_blue_plus) | BLE GATT |
+| [flutter_map](https://pub.dev/packages/flutter_map) + [latlong2](https://pub.dev/packages/latlong2) | Map + geo math |
+| [drift](https://pub.dev/packages/drift) + [sqlite3_flutter_libs](https://pub.dev/packages/sqlite3_flutter_libs) | SQLite sessions / detections |
+| [geolocator](https://pub.dev/packages/geolocator) | Phone GPS, background loc |
+| [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) | State |
+| [go_router](https://pub.dev/packages/go_router) | Nav |
+| [flutter_local_notifications](https://pub.dev/packages/flutter_local_notifications) | Notifications |
+| [dio](https://pub.dev/packages/dio) | HTTP (WiGLE API) |
+| [share_plus](https://pub.dev/packages/share_plus) | Native share sheet |
+| [freezed](https://pub.dev/packages/freezed) + [json_serializable](https://pub.dev/packages/json_serializable) | Models |
+| [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) | Mesh key storage |
+| [wakelock_plus](https://pub.dev/packages/wakelock_plus) | Keep awake during wardrive |
+| [permission_handler](https://pub.dev/packages/permission_handler) | Perms |
+| [shared_preferences](https://pub.dev/packages/shared_preferences) | Settings |
+| [intl](https://pub.dev/packages/intl) | Date / number format |
+| [uuid](https://pub.dev/packages/uuid) | Session IDs |
+| [crypto](https://pub.dev/packages/crypto) | Hashing |
 
 ### APIs & Tile Services
 
-| Service | Usage |
-|---------|-------|
-| [WiGLE](https://api.wigle.net) | Wardrive CSV upload (user provides own API key) |
-| [CARTO](https://carto.com/basemaps/) | Dark, Light, and Voyager map tiles |
-| [OpenStreetMap](https://www.openstreetmap.org/) | OSM raster tiles |
-| [OpenTopoMap](https://opentopomap.org/) | Topographic map tiles |
-| [Stadia Maps](https://stadiamaps.com/) | Stamen Toner and Terrain tiles |
+| Service | Use |
+|---------|-----|
+| [WiGLE](https://api.wigle.net) | Wardrive CSV upload (user API key) |
+| [CARTO](https://carto.com/basemaps/) | Dark / Light / Voyager tiles |
+| [OpenStreetMap](https://www.openstreetmap.org/) | OSM raster |
+| [OpenTopoMap](https://opentopomap.org/) | Topo |
+| [Stadia Maps](https://stadiamaps.com/) | Stamen Toner / Terrain |
 
-### Data Sources
+### Data
 
 | Source | What |
 |--------|------|
-| [Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database) | 39k+ IEEE OUI vendor database (bundled as gzipped TSV) |
+| [Ringmast4r/OUI-Master-Database](https://github.com/Ringmast4r/OUI-Master-Database) | 39k+ IEEE OUI vendors (gzipped TSV) |
 
-### iOS Native Frameworks
+### iOS Native
 
-| Framework | Usage |
-|-----------|-------|
+| Framework | Use |
+|-----------|-----|
 | ActivityKit | Live Activities / Dynamic Island (iOS 16.2+) |
-| WidgetKit | Widget Extension for Live Activity rendering |
+| WidgetKit  | Widget extension |
 | CoreBluetooth | BLE (via flutter_blue_plus) |
 | CoreLocation | GPS (via geolocator) |
 
----
+</details>
 
-## The Ecosystem
+<details>
+<summary><h2>Ecosystem (standalone forks)</h2></summary>
 
-This repo contains the unified firmware (all engines) and the companion app. Each engine also exists as a standalone project:
+This repo is the unified firmware + app. Each engine also exists standalone:
 
 | Project | What |
 |---------|------|
-| **[OUI-SPY Detector](https://github.com/colonelpanichacks/ouispy-detector)** | Standalone BLE/WiFi watchlist scanner |
-| **[OUI-SPY Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter)** | Standalone RSSI proximity tracker |
-| **[Flock You](https://github.com/colonelpanichacks/flock-you)** | Standalone Flock Safety / Raven detection |
-| **[Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy)** | Standalone drone Remote ID capture |
-| **[Remote-ID-Spoofer](https://github.com/colonelpanichacks/Remote-ID-Spoofer)** | WiFi Remote ID spoofer + swarm mode |
-| **[OUI-SPY UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn)** | Standalone Unitree robot exploitation |
+| [OUI-SPY Detector](https://github.com/colonelpanichacks/ouispy-detector) | BLE/WiFi watchlist scanner |
+| [OUI-SPY Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter) | RSSI proximity tracker |
+| [Flock You](https://github.com/colonelpanichacks/flock-you) | Flock Safety / Raven detector |
+| [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy) | Drone Remote ID capture |
+| [Remote-ID-Spoofer](https://github.com/colonelpanichacks/Remote-ID-Spoofer) | WiFi Remote ID spoofer + swarm |
+| [OUI-SPY UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) | Unitree robot exploitation |
+
+</details>
 
 ---
 
 ## Acknowledgments
 
-**Will Greenberg** ([@wgreenberg](https://github.com/wgreenberg)) — [flock-you](https://github.com/wgreenberg/flock-you) research. Manufacturer company ID `0x09C8` (XUNTONG) detection method and structured pattern approach sourced from his work.
-
-**@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)) — 42 Flock Safety OUI prefixes from promiscuous-mode WiFi field testing, addr1 receiver-side detection technique.
-
-**Michael / DeFlockJoplin** ([DeflockJoplin](https://github.com/DeflockJoplin/flock-you)) — Wildcard probe signature (Probe Request + zero-length SSID + known OUI) from Joplin drive-test field research.
-
----
-
-## Author of OUISPY ecosystem
-
-**colonelpanichacks**
+- **Will Greenberg** ([@wgreenberg](https://github.com/wgreenberg)) — [flock-you](https://github.com/wgreenberg/flock-you). Manuf ID `0x09C8` (XUNTONG) detection and structured pattern approach.
+- **@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)) — 42 Flock OUI prefixes from promisc-mode field testing; addr1 receiver-side technique.
+- **Michael / DeFlockJoplin** ([DeflockJoplin](https://github.com/DeflockJoplin/flock-you)) — wildcard-probe signature from Joplin drive-test.
+- **Author of the OUI-SPY ecosystem:** **colonelpanichacks**.
 
 ---
 
 ## Disclaimer
 
-Security research and privacy auditing tool. Detecting surveillance hardware in public spaces is legal in most jurisdictions. Comply with local laws regarding wireless scanning and signal interception. Authors not responsible for misuse. Using GATT during pairing process can be a risk. Users agree to use in lawful manner only.
+Security research and privacy auditing tool. Detecting surveillance hardware in public spaces is legal in most jurisdictions. Comply with local laws on wireless scanning and signal interception. Authors not responsible for misuse. GATT during pairing carries risk. Lawful use only.
