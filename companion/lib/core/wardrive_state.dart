@@ -371,12 +371,18 @@ class WardriveController extends ChangeNotifier {
       Engine.detector,
       Engine.pcap,
     ];
-    for (final engine in wardriveEngines) {
-      await _ble.disableEngine(engine);
+    try {
+      for (final engine in wardriveEngines) {
+        try {
+          await _ble.disableEngine(engine);
+        } catch (e) {
+          DebugLog.log('WARDRIVE: disable $engine error: $e');
+        }
+      }
+    } finally {
+      WakelockPlus.disable();
+      _liveActivity.end();
     }
-
-    WakelockPlus.disable();
-    _liveActivity.end();
 
     if (sessionId.isNotEmpty && startTime != null) {
       _db.updateSession(SessionsCompanion(
@@ -886,9 +892,24 @@ class WardriveController extends ChangeNotifier {
     if (existing != null) {
       final rssiDelta = (detection.rssi - existing.rssi).abs();
       final shouldRelog = rssiDelta >= threshold;
+      WardriveExtension? mergedWardrive = detection.wardrive ?? existing.wardrive;
+      if (detection.wardrive != null && existing.wardrive != null) {
+        final newAuth = detection.wardrive!.authMode;
+        final oldAuth = existing.wardrive!.authMode;
+        mergedWardrive = detection.wardrive!.copyWith(
+          authMode: newAuth > 0 ? newAuth : oldAuth,
+          ssid: detection.wardrive!.ssid.isNotEmpty
+              ? detection.wardrive!.ssid
+              : existing.wardrive!.ssid,
+          deviceName: detection.wardrive!.deviceName.isNotEmpty
+              ? detection.wardrive!.deviceName
+              : existing.wardrive!.deviceName,
+        );
+      }
       final updated = detection.copyWith(
         count: existing.count + 1,
         rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
+        wardrive: mergedWardrive,
       );
       _dedupedByMac[key] = updated;
       _dedupedOrdered.remove(existing);

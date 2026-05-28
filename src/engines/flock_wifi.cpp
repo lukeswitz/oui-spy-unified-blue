@@ -1,6 +1,7 @@
 #include "flock_wifi.h"
 #include "protocol.h"
 #include "flock_oui.h"
+#include "flock_auth_cache.h"
 #include "dedup_ring.h"
 #include "../engine_registry.h"
 #include <Arduino.h>
@@ -31,6 +32,50 @@ static const uint8_t wildcardProbeTpl[] = {
     0x00, 0x00,
     0x01, 0x04, 0x82, 0x84, 0x8B, 0x96,
 };
+
+static uint8_t IRAM_ATTR flockParseAuth(const uint8_t* p, int len) {
+    int offset = 36;
+    bool hasRSN = false, hasWPA = false, hasWPA3 = false, hasEAP = false;
+    while (offset + 2 <= len) {
+        uint8_t tagId = p[offset];
+        uint8_t tagLen = p[offset + 1];
+        if (offset + 2 + tagLen > len) break;
+        if (tagId == 48 && tagLen >= 2) {
+            hasRSN = true;
+            int rsnOff = offset + 2;
+            int rsnEnd = offset + 2 + tagLen;
+            rsnOff += 2;
+            if (rsnOff + 4 > rsnEnd) goto next_tag;
+            rsnOff += 4;
+            if (rsnOff + 2 > rsnEnd) goto next_tag;
+            uint16_t pairCount = p[rsnOff] | (p[rsnOff + 1] << 8);
+            rsnOff += 2 + pairCount * 4;
+            if (rsnOff + 2 > rsnEnd) goto next_tag;
+            uint16_t akmCount = p[rsnOff] | (p[rsnOff + 1] << 8);
+            rsnOff += 2;
+            for (uint16_t i = 0; i < akmCount && rsnOff + 4 <= rsnEnd; i++) {
+                uint8_t akmType = p[rsnOff + 3];
+                if (p[rsnOff] == 0x00 && p[rsnOff + 1] == 0x0F && p[rsnOff + 2] == 0xAC) {
+                    if (akmType == 8 || akmType == 9 || akmType == 12) hasWPA3 = true;
+                    if (akmType == 1 || akmType == 5) hasEAP = true;
+                }
+                rsnOff += 4;
+            }
+        }
+        if (tagId == 221 && tagLen >= 4) {
+            if (p[offset+2]==0x00 && p[offset+3]==0x50 &&
+                p[offset+4]==0xF2 && p[offset+5]==0x01) hasWPA = true;
+        }
+        next_tag:
+        offset += 2 + tagLen;
+    }
+    if (hasWPA3)          return 6;
+    if (hasEAP && hasRSN) return 5;
+    if (hasRSN && hasWPA) return 4;
+    if (hasRSN)           return 3;
+    if (hasWPA)           return 2;
+    return 0;
+}
 
 static void sendWildcardProbe() {
     uint8_t probe[sizeof(wildcardProbeTpl)];
@@ -79,6 +124,12 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     }
 
     if (method == 0xFF || !matchMac) return;
+
+    if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {
+        uint8_t a = flockParseAuth(p, len);
+        if (a > 0) flockAuthCacheSet(matchMac, a);
+    }
+
     if (wifiDedup.check(matchMac)) return;
 
     DetectionEvent evt = {};
@@ -88,6 +139,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     evt.channel = pkt->rx_ctrl.channel;
     evt.timestamp_ms = millis();
     evt.method = method;
+    evt.ext.flock.auth_mode = flockAuthCacheGet(matchMac);
     pushDetectionFromISR(&evt);
 }
 

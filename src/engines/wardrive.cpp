@@ -1,6 +1,7 @@
 #include "wardrive.h"
 #include "../protocol.h"
 #include "flock_match.h"
+#include "flock_auth_cache.h"
 #include "dedup_ring.h"
 #include "detector.h"
 #include "foxhunter.h"
@@ -259,15 +260,22 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
             fMethod = METHOD_OUI_ADDR3;
             fMac = addr3;
         }
-        if (fMac && !isrFlockWifiDedup.check(fMac)) {
-            DetectionEvent fEvt = {};
-            fEvt.engine_id = ENGINE_FLOCK_WIFI;
-            memcpy(fEvt.mac, fMac, 6);
-            fEvt.rssi = pkt->rx_ctrl.rssi;
-            fEvt.channel = pkt->rx_ctrl.channel;
-            fEvt.timestamp_ms = millis();
-            fEvt.method = fMethod;
-            pushDetectionFromISR(&fEvt);
+        if (fMac) {
+            if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {
+                uint8_t a = parseAuthFromFrame(p, len);
+                if (a > 0) flockAuthCacheSet(fMac, a);
+            }
+            if (!isrFlockWifiDedup.check(fMac)) {
+                DetectionEvent fEvt = {};
+                fEvt.engine_id = ENGINE_FLOCK_WIFI;
+                memcpy(fEvt.mac, fMac, 6);
+                fEvt.rssi = pkt->rx_ctrl.rssi;
+                fEvt.channel = pkt->rx_ctrl.channel;
+                fEvt.timestamp_ms = millis();
+                fEvt.method = fMethod;
+                fEvt.ext.flock.auth_mode = flockAuthCacheGet(fMac);
+                pushDetectionFromISR(&fEvt);
+            }
         }
     }
 

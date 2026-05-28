@@ -34,7 +34,7 @@ class BleProtocol {
     final timestampMs = view.getUint32(9, Endian.little);
     final method = bytes[13];
 
-    const v31Sizes = {31: false, 36: true, 96: false, 101: true, 23: false, 28: true, 47: false, 52: true, 74: true};
+    const v31Sizes = {31: false, 36: true, 37: true, 96: false, 101: true, 23: false, 28: true, 47: false, 52: true, 74: true};
     final isV31 = v31Sizes[bytes.length] ?? (bytes.length >= 19 && engine == Engine.wardrive);
 
     final headerLen = isV31 ? 19 : 14;
@@ -55,6 +55,12 @@ class BleProtocol {
         case Engine.flockBle:
         case Engine.flockWifi:
           flock = _decodeFlockExtension(ext);
+          if (engine == Engine.flockWifi && ext.length >= 18) {
+            final auth = ext[17];
+            if (auth > 0) {
+              wardrive = WardriveExtension(authMode: auth);
+            }
+          }
         case Engine.skySpy:
           odid = _decodeOdidExtension(ext);
         case Engine.uniPwn:

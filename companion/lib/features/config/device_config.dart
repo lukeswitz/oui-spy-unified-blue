@@ -3178,6 +3178,10 @@ class _DetectionRow extends ConsumerWidget {
                     fontFamily: 'monospace', fontWeight: FontWeight.w600,
                   )),
                 ],
+                if ((data['authMode'] as int? ?? 0) > 0) ...[
+                  const SizedBox(width: 8),
+                  _ConfigAuthPill(authMode: data['authMode'] as int),
+                ],
                 const Spacer(),
                 // Timestamp
                 Icon(Icons.access_time, size: 12, color: t.textDim),
@@ -4111,3 +4115,43 @@ class _PcapEntry {
   final DateTime modified;
 }
 
+
+(String, Color) _configAuthMeta(int mode) => switch (mode) {
+      0 => ('OPEN', AppTheme.error),
+      1 => ('WEP', AppTheme.warning),
+      2 => ('WPA', AppTheme.warning),
+      3 => ('WPA2', AppTheme.success),
+      4 => ('WPA/2', AppTheme.success),
+      5 => ('ENT', AppTheme.accent),
+      6 => ('WPA3', AppTheme.success),
+      _ => ('WPA2', AppTheme.success),
+    };
+
+class _ConfigAuthPill extends StatelessWidget {
+  const _ConfigAuthPill({required this.authMode});
+  final int authMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _configAuthMeta(authMode);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(authMode == 0 ? Icons.lock_open : Icons.lock, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(label, style: TextStyle(
+            color: color, fontSize: 10,
+            fontWeight: FontWeight.w700, letterSpacing: 0.5,
+          )),
+        ],
+      ),
+    );
+  }
+}

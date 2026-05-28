@@ -721,7 +721,8 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
         case ENGINE_FLOCK_WIFI:
             buf[19] = evt->ext.flock.is_raven;
             memcpy(buf + 20, evt->ext.flock.raven_fw, 16);
-            len = 36;
+            buf[36] = evt->ext.flock.auth_mode;
+            len = 37;
             break;
 
         case ENGINE_SKYSPY:

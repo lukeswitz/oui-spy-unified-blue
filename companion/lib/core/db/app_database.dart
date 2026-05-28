@@ -240,6 +240,7 @@ class AppDatabase extends _$AppDatabase {
           'latitude': r.latitude,
           'longitude': r.longitude,
           'ssid': r.ssid,
+          'authMode': r.authMode,
         };
       }
     }

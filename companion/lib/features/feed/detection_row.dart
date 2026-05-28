@@ -92,8 +92,8 @@ class DetectionRow extends ConsumerWidget {
                         ],
                       ]),
                       overflow: TextOverflow.ellipsis,
-                      softWrap: false,
-                      maxLines: 1,
+                      softWrap: true,
+                      maxLines: 2,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -116,9 +116,26 @@ class DetectionRow extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  if (detection.wardrive != null && detection.isWifiDetection) ...[
-                    const SizedBox(width: 8),
-                    _AuthPill(authMode: detection.wardrive!.authMode),
+                  if (detection.isWifiDetection) ...[
+                    Builder(builder: (_) {
+                      int? auth = detection.wardrive?.authMode;
+                      if (auth == null || auth == 0) {
+                        final dets = ref.read(appStateProvider).recentDetections;
+                        for (final d in dets) {
+                          if (d.macAddress == detection.macAddress &&
+                              d.wardrive != null &&
+                              d.wardrive!.authMode > 0) {
+                            auth = d.wardrive!.authMode;
+                            break;
+                          }
+                        }
+                      }
+                      if (auth == null) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: _AuthPill(authMode: auth),
+                      );
+                    }),
                   ],
                   const SizedBox(width: 8),
                   Text(timeStr,
@@ -547,7 +564,7 @@ class _DetailLine extends StatelessWidget {
     ));
     if (detection.channel > 0) {
       tokens.add(const SizedBox(width: 5));
-      tokens.add(_mono('CH-${detection.channel}'));
+      tokens.add(_mono('${detection.channel}'));
     }
     if (detection.count > 1) {
       tokens.add(_pipe());

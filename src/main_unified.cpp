@@ -227,8 +227,14 @@ static void detectionNotifyTask(void* param) {
             snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
                      evt.mac[0], evt.mac[1], evt.mac[2],
                      evt.mac[3], evt.mac[4], evt.mac[5]);
-            Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d}\n",
-                          evt.engine_id, macStr, evt.rssi, evt.channel, evt.method);
+            if (evt.engine_id == ENGINE_FLOCK_WIFI) {
+                Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d,\"auth\":%d}\n",
+                              evt.engine_id, macStr, evt.rssi, evt.channel, evt.method,
+                              evt.ext.flock.auth_mode);
+            } else {
+                Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d}\n",
+                              evt.engine_id, macStr, evt.rssi, evt.channel, evt.method);
+            }
         }
     }
 }
