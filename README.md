@@ -72,17 +72,14 @@ Flutter app for Android, iOS, and macOS. Connects to OUI-SPY over BLE GATT. All 
 
 ### Core Features
 
-- **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate. Filter by engine, radio, search any field
+- **Live detection feed** with engine-colored rows, RSSI, vendor lookup (39k+ OUI database), one-tap foxhunt or map locate. Filter by engine, radio, search any field. Press and hold on any device to copy detailed info to clipboard. 
 - **Wardrive mapping** with 5 target modes (WiGLE, Flock, Drone, Detector, WiGLE+Flock), WiFi/BLE/both radio selection, follow-mode camera that keeps you centered, adaptive map plotting, color-graded route path, WiGLE CSV export, direct WiGLE upload, session history
-- **Detector hits on the map** — your watchlist matches appear as live markers on the wardrive map alongside Flock cameras
 - **WiGLE CSV import & review** — load any WiGLE-format CSV, auto-match every BSSID against the bundled OUI/Flock database, flag surveillance hits (Flock, Raven, watchlist OUIs) on the map and in the feed
 - **PCAP capture (WiFi & BLE)** — record raw 802.11 (radiotap) and BLE LL (PHDR) packets on demand or automatically when a target is detected. Files saved on device, browse + share to Wireshark from `Settings → Detections → Saved PCAPs`. See [PCAP Capture](#pcap-capture)
 - **Over-the-air firmware updates** — flash the latest firmware from inside the app over WiFi (fast) or BLE (slow, no router needed). No re-flashing with a cable. See [OTA Updates](#ota-firmware-updates)
 - **Per-engine control** — enable/disable any of the 8 engines independently, configure scan timing, radio modes, watchlist entries
-- **Watchlist persistence** — saved targets survive reboots; per-target hit counter shown next to each entry
-- **Mesh overlay** — see peer node names and per-node detection counts during ESP-NOW coordinated wardrives
-- **Ignore list** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles
-- **Metric/imperial** units throughout (km/mi, km/h/mph, m/ft)
+- **Ignore list/Geofencing** — suppress devices by MAC, OUI prefix, SSID, or device name with per-scope WiFi/BLE/both toggles. Draw circlular or polygon no scan zones to prevent logging sensitive areas. 
+
 
 ### PCAP Capture
 
