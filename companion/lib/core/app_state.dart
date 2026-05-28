@@ -254,10 +254,24 @@ class AppState extends ChangeNotifier {
 
     if (existingIdx != null && existingIdx < recentDetections.length) {
       final existing = recentDetections[existingIdx];
-      // Merge: keep strongest RSSI, latest timestamp, accumulate count
+      WardriveExtension? mergedWardrive = det.wardrive ?? existing.wardrive;
+      if (det.wardrive != null && existing.wardrive != null) {
+        final newAuth = det.wardrive!.authMode;
+        final oldAuth = existing.wardrive!.authMode;
+        mergedWardrive = det.wardrive!.copyWith(
+          authMode: newAuth > 0 ? newAuth : oldAuth,
+          ssid: det.wardrive!.ssid.isNotEmpty
+              ? det.wardrive!.ssid
+              : existing.wardrive!.ssid,
+          deviceName: det.wardrive!.deviceName.isNotEmpty
+              ? det.wardrive!.deviceName
+              : existing.wardrive!.deviceName,
+        );
+      }
       final merged = det.copyWith(
         count: existing.count + 1,
         rssi: det.rssi > existing.rssi ? det.rssi : existing.rssi,
+        wardrive: mergedWardrive,
       );
       recentDetections.removeAt(existingIdx);
       for (final entry in _dedupeIndex.entries) {

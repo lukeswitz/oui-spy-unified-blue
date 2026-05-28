@@ -116,26 +116,10 @@ class DetectionRow extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  if (detection.isWifiDetection) ...[
-                    Builder(builder: (_) {
-                      int? auth = detection.wardrive?.authMode;
-                      if (auth == null || auth == 0) {
-                        final dets = ref.read(appStateProvider).recentDetections;
-                        for (final d in dets) {
-                          if (d.macAddress == detection.macAddress &&
-                              d.wardrive != null &&
-                              d.wardrive!.authMode > 0) {
-                            auth = d.wardrive!.authMode;
-                            break;
-                          }
-                        }
-                      }
-                      if (auth == null) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: _AuthPill(authMode: auth),
-                      );
-                    }),
+                  if (detection.isWifiDetection &&
+                      (detection.wardrive?.authMode ?? 0) > 0) ...[
+                    const SizedBox(width: 8),
+                    _AuthPill(authMode: detection.wardrive!.authMode),
                   ],
                   const SizedBox(width: 8),
                   Text(timeStr,
