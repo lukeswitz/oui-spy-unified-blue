@@ -942,12 +942,27 @@ class BleManager {
   // -- Disconnect --
 
   Future<void> disconnect() async {
-    await disableAllEngines();
+    final wasFullyConnected =
+        _currentState == NodeConnectionState.ready;
+    _reconnectTimer?.cancel();
+    if (wasFullyConnected) {
+      try {
+        await disableAllEngines();
+      } on FlutterBluePlusException catch (e) {
+        DebugLog.log('BLE: disableAllEngines on disconnect failed: ${e.description}');
+      }
+    } else {
+      DebugLog.log('BLE: cancel mid-connect (state=$_currentState) — skipping engine writes');
+    }
     for (final sub in _subscriptions) {
       await sub.cancel();
     }
     _subscriptions.clear();
-    await _device?.disconnect();
+    try {
+      await _device?.disconnect();
+    } on FlutterBluePlusException catch (e) {
+      DebugLog.log('BLE: device.disconnect failed: ${e.description}');
+    }
     _device = null;
     _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
   }

@@ -19,6 +19,8 @@ class ScanScreen extends ConsumerStatefulWidget {
 class _ScanScreenState extends ConsumerState<ScanScreen> {
   final Map<String, ScanResult> _results = {};
   bool _scanning = false;
+  bool _connecting = false;
+  String? _connectingId;
   String? _error;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<NodeConnectionState>? _connSub;
@@ -48,10 +50,41 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     super.dispose();
   }
 
-  void _startScan() {
+  Future<void> _startScan() async {
+    if (_scanning) return;
     _results.clear();
     _error = null;
     setState(() => _scanning = true);
+
+    try {
+      if (FlutterBluePlus.isScanningNow) {
+        await FlutterBluePlus.stopScan();
+      }
+    } on Exception catch (e) {
+      DebugLog.log('SCAN: stopScan pre-clean: $e');
+    }
+
+    var adapter = FlutterBluePlus.adapterStateNow;
+    if (adapter == BluetoothAdapterState.unknown) {
+      try {
+        adapter = await FlutterBluePlus.adapterState
+            .firstWhere((s) => s != BluetoothAdapterState.unknown)
+            .timeout(const Duration(seconds: 2),
+                onTimeout: () => FlutterBluePlus.adapterStateNow);
+      } on Exception catch (e) {
+        DebugLog.log('SCAN: adapter check: $e');
+      }
+    }
+    if (adapter != BluetoothAdapterState.on &&
+        adapter != BluetoothAdapterState.unknown) {
+      if (mounted) {
+        setState(() {
+          _error = 'Bluetooth not on ($adapter)';
+          _scanning = false;
+        });
+      }
+      return;
+    }
 
     _scanSub?.cancel();
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
@@ -68,17 +101,43 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       if (mounted) setState(() { _error = e.toString(); _scanning = false; });
     });
 
-    FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 15),
-      androidUsesFineLocation: true,
-    ).whenComplete(() {
-      if (mounted) setState(() => _scanning = false);
-    });
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 15),
+        androidUsesFineLocation: true,
+      );
+    } on FlutterBluePlusException catch (e) {
+      DebugLog.log('SCAN: startScan failed: ${e.description}');
+      if (mounted) {
+        setState(() {
+          _error = 'Scan failed: ${e.description}';
+          _scanning = false;
+        });
+      }
+      return;
+    }
+
+    if (mounted) setState(() => _scanning = false);
   }
 
   Future<void> _connectDevice(ScanResult result) async {
-    await FlutterBluePlus.stopScan();
+    if (_connecting) {
+      DebugLog.log('SCAN: tap ignored — connect in flight to $_connectingId');
+      return;
+    }
+    final id = result.device.remoteId.toString();
+    setState(() {
+      _connecting = true;
+      _connectingId = id;
+    });
+
+    try {
+      await FlutterBluePlus.stopScan();
+    } on Exception catch (e) {
+      DebugLog.log('SCAN: stopScan: $e');
+    }
     _scanSub?.cancel();
+    if (mounted) setState(() => _scanning = false);
 
     final ble = ref.read(bleManagerProvider);
 
@@ -86,11 +145,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       await ble.connect(result.device, sessionId: const Uuid().v4());
       DebugLog.log('SCAN: connected to ${result.device.platformName}');
       if (mounted) context.go('/home');
-    } catch (e) {
+    } on FlutterBluePlusException catch (e) {
+      DebugLog.log('SCAN: connect failed: ${e.description}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Connection failed: $e'), backgroundColor: AppTheme.error),
+          SnackBar(content: Text('Connection failed: ${e.description}'), backgroundColor: AppTheme.error),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _connecting = false;
+          _connectingId = null;
+        });
       }
     }
   }
@@ -98,7 +165,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    final sorted = _results.values.toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
+    final all = _results.values.toList();
+    final hasManager = all.any((r) =>
+        r.device.platformName.toUpperCase().contains('OUI-SPY-MGR'));
+    final filtered = hasManager
+        ? all
+            .where((r) => r.device.platformName.toUpperCase().contains('OUI-SPY-MGR'))
+            .toList()
+        : all;
+    final sorted = filtered
+      ..sort((a, b) => a.device.platformName
+          .toUpperCase()
+          .compareTo(b.device.platformName.toUpperCase()));
 
     return Scaffold(
       backgroundColor: t.background,
@@ -151,33 +229,62 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                       itemCount: sorted.length,
                       itemBuilder: (context, index) {
                         final r = sorted[index];
+                        final id = r.device.remoteId.toString();
+                        final isThisConnecting = _connecting && _connectingId == id;
+                        final isOtherConnecting = _connecting && _connectingId != id;
                         return GestureDetector(
-                          onTap: () => _connectDevice(r),
+                          onTap: _connecting ? null : () => _connectDevice(r),
                           child: Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppTheme.accent.withValues(alpha: 0.08),
+                              color: isOtherConnecting
+                                  ? t.surface.withValues(alpha: 0.4)
+                                  : AppTheme.accent.withValues(alpha: isThisConnecting ? 0.2 : 0.08),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.bluetooth, color: AppTheme.accent, size: 20),
+                                isThisConnecting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: AppTheme.accent,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.bluetooth, color: AppTheme.accent, size: 20),
                                 const SizedBox(width: 12),
                                 Expanded(child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(r.device.platformName,
                                         style: const TextStyle(color: AppTheme.accent, fontSize: 14, fontWeight: FontWeight.w600)),
-                                    Text(r.device.remoteId.toString(),
-                                        style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
+                                    Text(
+                                      isThisConnecting
+                                          ? 'CONNECTING...'
+                                          : r.device.remoteId.toString(),
+                                      style: TextStyle(
+                                        color: isThisConnecting
+                                            ? AppTheme.accent
+                                            : t.textDim,
+                                        fontSize: 11,
+                                        fontFamily: 'monospace',
+                                        letterSpacing: isThisConnecting ? 1.5 : 0,
+                                        fontWeight: isThisConnecting
+                                            ? FontWeight.w700
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
                                   ],
                                 )),
-                                Text('${r.rssi} dBm', style: TextStyle(
-                                  color: r.rssi > -60 ? AppTheme.success : r.rssi > -80 ? AppTheme.warning : AppTheme.error,
-                                  fontSize: 12, fontFamily: 'monospace',
-                                )),
+                                if (!isThisConnecting)
+                                  Text('${r.rssi} dBm', style: TextStyle(
+                                    color: r.rssi > -60 ? AppTheme.success : r.rssi > -80 ? AppTheme.warning : AppTheme.error,
+                                    fontSize: 12, fontFamily: 'monospace',
+                                  )),
                               ],
                             ),
                           ),

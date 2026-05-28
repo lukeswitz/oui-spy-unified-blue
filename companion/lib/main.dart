@@ -39,7 +39,10 @@ void main() async {
 
   container.read(appStateProvider);
 
-  _autoConnect(container);
+  // _autoConnect disabled — multi-device deployments (OUI-SPY + OUI-SPY-MGR)
+  // need explicit user selection; remembered-device auto reconnect bypassed
+  // the chooser and picked whichever was system-cached.
+  // _autoConnect(container);
 
   runApp(UncontrolledProviderScope(
     container: container,
