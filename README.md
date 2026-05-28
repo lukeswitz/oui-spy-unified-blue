@@ -6,7 +6,7 @@
 
 **Eight surveillance-detection engines on one XIAO ESP32-S3. Controlled from your phone. No reboot to switch modes.**
 
-> Fork of [colonelpanichacks/oui-spy-unified-blue](https://github.com/colonelpanichacks/oui-spy-unified-blue). Upstream is a 4-mode firmware with a boot-time AP selector — you pick a mode, reboot, and use it. This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a single Flutter companion app over BLE GATT. Live capture data streams to the phone — no on-device SD or filesystem.
+> Fork of [colonelpanichacks/oui-spy-unified-blue](https://github.com/colonelpanichacks/oui-spy-unified-blue). Upstream is a 4-mode firmware with a boot-time AP selector — you pick a mode, reboot, and use it. This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a single companion app over BLE GATT
 
 [![Release](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-blue.svg?logo=apple)](https://testflight.apple.com/join/5RCKgnJ2)
@@ -25,7 +25,7 @@
 - One firmware. **Eight scan engines** — Detector, Flock BLE, Flock WiFi, Foxhunter, Sky Spy, UniPwn, Wardrive, PCAP.
 - Runs them **concurrently** across WiFi promiscuous and BLE radios. Toggle from the app, live, no reboot.
 - **Flutter companion app** for iOS / macOS / Android — full control, live feed, wardrive map, PCAP browser, OTA updates.
-- PCAP capture streams over BLE to the phone — raw 802.11 (radiotap) and BLE LL (PHDR), saved as `.pcap` in the app, openable in Wireshark.
+- PCAP capture streams over BLE to the phone — raw 802.11 (radiotap) and BLE LL (PHDR), saved as `.pcap` in the app, open in Wireshark.
 - Imports / exports WiGLE-format CSVs. Direct WiGLE upload.
 
 > Beta. File issues — bugs and odd behavior expected.
@@ -48,7 +48,9 @@
 ## Quick Start
 
 **1 · Flash the device** — open the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) in Chrome or Edge, plug in the XIAO ESP32-S3 via USB-C, hit Connect & Flash.
+
 **2 · Install the app** — [Android APK](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest), [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2), or [macOS signed .app](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest).
+
 **3 · Pair over BLE** — open the app, tap the device. Done. From here every engine, channel, watchlist, and PCAP is app-side.
 
 ---
