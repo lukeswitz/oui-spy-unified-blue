@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
+#include <esp_timer.h>
 
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
@@ -73,8 +74,37 @@ static uint8_t autoPcapPausedMask;
 static uint8_t autoPcapTriggerSrc = 0xFF;
 static uint8_t autoPcapTriggerMac[6] = {0,0,0,0,0,0};
 static bool autoPcapUserCancelled = false;
+static esp_timer_handle_t autoPcapDeadlineTimer = nullptr;
+
+static void autoPcapDeadlineCb(void* arg) {
+    if (!autoPcapPending) return;
+    Serial.println("[ENGINE] auto-pcap deadline (timer), stopping PCAP");
+    engineDisable(ENGINE_PCAP);
+}
+
+static void autoPcapArmDeadlineTimer(uint32_t ms) {
+    if (autoPcapDeadlineTimer == nullptr) {
+        const esp_timer_create_args_t args = {
+            .callback = &autoPcapDeadlineCb,
+            .arg = nullptr,
+            .dispatch_method = ESP_TIMER_TASK,
+            .name = "ap_deadline",
+            .skip_unhandled_events = false,
+        };
+        esp_timer_create(&args, &autoPcapDeadlineTimer);
+    }
+    esp_timer_stop(autoPcapDeadlineTimer);
+    esp_timer_start_once(autoPcapDeadlineTimer, (uint64_t)ms * 1000ULL);
+}
+
+static void autoPcapCancelDeadlineTimer(void) {
+    if (autoPcapDeadlineTimer != nullptr) {
+        esp_timer_stop(autoPcapDeadlineTimer);
+    }
+}
 
 void engineDisableAll(void) {
+    autoPcapCancelDeadlineTimer();
     autoPcapPending = false;
     autoPcapObservedActive = false;
     autoPcapPausedMask = 0;
@@ -359,6 +389,7 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
     autoPcapObservedActive = false;
     autoPcapUserCancelled = false;
     autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
+    autoPcapArmDeadlineTimer((uint32_t)autoPcapDurationSec * 1000U);
     uint8_t maskSnap = autoPcapPausedMask;
     Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
                   engines[src] ? engines[src]->name : "?",
@@ -379,7 +410,8 @@ static void autoPcapTick(void) {
         pcapDown = true;
     }
 
-    if (pcapDown) {
+    if (pcapDown && (autoPcapObservedActive || autoPcapUserCancelled)) {
+        autoPcapCancelDeadlineTimer();
         uint8_t mask = autoPcapUserCancelled ? 0 : autoPcapPausedMask;
         bool cancelled = autoPcapUserCancelled;
         autoPcapPending = false;
