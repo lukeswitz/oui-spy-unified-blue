@@ -597,13 +597,21 @@ void bleGattInit(void) {
         NIMBLE_PROPERTY::READ
     );
     {
-        char info[64];
+        char info[96];
         int len = snprintf(info, sizeof(info), "%s", FW_VERSION);
-        len++; // null terminator
+        len++;
         uint8_t mac[6];
         esp_read_mac(mac, ESP_MAC_BT);
         len += snprintf(info + len, sizeof(info) - len, "OUISPY-%02X%02X",
                         mac[4], mac[5]);
+        len++;
+        len += snprintf(info + len, sizeof(info) - len, "%s", OUISPY_BOARD);
+        len++;
+#ifdef OUISPY_ROLE_MANAGER
+        len += snprintf(info + len, sizeof(info) - len, "mgr");
+#else
+        len += snprintf(info + len, sizeof(info) - len, "node");
+#endif
         chrDeviceInfo->setValue((uint8_t*)info, len + 1);
     }
 

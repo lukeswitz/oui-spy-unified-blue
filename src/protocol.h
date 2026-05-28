@@ -30,6 +30,10 @@
 #define FW_VERSION     "0.4.0"
 #define FW_VERSION_NUM 0x000400
 
+#ifndef OUISPY_BOARD
+  #define OUISPY_BOARD "unknown"
+#endif
+
 // ============================================================================
 // Engine IDs — bitmask-compatible
 // ============================================================================

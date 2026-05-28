@@ -40,11 +40,13 @@ static const uint8_t     kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 static void sendAckPacket(const MeshCommandPacket* cmd);
 static void sendOneSweep(const uint8_t* encrypted, size_t encLen);
+static void sendOnRendezvous(const uint8_t* data, size_t len);
 static void retryTaskFn(void* arg);
 
 static volatile bool      pendingInviteApply = false;
 static MeshConfig         pendingInviteCfg = {};
 static SemaphoreHandle_t  inviteMutex = NULL;
+static SemaphoreHandle_t  txMutex = NULL;
 
 static void deriveNonce(uint8_t nonce[MESH_NONCE_LEN], uint64_t counter) {
     memcpy(nonce, localNodeId, 4);
@@ -263,6 +265,7 @@ void meshInit(void) {
     meshMutex = xSemaphoreCreateMutex();
     pendingMutex = xSemaphoreCreateMutex();
     inviteMutex = xSemaphoreCreateMutex();
+    txMutex = xSemaphoreCreateMutex();
     mbedtls_gcm_init(&gcmCtx);
     memset((void*)&meshCurrentConfig, 0, sizeof(MeshConfig));
     memset((void*)&meshCurrentStatus, 0, sizeof(MeshStatus));
@@ -449,13 +452,8 @@ void meshBroadcastDetection(const DetectionEvent* evt) {
         return;
     }
 
-    uint8_t saved_ch = 0; wifi_second_chan_t sec;
-    esp_wifi_get_channel(&saved_ch, &sec);
-    bool changed = (saved_ch != 1);
-    if (changed) esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
-    static const uint8_t kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
-    esp_err_t result = esp_now_send(kBroadcastDst, encrypted, encLen);
-    if (changed) esp_wifi_set_channel(saved_ch, WIFI_SECOND_CHAN_NONE);
+    sendOnRendezvous(encrypted, encLen);
+    esp_err_t result = ESP_OK;
 
     if (result == ESP_OK) {
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -468,15 +466,23 @@ void meshBroadcastDetection(const DetectionEvent* evt) {
     }
 }
 
-static void sendOneSweep(const uint8_t* encrypted, size_t encLen) {
+static void sendOnRendezvous(const uint8_t* data, size_t len) {
+    if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    esp_now_send(kBroadcastDst, data, len);
+    if (txMutex) xSemaphoreGive(txMutex);
+}
+
+static void sendOneSweep(const uint8_t* data, size_t len) {
+    if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
     uint8_t saved_ch = 0; wifi_second_chan_t sec;
     esp_wifi_get_channel(&saved_ch, &sec);
     for (uint8_t ch = 1; ch <= 11; ch++) {
         esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
-        esp_now_send(kBroadcastDst, encrypted, encLen);
+        esp_now_send(kBroadcastDst, data, len);
         vTaskDelay(pdMS_TO_TICKS(5));
     }
     esp_wifi_set_channel(saved_ch != 0 ? saved_ch : 1, WIFI_SECOND_CHAN_NONE);
+    if (txMutex) xSemaphoreGive(txMutex);
 }
 
 static void sendAckPacket(const MeshCommandPacket* cmd) {
@@ -489,7 +495,7 @@ static void sendAckPacket(const MeshCommandPacket* cmd) {
     uint8_t enc[64];
     size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&ack, sizeof(MeshAckPacket), enc, &encLen)) return;
-    sendOneSweep(enc, encLen);
+    sendOnRendezvous(enc, encLen);
     Serial.printf("[MESH-ACK-TX] seq=%u cmd=0x%02x engine=%u\n",
         ack.ack_seq, ack.ack_cmd, ack.ack_engine_id);
 }
@@ -537,7 +543,7 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     uint8_t encrypted[256];
     size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket), encrypted, &encLen)) return;
-    sendOneSweep(encrypted, encLen);
+    sendOnRendezvous(encrypted, encLen);
 
     Serial.printf("[MESH-CMD-TX] seq=%u cmd=0x%02x engine=%u retries=%u\n",
         seq, command, engine_id, MESH_CMD_MAX_RETRIES);
@@ -606,7 +612,7 @@ static void retryTaskFn(void* arg) {
             if (p.payload_len > 0) memcpy(pkt.payload, p.payload, p.payload_len);
             uint8_t enc[256]; size_t encLen = 0;
             if (encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket), enc, &encLen)) {
-                sendOneSweep(enc, encLen);
+                sendOnRendezvous(enc, encLen);
                 Serial.printf("[MESH-CMD-RETRY] seq=%u cmd=0x%02x engine=%u retries_left=%u\n",
                     p.seq, p.command, p.engine_id, retries_now);
             }
