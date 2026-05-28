@@ -135,6 +135,47 @@ class AppState extends ChangeNotifier {
     return nodes;
   }
 
+  Map<String, int> get detectionsPerSourceNode {
+    final m = <String, int>{};
+    for (final d in recentDetections) {
+      final k = d.sourceNodeId.isEmpty ? 'LOCAL' : d.sourceNodeId;
+      m[k] = (m[k] ?? 0) + 1;
+    }
+    return m;
+  }
+
+  String labelForNode(String id) {
+    final prefs = _nodeLabels;
+    final stored = prefs[id];
+    if (stored != null && stored.isNotEmpty) return stored;
+    if (id == 'LOCAL' || id.isEmpty) return 'LOCAL';
+    return id;
+  }
+
+  final Map<String, String> _nodeLabels = {};
+  void setNodeLabel(String id, String label) {
+    if (label.isEmpty) {
+      _nodeLabels.remove(id);
+    } else {
+      _nodeLabels[id] = label;
+    }
+    SharedPreferences.getInstance().then((p) {
+      final entries = _nodeLabels.entries
+          .map((e) => '${e.key}=${e.value}')
+          .toList();
+      p.setStringList('nodeLabels', entries);
+    });
+    notifyListeners();
+  }
+
+  void _loadNodeLabels(SharedPreferences p) {
+    final entries = p.getStringList('nodeLabels') ?? const [];
+    for (final e in entries) {
+      final i = e.indexOf('=');
+      if (i > 0) _nodeLabels[e.substring(0, i)] = e.substring(i + 1);
+    }
+  }
+
   void _init() {
     // Connection state
     connectionState = _ble.currentConnectionState;

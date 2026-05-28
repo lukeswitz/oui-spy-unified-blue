@@ -3611,30 +3611,75 @@ class _NodeStatsOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final appState = ref.watch(appStateProvider);
-    final peerCount = appState.meshPeerCount;
+    final tx = appState.meshTxCount;
+    final rx = appState.meshRxCount;
+    final label = appState.meshEnabled ? 'MESH $tx/$rx' : 'MESH OFF';
+    final color = appState.meshEnabled
+        ? (tx + rx > 0 ? AppTheme.success : AppTheme.warning)
+        : t.textDim;
+    final perNode = appState.detectionsPerSourceNode;
+    final nodeEntries = perNode.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return Container(
       padding: const EdgeInsets.all(8),
-      constraints: const BoxConstraints(maxWidth: 180),
+      constraints: const BoxConstraints(maxWidth: 220),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: t.border, width: 0.5),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.hub, size: 10, color: AppTheme.warning),
-          const SizedBox(width: 4),
-          Text(
-            '$peerCount PEER${peerCount != 1 ? 'S' : ''}',
-            style: TextStyle(
-              color: AppTheme.warning,
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.hub, size: 10, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
           ),
+          if (nodeEntries.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            ...nodeEntries.map((e) => Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(right: 6),
+                        decoration: BoxDecoration(
+                          color: e.key == 'LOCAL'
+                              ? AppTheme.accent
+                              : AppTheme.success,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Text(
+                        '${appState.labelForNode(e.key)}: ${e.value}',
+                        style: TextStyle(
+                          color: t.textSecondary,
+                          fontSize: 9,
+                          fontFamily: 'monospace',
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
         ],
       ),
     );

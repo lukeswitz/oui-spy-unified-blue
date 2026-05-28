@@ -80,32 +80,44 @@ class _StatusBarState extends ConsumerState<StatusBar> {
             color: _gpsColor,
           ),
           const Spacer(),
-          // Device name + node count
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 2,
-                  fontFamily: 'monospace',
-                  color: state.isConnected
-                      ? AppTheme.accent
-                      : t.textDim,
-                ),
+          // Device name + node count — tap to switch device
+          InkWell(
+            onTap: state.isConnected
+                ? () async {
+                    await ref.read(bleManagerProvider).disconnect();
+                    if (context.mounted) context.push('/onboarding');
+                  }
+                : () => context.push('/onboarding'),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 2,
+                      fontFamily: 'monospace',
+                      color: state.isConnected
+                          ? AppTheme.accent
+                          : t.textDim,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    state.isConnected ? Icons.swap_horiz : Icons.devices,
+                    size: 12,
+                    color: state.isConnected
+                        ? AppTheme.accent
+                        : t.textDim,
+                  ),
+                ],
               ),
-              const SizedBox(width: 4),
-              Icon(
-                  Icons.devices,
-                  size: 12,
-                  color: state.isConnected
-                      ? AppTheme.accent
-                      : t.textDim,
-                ),
-              ],
             ),
+          ),
         ],
       ),
     );
