@@ -610,7 +610,7 @@ static void sendAckPacket(const MeshCommandPacket* cmd) {
     uint8_t enc[64];
     size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&ack, sizeof(MeshAckPacket), enc, &encLen)) return;
-    sendOnRendezvous(enc, encLen);
+    sendOneSweep(enc, encLen);
     Serial.printf("[MESH-ACK-TX] seq=%u cmd=0x%02x engine=%u\n",
         ack.ack_seq, ack.ack_cmd, ack.ack_engine_id);
 }
@@ -658,7 +658,7 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     uint8_t encrypted[256];
     size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket), encrypted, &encLen)) return;
-    sendOnRendezvous(encrypted, encLen);
+    sendOneSweep(encrypted, encLen);
 
     Serial.printf("[MESH-CMD-TX] seq=%u cmd=0x%02x engine=%u retries=%u\n",
         seq, command, engine_id, MESH_CMD_MAX_RETRIES);
@@ -727,7 +727,7 @@ static void retryTaskFn(void* arg) {
             if (p.payload_len > 0) memcpy(pkt.payload, p.payload, p.payload_len);
             uint8_t enc[256]; size_t encLen = 0;
             if (encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket), enc, &encLen)) {
-                sendOnRendezvous(enc, encLen);
+                sendOneSweep(enc, encLen);
                 Serial.printf("[MESH-CMD-RETRY] seq=%u cmd=0x%02x engine=%u retries_left=%u\n",
                     p.seq, p.command, p.engine_id, retries_now);
             }
