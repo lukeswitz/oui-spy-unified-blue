@@ -100,6 +100,14 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                              : cmd.command == 0x0F ? "DISABLE_ALL"
                              : "DISABLE";
         Serial.printf("[BLE] Engine command: %s engine %d\n", cmdName, cmd.engine_id);
+
+#ifdef OUISPY_ROLE_MANAGER
+        if (meshIsEnabled()) {
+            meshBroadcastCommand(cmd.command, cmd.engine_id,
+                cmd.payload_len > 0 ? cmd.payload : nullptr,
+                cmd.payload_len);
+        }
+#endif
     }
 
     void onRead(NimBLECharacteristic* chr) override {
@@ -537,7 +545,18 @@ static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
 void bleGattInit(void) {
     Serial.println("[BLE] Initializing NimBLE...");
 
-    NimBLEDevice::init("OUI-SPY");
+    {
+        uint8_t bmac[6];
+        esp_read_mac(bmac, ESP_MAC_BT);
+        char devName[24];
+#ifdef OUISPY_ROLE_MANAGER
+        snprintf(devName, sizeof(devName), "OUI-SPY-MGR-%02X%02X", bmac[4], bmac[5]);
+#else
+        snprintf(devName, sizeof(devName), "OUI-SPY-%02X%02X", bmac[4], bmac[5]);
+#endif
+        NimBLEDevice::init(devName);
+        Serial.printf("[BLE] device name: %s\n", devName);
+    }
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::setMTU(512);
 

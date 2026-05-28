@@ -362,8 +362,17 @@ void setup() {
         delay(100);
     }
 
+    {
+        MeshConfig cfg = {};
+        cfg.enabled = 1;
+        cfg.encryption_enabled = 0;
+        cfg.peer_count = 0;
+        meshEnable(&cfg);
+        Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
+    }
+
     Serial.println("\n[INIT] *** OUI-SPY READY ***");
-    Serial.println("[INIT] Waiting for phone connection via BLE...");
+    Serial.println("[INIT] Waiting for phone connection via BLE OR mesh command...");
     Serial.printf("[INIT] Free heap: %d bytes\n", esp_get_free_heap_size());
 }
 
