@@ -89,6 +89,12 @@ Flock OUIs resolve in-app to surveillance labels *and* chip vendor, e.g. `Flock 
 
 ---
 
+## Node Mode
+
+Flash one board as **manager** (`mgr-xiao_c3`/`mgr-wroom`), others as **nodes** (`node-xiao_s3`). Power on — nodes auto-join in ~10 s (**Config → NODES** shows them `LIVE`). Connect the app to the manager. Detection engines run across all nodes; PCAP runs on one node you pick. Detections show which node found them. Toggling off or closing the app stops the nodes.
+
+---
+
 ## Companion App
 
 Flutter app. iOS, macOS, Android. BLE GATT to the device. Every control, every readout.
