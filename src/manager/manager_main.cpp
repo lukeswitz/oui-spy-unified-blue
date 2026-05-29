@@ -100,4 +100,15 @@ void setup() {
 
 void loop() {
     delay(50);
+#ifdef OUISPY_PCAP_SELFTEST
+    static bool selftestFired = false;
+    if (!selftestFired && millis() > 6000) {
+        selftestFired = true;
+        Serial.println("[SELFTEST] broadcasting PCAP CONFIG+ENABLE to nodes");
+        uint8_t cfg[4] = { 0x01, 0x00, 0x01, 0x0B };
+        meshBroadcastCommand(0x10, ENGINE_PCAP, cfg, sizeof(cfg));
+        delay(100);
+        meshBroadcastCommand(0x01, ENGINE_PCAP, nullptr, 0);
+    }
+#endif
 }

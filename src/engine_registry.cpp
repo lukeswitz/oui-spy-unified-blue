@@ -9,6 +9,8 @@
 #include <Preferences.h>
 #include <esp_timer.h>
 
+volatile uint32_t g_engRawSeen = 0;
+
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
 static bool initialized[ENGINE_COUNT] = {false};

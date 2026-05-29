@@ -23,6 +23,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   int _chanStart = 1;
   int _chanEnd = 11;
   bool _toggling = false;
+  String? _targetNode;
+  PcapStats? _heldStats;
   bool? _autoPcapOverride;
   int? _autoDurationOverride;
   int _autoDurationSec = 10;
@@ -103,12 +105,22 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
 
   Future<void> _start() async {
     if (_toggling) return;
-    setState(() => _toggling = true);
+    final mgr = ref.read(appStateProvider).isManagerConnected;
+    if (mgr && (_targetNode == null || _targetNode!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a node to capture on first')));
+      return;
+    }
+    setState(() {
+      _toggling = true;
+      _heldStats = null;
+    });
     try {
       await ref.read(bleManagerProvider).startPcap(
             mode: _mode == PcapMode.ble ? 1 : 0,
             channelStart: _chanStart,
             channelEnd: _chanEnd,
+            targetNodeId: mgr ? _targetNode : null,
           );
     } on Exception catch (e) {
       if (mounted) {
@@ -123,7 +135,10 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
     if (_toggling) return;
     setState(() => _toggling = true);
     try {
-      await ref.read(bleManagerProvider).stopPcap();
+      final mgr = ref.read(appStateProvider).isManagerConnected;
+      await ref.read(bleManagerProvider).stopPcap(
+            targetNodeId: mgr ? _targetNode : null,
+          );
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stop failed: $e')));
@@ -160,6 +175,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
         builder: (context, snap) {
           final s = snap.data ?? PcapStats.empty;
           final isCapturing = s.state == 1;
+          if (isCapturing) _heldStats = s;
+          final gridStats = isCapturing ? s : (_heldStats ?? s);
           final activeMode = isCapturing ? s.modeEnum : _mode;
           final hasFile = _lastSaved != null && !isCapturing;
           if (_autoPcapOverride != null && _autoPcapOverride == s.autoEnabled) {
@@ -235,7 +252,11 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                const _CaptureScopeBanner(),
+                _NodePicker(
+                  selected: _targetNode,
+                  enabled: !isCapturing,
+                  onChanged: (id) => setState(() => _targetNode = id),
+                ),
                 const SizedBox(height: 16),
                 _ModeSelector(
                   mode: _mode,
@@ -266,9 +287,9 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 ],
                 const SizedBox(height: 16),
                 if (activeMode == PcapMode.wifi)
-                  _WifiStatsGrid(stats: s, t: t)
+                  _WifiStatsGrid(stats: gridStats, t: t)
                 else
-                  _BleStatsGrid(stats: s, t: t),
+                  _BleStatsGrid(stats: gridStats, t: t),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   onPressed: _toggling ? null : (isCapturing ? _stop : _start),
@@ -970,47 +991,97 @@ class _AutoPcapCard extends StatelessWidget {
   }
 }
 
-class _CaptureScopeBanner extends ConsumerWidget {
-  const _CaptureScopeBanner();
+class _NodePicker extends ConsumerWidget {
+  const _NodePicker({
+    required this.selected,
+    required this.enabled,
+    required this.onChanged,
+  });
+  final String? selected;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(appStateProvider);
     final t = AppTheme.of(context);
     final mgr = appState.isManagerConnected;
-    final nodes = mgr ? appState.liveKnownNodes.length : 0;
-    final label = mgr ? 'AGGREGATE — $nodes node(s)' : 'LOCAL CAPTURE';
-    final desc = mgr
-        ? 'All mesh nodes capture. PCAPNG file contains one interface per node.'
-        : 'Captures only on this device.';
+
+    final box = BoxDecoration(
+      color: t.surface,
+      border: Border.all(color: t.border),
+      borderRadius: BorderRadius.circular(8),
+    );
+
+    if (!mgr) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: box,
+        child: Row(
+          children: [
+            Icon(Icons.memory, color: t.textDim, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('LOCAL CAPTURE',
+                      style: TextStyle(
+                        color: t.textPrimary, fontSize: 12,
+                        letterSpacing: 1.5, fontWeight: FontWeight.w700,
+                      )),
+                  const SizedBox(height: 2),
+                  Text('Captures on this device.',
+                      style: TextStyle(color: t.textSecondary, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final nodes = appState.liveKnownNodes
+        .where((id) => id != appState.nodeId)
+        .toList();
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: t.surface,
-        border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
+      decoration: box,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(mgr ? Icons.hub : Icons.memory,
-              color: mgr ? AppTheme.accent : t.textDim, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: TextStyle(
-                      color: mgr ? AppTheme.accent : t.textPrimary,
-                      fontSize: 12, letterSpacing: 1.5,
-                      fontWeight: FontWeight.w700,
-                    )),
-                const SizedBox(height: 2),
-                Text(desc,
-                    style: TextStyle(color: t.textSecondary, fontSize: 11)),
-              ],
-            ),
+          Row(
+            children: [
+              Icon(Icons.lan, color: AppTheme.accent, size: 18),
+              const SizedBox(width: 10),
+              Text('PCAP NODE',
+                  style: TextStyle(
+                    color: AppTheme.accent, fontSize: 12,
+                    letterSpacing: 1.5, fontWeight: FontWeight.w700,
+                  )),
+            ],
           ),
+          const SizedBox(height: 8),
+          if (nodes.isEmpty)
+            Text('No live nodes yet — wait for nodes to report in.',
+                style: TextStyle(color: t.textSecondary, fontSize: 11))
+          else
+            DropdownButton<String>(
+              value: nodes.contains(selected) ? selected : null,
+              hint: Text('Select a node',
+                  style: TextStyle(color: t.textDim, fontSize: 13)),
+              isExpanded: true,
+              dropdownColor: t.surface,
+              underline: const SizedBox.shrink(),
+              items: nodes
+                  .map((id) => DropdownMenuItem(
+                        value: id,
+                        child: Text(appState.labelForNode(id),
+                            style: TextStyle(color: t.textPrimary)),
+                      ))
+                  .toList(),
+              onChanged: enabled ? onChanged : null,
+            ),
         ],
       ),
     );

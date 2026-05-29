@@ -1056,6 +1056,7 @@ class BleManager {
     int mode = 0,
     int channelStart = 1,
     int channelEnd = 11,
+    String? targetNodeId,
   }) async {
     if (_engineControl == null) return;
     await _engineControl!.write(
@@ -1069,7 +1070,7 @@ class BleManager {
     await Future.delayed(const Duration(milliseconds: 50));
     await _engineControl!.write(
       BleProtocol.encodeEngineControl(
-        engine: Engine.pcap, enable: true,
+        engine: Engine.pcap, enable: true, targetNodeId: targetNodeId,
       ),
     );
   }
@@ -1092,11 +1093,11 @@ class BleManager {
     );
   }
 
-  Future<void> stopPcap() async {
+  Future<void> stopPcap({String? targetNodeId}) async {
     if (_engineControl == null) return;
     await _engineControl!.write(
       BleProtocol.encodeEngineControl(
-        engine: Engine.pcap, enable: false,
+        engine: Engine.pcap, enable: false, targetNodeId: targetNodeId,
       ),
     );
   }

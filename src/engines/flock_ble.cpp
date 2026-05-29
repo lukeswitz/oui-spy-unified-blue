@@ -25,6 +25,7 @@ static uint32_t totalDetections = 0;
 
 class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        g_engRawSeen++;
         // Address-type filter: drop RPA (resolvable) — phones/watches.
         if (!flockShouldConsiderAddr(dev)) return;
 

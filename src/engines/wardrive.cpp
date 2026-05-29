@@ -244,6 +244,7 @@ static void sendWildcardProbe(void) {
 // ============================================================================
 
 static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
+    g_engRawSeen++;
     if (!wardriveActive) return;
 
     // MGMT (beacons/probe-resp for WiGLE) + DATA (foxhunter target frames).
@@ -372,6 +373,7 @@ static NimBLEScan* pWardriveScan = nullptr;
 
 class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        g_engRawSeen++;
         if (!wardriveActive) return;
 
         uint8_t mac[6];

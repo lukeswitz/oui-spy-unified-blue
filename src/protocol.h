@@ -10,6 +10,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern volatile uint32_t g_engRawSeen;
+#ifdef __cplusplus
+}
+#endif
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
@@ -60,7 +68,7 @@ static const bool kEngineTargetable[ENGINE_COUNT] = {
     false,
     true,
     false,
-    false,
+    true,
 };
 
 #define CFG_TGT_PREFIX   0xFE

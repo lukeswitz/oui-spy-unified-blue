@@ -387,14 +387,12 @@ static void pcapStart(void) {
 
     if (pcapMode == PCAP_MODE_WIFI) {
         bool meshOn = meshIsEnabled();
-        if (!meshOn) {
-            WiFi.mode(WIFI_STA);
-            WiFi.disconnect(false, false);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
-                                        .policy = WIFI_COUNTRY_POLICY_MANUAL };
-            esp_wifi_set_country(&country);
-        }
+        WiFi.mode(WIFI_STA);
+        WiFi.disconnect(false, false);
+        vTaskDelay(pdMS_TO_TICKS(50));
+        wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
+                                    .policy = WIFI_COUNTRY_POLICY_MANUAL };
+        esp_wifi_set_country(&country);
         wifi_promiscuous_filter_t f = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                            WIFI_PROMIS_FILTER_MASK_DATA |

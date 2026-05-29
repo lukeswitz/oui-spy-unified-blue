@@ -283,6 +283,80 @@ static void statusHeartbeatTask(void* param) {
 // ============================================================================
 // Arduino Setup
 // ============================================================================
+#ifdef OUISPY_ENGINE_SELFTEST
+static const char* selftestEngineName(EngineId id) {
+    switch (id) {
+        case ENGINE_DETECTOR:   return "DETECTOR";
+        case ENGINE_FLOCK_BLE:  return "FLOCK_BLE";
+        case ENGINE_FLOCK_WIFI: return "FLOCK_WIFI";
+        case ENGINE_FOXHUNTER:  return "FOXHUNTER";
+        case ENGINE_SKYSPY:     return "SKYSPY";
+        case ENGINE_UNIPWN:     return "UNIPWN";
+        case ENGINE_WARDRIVE:   return "WARDRIVE";
+        case ENGINE_PCAP:       return "PCAP";
+        default:                return "?";
+    }
+}
+
+static void engineSelftestTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    Serial.println("[SELFTEST] ===== ENGINE SELF-TEST START (mesh OFF, local) =====");
+    const EngineId order[] = {
+        ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER,
+        ENGINE_SKYSPY, ENGINE_UNIPWN, ENGINE_WARDRIVE, ENGINE_PCAP
+    };
+    for (size_t k = 0; k < sizeof(order) / sizeof(order[0]); k++) {
+        EngineId id = order[k];
+        const char* nm = selftestEngineName(id);
+        bool passive = (id == ENGINE_FLOCK_BLE || id == ENGINE_FLOCK_WIFI);
+        if (passive) engineEnable(ENGINE_WARDRIVE);
+
+        Serial.printf("[SELFTEST] --- %s (id=%d): enabling%s ---\n",
+                      nm, id, passive ? " (+WARDRIVE scan host)" : "");
+        bool en = engineEnable(id);
+        vTaskDelay(pdMS_TO_TICKS(400));
+        bool started = (engineGetActiveMask() & ENGINE_BITMASK(id)) != 0;
+
+        uint32_t seen0 = g_engRawSeen;
+        uint32_t t0 = millis();
+        while (millis() - t0 < 8000) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+        uint32_t activity = g_engRawSeen - seen0;
+        if (id == ENGINE_PCAP) {
+            PcapStats ps1; pcapGetStats(&ps1);
+            uint32_t frames = ps1.beacon_count + ps1.probe_req_count + ps1.probe_resp_count
+                            + ps1.data_count + ps1.ctrl_count + ps1.mgmt_other_count
+                            + ps1.deauth_count + ps1.disassoc_count
+                            + ps1.ble_adv_count + ps1.ble_scan_count;
+            activity = frames;
+            Serial.printf("[SELFTEST] %s frames=%lu bytes_written=%lu dropped=%lu\n",
+                nm, (unsigned long)frames, (unsigned long)ps1.bytes_written,
+                (unsigned long)ps1.dropped_frames);
+        }
+
+        bool dis = engineDisable(id);
+        if (passive) engineDisable(ENGINE_WARDRIVE);
+        vTaskDelay(pdMS_TO_TICKS(600));
+        bool stopped = (engineGetActiveMask() & ENGINE_BITMASK(id)) == 0;
+
+        const char* verdict;
+        if (!en || !started)      verdict = "FAIL-ENABLE";
+        else if (!dis || !stopped) verdict = "FAIL-STOP";
+        else if (activity == 0)    verdict = "ENABLE+STOP-OK-NO-ACTIVITY";
+        else                       verdict = "PASS";
+        Serial.printf("[SELFTEST] RESULT %s: start=%d stop=%d activity=%lu => %s\n",
+            nm, started, stopped, (unsigned long)activity, verdict);
+        Serial.printf("[SELFTEST] mask now=0x%02X heap=%lu\n",
+            engineGetActiveMask(), (unsigned long)esp_get_free_heap_size());
+        vTaskDelay(pdMS_TO_TICKS(1500));
+    }
+    Serial.println("[SELFTEST] ===== ENGINE SELF-TEST DONE =====");
+    vTaskDelete(NULL);
+}
+#endif
+
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -360,6 +434,7 @@ void setup() {
         delay(100);
     }
 
+#ifndef OUISPY_ENGINE_SELFTEST
     {
         MeshConfig cfg = {};
         cfg.enabled = 1;
@@ -368,6 +443,10 @@ void setup() {
         meshEnable(&cfg);
         Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
     }
+#else
+    xTaskCreatePinnedToCore(engineSelftestTask, "selftest", 8192, NULL, 1, NULL, 1);
+    Serial.println("[INIT] ENGINE SELF-TEST mode (mesh disabled)");
+#endif
 
     Serial.println("\n[INIT] *** OUI-SPY READY ***");
     Serial.println("[INIT] Waiting for phone connection via BLE OR mesh command...");

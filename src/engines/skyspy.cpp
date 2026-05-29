@@ -94,6 +94,7 @@ static void applyOdidData(DroneData* d) {
 
 class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        g_engRawSeen++;
         int len = dev->getPayloadLength();
         uint8_t* payload = dev->getPayload();
         if (!payload || len < 6 + (int)sizeof(ODID_BasicID_encoded)) return;
@@ -145,6 +146,7 @@ static SkySkyBLECallback bleCb;
 // ============================================================================
 
 static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
+    g_engRawSeen++;
     if (type != WIFI_PKT_MGMT) return;
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;

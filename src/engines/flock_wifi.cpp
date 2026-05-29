@@ -87,6 +87,7 @@ static void sendWildcardProbe() {
 }
 
 static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type) {
+    g_engRawSeen++;
     if (!scanning) return;
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
 

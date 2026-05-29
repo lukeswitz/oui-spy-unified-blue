@@ -33,6 +33,7 @@ static const char* getRobotType(const char* name) {
 
 class UnipwnCallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        g_engRawSeen++;
         std::string name = dev->haveName() ? dev->getName() : "";
         if (!isUnitreeDevice(name.c_str())) return;
 

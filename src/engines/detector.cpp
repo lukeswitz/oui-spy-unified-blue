@@ -42,6 +42,7 @@ static const TargetFilter* matchFilterBytes(const uint8_t* mac) {
 
 class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        g_engRawSeen++;
         if (!scanning) return;
         uint8_t mac[6];
         bleAddrToMac(dev->getAddress().getNative(), mac);
@@ -69,6 +70,7 @@ class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
 static DetectorCallback scanCb;
 
 static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type) {
+    g_engRawSeen++;
     if (!scanning || !wifiActive) return;
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
 

@@ -39,6 +39,7 @@ static int calculateBeepInterval(int rssi) {
 
 class FoxhunterCallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
+        g_engRawSeen++;
         if (!hasTarget || !scanning) return;
 
         uint8_t mac[6];
@@ -66,6 +67,7 @@ class FoxhunterCallback : public NimBLEAdvertisedDeviceCallbacks {
 static FoxhunterCallback scanCb;
 
 static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type) {
+    g_engRawSeen++;
     if (!scanning || !hasTarget || !wifiActive) return;
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
 
