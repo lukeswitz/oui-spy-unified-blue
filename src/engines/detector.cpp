@@ -228,6 +228,7 @@ static void detectorStop(void) {
 }
 
 static void detectorLoop(void) {
+    if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
 

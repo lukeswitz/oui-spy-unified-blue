@@ -105,11 +105,20 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
 
   Future<void> _start() async {
     if (_toggling) return;
-    final mgr = ref.read(appStateProvider).isManagerConnected;
-    if (mgr && (_targetNode == null || _targetNode!.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pick a node to capture on first')));
-      return;
+    final appState = ref.read(appStateProvider);
+    final mgr = appState.isManagerConnected;
+    String? target = _targetNode;
+    if (mgr && (target == null || target.isEmpty)) {
+      final nodes = appState.liveKnownNodes
+          .where((id) => id != appState.nodeId)
+          .toList();
+      if (nodes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No live node to capture on')));
+        return;
+      }
+      target = nodes.first;
+      setState(() => _targetNode = target);
     }
     setState(() {
       _toggling = true;
@@ -120,7 +129,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
             mode: _mode == PcapMode.ble ? 1 : 0,
             channelStart: _chanStart,
             channelEnd: _chanEnd,
-            targetNodeId: mgr ? _targetNode : null,
+            targetNodeId: mgr ? target : null,
           );
     } on Exception catch (e) {
       if (mounted) {

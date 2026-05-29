@@ -158,6 +158,7 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                 cmd.payload_len > 0 ? cmd.payload : nullptr,
                 cmd.payload_len);
         }
+        bleGattNotifyEngineState();
         if (cmd.engine_id == ENGINE_PCAP || cmd.command == 0x0F) {
             bleGattNotifyPcapStats();
         }
@@ -1182,11 +1183,19 @@ void bleGattNotifyEngineState(void) {
     if (!phoneConnected || chrEngineControl == nullptr) return;
 
     uint8_t buf[2 + ENGINE_COUNT];
+#ifdef OUISPY_ROLE_MANAGER
+    buf[0] = (1u << ENGINE_COUNT) - 1u;
+    buf[1] = mgrCommandedMask;
+    for (int i = 0; i < ENGINE_COUNT; i++) {
+        buf[2 + i] = mgrCommandedStates[i];
+    }
+#else
     buf[0] = engineGetAvailableMask();
     buf[1] = engineGetActiveMask();
     for (int i = 0; i < ENGINE_COUNT; i++) {
         buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
     }
+#endif
     chrEngineControl->setValue(buf, 2 + ENGINE_COUNT);
     chrEngineControl->notify();
 }

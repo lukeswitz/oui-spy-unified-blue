@@ -249,6 +249,7 @@ static void skyspyStop(void) {
 }
 
 static void skyspyLoop(void) {
+    if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning || !bleScan) return;
 
     // BLE scan cycle

@@ -18,6 +18,7 @@ void meshForwardPcapRecord(const uint8_t* record, size_t len);
 void meshSendHeartbeat(uint8_t active_engines_mask);
 bool meshGetLatestAutoPcapEvent(uint32_t max_age_ms, MeshAutoPcapEventPacket* out, uint32_t* age_ms_out);
 bool meshIsEnabled(void);
+bool meshInMeshWindow(void);
 const char* meshGetLocalNodeId(void);
 MeshStatus meshGetStatus(void);
 

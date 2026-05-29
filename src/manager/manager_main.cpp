@@ -29,6 +29,12 @@ static void detectionNotifyTask(void*) {
     for (;;) {
         if (xQueueReceive(detectionQueue, &evt, portMAX_DELAY) == pdTRUE) {
             bleGattNotifyDetection(&evt);
+#ifdef OUISPY_PCAP_SELFTEST
+            Serial.printf("[RELAY] det eng=%u src=%.4s mac=%02x:%02x:%02x:%02x:%02x:%02x -> app(ble=%d)\n",
+                evt.engine_id, evt.source_node_id,
+                evt.mac[0],evt.mac[1],evt.mac[2],evt.mac[3],evt.mac[4],evt.mac[5],
+                bleGattIsConnected() ? 1 : 0);
+#endif
         }
     }
 }
@@ -101,14 +107,28 @@ void setup() {
 void loop() {
     delay(50);
 #ifdef OUISPY_PCAP_SELFTEST
-    static bool selftestFired = false;
-    if (!selftestFired && millis() > 6000) {
-        selftestFired = true;
-        Serial.println("[SELFTEST] broadcasting PCAP CONFIG+ENABLE to nodes");
-        uint8_t cfg[4] = { 0x01, 0x00, 0x01, 0x0B };
-        meshBroadcastCommand(0x10, ENGINE_PCAP, cfg, sizeof(cfg));
-        delay(100);
-        meshBroadcastCommand(0x01, ENGINE_PCAP, nullptr, 0);
+    static bool stEnabled = false;
+    static bool stDisabled = false;
+    static uint32_t lastStep = 0;
+    static int step = 0;
+    if (millis() > 8000 && millis() - lastStep > 3500 && step < 10) {
+        lastStep = millis();
+        // node is scanning (wardrive); fire cmds while it scans -> stress delivery
+        if (step == 0) {
+            uint8_t wdcfg[11] = { 0x03, 0x5E,0x01, 0x96,0x00, 0x20,0x03, 0xB8,0x0B, 1, 11 };
+            meshBroadcastCommand(0x10, ENGINE_WARDRIVE, wdcfg, sizeof(wdcfg));
+            delay(150);
+            meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+            Serial.println("[SELFTEST] step0 ENABLE wardrive (node now scanning)");
+        } else if (step % 2 == 1) {
+            meshBroadcastCommand(0x01, ENGINE_DETECTOR, nullptr, 0);
+            Serial.printf("[SELFTEST] step%d ENABLE detector (while scanning)\n", step);
+        } else {
+            meshBroadcastCommand(0x00, ENGINE_DETECTOR, nullptr, 0);
+            Serial.printf("[SELFTEST] step%d DISABLE detector (while scanning)\n", step);
+        }
+        step++;
+        (void)stEnabled; (void)stDisabled;
     }
 #endif
 }

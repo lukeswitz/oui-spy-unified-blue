@@ -454,6 +454,7 @@ static void pcapStop(void) {
 }
 
 static void pcapLoop(void) {
+    if (meshIsEnabled() && meshInMeshWindow()) return;
     unsigned long now = millis();
     if (!pcapActive) {
         if (now - pcapLastStatsNotify >= 1000) {

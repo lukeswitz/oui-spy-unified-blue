@@ -104,7 +104,8 @@ class _EngineCardState extends ConsumerState<EngineCard>
         return;
       }
     }
-    if (widget.engine == Engine.uniPwn && value && appState.isManagerConnected) {
+    if ((widget.engine == Engine.uniPwn || widget.engine == Engine.pcap) &&
+        value && appState.isManagerConnected) {
       _navigateToEngine();
       return;
     }

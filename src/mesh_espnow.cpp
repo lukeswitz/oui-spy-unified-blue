@@ -18,8 +18,8 @@ static char localNodeId[MESH_NODE_ID_LEN] = {};
 static SemaphoreHandle_t meshMutex = NULL;
 
 #define MESH_CMD_PENDING_MAX  16
-#define MESH_CMD_RETRY_MS     600
-#define MESH_CMD_MAX_RETRIES  3
+#define MESH_CMD_RETRY_MS     300
+#define MESH_CMD_MAX_RETRIES  20
 #define MESH_ACK_DEDUPE_SLOTS 8
 
 struct PendingCmd {
@@ -338,11 +338,11 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         bool targetMatch = true;
         bool targetableEngine = (cmd.engine_id < ENGINE_COUNT)
                                  && kEngineTargetable[cmd.engine_id];
-        if (targetableEngine && (cmd.command == 0x01 || cmd.command == 0x00)) {
+        if (targetableEngine && cmd.command == 0x01) {
             if (cmd.payload_len < MESH_NODE_ID_LEN ||
                 memcmp(cmd.payload, localNodeId, MESH_NODE_ID_LEN) != 0) {
                 targetMatch = false;
-                Serial.printf("[MESH-CMD] eng=%u target=%.4s != self=%s — ignored\n",
+                Serial.printf("[MESH-CMD] ENABLE eng=%u target=%.4s != self=%s — ignored\n",
                               cmd.engine_id,
                               cmd.payload_len >= MESH_NODE_ID_LEN
                                 ? (const char*)cmd.payload : "(none)",
@@ -459,6 +459,30 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
     (void)status;
 }
 
+#define MESH_SCAN_WINDOW_MS  900
+#define MESH_RX_WINDOW_MS    450
+static volatile bool g_meshWindow = false;
+static TaskHandle_t  meshSchedTaskHandle = NULL;
+bool meshInMeshWindow(void) { return g_meshWindow; }
+
+#ifndef OUISPY_ROLE_MANAGER
+static void meshSchedTaskFn(void* arg) {
+    (void)arg;
+    for (;;) {
+        g_meshWindow = false;
+        vTaskDelay(pdMS_TO_TICKS(MESH_SCAN_WINDOW_MS));
+        if (!meshCurrentConfig.enabled) { g_meshWindow = false; continue; }
+        g_meshWindow = true;
+        if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+            xSemaphoreGive(txMutex);
+        }
+        if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
+        vTaskDelay(pdMS_TO_TICKS(MESH_RX_WINDOW_MS));
+    }
+}
+#endif
+
 void meshInit(void) {
     meshMutex = xSemaphoreCreateMutex();
     pendingMutex = xSemaphoreCreateMutex();
@@ -482,6 +506,9 @@ void meshInit(void) {
     }
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
     xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
+#ifndef OUISPY_ROLE_MANAGER
+    xTaskCreate(meshSchedTaskFn, "meshSched", 3072, NULL, 2, &meshSchedTaskHandle);
+#endif
 
     Serial.printf("[MESH] Initialized, localNodeId=%s\n", localNodeId);
 }
@@ -735,12 +762,21 @@ static void sendOneSweep(const uint8_t* data, size_t len) {
     if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
     uint8_t saved_ch = 0; wifi_second_chan_t sec;
     esp_wifi_get_channel(&saved_ch, &sec);
-    for (uint8_t ch = 1; ch <= 11; ch++) {
+    for (uint8_t ch = 1; ch <= 14; ch++) {
         esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
         esp_now_send(kBroadcastDst, data, len);
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(6));
     }
     esp_wifi_set_channel(saved_ch != 0 ? saved_ch : 1, WIFI_SECOND_CHAN_NONE);
+    if (txMutex) xSemaphoreGive(txMutex);
+}
+
+static void sendOnHome(const uint8_t* data, size_t len) {
+    if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+    esp_now_send(kBroadcastDst, data, len);
+    vTaskDelay(pdMS_TO_TICKS(3));
+    esp_now_send(kBroadcastDst, data, len);
     if (txMutex) xSemaphoreGive(txMutex);
 }
 
@@ -802,7 +838,7 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     uint8_t encrypted[256];
     size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket), encrypted, &encLen)) return;
-    sendOneSweep(encrypted, encLen);
+    sendOnHome(encrypted, encLen);
 
     Serial.printf("[MESH-CMD-TX] seq=%u cmd=0x%02x engine=%u retries=%u\n",
         seq, command, engine_id, MESH_CMD_MAX_RETRIES);
@@ -877,7 +913,7 @@ static void retryTaskFn(void* arg) {
             if (p.payload_len > 0) memcpy(pkt.payload, p.payload, p.payload_len);
             uint8_t enc[256]; size_t encLen = 0;
             if (encryptPacket((const uint8_t*)&pkt, sizeof(MeshCommandPacket), enc, &encLen)) {
-                sendOneSweep(enc, encLen);
+                sendOnHome(enc, encLen);
                 Serial.printf("[MESH-CMD-RETRY] seq=%u cmd=0x%02x engine=%u retries_left=%u\n",
                     p.seq, p.command, p.engine_id, retries_now);
             }

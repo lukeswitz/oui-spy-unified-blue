@@ -566,6 +566,7 @@ static void wardriveStop(void) {
 }
 
 static void wardriveLoop(void) {
+    if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!wardriveActive) return;
     unsigned long now = millis();
 

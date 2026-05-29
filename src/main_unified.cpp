@@ -301,7 +301,18 @@ static const char* selftestEngineName(EngineId id) {
 static void engineSelftestTask(void* arg) {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(4000));
+#ifdef OUISPY_SELFTEST_MESH_ON
+    {
+        MeshConfig cfg = {};
+        cfg.enabled = 1; cfg.encryption_enabled = 0; cfg.peer_count = 0;
+        meshEnable(&cfg);
+        Serial.println("[SELFTEST] mesh ENABLED for coexistence test");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+    Serial.println("[SELFTEST] ===== ENGINE SELF-TEST START (mesh ON, coexist) =====");
+#else
     Serial.println("[SELFTEST] ===== ENGINE SELF-TEST START (mesh OFF, local) =====");
+#endif
     const EngineId order[] = {
         ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER,
         ENGINE_SKYSPY, ENGINE_UNIPWN, ENGINE_WARDRIVE, ENGINE_PCAP

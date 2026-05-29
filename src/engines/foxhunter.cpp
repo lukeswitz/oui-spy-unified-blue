@@ -299,6 +299,7 @@ static void foxhunterProximityBeep(void) {
 }
 
 static void foxhunterLoop(void) {
+    if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning) return;
 
     if (targetInRange && millis() - lastTargetSeen > 7000) {
