@@ -598,6 +598,12 @@ static void wardriveLoop(void) {
 
 static void wardriveConfig(const uint8_t* payload, uint8_t len) {
     if (len < 1) return;
+    const char* self = meshGetLocalNodeId();
+    if (!cfgTgtStrip(&payload, &len, self)) {
+        Serial.printf("[WARDRIVE] cfg target mismatch self=%s — ignored\n", self);
+        return;
+    }
+    if (len < 1) return;
     uint8_t newRadio = payload[0] & 0x03;
     if (newRadio == 0) newRadio = 0x03;
     wardriveRadio = newRadio;

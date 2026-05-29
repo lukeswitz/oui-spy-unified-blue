@@ -34,15 +34,22 @@ static void detectionNotifyTask(void*) {
 }
 
 static void heartbeatTask(void*) {
+    uint32_t tick = 0;
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(5000));
-        MeshStatus s = meshGetStatus();
-        Serial.printf("[MGR] mesh enabled=%u rx=%lu tx=%lu err=%lu | heap=%u | ble=%d\n",
-            s.enabled, (unsigned long)s.rx_count, (unsigned long)s.tx_count,
-            (unsigned long)s.rx_errors,
-            (unsigned)ESP.getFreeHeap(),
-            bleGattIsConnected() ? 1 : 0);
-        bleGattNotifyMeshStatus();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        tick++;
+        if (bleGattIsConnected()) {
+            bleGattNotifyPcapStats();
+            bleGattNotifyMeshStatus();
+        }
+        if ((tick % 5) == 0) {
+            MeshStatus s = meshGetStatus();
+            Serial.printf("[MGR] mesh enabled=%u rx=%lu tx=%lu err=%lu | heap=%u | ble=%d\n",
+                s.enabled, (unsigned long)s.rx_count, (unsigned long)s.tx_count,
+                (unsigned long)s.rx_errors,
+                (unsigned)ESP.getFreeHeap(),
+                bleGattIsConnected() ? 1 : 0);
+        }
     }
 }
 

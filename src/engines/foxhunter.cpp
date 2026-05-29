@@ -335,11 +335,24 @@ static void foxhunterLoop(void) {
     }
 }
 
+static void foxhunterConfigCb(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    const char* self = meshGetLocalNodeId();
+    if (!cfgTgtStrip(&payload, &len, self)) {
+        Serial.printf("[FOXHUNTER] cfg target mismatch self=%s — ignored\n", self);
+        return;
+    }
+    if (len < 6) return;
+    uint8_t channel = (len >= 7) ? payload[6] : 0;
+    foxhunterSetTarget(payload, channel);
+    Serial.printf("[FOXHUNTER] target via engineConfig ch=%u\n", channel);
+}
+
 const EngineCallbacks foxhunterCallbacks = {
     .init   = foxhunterInit,
     .start  = foxhunterStart,
     .stop   = foxhunterStop,
     .loop   = foxhunterLoop,
-    .config = NULL,
+    .config = foxhunterConfigCb,
     .name   = "Foxhunter"
 };

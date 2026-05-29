@@ -18,6 +18,7 @@ class UnipwnScreen extends ConsumerStatefulWidget {
 class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
   final Map<String, Detection> _robots = {};
   String? _selectedTarget;
+  String? _selectedNode;
   final _customCmdController = TextEditingController();
   StreamSubscription<Detection>? _sub;
 
@@ -33,10 +34,13 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
 
   void _toggleEngine(bool enable) {
     final ble = ref.read(bleManagerProvider);
+    final st = ref.read(appStateProvider);
+    final node = st.isManagerConnected ? _selectedNode : null;
     if (enable) {
-      ble.enableEngine(Engine.uniPwn);
+      if (st.isManagerConnected && node == null) return;
+      ble.enableEngine(Engine.uniPwn, targetNodeId: node);
     } else {
-      ble.disableEngine(Engine.uniPwn);
+      ble.disableEngine(Engine.uniPwn, targetNodeId: node);
     }
   }
 
@@ -83,7 +87,15 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
       ),
       body: Column(
         children: [
-          // Robot list
+          if (state.isManagerConnected)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _UnipwnNodePicker(
+                selected: _selectedNode,
+                enabled: !isActive,
+                onChanged: (v) => setState(() => _selectedNode = v),
+              ),
+            ),
           SizedBox(
             height: 160,
             child: robots.isEmpty
@@ -231,6 +243,66 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                       ),
                     ],
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UnipwnNodePicker extends ConsumerWidget {
+  const _UnipwnNodePicker({
+    required this.selected,
+    required this.enabled,
+    required this.onChanged,
+  });
+  final String? selected;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(appStateProvider);
+    final t = AppTheme.of(context);
+    final nodes = appState.liveKnownNodes.toList()..sort();
+    if (nodes.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: t.surface,
+          border: Border.all(color: t.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text('No mesh nodes seen yet.',
+            style: TextStyle(color: t.textDim, fontSize: 12)),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border.all(color: t.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.memory, color: t.textDim, size: 18),
+          const SizedBox(width: 8),
+          Text('EXEC NODE',
+              style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 1.5)),
+          const Spacer(),
+          DropdownButton<String>(
+            value: nodes.contains(selected) ? selected : null,
+            hint: const Text('— Pick Node —'),
+            underline: const SizedBox.shrink(),
+            onChanged: enabled ? onChanged : null,
+            items: nodes.map((id) {
+              final label = appState.labelForNode(id);
+              return DropdownMenuItem(
+                value: id,
+                child: Text(label == id ? id : '$label ($id)'),
+              );
+            }).toList(),
           ),
         ],
       ),

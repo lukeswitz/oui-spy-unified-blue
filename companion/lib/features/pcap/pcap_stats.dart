@@ -30,6 +30,7 @@ class PcapStats {
     this.autoTriggerMac = const [0, 0, 0, 0, 0, 0],
     this.autoCooldownSec = 0,
     this.autoCooldownRemainingMs = 0,
+    this.sourceNodeId = '',
   });
 
   /// 0=idle, 1=capturing, 2=full, 3=error
@@ -68,6 +69,10 @@ class PcapStats {
 
   /// Remaining cooldown in ms. 0 when not in cooldown.
   final int autoCooldownRemainingMs;
+
+  /// Node id that owns the capture. Empty = local (this device).
+  /// Set when banner reflects a mesh-relayed auto-pcap from another node.
+  final String sourceNodeId;
 
   PcapMode get modeEnum => mode == 1 ? PcapMode.ble : PcapMode.wifi;
 
@@ -146,6 +151,11 @@ class PcapStats {
           raw.length >= 77 ? bd.getUint16(75, Endian.little) : 0,
       autoCooldownRemainingMs:
           raw.length >= 81 ? bd.getUint32(77, Endian.little) : 0,
+      sourceNodeId: raw.length >= 86
+          ? String.fromCharCodes(
+                  raw.sublist(81, 86).takeWhile((c) => c != 0))
+              .trim()
+          : '',
     );
   }
 

@@ -51,6 +51,15 @@ static NimBLECharacteristic* chrPcapData = nullptr;
 static bool phoneConnected = false;
 static volatile bool pcapDownloadRunning = false;
 
+#ifdef OUISPY_ROLE_MANAGER
+static volatile uint8_t  mgrCommandedMask = 0;
+static volatile uint8_t  mgrCommandedStates[ENGINE_COUNT] = {0};
+static volatile uint8_t  mgrPcapMode = 0;
+static volatile uint8_t  mgrPcapChStart = 1;
+static volatile uint8_t  mgrPcapChEnd = 11;
+static volatile uint32_t mgrPcapStartedMs = 0;
+#endif
+
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
         phoneConnected = true;
@@ -70,17 +79,16 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
     void onDisconnect(NimBLEServer* server) override {
         phoneConnected = false;
-        Serial.println("[BLE] Phone disconnected — disabling all engines");
+        Serial.println("[BLE] Phone disconnected — disabling local engines");
         engineDisableAll();
+#ifdef OUISPY_ROLE_MANAGER
+        mgrCommandedMask = 0;
+        for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+#endif
         NimBLEDevice::startAdvertising();
         Serial.println("[BLE] Advertising restarted");
     }
 };
-
-#ifdef OUISPY_ROLE_MANAGER
-static volatile uint8_t mgrCommandedMask = 0;
-static volatile uint8_t mgrCommandedStates[ENGINE_COUNT] = {0};
-#endif
 
 class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
@@ -98,7 +106,20 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
         }
 
 #ifndef OUISPY_ROLE_MANAGER
-        if (engineCmdQueue != NULL) {
+        bool targetOk = true;
+        bool targetableEngine = (cmd.engine_id < ENGINE_COUNT)
+                                 && kEngineTargetable[cmd.engine_id];
+        if (targetableEngine &&
+            (cmd.command == 0x01 || cmd.command == 0x00) &&
+            cmd.payload_len >= MESH_NODE_ID_LEN) {
+            const char* self = meshGetLocalNodeId();
+            if (memcmp(cmd.payload, self, MESH_NODE_ID_LEN) != 0) {
+                targetOk = false;
+                Serial.printf("[BLE] eng=%u target=%.4s != self=%s — ignored\n",
+                              cmd.engine_id, (const char*)cmd.payload, self);
+            }
+        }
+        if (targetOk && engineCmdQueue != NULL) {
             xQueueSend(engineCmdQueue, &cmd, pdMS_TO_TICKS(10));
         }
 #endif
@@ -113,17 +134,32 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
         if (cmd.command == 0x01 && cmd.engine_id < ENGINE_COUNT) {
             mgrCommandedMask |= (1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_SCANNING;
+            if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = millis();
         } else if (cmd.command == 0x00 && cmd.engine_id < ENGINE_COUNT) {
             mgrCommandedMask &= ~(1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_DISABLED;
+            if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = 0;
         } else if (cmd.command == 0x0F) {
             mgrCommandedMask = 0;
             for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+            mgrPcapStartedMs = 0;
+        }
+        if (cmd.command == 0x10 && cmd.engine_id == ENGINE_PCAP && cmd.payload_len >= 4) {
+            const uint8_t* p = cmd.payload;
+            uint8_t plen = cmd.payload_len;
+            if (plen >= 4 && p[0] == 0x01) {
+                mgrPcapMode = p[1];
+                mgrPcapChStart = p[2];
+                mgrPcapChEnd = p[3];
+            }
         }
         if (meshIsEnabled()) {
             meshBroadcastCommand(cmd.command, cmd.engine_id,
                 cmd.payload_len > 0 ? cmd.payload : nullptr,
                 cmd.payload_len);
+        }
+        if (cmd.engine_id == ENGINE_PCAP || cmd.command == 0x0F) {
+            bleGattNotifyPcapStats();
         }
 #endif
     }
@@ -518,8 +554,238 @@ static void dfuNotifyTrampoline(const uint8_t* data, size_t len) {
     chrDfuControl->notify();
 }
 
+#ifdef OUISPY_ROLE_MANAGER
+#define MGR_PCAP_REASM_SLOTS  4
+#define MGR_PCAP_REASM_MAX    3072
+struct PcapReasmSlot {
+    char     src[MESH_NODE_ID_LEN];
+    uint16_t seq;
+    uint32_t last_ms;
+    uint32_t recv_mask;
+    uint8_t  highest_idx;
+    bool     last_seen;
+    uint16_t total_len;
+    uint8_t  buf[MGR_PCAP_REASM_MAX];
+    bool     in_use;
+};
+static PcapReasmSlot pcapReasm[MGR_PCAP_REASM_SLOTS] = {};
+static SemaphoreHandle_t pcapReasmMutex = NULL;
+
+#define PCAP_BLE_COALESCE_BUF  2048
+#define PCAP_BLE_MAX_PERNOTIFY 240
+static uint8_t  pcapCoalesceBuf[PCAP_BLE_COALESCE_BUF];
+static volatile size_t pcapCoalesceLen = 0;
+static portMUX_TYPE pcapCoalesceMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t pcapLastFlushMs = 0;
+
+struct PerNodeStats {
+    char     id[5];
+    PcapStats st;
+    uint32_t last_update_ms;
+    bool     in_use;
+};
+static const uint32_t PER_NODE_STATS_TTL_MS = 10000;
+static PerNodeStats perNode[8] = {};
+static SemaphoreHandle_t aggMutex = NULL;
+
+static void flushPcapCoalesced(void) {
+    if (!phoneConnected || chrPcapData == nullptr) return;
+    portENTER_CRITICAL(&pcapCoalesceMux);
+    if (pcapCoalesceLen == 0) { portEXIT_CRITICAL(&pcapCoalesceMux); return; }
+    static uint8_t tmp[PCAP_BLE_COALESCE_BUF];
+    size_t n = pcapCoalesceLen;
+    memcpy(tmp, pcapCoalesceBuf, n);
+    pcapCoalesceLen = 0;
+    portEXIT_CRITICAL(&pcapCoalesceMux);
+    size_t off = 0;
+    while (off < n) {
+        size_t chunk = (n - off) > PCAP_BLE_MAX_PERNOTIFY ? PCAP_BLE_MAX_PERNOTIFY : (n - off);
+        chrPcapData->setValue(tmp + off, chunk);
+        chrPcapData->notify();
+        off += chunk;
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+    pcapLastFlushMs = millis();
+}
+
+static void pcapBleFlushTaskFn(void* arg) {
+    (void)arg;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        flushPcapCoalesced();
+    }
+}
+static TaskHandle_t pcapBleFlushTaskHandle = NULL;
+
+void mgrPcapReasmAdd(const char* src, uint16_t seq,
+                     const uint8_t* fragPayload, uint8_t fragLen) {
+    if (fragLen < 1) return;
+    const uint8_t hdr = fragPayload[0];
+    const bool isLast = (hdr & 0x80) != 0;
+    const uint8_t idx = hdr & 0x7F;
+    const uint8_t* data = fragPayload + 1;
+    const uint8_t dataLen = fragLen - 1;
+    const size_t fragData = (size_t)MESH_RAW_PAYLOAD_MAX - 1u;
+    if (idx >= 32) return;
+    if (!pcapReasmMutex) return;
+    if (xSemaphoreTake(pcapReasmMutex, pdMS_TO_TICKS(10)) != pdTRUE) return;
+
+    int slot = -1;
+    int freeIdx = -1;
+    uint32_t oldest = 0xFFFFFFFFu;
+    int oldestIdx = 0;
+    for (int i = 0; i < MGR_PCAP_REASM_SLOTS; i++) {
+        if (pcapReasm[i].in_use &&
+            memcmp(pcapReasm[i].src, src, MESH_NODE_ID_LEN) == 0) {
+            slot = i;
+            break;
+        }
+        if (!pcapReasm[i].in_use && freeIdx < 0) freeIdx = i;
+        if (pcapReasm[i].last_ms < oldest) {
+            oldest = pcapReasm[i].last_ms;
+            oldestIdx = i;
+        }
+    }
+    if (slot < 0) slot = (freeIdx >= 0) ? freeIdx : oldestIdx;
+    if (!pcapReasm[slot].in_use ||
+        memcmp(pcapReasm[slot].src, src, MESH_NODE_ID_LEN) != 0 ||
+        pcapReasm[slot].seq != seq) {
+        pcapReasm[slot].in_use = true;
+        memcpy(pcapReasm[slot].src, src, MESH_NODE_ID_LEN);
+        pcapReasm[slot].seq = seq;
+        pcapReasm[slot].recv_mask = 0;
+        pcapReasm[slot].highest_idx = 0;
+        pcapReasm[slot].last_seen = false;
+        pcapReasm[slot].total_len = 0;
+    }
+    pcapReasm[slot].last_ms = millis();
+    const size_t off = (size_t)idx * fragData;
+    if (off + dataLen > MGR_PCAP_REASM_MAX) {
+        pcapReasm[slot].in_use = false;
+        xSemaphoreGive(pcapReasmMutex);
+        return;
+    }
+    memcpy(pcapReasm[slot].buf + off, data, dataLen);
+    pcapReasm[slot].recv_mask |= (1u << idx);
+    if (idx > pcapReasm[slot].highest_idx) pcapReasm[slot].highest_idx = idx;
+    if (isLast) {
+        pcapReasm[slot].last_seen = true;
+        pcapReasm[slot].total_len = (uint16_t)(off + dataLen);
+    }
+    if (pcapReasm[slot].last_seen) {
+        const uint8_t expected = pcapReasm[slot].highest_idx + 1;
+        const uint32_t fullMask = (expected >= 32) ? 0xFFFFFFFFu
+                                : ((1u << expected) - 1u);
+        if ((pcapReasm[slot].recv_mask & fullMask) == fullMask) {
+            const uint16_t total = pcapReasm[slot].total_len;
+            uint8_t tmp[MGR_PCAP_REASM_MAX];
+            memcpy(tmp, pcapReasm[slot].buf, total);
+            pcapReasm[slot].in_use = false;
+            xSemaphoreGive(pcapReasmMutex);
+            bool stashed = false;
+            portENTER_CRITICAL(&pcapCoalesceMux);
+            if (pcapCoalesceLen + total <= PCAP_BLE_COALESCE_BUF) {
+                memcpy(pcapCoalesceBuf + pcapCoalesceLen, tmp, total);
+                pcapCoalesceLen += total;
+                stashed = true;
+            }
+            portEXIT_CRITICAL(&pcapCoalesceMux);
+            (void)stashed; (void)seq;
+            return;
+        }
+    }
+    xSemaphoreGive(pcapReasmMutex);
+}
+#endif
+
+void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
+                               uint16_t seq, const uint8_t* payload, uint8_t len) {
+    if (payload == nullptr || len == 0) return;
+    switch (kind) {
+        case RAW_NOTIFY_PCAP_DATA:
+#ifdef OUISPY_ROLE_MANAGER
+            {
+                extern void mgrPcapReasmAdd(const char* src, uint16_t seq,
+                                            const uint8_t* fragPayload, uint8_t fragLen);
+                mgrPcapReasmAdd(source_node_id, seq, payload, len);
+            }
+#else
+            if (phoneConnected && chrPcapData) {
+                chrPcapData->setValue((uint8_t*)(payload + 1), (uint16_t)(len - 1));
+                chrPcapData->notify();
+            }
+#endif
+            break;
+        case RAW_NOTIFY_PCAP_STATS:
+#ifdef OUISPY_ROLE_MANAGER
+            if (len >= sizeof(PcapStats) && aggMutex &&
+                xSemaphoreTake(aggMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+                int slot = -1;
+                for (int i = 0; i < 8; i++) {
+                    if (perNode[i].in_use &&
+                        memcmp(perNode[i].id, source_node_id, 5) == 0) {
+                        slot = i; break;
+                    }
+                }
+                if (slot < 0) {
+                    for (int i = 0; i < 8; i++) {
+                        if (!perNode[i].in_use) {
+                            slot = i;
+                            perNode[i].in_use = true;
+                            memcpy(perNode[i].id, source_node_id, 5);
+                            break;
+                        }
+                    }
+                }
+                if (slot >= 0) {
+                    memcpy(&perNode[slot].st, payload, sizeof(PcapStats));
+                    perNode[slot].last_update_ms = millis();
+                }
+                xSemaphoreGive(aggMutex);
+            }
+#endif
+            break;
+        case RAW_NOTIFY_FOXHUNTER_RSSI:
+            if (chrFoxhunterRssi) {
+                chrFoxhunterRssi->setValue((uint8_t*)payload, len);
+                chrFoxhunterRssi->notify();
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+#ifndef OUISPY_ROLE_MANAGER
+static void meshForwardPcapRecordAligned(const uint8_t* buf, size_t len) {
+    size_t i = 0;
+    while (i + 12 <= len) {
+        uint32_t m =  (uint32_t)buf[i]
+                   | ((uint32_t)buf[i+1] << 8)
+                   | ((uint32_t)buf[i+2] << 16)
+                   | ((uint32_t)buf[i+3] << 24);
+        if (m != 0xCAFEBABEu) { i++; continue; }
+        uint32_t recLen = (uint32_t)buf[i+4]
+                       | ((uint32_t)buf[i+5] << 8)
+                       | ((uint32_t)buf[i+6] << 16)
+                       | ((uint32_t)buf[i+7] << 24);
+        const size_t fullLen = 8u + recLen + 4u;
+        if (i + fullLen > len) break;
+        meshForwardPcapRecord(buf + i, fullLen);
+        i += fullLen;
+    }
+}
+#endif
+
 void bleGattStreamPcapBytes(const uint8_t* buf, size_t len) {
-    if (!phoneConnected || chrPcapData == nullptr || len == 0) return;
+    if (len == 0) return;
+    if (!phoneConnected) {
+#ifndef OUISPY_ROLE_MANAGER
+        if (meshIsEnabled()) meshForwardPcapRecordAligned(buf, len);
+#endif
+        return;
+    }
+    if (chrPcapData == nullptr) return;
     size_t chunk = 180;
     if (pServer != nullptr) {
         auto peers = pServer->getPeerDevices();
@@ -570,6 +836,13 @@ static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
 // ============================================================================
 void bleGattInit(void) {
     Serial.println("[BLE] Initializing NimBLE...");
+#ifdef OUISPY_ROLE_MANAGER
+    if (!aggMutex) aggMutex = xSemaphoreCreateMutex();
+    if (!pcapReasmMutex) pcapReasmMutex = xSemaphoreCreateMutex();
+    if (!pcapBleFlushTaskHandle) {
+        xTaskCreate(pcapBleFlushTaskFn, "pcapBleFlush", 4096, NULL, 4, &pcapBleFlushTaskHandle);
+    }
+#endif
 
     {
         uint8_t bmac[6];
@@ -820,13 +1093,17 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
 }
 
 void bleGattNotifyFoxhunterRssi(int8_t rssi, uint16_t intervalMs) {
-    if (!phoneConnected || chrFoxhunterRssi == nullptr) return;
-
     uint8_t buf[3];
     buf[0] = (uint8_t)rssi;
     buf[1] = intervalMs & 0xFF;
     buf[2] = (intervalMs >> 8) & 0xFF;
-
+    if (!phoneConnected) {
+#ifndef OUISPY_ROLE_MANAGER
+        if (meshIsEnabled()) meshForwardNotify(RAW_NOTIFY_FOXHUNTER_RSSI, buf, 3);
+#endif
+        return;
+    }
+    if (chrFoxhunterRssi == nullptr) return;
     chrFoxhunterRssi->setValue(buf, 3);
     chrFoxhunterRssi->notify();
 }
@@ -852,21 +1129,114 @@ void bleGattNotifyMeshStatus(void) {
     if (!phoneConnected || chrMeshStatus == nullptr) return;
 
     MeshStatus st = meshGetStatus();
-    uint8_t buf[11];
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t liveCount = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
+
+    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 7];
     buf[0] = st.enabled;
     buf[1] = st.peer_count;
     buf[2] = st.connected_peers;
     memcpy(buf + 3, &st.rx_count, 4);
     memcpy(buf + 7, &st.tx_count, 4);
+    buf[11] = (uint8_t)liveCount;
+    size_t off = 12;
+    for (size_t i = 0; i < liveCount; i++) {
+        memcpy(buf + off, live[i].id, MESH_NODE_ID_LEN);
+        buf[off + 5] = live[i].role;
+        buf[off + 6] = live[i].active_engines;
+        off += 7;
+    }
 
-    chrMeshStatus->setValue(buf, 11);
+    static uint8_t lastBuf[sizeof(buf)] = {};
+    static size_t  lastLen = 0;
+    static uint32_t lastForceMs = 0;
+    uint32_t now = millis();
+    bool changed = (off != lastLen) || (memcmp(lastBuf, buf, off) != 0);
+    bool force = (now - lastForceMs) > 5000u;
+    if (!changed && !force) return;
+    memcpy(lastBuf, buf, off);
+    lastLen = off;
+    if (force) lastForceMs = now;
+
+    chrMeshStatus->setValue(buf, (uint16_t)off);
     chrMeshStatus->notify();
 }
 
 void bleGattNotifyPcapStats(void) {
-    if (!phoneConnected || chrPcapStats == nullptr) return;
     PcapStats st;
     pcapGetStats(&st);
+#ifdef OUISPY_ROLE_MANAGER
+    bool pcapCommanded = (mgrCommandedMask & ENGINE_BITMASK(ENGINE_PCAP)) != 0;
+    st.state = pcapCommanded ? 1 : 0;
+    st.mode = mgrPcapMode;
+    st.current_channel = mgrPcapChStart;
+    st.uptime_ms = (pcapCommanded && mgrPcapStartedMs)
+                   ? (uint32_t)(millis() - mgrPcapStartedMs) : 0;
+    {
+        uint32_t newest = 0;
+        int newestIdx = -1;
+        if (aggMutex && xSemaphoreTake(aggMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            for (int i = 0; i < 8; i++) {
+                if (!perNode[i].in_use) continue;
+                if (perNode[i].last_update_ms >= newest) {
+                    newest = perNode[i].last_update_ms;
+                    newestIdx = i;
+                }
+            }
+            if (newestIdx >= 0) {
+                st.current_channel = perNode[newestIdx].st.current_channel;
+                st.mode            = perNode[newestIdx].st.mode;
+            }
+            xSemaphoreGive(aggMutex);
+        }
+    }
+    if (aggMutex && xSemaphoreTake(aggMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        st.beacon_count = 0; st.probe_req_count = 0; st.probe_resp_count = 0;
+        st.deauth_count = 0; st.disassoc_count = 0; st.data_count = 0;
+        st.ctrl_count = 0; st.mgmt_other_count = 0;
+        st.ble_adv_count = 0; st.ble_scan_count = 0;
+        st.bytes_written = 0; st.dropped_frames = 0; st.file_size = 0;
+        const uint32_t nowAgg = millis();
+        for (int i = 0; i < 8; i++) {
+            if (perNode[i].in_use &&
+                (nowAgg - perNode[i].last_update_ms) > PER_NODE_STATS_TTL_MS) {
+                perNode[i].in_use = false;
+            }
+        }
+        for (int i = 0; i < 8; i++) {
+            if (!perNode[i].in_use) continue;
+            st.beacon_count      += perNode[i].st.beacon_count;
+            st.probe_req_count   += perNode[i].st.probe_req_count;
+            st.probe_resp_count  += perNode[i].st.probe_resp_count;
+            st.deauth_count      += perNode[i].st.deauth_count;
+            st.disassoc_count    += perNode[i].st.disassoc_count;
+            st.data_count        += perNode[i].st.data_count;
+            st.ctrl_count        += perNode[i].st.ctrl_count;
+            st.mgmt_other_count  += perNode[i].st.mgmt_other_count;
+            st.ble_adv_count     += perNode[i].st.ble_adv_count;
+            st.ble_scan_count    += perNode[i].st.ble_scan_count;
+            st.bytes_written     += perNode[i].st.bytes_written;
+            st.dropped_frames    += perNode[i].st.dropped_frames;
+            st.file_size         += perNode[i].st.file_size;
+        }
+        xSemaphoreGive(aggMutex);
+    }
+    if (!pcapCommanded) {
+        for (int i = 0; i < 8; i++) perNode[i].in_use = false;
+    }
+#endif
+    if (!phoneConnected) return;
+    if (chrPcapStats == nullptr) return;
+
+    static PcapStats lastSt = {};
+    static uint32_t lastPcapForceMs = 0;
+    uint32_t now = millis();
+    bool changed = memcmp(&lastSt, &st, sizeof(PcapStats)) != 0;
+    bool force = (now - lastPcapForceMs) > 5000u;
+    if (!changed && !force) return;
+    lastSt = st;
+    if (force) lastPcapForceMs = now;
+
     chrPcapStats->setValue((uint8_t*)&st, sizeof(st));
     chrPcapStats->notify();
 }

@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
@@ -50,6 +51,29 @@ enum EngineId : uint8_t {
 };
 
 #define ENGINE_BITMASK(id) (1 << (id))
+
+static const bool kEngineTargetable[ENGINE_COUNT] = {
+    false,
+    false,
+    false,
+    true,
+    false,
+    true,
+    false,
+    false,
+};
+
+#define CFG_TGT_PREFIX   0xFE
+#define CFG_TGT_OVERHEAD 6
+
+static inline bool cfgTgtStrip(const uint8_t** payload, uint8_t* len, const char* self) {
+    if (*len < CFG_TGT_OVERHEAD) return true;
+    if ((*payload)[0] != CFG_TGT_PREFIX) return true;
+    if (memcmp(*payload + 1, self, MESH_NODE_ID_LEN - 1) != 0) return false;
+    *payload += CFG_TGT_OVERHEAD;
+    *len    -= CFG_TGT_OVERHEAD;
+    return true;
+}
 
 static inline void bleAddrToMac(const uint8_t* native, uint8_t* out) {
     for (int i = 0; i < 6; i++) out[i] = native[5 - i];
@@ -268,6 +292,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  auto_trigger_mac[6];
     uint16_t auto_cooldown_sec;
     uint32_t auto_cooldown_remaining_ms;
+    char     source_node_id[MESH_NODE_ID_LEN]; // "" = local; otherwise mesh-relayed
 } PcapStats;
 
 // PCAP control opcodes (write to CHR_PCAP_CONTROL)
@@ -319,12 +344,54 @@ typedef struct __attribute__((packed)) {
 // Mesh Packet Types — discriminator for ESP-NOW payloads
 // ============================================================================
 enum MeshPacketType : uint8_t {
-    MESH_PKT_DETECTION = 0x01,
-    MESH_PKT_COMMAND   = 0x02,
-    MESH_PKT_STATUS    = 0x03,
-    MESH_PKT_INVITE    = 0x04,
-    MESH_PKT_ACK       = 0x06,
+    MESH_PKT_DETECTION       = 0x01,
+    MESH_PKT_COMMAND         = 0x02,
+    MESH_PKT_STATUS          = 0x03,
+    MESH_PKT_INVITE          = 0x04,
+    MESH_PKT_ACK             = 0x06,
+    MESH_PKT_AUTOPCAP_EVENT  = 0x07,
+    MESH_PKT_RAW_NOTIFY      = 0x08,
+    MESH_PKT_HEARTBEAT       = 0x09,
 };
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint32_t uptime_s;
+    uint32_t free_heap;
+    uint8_t  role;
+    uint8_t  active_engines_mask;
+} MeshHeartbeatPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  trigger_src;
+    uint8_t  trigger_mac[6];
+    uint8_t  channel;
+    uint16_t duration_sec;
+    uint8_t  paused_mask;
+} MeshAutoPcapEventPacket;
+
+// Raw BLE notification forwarded over mesh. Node fills payload + kind,
+// MGR routes to matching BLE characteristic and notifies phone.
+enum MeshRawNotifyKind : uint8_t {
+    RAW_NOTIFY_PCAP_DATA         = 0x01,
+    RAW_NOTIFY_PCAP_STATS        = 0x02,
+    RAW_NOTIFY_FOXHUNTER_RSSI    = 0x03,
+    RAW_NOTIFY_SKYSPY_TELEMETRY  = 0x04,
+    RAW_NOTIFY_UNIPWN_DEVICES    = 0x05,
+};
+
+#define MESH_RAW_PAYLOAD_MAX 200
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_RAW_NOTIFY
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  kind;                  // MeshRawNotifyKind
+    uint16_t seq;                   // monotonic per (node,kind) for ordering
+    uint8_t  payload_len;
+    uint8_t  payload[MESH_RAW_PAYLOAD_MAX];
+} MeshRawNotifyPacket;
 
 // Command relay: primary node -> peers (via ESP-NOW)
 typedef struct __attribute__((packed)) {

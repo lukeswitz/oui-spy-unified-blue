@@ -3,6 +3,7 @@
  */
 #include "engine_registry.h"
 #include "engines/pcap.h"
+#include "mesh_espnow.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
@@ -391,6 +392,8 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
     autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
     autoPcapArmDeadlineTimer((uint32_t)autoPcapDurationSec * 1000U);
     uint8_t maskSnap = autoPcapPausedMask;
+    meshBroadcastAutoPcapEvent((uint8_t)src, autoPcapTriggerMac, chan,
+                               autoPcapDurationSec, maskSnap);
     Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
                   engines[src] ? engines[src]->name : "?",
                   chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec, maskSnap);

@@ -37,7 +37,9 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
     final mac = _macController.text.trim();
     if (mac.length != 17) return;
     final channel = _channelForMac(mac);
-    ref.read(appStateProvider).setFoxhunterTarget(mac, channel: channel);
+    final st = ref.read(appStateProvider);
+    final node = st.isManagerConnected ? st.foxhunterTargetNodeId : null;
+    st.setFoxhunterTarget(mac, channel: channel, nodeId: node);
   }
 
   void _clearTarget() {
@@ -101,6 +103,15 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (state.isManagerConnected) ...[
+              _NodeTargetPicker(
+                selected: state.foxhunterTargetNodeId,
+                enabled: !isActive,
+                onChanged: (v) =>
+                    ref.read(appStateProvider).setFoxhunterTargetNode(v),
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               children: [
                 Expanded(
@@ -115,7 +126,10 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton(
-                  onPressed: _setTarget,
+                  onPressed: (state.isManagerConnected &&
+                          state.foxhunterTargetNodeId == null)
+                      ? null
+                      : _setTarget,
                   child: const Text('HUNT'),
                 ),
               ],
@@ -181,6 +195,66 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             const Spacer(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _NodeTargetPicker extends ConsumerWidget {
+  const _NodeTargetPicker({
+    required this.selected,
+    required this.enabled,
+    required this.onChanged,
+  });
+  final String? selected;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(appStateProvider);
+    final t = AppTheme.of(context);
+    final nodes = appState.liveKnownNodes.toList()..sort();
+    if (nodes.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: t.surface,
+          border: Border.all(color: t.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text('No mesh nodes seen yet.',
+            style: TextStyle(color: t.textDim, fontSize: 12)),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border.all(color: t.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.memory, color: t.textDim, size: 18),
+          const SizedBox(width: 8),
+          Text('HUNT FROM',
+              style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 1.5)),
+          const Spacer(),
+          DropdownButton<String>(
+            value: nodes.contains(selected) ? selected : null,
+            hint: const Text('— Pick Node —'),
+            underline: const SizedBox.shrink(),
+            onChanged: enabled ? onChanged : null,
+            items: nodes.map((id) {
+              final label = appState.labelForNode(id);
+              return DropdownMenuItem(
+                value: id,
+                child: Text(label == id ? id : '$label ($id)'),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }

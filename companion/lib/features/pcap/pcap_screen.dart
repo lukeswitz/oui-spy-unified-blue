@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
@@ -233,6 +234,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                     }
                   },
                 ),
+                const SizedBox(height: 16),
+                const _CaptureScopeBanner(),
                 const SizedBox(height: 16),
                 _ModeSelector(
                   mode: _mode,
@@ -961,6 +964,53 @@ class _AutoPcapCard extends StatelessWidget {
                 ),
               ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CaptureScopeBanner extends ConsumerWidget {
+  const _CaptureScopeBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(appStateProvider);
+    final t = AppTheme.of(context);
+    final mgr = appState.isManagerConnected;
+    final nodes = mgr ? appState.liveKnownNodes.length : 0;
+    final label = mgr ? 'AGGREGATE — $nodes node(s)' : 'LOCAL CAPTURE';
+    final desc = mgr
+        ? 'All mesh nodes capture. PCAPNG file contains one interface per node.'
+        : 'Captures only on this device.';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border.all(color: t.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(mgr ? Icons.hub : Icons.memory,
+              color: mgr ? AppTheme.accent : t.textDim, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                      color: mgr ? AppTheme.accent : t.textPrimary,
+                      fontSize: 12, letterSpacing: 1.5,
+                      fontWeight: FontWeight.w700,
+                    )),
+                const SizedBox(height: 2),
+                Text(desc,
+                    style: TextStyle(color: t.textSecondary, fontSize: 11)),
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -776,17 +776,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   List<Widget> _buildNodeManageRows(AppState appState) {
     final perNode = appState.detectionsPerSourceNode;
-    final known = <String>{...appState.knownNodes};
-    if (appState.nodeId.isEmpty) known.add('LOCAL');
-    final ids = known.toList()
-      ..sort((a, b) {
-        if (a == 'LOCAL') return -1;
-        if (b == 'LOCAL') return 1;
-        if (a == appState.nodeId) return -1;
-        if (b == appState.nodeId) return 1;
-        return a.compareTo(b);
-      });
-    if (ids.isEmpty) {
+    final live = appState.liveKnownNodes;
+    final all = <String>{...appState.knownNodes, ...live};
+    if (appState.nodeId.isEmpty && !appState.isConnected) all.add('LOCAL');
+    if (all.isEmpty) {
       return [
         const ConfigInfoRow(
           icon: Icons.hub_outlined,
@@ -795,7 +788,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
       ];
     }
-    return ids.map((id) {
+    int sortFn(String a, String b) {
+      if (a == 'LOCAL') return -1;
+      if (b == 'LOCAL') return 1;
+      if (a == appState.nodeId) return -1;
+      if (b == appState.nodeId) return 1;
+      return a.compareTo(b);
+    }
+    final liveIds = all.where((id) => live.contains(id) || id == appState.nodeId).toList()
+      ..sort(sortFn);
+    final offlineIds = all.where((id) => !live.contains(id) && id != appState.nodeId).toList()
+      ..sort(sortFn);
+    Widget row(String id, {required bool online}) {
       final dets = perNode[id] ?? 0;
       final label = appState.labelForNode(id);
       final hasCustom = appState.nodeLabels.containsKey(id);
@@ -803,15 +807,24 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       final parts = <String>[
         if (hasCustom) id,
         if (isSelf) 'this device',
+        online ? 'LIVE' : 'offline',
         '$dets dets',
       ];
       return ConfigActionRow(
-        icon: isSelf ? Icons.smartphone : Icons.memory,
+        icon: isSelf ? Icons.smartphone : (online ? Icons.memory : Icons.memory_outlined),
         label: label,
         subtitle: parts.join('  ·  '),
         onTap: () => _renameNodeDialog(appState, id),
       );
-    }).toList();
+    }
+    final widgets = <Widget>[];
+    for (final id in liveIds) widgets.add(row(id, online: true));
+    if (offlineIds.isNotEmpty) {
+      widgets.add(const SizedBox(height: 8));
+      widgets.add(const ConfigSectionHeader(label: 'OFFLINE'));
+      for (final id in offlineIds) widgets.add(row(id, online: false));
+    }
+    return widgets;
   }
 
   Future<void> _renameNodeDialog(AppState appState, String id) async {
@@ -4496,87 +4509,6 @@ class _MeshModeTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _NodesSection extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
-    final appState = ref.watch(appStateProvider);
-    final perNode = appState.detectionsPerSourceNode;
-    final sorted = perNode.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final modeEnc = appState.meshEnabled && appState.meshEncryption;
-    final modePlain = appState.meshEnabled && !appState.meshEncryption;
-    final maxNodes = modeEnc ? 6 : (modePlain ? 12 : 0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12, left: 2),
-          child: Text(
-            'ESP-NOW caps: 6 peers with AES-256-GCM, or 12 peers plaintext. Broadcast plaintext has no peer table cap.',
-            style: TextStyle(color: t.textDim, fontSize: 11),
-          ),
-        ),
-        _MeshModeTile(
-          label: 'BROADCAST  (UNLIMITED)',
-          subtitle: 'No peer table. Plaintext only. ch=1.',
-          selected: modePlain,
-          onTap: () => appState.enableMesh(
-            encryption: false,
-            peerMacs: const [],
-          ),
-        ),
-        _MeshModeTile(
-          label: 'UNICAST PLAINTEXT  (12 MAX)',
-          subtitle: 'Per-node peer entries, plaintext payload.',
-          selected: false,
-          onTap: () async {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Unicast plaintext peer push not wired yet — using broadcast.')),
-            );
-            await appState.enableMesh(encryption: false, peerMacs: const []);
-          },
-        ),
-        _MeshModeTile(
-          label: 'UNICAST ENCRYPTED  (6 MAX, AES-GCM)',
-          subtitle: 'Per-node peer entries, AES-256-GCM. Key shared.',
-          selected: modeEnc,
-          onTap: () async {
-            if (appState.meshKey == null) {
-              await appState.generateMeshKey();
-            }
-            await appState.enableMesh(
-              encryption: true,
-              peerMacs: const [],
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        ConfigInfoRow(
-          icon: Icons.tag,
-          label: 'Peer slots used',
-          value: '${appState.meshPeerCount} / $maxNodes',
-        ),
-        const SizedBox(height: 12),
-        if (sorted.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'No nodes detected yet. Connect via manager + enable mesh.',
-              style: TextStyle(color: t.textDim, fontSize: 11),
-            ),
-          )
-        else
-          ...sorted.map((e) => _NodeRenameRow(
-                sourceId: e.key,
-                detectionCount: e.value,
-              )),
-      ],
     );
   }
 }

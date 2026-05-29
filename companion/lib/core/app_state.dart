@@ -95,27 +95,57 @@ class AppState extends ChangeNotifier {
   int foxhunterRssi = -100;
   int foxhunterIntervalMs = 3000;
   String? foxhunterTarget;
+  String? foxhunterTargetNodeId;
 
   int foxhunterChannel = 0;
 
-  void setFoxhunterTarget(String mac, {int channel = 0}) {
+  void setFoxhunterTarget(String mac, {int channel = 0, String? nodeId}) {
+    final effective = nodeId
+        ?? foxhunterTargetNodeId
+        ?? (isManagerConnected && knownNodes.isNotEmpty
+            ? knownNodes.first
+            : null);
     foxhunterTarget = mac;
     foxhunterChannel = channel;
-    // Only enable engine if not already running — avoid DISABLE/ENABLE spam
+    foxhunterTargetNodeId = effective;
     if (!isEngineActive(Engine.foxhunter)) {
-      _ble.enableEngine(Engine.foxhunter, radio: engineRadio[Engine.foxhunter] ?? 0x03);
+      _ble.enableEngine(
+        Engine.foxhunter,
+        radio: engineRadio[Engine.foxhunter] ?? 0x03,
+        targetNodeId: effective,
+      );
     }
-    // Always send target (even if already running — updates MAC + channel hint)
-    _ble.setFoxhunterTarget(mac, channel: channel);
+    _ble.setFoxhunterTarget(mac, channel: channel, nodeId: effective);
+    notifyListeners();
+  }
+
+  void setFoxhunterTargetNode(String? nodeId) {
+    if (foxhunterTargetNodeId == nodeId) return;
+    final wasActive = foxhunterTarget != null && isEngineActive(Engine.foxhunter);
+    if (wasActive && foxhunterTargetNodeId != null) {
+      _ble.disableEngine(Engine.foxhunter, targetNodeId: foxhunterTargetNodeId);
+    }
+    foxhunterTargetNodeId = nodeId;
+    if (wasActive && foxhunterTarget != null) {
+      _ble.enableEngine(
+        Engine.foxhunter,
+        radio: engineRadio[Engine.foxhunter] ?? 0x03,
+        targetNodeId: nodeId,
+      );
+      _ble.setFoxhunterTarget(foxhunterTarget!,
+          channel: foxhunterChannel, nodeId: nodeId);
+    }
     notifyListeners();
   }
 
   void clearFoxhunterTarget() {
+    final nodeId = foxhunterTargetNodeId;
     foxhunterTarget = null;
     foxhunterChannel = 0;
+    foxhunterTargetNodeId = null;
     foxhunterRssi = -100;
     foxhunterIntervalMs = 3000;
-    _ble.disableEngine(Engine.foxhunter);
+    _ble.disableEngine(Engine.foxhunter, targetNodeId: nodeId);
     notifyListeners();
   }
 
@@ -156,41 +186,122 @@ class AppState extends ChangeNotifier {
     return m;
   }
 
+  static String canonicalNodeId(String raw) {
+    if (raw.isEmpty) return '';
+    if (raw == 'LOCAL') return 'LOCAL';
+    var s = raw.toUpperCase();
+    const pfx = 'OUISPY-';
+    if (s.startsWith(pfx)) s = s.substring(pfx.length);
+    if (s.length < 4) return '';
+    s = s.substring(s.length - 4);
+    final ok = RegExp(r'^[0-9A-F]{4}$').hasMatch(s);
+    return ok ? s : '';
+  }
+
   String labelForNode(String id) {
-    final prefs = _nodeLabels;
-    final stored = prefs[id];
+    final canon = canonicalNodeId(id);
+    final stored = _nodeLabels[canon];
     if (stored != null && stored.isNotEmpty) return stored;
-    if (id == 'LOCAL' || id.isEmpty) return 'LOCAL';
-    return id;
+    if (canon.isEmpty || id == 'LOCAL') return 'LOCAL';
+    return 'OUISPY-$canon';
   }
 
   final Map<String, String> _nodeLabels = {};
   final Set<String> _seenNodes = {};
+  final Map<String, int> _nodeLastSeenMs = {};
+  final Set<String> _meshLiveNodeIds = {};
+  static const int _seenNodeTtlMs = 7 * 24 * 60 * 60 * 1000;
+  static const int _liveNodeTtlMs = 30 * 1000;
+  final Map<String, int> _nodeWardriveRadio = {};
   Map<String, String> get nodeLabels => Map.unmodifiable(_nodeLabels);
-  Set<String> get knownNodes {
+  Map<String, int> get nodeWardriveRadio => Map.unmodifiable(_nodeWardriveRadio);
+  int wardriveRadioForNode(String id) => _nodeWardriveRadio[id] ?? 0x03;
+  Future<void> setWardriveRadioForNode(String id, int mask) async {
+    final m = (mask & 0x03) == 0 ? 0x03 : (mask & 0x03);
+    _nodeWardriveRadio[id] = m;
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(
+      'nodeWardriveRadio',
+      _nodeWardriveRadio.entries.map((e) => '${e.key}=${e.value}').toList(),
+    );
+    try {
+      await _ble.setWardriveNodeRadio(id, m);
+    } on Exception catch (e) {
+      DebugLog.log('AppState: setWardriveNodeRadio($id) error: $e');
+    }
+    notifyListeners();
+  }
+  Set<String> get liveKnownNodes {
     final s = <String>{};
-    s.addAll(detectionsPerSourceNode.keys);
-    s.addAll(_nodeLabels.keys);
-    s.addAll(_seenNodes);
-    if (nodeId.isNotEmpty) {
-      s.add(nodeId);
-      s.remove('LOCAL');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in _meshLiveNodeIds) {
+      final last = _nodeLastSeenMs[id] ?? 0;
+      if ((now - last) <= _liveNodeTtlMs) s.add(id);
+    }
+    final selfCanon = canonicalNodeId(nodeId);
+    if (isConnected && selfCanon.isNotEmpty && selfCanon != 'LOCAL') {
+      s.add(selfCanon);
     }
     return s;
   }
+
+  Set<String> get knownNodes {
+    final s = <String>{};
+    for (final k in detectionsPerSourceNode.keys) {
+      final c = canonicalNodeId(k);
+      if (c.isNotEmpty && c != 'LOCAL') s.add(c);
+    }
+    for (final k in _nodeLabels.keys) {
+      if (k.isNotEmpty && k != 'LOCAL') s.add(k);
+    }
+    s.addAll(_seenNodes);
+    final selfCanon = canonicalNodeId(nodeId);
+    if (selfCanon.isNotEmpty && selfCanon != 'LOCAL') s.add(selfCanon);
+    s.remove('LOCAL');
+    return s;
+  }
   void _recordSeenNode(String id) {
-    if (id.isEmpty) return;
-    if (_seenNodes.add(id)) {
-      SharedPreferences.getInstance().then((p) {
-        p.setStringList('seenNodes', _seenNodes.toList());
-      });
+    final canon = canonicalNodeId(id);
+    if (canon.isEmpty || canon == 'LOCAL') return;
+    final added = _seenNodes.add(canon);
+    _nodeLastSeenMs[canon] = DateTime.now().millisecondsSinceEpoch;
+    if (added) {
+      _persistSeenNodes();
       notifyListeners();
+    } else {
+      _persistSeenNodes();
     }
   }
+
+  void _persistSeenNodes() {
+    SharedPreferences.getInstance().then((p) {
+      p.setStringList('seenNodes', _seenNodes.toList());
+      p.setStringList('nodeLastSeenMs',
+          _nodeLastSeenMs.entries.map((e) => '${e.key}=${e.value}').toList());
+    });
+  }
+
+  void _evictStaleSeenNodes() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final stale = <String>[];
+    for (final id in _seenNodes) {
+      final last = _nodeLastSeenMs[id] ?? 0;
+      if (last == 0 || (now - last) > _seenNodeTtlMs) stale.add(id);
+    }
+    if (stale.isEmpty) return;
+    for (final id in stale) {
+      if (_nodeLabels.containsKey(id)) continue;
+      _seenNodes.remove(id);
+      _nodeLastSeenMs.remove(id);
+    }
+    _persistSeenNodes();
+  }
   void forgetNode(String id) {
+    final canon = canonicalNodeId(id);
+    if (canon.isEmpty) return;
     var changed = false;
-    if (_seenNodes.remove(id)) changed = true;
-    if (_nodeLabels.remove(id) != null) changed = true;
+    if (_seenNodes.remove(canon)) changed = true;
+    if (_nodeLabels.remove(canon) != null) changed = true;
     if (!changed) return;
     SharedPreferences.getInstance().then((p) {
       p.setStringList('seenNodes', _seenNodes.toList());
@@ -202,10 +313,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
   void setNodeLabel(String id, String label) {
+    final canon = canonicalNodeId(id);
+    if (canon.isEmpty) return;
     if (label.isEmpty) {
-      _nodeLabels.remove(id);
+      _nodeLabels.remove(canon);
     } else {
-      _nodeLabels[id] = label;
+      _nodeLabels[canon] = label;
     }
     SharedPreferences.getInstance().then((p) {
       final entries = _nodeLabels.entries
@@ -217,12 +330,51 @@ class AppState extends ChangeNotifier {
   }
 
   void _loadNodeLabels(SharedPreferences p) {
+    bool migrated = false;
     final entries = p.getStringList('nodeLabels') ?? const [];
     for (final e in entries) {
       final i = e.indexOf('=');
-      if (i > 0) _nodeLabels[e.substring(0, i)] = e.substring(i + 1);
+      if (i <= 0) continue;
+      final rawKey = e.substring(0, i);
+      final label = e.substring(i + 1);
+      final canon = canonicalNodeId(rawKey);
+      if (canon.isEmpty) { migrated = true; continue; }
+      if (canon != rawKey) migrated = true;
+      _nodeLabels[canon] = label;
     }
-    _seenNodes.addAll(p.getStringList('seenNodes') ?? const []);
+    for (final raw in p.getStringList('seenNodes') ?? const []) {
+      final canon = canonicalNodeId(raw);
+      if (canon.isEmpty || canon == 'LOCAL') { migrated = true; continue; }
+      if (canon != raw) migrated = true;
+      _seenNodes.add(canon);
+    }
+    for (final e in p.getStringList('nodeLastSeenMs') ?? const []) {
+      final i = e.indexOf('=');
+      if (i <= 0) continue;
+      final canon = canonicalNodeId(e.substring(0, i));
+      final ts = int.tryParse(e.substring(i + 1));
+      if (canon.isEmpty || ts == null) continue;
+      _nodeLastSeenMs[canon] = ts;
+    }
+    _evictStaleSeenNodes();
+    for (final e in p.getStringList('nodeWardriveRadio') ?? const []) {
+      final i = e.indexOf('=');
+      if (i <= 0) continue;
+      final rawKey = e.substring(0, i);
+      final canon = canonicalNodeId(rawKey);
+      if (canon.isEmpty) { migrated = true; continue; }
+      if (canon != rawKey) migrated = true;
+      final v = int.tryParse(e.substring(i + 1));
+      if (v != null) _nodeWardriveRadio[canon] = v;
+    }
+    if (migrated) {
+      p.setStringList('seenNodes', _seenNodes.toList());
+      p.setStringList('nodeLabels',
+          _nodeLabels.entries.map((e) => '${e.key}=${e.value}').toList());
+      p.setStringList('nodeWardriveRadio',
+          _nodeWardriveRadio.entries.map((e) => '${e.key}=${e.value}').toList());
+      DebugLog.log('AppState: migrated node-id storage to canonical form');
+    }
   }
 
   void _init() {
@@ -239,7 +391,7 @@ class AppState extends ChangeNotifier {
     _subs.add(_ble.connectionState.listen((state) {
       connectionState = state;
       if (state == NodeConnectionState.ready) {
-        nodeId = _ble.nodeId;
+        nodeId = canonicalNodeId(_ble.nodeId);
         if (nodeId.isNotEmpty) _recordSeenNode(nodeId);
         sessionStartTime = DateTime.now();
         _gps.start().catchError((e) {
@@ -317,13 +469,23 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }));
 
-    // Mesh status
     _subs.add(_ble.meshStatusUpdates.listen((data) {
       meshEnabled = data.enabled;
       meshPeerCount = data.peerCount;
       meshConnectedPeers = data.connectedPeers;
       meshRxCount = data.rxCount;
       meshTxCount = data.txCount;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final live = <String>{};
+      for (final entry in data.liveNodes) {
+        final canon = canonicalNodeId(entry.id);
+        if (canon.isEmpty) continue;
+        live.add(canon);
+        _nodeLastSeenMs[canon] = now;
+      }
+      _meshLiveNodeIds
+        ..clear()
+        ..addAll(live);
       notifyListeners();
     }));
 

@@ -268,10 +268,8 @@ static void statusHeartbeatTask(void* param) {
 
         if (bleGattIsConnected()) {
             bleGattNotifyEngineState();
+            bleGattNotifyMeshStatus();
             bleGattNotifyPcapStats();
-            if (meshIsEnabled()) {
-                bleGattNotifyMeshStatus();
-            }
         }
 
         // Serial heartbeat

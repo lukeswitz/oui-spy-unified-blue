@@ -1,5 +1,6 @@
 #include "mesh_espnow.h"
 #include "engine_registry.h"
+#include "ble_gatt.h"
 #include <Arduino.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
@@ -49,10 +50,10 @@ static SemaphoreHandle_t  inviteMutex = NULL;
 static SemaphoreHandle_t  txMutex = NULL;
 
 #define MESH_RENDEZVOUS_CH      1
-#define MESH_TX_QUEUE_DEPTH     32
-#define MESH_TX_MAX_LEN         224
-#define MESH_TX_DRAIN_PERIOD_MS 80
-#define MESH_TX_DRAIN_BURST     16
+#define MESH_TX_QUEUE_DEPTH     128
+#define MESH_TX_MAX_LEN         250
+#define MESH_TX_DRAIN_PERIOD_MS 20
+#define MESH_TX_DRAIN_BURST     32
 
 #define MESH_TX_DEDUP_SLOTS     128
 #define MESH_TX_DEDUP_MS        60000
@@ -94,6 +95,65 @@ static QueueHandle_t meshTxQueue = NULL;
 static TaskHandle_t  meshTxTaskHandle = NULL;
 static void meshTxTaskFn(void* arg);
 static bool enqueueTx(const uint8_t* data, size_t len);
+
+static MeshAutoPcapEventPacket latestAutoPcapEvent = {};
+static uint32_t                latestAutoPcapEventMs = 0;
+static SemaphoreHandle_t       autoPcapEventMutex = NULL;
+
+static MeshLiveNode liveNodes[MESH_LIVE_NODES_MAX] = {};
+static SemaphoreHandle_t liveMutex = NULL;
+
+static void recordLiveNode(const char* id, uint8_t role, uint8_t engines) {
+    if (!liveMutex) return;
+    if (id[0] == 0) return;
+    if (memcmp(id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+    if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    int freeSlot = -1;
+    int oldest = 0;
+    uint32_t oldestMs = 0xFFFFFFFFu;
+    uint32_t now = millis();
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (liveNodes[i].id[0] == 0) {
+            if (freeSlot < 0) freeSlot = i;
+            continue;
+        }
+        if (memcmp(liveNodes[i].id, id, MESH_NODE_ID_LEN) == 0) {
+            liveNodes[i].last_ms = now;
+            liveNodes[i].role = role;
+            liveNodes[i].active_engines = engines;
+            xSemaphoreGive(liveMutex);
+            return;
+        }
+        if (liveNodes[i].last_ms < oldestMs) {
+            oldestMs = liveNodes[i].last_ms;
+            oldest = i;
+        }
+    }
+    int slot = (freeSlot >= 0) ? freeSlot : oldest;
+    memcpy(liveNodes[slot].id, id, MESH_NODE_ID_LEN);
+    liveNodes[slot].last_ms = now;
+    liveNodes[slot].role = role;
+    liveNodes[slot].active_engines = engines;
+    xSemaphoreGive(liveMutex);
+}
+
+size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
+    if (!liveMutex || !out || maxOut == 0) return 0;
+    if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
+    uint32_t now = millis();
+    size_t n = 0;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX && n < maxOut; i++) {
+        if (liveNodes[i].id[0] == 0) continue;
+        if ((now - liveNodes[i].last_ms) > ttl_ms) {
+            memset(&liveNodes[i], 0, sizeof(liveNodes[i]));
+            continue;
+        }
+        out[n++] = liveNodes[i];
+    }
+    xSemaphoreGive(liveMutex);
+    return n;
+}
+
 
 static void deriveNonce(uint8_t nonce[MESH_NONCE_LEN], uint64_t counter) {
     memcpy(nonce, localNodeId, 4);
@@ -229,6 +289,7 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         dedupeIdx = (dedupeIdx + 1) % MESH_ACK_DEDUPE_SLOTS;
         Serial.printf("[MESH-ACK] seq=%u cmd=0x%02x engine=%u from=%.5s\n",
             ack.ack_seq, ack.ack_cmd, ack.ack_engine_id, ack.source_node_id);
+        recordLiveNode(ack.source_node_id, 0, 0);
         if (pendingMutex && xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             for (int i = 0; i < MESH_CMD_PENDING_MAX; i++) {
                 if (pendingCmds[i].in_use && pendingCmds[i].seq == ack.ack_seq) {
@@ -251,24 +312,109 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
     if (plainLen == sizeof(MeshCommandPacket) && plainBuf[0] == MESH_PKT_COMMAND) {
         MeshCommandPacket cmd;
         memcpy(&cmd, plainBuf, sizeof(MeshCommandPacket));
-        static uint8_t lastSeq = 0xFF;
-        static char    lastFrom[MESH_NODE_ID_LEN] = {};
-        if (cmd.seq == lastSeq && memcmp(cmd.source_node_id, lastFrom, MESH_NODE_ID_LEN) == 0) {
-            // Already processed this exact cmd-from-this-MGR; still ACK so MGR drops pending.
+        static struct { char src[MESH_NODE_ID_LEN]; uint8_t seq; uint32_t ts; }
+            cmdDedupe[32] = {};
+        static int cmdDedupeIdx = 0;
+        const uint32_t nowDedup = millis();
+        bool dupe = false;
+        for (int i = 0; i < 32; i++) {
+            if (cmdDedupe[i].ts == 0) continue;
+            if ((nowDedup - cmdDedupe[i].ts) > 5000) continue;
+            if (cmdDedupe[i].seq == cmd.seq &&
+                memcmp(cmdDedupe[i].src, cmd.source_node_id, MESH_NODE_ID_LEN) == 0) {
+                dupe = true; break;
+            }
+        }
+        if (dupe) {
             sendAckPacket(&cmd);
             return;
         }
-        lastSeq = cmd.seq;
-        memcpy(lastFrom, cmd.source_node_id, MESH_NODE_ID_LEN);
+        memcpy(cmdDedupe[cmdDedupeIdx].src, cmd.source_node_id, MESH_NODE_ID_LEN);
+        cmdDedupe[cmdDedupeIdx].seq = cmd.seq;
+        cmdDedupe[cmdDedupeIdx].ts = nowDedup;
+        cmdDedupeIdx = (cmdDedupeIdx + 1) % 32;
         Serial.printf("[MESH-CMD] seq=%u cmd=0x%02x engine=%u plen=%u from=%.5s\n",
             cmd.seq, cmd.command, cmd.engine_id, cmd.payload_len, cmd.source_node_id);
-        EngineCommand ec = {};
-        ec.command = cmd.command;
-        ec.engine_id = cmd.engine_id;
-        ec.payload_len = cmd.payload_len > sizeof(ec.payload) ? sizeof(ec.payload) : cmd.payload_len;
-        if (ec.payload_len > 0) memcpy(ec.payload, cmd.payload, ec.payload_len);
-        engineProcessCommand(&ec);
+        bool targetMatch = true;
+        bool targetableEngine = (cmd.engine_id < ENGINE_COUNT)
+                                 && kEngineTargetable[cmd.engine_id];
+        if (targetableEngine && (cmd.command == 0x01 || cmd.command == 0x00)) {
+            if (cmd.payload_len < MESH_NODE_ID_LEN ||
+                memcmp(cmd.payload, localNodeId, MESH_NODE_ID_LEN) != 0) {
+                targetMatch = false;
+                Serial.printf("[MESH-CMD] eng=%u target=%.4s != self=%s — ignored\n",
+                              cmd.engine_id,
+                              cmd.payload_len >= MESH_NODE_ID_LEN
+                                ? (const char*)cmd.payload : "(none)",
+                              localNodeId);
+            }
+        }
+        if (targetMatch) {
+            EngineCommand ec = {};
+            ec.command = cmd.command;
+            ec.engine_id = cmd.engine_id;
+            ec.payload_len = cmd.payload_len > sizeof(ec.payload) ? sizeof(ec.payload) : cmd.payload_len;
+            if (ec.payload_len > 0) memcpy(ec.payload, cmd.payload, ec.payload_len);
+            engineProcessCommand(&ec);
+        }
         sendAckPacket(&cmd);
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+            s.rx_count++;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+            xSemaphoreGive(meshMutex);
+        }
+        return;
+    }
+
+    if (plainLen == sizeof(MeshHeartbeatPacket) && plainBuf[0] == MESH_PKT_HEARTBEAT) {
+        MeshHeartbeatPacket hb;
+        memcpy(&hb, plainBuf, sizeof(hb));
+        if (memcmp(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0) {
+            recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask);
+        }
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+            s.rx_count++;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+            xSemaphoreGive(meshMutex);
+        }
+        return;
+    }
+
+    if (plainLen == sizeof(MeshAutoPcapEventPacket) && plainBuf[0] == MESH_PKT_AUTOPCAP_EVENT) {
+        MeshAutoPcapEventPacket ev;
+        memcpy(&ev, plainBuf, sizeof(ev));
+        if (memcmp(ev.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        if (autoPcapEventMutex &&
+            xSemaphoreTake(autoPcapEventMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            memcpy(&latestAutoPcapEvent, &ev, sizeof(ev));
+            latestAutoPcapEventMs = millis();
+            xSemaphoreGive(autoPcapEventMutex);
+        }
+        Serial.printf("[MESH-AUTOPCAP-RX] from=%.5s src=%u mac=%02X:%02X:%02X:%02X:%02X:%02X ch=%u dur=%us\n",
+            ev.source_node_id, ev.trigger_src,
+            ev.trigger_mac[0],ev.trigger_mac[1],ev.trigger_mac[2],
+            ev.trigger_mac[3],ev.trigger_mac[4],ev.trigger_mac[5],
+            ev.channel, ev.duration_sec);
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+            s.rx_count++;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+            xSemaphoreGive(meshMutex);
+        }
+        bleGattNotifyPcapStats();
+        return;
+    }
+
+    if (plainLen >= 10 && plainBuf[0] == MESH_PKT_RAW_NOTIFY) {
+        MeshRawNotifyPacket raw;
+        size_t copyLen = plainLen <= sizeof(raw) ? plainLen : sizeof(raw);
+        memcpy(&raw, plainBuf, copyLen);
+        if (memcmp(raw.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        if (raw.payload_len > MESH_RAW_PAYLOAD_MAX) return;
+        bleGattDispatchMeshNotify(raw.kind, raw.source_node_id,
+                                  raw.seq, raw.payload, raw.payload_len);
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
             s.rx_count++;
@@ -297,6 +443,7 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
     }
 
     pushDetection(&evt);
+    recordLiveNode(pkt.source_node_id, 0, 0);
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         MeshStatus s;
@@ -317,6 +464,9 @@ void meshInit(void) {
     pendingMutex = xSemaphoreCreateMutex();
     inviteMutex = xSemaphoreCreateMutex();
     txMutex = xSemaphoreCreateMutex();
+    autoPcapEventMutex = xSemaphoreCreateMutex();
+    liveMutex = xSemaphoreCreateMutex();
+    memset(liveNodes, 0, sizeof(liveNodes));
     mbedtls_gcm_init(&gcmCtx);
     memset((void*)&meshCurrentConfig, 0, sizeof(MeshConfig));
     memset((void*)&meshCurrentStatus, 0, sizeof(MeshStatus));
@@ -538,6 +688,7 @@ static bool enqueueTx(const uint8_t* data, size_t len) {
         }
         return false;
     }
+    if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
     return true;
 }
 
@@ -549,41 +700,34 @@ static void meshTxTaskFn(void* arg) {
     (void)arg;
     MeshTxItem item;
     for (;;) {
-        if (xQueuePeek(meshTxQueue, &item, portMAX_DELAY) != pdTRUE) continue;
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(MESH_TX_DRAIN_PERIOD_MS));
         if (!meshCurrentConfig.enabled) {
-            xQueueReceive(meshTxQueue, &item, 0);
+            while (xQueueReceive(meshTxQueue, &item, 0) == pdTRUE) { }
             continue;
         }
+        if (uxQueueMessagesWaiting(meshTxQueue) == 0) continue;
+
+        if (!txMutex || xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) != pdTRUE) continue;
 
         uint8_t cur_ch = 0; wifi_second_chan_t sec;
         esp_wifi_get_channel(&cur_ch, &sec);
         if (cur_ch != MESH_RENDEZVOUS_CH) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
+            esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
         }
 
-        if (!txMutex || xSemaphoreTake(txMutex, pdMS_TO_TICKS(20)) != pdTRUE) {
-            vTaskDelay(pdMS_TO_TICKS(5));
-            continue;
-        }
-
-        esp_wifi_get_channel(&cur_ch, &sec);
-        if (cur_ch != MESH_RENDEZVOUS_CH) {
-            xSemaphoreGive(txMutex);
-            vTaskDelay(pdMS_TO_TICKS(5));
-            continue;
-        }
-
-        for (int i = 0; i < MESH_TX_DRAIN_BURST; i++) {
+        int sent = 0;
+        while (sent < MESH_TX_DRAIN_BURST) {
             if (xQueueReceive(meshTxQueue, &item, 0) != pdTRUE) break;
-            esp_now_send(kBroadcastDst, item.data, item.len);
-            vTaskDelay(pdMS_TO_TICKS(2));
-            esp_wifi_get_channel(&cur_ch, &sec);
-            if (cur_ch != MESH_RENDEZVOUS_CH) break;
+            esp_err_t r = ESP_OK;
+            for (int retry = 0; retry < 3; retry++) {
+                r = esp_now_send(kBroadcastDst, item.data, item.len);
+                if (r == ESP_OK) break;
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
+            sent++;
         }
 
         xSemaphoreGive(txMutex);
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -674,10 +818,19 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
 static void retryTaskFn(void* arg) {
     (void)arg;
     uint32_t lastInviteBeacon = 0;
+    uint32_t lastHeartbeat = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(50));
         if (!meshCurrentConfig.enabled) continue;
         if (!pendingMutex) continue;
+
+        {
+            uint32_t nowHb = millis();
+            if (nowHb - lastHeartbeat >= 5000u) {
+                lastHeartbeat = nowHb;
+                meshSendHeartbeat(engineGetActiveMask());
+            }
+        }
 
         if (pendingInviteApply && inviteMutex &&
             xSemaphoreTake(inviteMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
@@ -692,10 +845,7 @@ static void retryTaskFn(void* arg) {
 
         uint32_t now = millis();
 #ifdef OUISPY_ROLE_MANAGER
-        if (now - lastInviteBeacon >= 10000) {
-            lastInviteBeacon = now;
-            meshSendInvite();
-        }
+        (void)lastInviteBeacon;
 #endif
         for (int i = 0; i < MESH_CMD_PENDING_MAX; i++) {
             if (xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(10)) != pdTRUE) break;
@@ -734,6 +884,129 @@ static void retryTaskFn(void* arg) {
         }
     }
 }
+
+void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],
+                                uint8_t channel, uint16_t duration_sec,
+                                uint8_t paused_mask) {
+    if (!meshCurrentConfig.enabled) return;
+    MeshAutoPcapEventPacket ev = {};
+    ev.pkt_type = MESH_PKT_AUTOPCAP_EVENT;
+    memcpy(ev.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    ev.trigger_src = trigger_src;
+    if (mac) memcpy(ev.trigger_mac, mac, 6);
+    ev.channel = channel;
+    ev.duration_sec = duration_sec;
+    ev.paused_mask = paused_mask;
+
+    uint8_t enc[256]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&ev, sizeof(ev), enc, &encLen)) return;
+    sendOnRendezvous(enc, encLen);
+    if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+        s.tx_count++;
+        memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+        xSemaphoreGive(meshMutex);
+    }
+    Serial.printf("[MESH-AUTOPCAP-TX] src=%u ch=%u dur=%us\n",
+                  trigger_src, channel, duration_sec);
+}
+
+void meshForwardNotify(uint8_t kind, const uint8_t* data, size_t len) {
+    if (!meshCurrentConfig.enabled || !data || len == 0) return;
+    if (len > MESH_RAW_PAYLOAD_MAX - 1) return;
+    static uint16_t seqByKind[8] = {};
+    uint8_t kIdx = (kind < 8) ? kind : 0;
+    MeshRawNotifyPacket pkt = {};
+    pkt.pkt_type = MESH_PKT_RAW_NOTIFY;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    pkt.kind = kind;
+    pkt.seq = seqByKind[kIdx]++;
+    pkt.payload[0] = 0x80;
+    memcpy(pkt.payload + 1, data, len);
+    pkt.payload_len = (uint8_t)(len + 1);
+    size_t wireLen = sizeof(pkt) - MESH_RAW_PAYLOAD_MAX + pkt.payload_len;
+    uint8_t enc[256]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, wireLen, enc, &encLen)) return;
+    if (!enqueueTx(enc, encLen)) return;
+    if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+        s.tx_count++;
+        memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+        xSemaphoreGive(meshMutex);
+    }
+}
+
+void meshForwardPcapRecord(const uint8_t* record, size_t len) {
+    if (!meshCurrentConfig.enabled || !record || len == 0) return;
+    if (len > 32u * (MESH_RAW_PAYLOAD_MAX - 1)) return;
+    static uint16_t pcapRecSeq = 0;
+    uint16_t recSeq = pcapRecSeq++;
+    const size_t fragData = (size_t)MESH_RAW_PAYLOAD_MAX - 1u;
+    uint8_t totalFrags = (uint8_t)((len + fragData - 1) / fragData);
+    if (totalFrags == 0) totalFrags = 1;
+    if (uxQueueSpacesAvailable(meshTxQueue) < totalFrags) return;
+    size_t off = 0;
+    for (uint8_t idx = 0; idx < totalFrags; idx++) {
+        size_t chunk = len - off;
+        if (chunk > fragData) chunk = fragData;
+        bool isLast = (idx == totalFrags - 1);
+        MeshRawNotifyPacket pkt = {};
+        pkt.pkt_type = MESH_PKT_RAW_NOTIFY;
+        memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+        pkt.kind = RAW_NOTIFY_PCAP_DATA;
+        pkt.seq = recSeq;
+        pkt.payload[0] = (uint8_t)((isLast ? 0x80 : 0x00) | (idx & 0x7F));
+        memcpy(pkt.payload + 1, record + off, chunk);
+        pkt.payload_len = (uint8_t)(chunk + 1);
+        size_t wireLen = sizeof(pkt) - MESH_RAW_PAYLOAD_MAX + pkt.payload_len;
+        uint8_t enc[256]; size_t encLen = 0;
+        if (!encryptPacket((const uint8_t*)&pkt, wireLen, enc, &encLen)) return;
+        if (!enqueueTx(enc, encLen)) return;
+        off += chunk;
+    }
+    if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+        s.tx_count++;
+        memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+        xSemaphoreGive(meshMutex);
+    }
+}
+
+void meshSendHeartbeat(uint8_t active_engines_mask) {
+    if (!meshCurrentConfig.enabled) return;
+    MeshHeartbeatPacket hb = {};
+    hb.pkt_type = MESH_PKT_HEARTBEAT;
+    memcpy(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    hb.uptime_s = millis() / 1000u;
+    hb.free_heap = (uint32_t)ESP.getFreeHeap();
+#ifdef OUISPY_ROLE_MANAGER
+    hb.role = 1;
+#else
+    hb.role = 0;
+#endif
+    hb.active_engines_mask = active_engines_mask;
+    uint8_t enc[128]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
+    enqueueTx(enc, encLen);
+}
+
+bool meshGetLatestAutoPcapEvent(uint32_t max_age_ms, MeshAutoPcapEventPacket* out, uint32_t* age_ms_out) {
+    if (!out) return false;
+    bool ok = false;
+    if (autoPcapEventMutex &&
+        xSemaphoreTake(autoPcapEventMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        uint32_t age = millis() - latestAutoPcapEventMs;
+        if (latestAutoPcapEventMs != 0 && age <= max_age_ms) {
+            memcpy(out, &latestAutoPcapEvent, sizeof(*out));
+            if (age_ms_out) *age_ms_out = age;
+            ok = true;
+        }
+        xSemaphoreGive(autoPcapEventMutex);
+    }
+    return ok;
+}
+
+const char* meshGetLocalNodeId(void) { return localNodeId; }
 
 bool meshIsEnabled(void) {
     return meshCurrentConfig.enabled != 0;

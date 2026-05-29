@@ -133,16 +133,27 @@ class BleProtocol {
 
   // -- Engine control --
 
-  /// Encode engine enable/disable command.
-  /// action[1] engine_id[1]
+  static List<int> targetEnvelope(String nodeId) {
+    if (nodeId.length != 4) {
+      throw ArgumentError('nodeId must be 4-hex canonical form, got "$nodeId"');
+    }
+    return [0xFE, ...nodeId.codeUnits, 0x00];
+  }
+
   static Uint8List encodeEngineControl({
     required Engine engine,
     required bool enable,
+    String? targetNodeId,
   }) {
-    return Uint8List.fromList([
-      enable ? 0x01 : 0x00,
-      engine.index,
-    ]);
+    final base = <int>[enable ? 0x01 : 0x00, engine.index];
+    if (targetNodeId != null) {
+      if (targetNodeId.length != 4) {
+        throw ArgumentError('targetNodeId must be 4-hex canonical form, got "$targetNodeId"');
+      }
+      base.addAll(targetNodeId.codeUnits);
+      base.add(0x00);
+    }
+    return Uint8List.fromList(base);
   }
 
   /// Encode a "disable all engines" command.
@@ -275,19 +286,44 @@ class BleProtocol {
     return buf.buffer.asUint8List();
   }
 
-  /// Decode mesh status: enabled[1] peer_count[1] connected_peers[1] rx_count[4] tx_count[4]
-  static ({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})
-      decodeMeshStatus(List<int> data) {
+  static ({
+    bool enabled,
+    int peerCount,
+    int connectedPeers,
+    int rxCount,
+    int txCount,
+    List<({String id, int role, int activeEngines})> liveNodes,
+  }) decodeMeshStatus(List<int> data) {
     if (data.length < 11) {
-      return (enabled: false, peerCount: 0, connectedPeers: 0, rxCount: 0, txCount: 0);
+      return (
+        enabled: false,
+        peerCount: 0,
+        connectedPeers: 0,
+        rxCount: 0,
+        txCount: 0,
+        liveNodes: const [],
+      );
     }
-    final view = ByteData.sublistView(Uint8List.fromList(data));
+    final bytes = Uint8List.fromList(data);
+    final view = ByteData.sublistView(bytes);
+    final live = <({String id, int role, int activeEngines})>[];
+    if (data.length >= 12) {
+      final n = data[11];
+      const entryLen = 7;
+      for (int i = 0; i < n && 12 + (i + 1) * entryLen <= data.length; i++) {
+        final off = 12 + i * entryLen;
+        final idBytes = bytes.sublist(off, off + 4);
+        final id = String.fromCharCodes(idBytes);
+        live.add((id: id, role: data[off + 5], activeEngines: data[off + 6]));
+      }
+    }
     return (
       enabled: data[0] != 0,
       peerCount: data[1],
       connectedPeers: data[2],
       rxCount: view.getUint32(3, Endian.little),
       txCount: view.getUint32(7, Endian.little),
+      liveNodes: live,
     );
   }
 

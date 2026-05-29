@@ -64,7 +64,7 @@ class BleManager {
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
-  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})>.broadcast();
+  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines})> liveNodes})>.broadcast();
   final _pcapStatsStream = StreamController<PcapStats>.broadcast();
   final _pcapDataStream = StreamController<Uint8List>.broadcast();
   PcapStats _latestPcapStats = PcapStats.empty;
@@ -91,7 +91,7 @@ class BleManager {
   Stream<({int rssi, int intervalMs})> get foxhunterRssi => _foxhunterRssiStream.stream;
   Stream<({int available, int active, List<EngineState> states})> get engineStates =>
       _engineStates.stream;
-  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount})> get meshStatusUpdates =>
+  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines})> liveNodes})> get meshStatusUpdates =>
       _meshStatusStream.stream;
   Stream<PcapStats> get pcapStats => _pcapStatsStream.stream;
   Stream<Uint8List> get pcapData => _pcapDataStream.stream;
@@ -748,43 +748,73 @@ class BleManager {
 
   // -- Engine control --
 
-  Future<void> enableEngine(Engine engine, {int? radio}) async {
+  Future<void> _engineWriteChain = Future.value();
+  Future<T> _serializedEngineWrite<T>(Future<T> Function() op) {
+    final next = _engineWriteChain.then((_) => op());
+    _engineWriteChain = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  Future<void> enableEngine(Engine engine, {int? radio, String? targetNodeId}) async {
     if (_engineControl == null) return;
-    if (engine.isWifi) {
+    final mgr = isManagerConnected;
+    if (engine.isWifi && !mgr) {
       bool sentAny = false;
       for (final conflict in Engine.values.where((e) => e.isWifi && e != engine)) {
         if ((engine == Engine.flockWifi && conflict == Engine.wardrive) ||
             (engine == Engine.wardrive && conflict == Engine.flockWifi)) {
           continue;
         }
-        await _engineControl!.write(
-          BleProtocol.encodeEngineControl(engine: conflict, enable: false),
-        );
-        sentAny = true;
+        try {
+          await _serializedEngineWrite(() => _engineControl!.write(
+                BleProtocol.encodeEngineControl(engine: conflict, enable: false),
+              ));
+          sentAny = true;
+        } catch (e) {
+          DebugLog.log('BLE: conflict-disable ${conflict.name} failed: $e');
+        }
       }
-      if (sentAny) await Future.delayed(const Duration(milliseconds: 200));
+      if (sentAny) await Future.delayed(const Duration(milliseconds: 150));
     }
     if (radio != null) {
-      await _engineControl!.write(
-        BleProtocol.encodeEngineConfig(
-          engine: engine,
-          payload: Uint8List.fromList([radio]),
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 100));
+      try {
+        await _serializedEngineWrite(() => _engineControl!.write(
+              BleProtocol.encodeEngineConfig(
+                engine: engine,
+                payload: Uint8List.fromList([radio]),
+              ),
+            ));
+        await Future.delayed(const Duration(milliseconds: 50));
+      } catch (e) {
+        DebugLog.log('BLE: enable-radio config ${engine.name} failed: $e');
+      }
     }
-    await _engineControl!.write(
-      BleProtocol.encodeEngineControl(engine: engine, enable: true),
-    );
-    await _refreshEngineState();
+    try {
+      await _serializedEngineWrite(() => _engineControl!.write(
+            BleProtocol.encodeEngineControl(
+              engine: engine, enable: true, targetNodeId: targetNodeId,
+            ),
+          ));
+    } catch (e) {
+      DebugLog.log('BLE: enableEngine ${engine.name} failed: $e');
+      rethrow;
+    }
+    unawaited(_refreshEngineState());
   }
 
-  Future<void> disableEngine(Engine engine) async {
+  Future<void> disableEngine(Engine engine, {String? targetNodeId}) async {
     if (_engineControl == null) return;
-    await _engineControl!.write(
-      BleProtocol.encodeEngineControl(engine: engine, enable: false),
-    );
-    await _refreshEngineState();
+    try {
+      await _serializedEngineWrite(() => _engineControl!.write(
+            BleProtocol.encodeEngineControl(
+              engine: engine, enable: false, targetNodeId: targetNodeId,
+            ),
+          ));
+    } catch (e) {
+      DebugLog.log('BLE: disableEngine ${engine.name} failed: $e');
+      rethrow;
+    }
+    unawaited(_refreshEngineState());
   }
 
   Future<void> sendEngineConfig(Engine engine, Uint8List payload) async {
@@ -914,7 +944,22 @@ class BleManager {
 
   // -- Foxhunter --
 
-  Future<void> setFoxhunterTarget(String mac, {int channel = 0}) async {
+  Future<void> setFoxhunterTarget(String mac, {int channel = 0, String? nodeId}) async {
+    if (nodeId != null) {
+      if (_engineControl == null) return;
+      final macBytes = BleProtocol.encodeFoxhunterTarget(mac, channel: channel);
+      final payload = <int>[
+        ...BleProtocol.targetEnvelope(nodeId),
+        ...macBytes,
+      ];
+      await _engineControl!.write(
+        BleProtocol.encodeEngineConfig(
+          engine: Engine.foxhunter,
+          payload: Uint8List.fromList(payload),
+        ),
+      );
+      return;
+    }
     if (_foxhunterConfig == null) return;
     await _foxhunterConfig!.write(
       BleProtocol.encodeFoxhunterTarget(mac, channel: channel),
@@ -1005,6 +1050,8 @@ class BleManager {
 
   /// Start PCAP capture. mode 0 = WiFi radiotap, 1 = BLE LL PHDR.
   /// channelStart/End used only in WiFi mode (1..14).
+  /// In manager mode, MGR broadcasts to all nodes; PCAPNG returned by MGR
+  /// contains one interface per node (IDB-per-source).
   Future<void> startPcap({
     int mode = 0,
     int channelStart = 1,
@@ -1014,18 +1061,43 @@ class BleManager {
     await _engineControl!.write(
       BleProtocol.encodeEngineConfig(
         engine: Engine.pcap,
-        payload: Uint8List.fromList([0x01, mode, channelStart, channelEnd]),
+        payload: Uint8List.fromList(
+          [0x01, mode, channelStart, channelEnd],
+        ),
       ),
     );
+    await Future.delayed(const Duration(milliseconds: 50));
     await _engineControl!.write(
-      BleProtocol.encodeEngineControl(engine: Engine.pcap, enable: true),
+      BleProtocol.encodeEngineControl(
+        engine: Engine.pcap, enable: true,
+      ),
+    );
+  }
+
+  Future<void> setWardriveNodeRadio(String nodeId, int radioMask) async {
+    if (_engineControl == null) return;
+    if (nodeId.length != 4) {
+      throw ArgumentError('nodeId must be canonical 4-hex form, got "$nodeId"');
+    }
+    final m = radioMask & 0x03;
+    final payload = <int>[
+      ...BleProtocol.targetEnvelope(nodeId),
+      m == 0 ? 0x03 : m,
+    ];
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.wardrive,
+        payload: Uint8List.fromList(payload),
+      ),
     );
   }
 
   Future<void> stopPcap() async {
     if (_engineControl == null) return;
     await _engineControl!.write(
-      BleProtocol.encodeEngineControl(engine: Engine.pcap, enable: false),
+      BleProtocol.encodeEngineControl(
+        engine: Engine.pcap, enable: false,
+      ),
     );
   }
 

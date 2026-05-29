@@ -2,6 +2,7 @@
 #include "../protocol.h"
 #include "../ble_gatt.h"
 #include "../engine_registry.h"
+#include "../mesh_espnow.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -385,12 +386,15 @@ static void pcapStart(void) {
     }
 
     if (pcapMode == PCAP_MODE_WIFI) {
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect(false, false);
-        vTaskDelay(pdMS_TO_TICKS(50));
-        wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
-                                    .policy = WIFI_COUNTRY_POLICY_MANUAL };
-        esp_wifi_set_country(&country);
+        bool meshOn = meshIsEnabled();
+        if (!meshOn) {
+            WiFi.mode(WIFI_STA);
+            WiFi.disconnect(false, false);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
+                                        .policy = WIFI_COUNTRY_POLICY_MANUAL };
+            esp_wifi_set_country(&country);
+        }
         wifi_promiscuous_filter_t f = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                            WIFI_PROMIS_FILTER_MASK_DATA |
@@ -400,6 +404,8 @@ static void pcapStart(void) {
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(pcapWifiCb);
         esp_wifi_set_channel(pcapCurChan, WIFI_SECOND_CHAN_NONE);
+        Serial.printf("[PCAP] WiFi promisc on, ch=%u, mesh=%d\n",
+                      pcapCurChan, meshOn ? 1 : 0);
     } else {
         pPcapScan = NimBLEDevice::getScan();
         pPcapScan->setAdvertisedDeviceCallbacks(&pcapBleCallbacks, true);
@@ -460,10 +466,18 @@ static void pcapLoop(void) {
     }
     if (pcapMode == PCAP_MODE_WIFI) {
         if (now - pcapLastHop >= pcapDwellMs) {
-            pcapHopIdx++;
             uint8_t span = (pcapChanEnd - pcapChanStart + 1);
             if (span < 1) span = 1;
-            pcapCurChan = pcapChanStart + (pcapHopIdx % span);
+            const bool meshOn = meshIsEnabled();
+            const bool rendezvousInHopSet =
+                (pcapChanStart <= 1 && pcapChanEnd >= 1);
+            const bool rendezvousNow = (pcapCurChan == 1);
+            if (meshOn && !rendezvousInHopSet && !rendezvousNow) {
+                pcapCurChan = 1;
+            } else {
+                pcapHopIdx++;
+                pcapCurChan = pcapChanStart + (pcapHopIdx % span);
+            }
             esp_wifi_set_channel(pcapCurChan, WIFI_SECOND_CHAN_NONE);
             pcapLastHop = now;
         }
@@ -545,6 +559,28 @@ void pcapGetStats(PcapStats* out) {
     else memset(out->auto_trigger_mac, 0, 6);
     out->auto_cooldown_sec = engineGetAutoPcapCooldown();
     out->auto_cooldown_remaining_ms = engineGetAutoPcapCooldownRemainingMs();
+
+    if (!pcapActive && out->auto_trigger_src == 0xFF) {
+        MeshAutoPcapEventPacket ev;
+        uint32_t age = 0;
+        uint32_t maxAgeMs = (uint32_t)out->auto_duration_sec * 1000U + 2000U;
+        if (maxAgeMs < 12000U) maxAgeMs = 12000U;
+        if (meshGetLatestAutoPcapEvent(maxAgeMs, &ev, &age)) {
+            out->auto_trigger_src = ev.trigger_src;
+            memcpy(out->auto_trigger_mac, ev.trigger_mac, 6);
+            out->paused_mask = ev.paused_mask;
+            out->current_channel = ev.channel;
+            uint32_t totalMs = (uint32_t)ev.duration_sec * 1000U;
+            out->auto_remaining_ms = (age < totalMs) ? (totalMs - age) : 0u;
+            out->auto_duration_sec = ev.duration_sec;
+            out->state = (out->auto_remaining_ms > 0) ? 1 : out->state;
+            memcpy(out->source_node_id, ev.source_node_id, MESH_NODE_ID_LEN);
+        } else {
+            memset(out->source_node_id, 0, MESH_NODE_ID_LEN);
+        }
+    } else {
+        memset(out->source_node_id, 0, MESH_NODE_ID_LEN);
+    }
 }
 
 bool pcapBeginDownload(uint32_t*, uint32_t*) { return false; }

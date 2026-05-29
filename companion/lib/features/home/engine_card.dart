@@ -96,28 +96,41 @@ class _EngineCardState extends ConsumerState<EngineCard>
       return;
     }
 
-    // Foxhunter: block enable without a target set
+    final appState = ref.read(appStateProvider);
     if (widget.engine == Engine.foxhunter && value) {
-      final appState = ref.read(appStateProvider);
-      if (appState.foxhunterTarget == null) {
+      if (appState.foxhunterTarget == null ||
+          (appState.isManagerConnected && appState.foxhunterTargetNodeId == null)) {
         _navigateToEngine();
         return;
       }
     }
+    if (widget.engine == Engine.uniPwn && value && appState.isManagerConnected) {
+      _navigateToEngine();
+      return;
+    }
 
     final ble = ref.read(bleManagerProvider);
-    if (value) {
-      ble.enableEngine(widget.engine);
-    } else {
-      ble.disableEngine(widget.engine);
-    }
-    _syncToPeers(value);
-    DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value');
+    final targetNode = (widget.engine == Engine.foxhunter)
+        ? appState.foxhunterTargetNodeId
+        : null;
     setState(() => _optimisticValue = value);
     _optimisticTimer?.cancel();
     _optimisticTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _optimisticValue = null);
     });
+    final fut = value
+        ? ble.enableEngine(widget.engine, targetNodeId: targetNode)
+        : ble.disableEngine(widget.engine, targetNodeId: targetNode);
+    fut.catchError((e) {
+      DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value FAILED: $e');
+      if (!mounted) return;
+      setState(() => _optimisticValue = null);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('${widget.engine.label} ${value ? "enable" : "disable"} failed: $e')),
+      );
+    });
+    _syncToPeers(value);
+    DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value');
   }
 
   void _syncToPeers(bool enable) {
