@@ -109,26 +109,15 @@ void loop() {
 #ifdef OUISPY_PCAP_SELFTEST
     static bool stEnabled = false;
     static bool stDisabled = false;
-    static uint32_t lastStep = 0;
-    static int step = 0;
-    if (millis() > 8000 && millis() - lastStep > 3500 && step < 10) {
-        lastStep = millis();
-        // node is scanning (wardrive); fire cmds while it scans -> stress delivery
-        if (step == 0) {
-            uint8_t wdcfg[11] = { 0x03, 0x5E,0x01, 0x96,0x00, 0x20,0x03, 0xB8,0x0B, 1, 11 };
-            meshBroadcastCommand(0x10, ENGINE_WARDRIVE, wdcfg, sizeof(wdcfg));
-            delay(150);
-            meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
-            Serial.println("[SELFTEST] step0 ENABLE wardrive (node now scanning)");
-        } else if (step % 2 == 1) {
-            meshBroadcastCommand(0x01, ENGINE_DETECTOR, nullptr, 0);
-            Serial.printf("[SELFTEST] step%d ENABLE detector (while scanning)\n", step);
-        } else {
-            meshBroadcastCommand(0x00, ENGINE_DETECTOR, nullptr, 0);
-            Serial.printf("[SELFTEST] step%d DISABLE detector (while scanning)\n", step);
-        }
-        step++;
-        (void)stEnabled; (void)stDisabled;
+    if (!stEnabled && millis() > 8000) {
+        stEnabled = true;
+        meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+        Serial.println("[SELFTEST] ENABLE wardrive on ALL nodes (both should scan)");
+    }
+    if (stEnabled && !stDisabled && millis() > 22000) {
+        stDisabled = true;
+        meshBroadcastCommand(0x00, ENGINE_WARDRIVE, nullptr, 0);
+        Serial.println("[SELFTEST] DISABLE wardrive — BOTH nodes MUST reach 0x00");
     }
 #endif
 }

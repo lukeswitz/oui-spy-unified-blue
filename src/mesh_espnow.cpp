@@ -293,8 +293,10 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         if (pendingMutex && xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             for (int i = 0; i < MESH_CMD_PENDING_MAX; i++) {
                 if (pendingCmds[i].in_use && pendingCmds[i].seq == ack.ack_seq) {
-                    pendingCmds[i].acked = true;
-                    pendingCmds[i].in_use = false;
+                    if (pendingCmds[i].command != 0x00 && pendingCmds[i].command != 0x0F) {
+                        pendingCmds[i].acked = true;
+                        pendingCmds[i].in_use = false;
+                    }
                     break;
                 }
             }
@@ -892,8 +894,13 @@ static void retryTaskFn(void* arg) {
                 continue;
             }
             if (p.retries_left == 0) {
-                Serial.printf("[MESH-CMD-TIMEOUT] seq=%u cmd=0x%02x engine=%u — no ACK after %u tries\n",
-                    p.seq, p.command, p.engine_id, MESH_CMD_MAX_RETRIES);
+                if (p.command != 0x00 && p.command != 0x0F) {
+                    Serial.printf("[MESH-CMD-TIMEOUT] seq=%u cmd=0x%02x engine=%u — no ACK after %u tries\n",
+                        p.seq, p.command, p.engine_id, MESH_CMD_MAX_RETRIES);
+                } else {
+                    Serial.printf("[MESH-CMD-DONE] seq=%u disable broadcast complete (%u sweeps)\n",
+                        p.seq, MESH_CMD_MAX_RETRIES);
+                }
                 pendingCmds[i].in_use = false;
                 xSemaphoreGive(pendingMutex);
                 continue;
