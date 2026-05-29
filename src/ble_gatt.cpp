@@ -84,6 +84,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 #ifdef OUISPY_ROLE_MANAGER
         mgrCommandedMask = 0;
         for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+        if (meshIsEnabled()) {
+            meshBroadcastCommand(0x0F, 0, nullptr, 0);
+            Serial.println("[BLE] App gone — broadcast DISABLE_ALL to all nodes (back to idle)");
+        }
 #endif
         NimBLEDevice::startAdvertising();
         Serial.println("[BLE] Advertising restarted");

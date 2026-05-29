@@ -730,21 +730,17 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ConfigInfoRow(
           icon: Icons.group,
           label: 'Peer slots',
-          value: modePlain
-              ? 'broadcast (no table)'
-              : modeOff
-                  ? '—'
-                  : '${appState.meshPeerCount} / $maxPeers',
+          value: modeOff
+              ? '—'
+              : '${appState.liveKnownNodes.where((n) => n.isNotEmpty && n != appState.nodeId).length} / $maxPeers',
         ),
         ConfigInfoRow(
           icon: Icons.sensors,
           label: 'Nodes heard',
-          value: () {
-            final others = appState.meshSourceNodes
-                .where((n) => n.isNotEmpty && n != appState.nodeId)
-                .length;
-            return others.toString();
-          }(),
+          value: appState.liveKnownNodes
+              .where((n) => n.isNotEmpty && n != appState.nodeId)
+              .length
+              .toString(),
         ),
         if (modeEnc) ...[
           const SizedBox(height: 16),

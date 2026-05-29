@@ -67,7 +67,9 @@ class DetectionRow extends ConsumerWidget {
                         TextSpan(
                           text: headline,
                           style: TextStyle(
-                            color: t.textPrimary,
+                            color: detection.isBleDetection
+                                ? const Color(0xFF4FA8FF)
+                                : t.textPrimary,
                             fontSize: 15,
                             fontFamily: headlineIsMac ? 'monospace' : null,
                             fontWeight: FontWeight.w700,
