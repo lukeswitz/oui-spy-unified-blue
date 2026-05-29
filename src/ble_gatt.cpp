@@ -783,7 +783,7 @@ void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
             break;
         case RAW_NOTIFY_PCAP_STATS:
 #ifdef OUISPY_ROLE_MANAGER
-            if (len >= sizeof(PcapStats) && aggMutex &&
+            if (len >= sizeof(PcapStats) + 1 && aggMutex &&
                 xSemaphoreTake(aggMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
                 int slot = -1;
                 for (int i = 0; i < 8; i++) {
@@ -803,7 +803,7 @@ void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
                     }
                 }
                 if (slot >= 0) {
-                    memcpy(&perNode[slot].st, payload, sizeof(PcapStats));
+                    memcpy(&perNode[slot].st, payload + 1, sizeof(PcapStats));
                     perNode[slot].last_update_ms = millis();
                 }
                 xSemaphoreGive(aggMutex);
@@ -811,8 +811,8 @@ void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
 #endif
             break;
         case RAW_NOTIFY_FOXHUNTER_RSSI:
-            if (chrFoxhunterRssi) {
-                chrFoxhunterRssi->setValue((uint8_t*)payload, len);
+            if (chrFoxhunterRssi && len >= 1) {
+                chrFoxhunterRssi->setValue((uint8_t*)(payload + 1), (uint16_t)(len - 1));
                 chrFoxhunterRssi->notify();
             }
             break;

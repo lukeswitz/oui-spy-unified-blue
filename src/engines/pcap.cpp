@@ -463,6 +463,19 @@ static void pcapLoop(void) {
         }
         return;
     }
+#ifdef OUISPY_PCAP_SELFTEST
+    {
+        static unsigned long lastRate = 0;
+        static uint32_t lastB = 0, lastBy = 0;
+        if (now - lastRate >= 2000) {
+            Serial.printf("[PCAP-RATE] beacons=%lu (+%lu/2s) probeResp=%lu data=%lu bytes=%lu (+%lu/2s)\n",
+                (unsigned long)cntBeacon, (unsigned long)(cntBeacon - lastB),
+                (unsigned long)cntProbeResp, (unsigned long)cntData,
+                (unsigned long)cntBytes, (unsigned long)(cntBytes - lastBy));
+            lastB = cntBeacon; lastBy = cntBytes; lastRate = now;
+        }
+    }
+#endif
     if (pcapMode == PCAP_MODE_WIFI) {
         if (now - pcapLastHop >= pcapDwellMs) {
             uint8_t span = (pcapChanEnd - pcapChanStart + 1);
