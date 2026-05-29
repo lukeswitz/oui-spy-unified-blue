@@ -32,6 +32,8 @@ struct PendingCmd {
     uint32_t last_send_ms;
     uint8_t  retries_left;
     bool     acked;
+    uint8_t  acks;
+    uint8_t  expected;
 };
 static PendingCmd pendingCmds[MESH_CMD_PENDING_MAX] = {};
 static SemaphoreHandle_t pendingMutex = NULL;
@@ -293,7 +295,8 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         if (pendingMutex && xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             for (int i = 0; i < MESH_CMD_PENDING_MAX; i++) {
                 if (pendingCmds[i].in_use && pendingCmds[i].seq == ack.ack_seq) {
-                    if (pendingCmds[i].command != 0x00 && pendingCmds[i].command != 0x0F) {
+                    pendingCmds[i].acks++;
+                    if (pendingCmds[i].acks >= pendingCmds[i].expected) {
                         pendingCmds[i].acked = true;
                         pendingCmds[i].in_use = false;
                     }
@@ -824,6 +827,12 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     p.last_send_ms = millis();
     p.retries_left = MESH_CMD_MAX_RETRIES;
     p.acked = false;
+    p.acks = 0;
+    {
+        MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+        size_t lc = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, 30000);
+        p.expected = (lc == 0) ? 1 : (uint8_t)lc;
+    }
     xSemaphoreGive(pendingMutex);
 
     MeshCommandPacket pkt = {};
@@ -894,13 +903,8 @@ static void retryTaskFn(void* arg) {
                 continue;
             }
             if (p.retries_left == 0) {
-                if (p.command != 0x00 && p.command != 0x0F) {
-                    Serial.printf("[MESH-CMD-TIMEOUT] seq=%u cmd=0x%02x engine=%u — no ACK after %u tries\n",
-                        p.seq, p.command, p.engine_id, MESH_CMD_MAX_RETRIES);
-                } else {
-                    Serial.printf("[MESH-CMD-DONE] seq=%u disable broadcast complete (%u sweeps)\n",
-                        p.seq, MESH_CMD_MAX_RETRIES);
-                }
+                Serial.printf("[MESH-CMD-TIMEOUT] seq=%u cmd=0x%02x engine=%u — %u/%u nodes acked after %u tries\n",
+                    p.seq, p.command, p.engine_id, p.acks, p.expected, MESH_CMD_MAX_RETRIES);
                 pendingCmds[i].in_use = false;
                 xSemaphoreGive(pendingMutex);
                 continue;
