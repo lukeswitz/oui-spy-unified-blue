@@ -468,6 +468,7 @@ static void wardriveStart(void) {
     wardriveDedup.reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
+    meshResetTxDedup();
     uint32_t relog = engineGetRediscoverMs();
     wardriveDedup.setCooldownMs(relog);
     wifiDedup.setCooldownMs(relog);

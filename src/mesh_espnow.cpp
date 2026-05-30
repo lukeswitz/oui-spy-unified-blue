@@ -105,7 +105,7 @@ static SemaphoreHandle_t  txMutex = NULL;
 #define MESH_TX_QUEUE_DEPTH     128
 #define MESH_TX_MAX_LEN         250
 #define MESH_TX_DRAIN_PERIOD_MS 20
-#define MESH_TX_DRAIN_BURST     32
+#define MESH_TX_DRAIN_BURST     64
 
 #define MESH_TX_DEDUP_SLOTS     128
 #define MESH_TX_DEDUP_MS        60000
@@ -120,6 +120,10 @@ static inline uint32_t fnv1a(const uint8_t* p, size_t n) {
     uint32_t h = 0x811c9dc5u;
     for (size_t i = 0; i < n; i++) { h ^= p[i]; h *= 0x01000193u; }
     return h;
+}
+
+void meshResetTxDedup(void) {
+    memset(txDedup, 0, sizeof(txDedup));
 }
 
 static bool txDedupCheck(uint8_t engine_id, const uint8_t mac[6], uint8_t channel) {
