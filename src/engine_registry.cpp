@@ -336,20 +336,6 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
     if (autoPcapPending) return;
     if (states[ENGINE_PCAP] != ESTATE_DISABLED) return;
 
-    if (meshManagerJoined()) {
-        MeshAutoPcapEventPacket pe;
-        uint32_t ageMs = 0;
-        uint32_t win = (uint32_t)autoPcapDurationSec * 1000UL + 3000UL;
-        if (meshGetLatestAutoPcapEvent(win, &pe, &ageMs)) {
-            const char* myId = meshGetLocalNodeId();
-            if (memcmp(pe.source_node_id, myId, MESH_NODE_ID_LEN) < 0) {
-                Serial.printf("[ENGINE] auto-pcap YIELD: peer %.4s capturing (assigned-node, age=%lums)\n",
-                              pe.source_node_id, (unsigned long)ageMs);
-                return;
-            }
-        }
-    }
-
     if (autoPcapCooldownUntilMs != 0) {
         long rem = (long)(autoPcapCooldownUntilMs - millis());
         if (rem > 0) {
@@ -418,19 +404,6 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
 
 static void autoPcapTick(void) {
     if (!autoPcapPending) return;
-
-    if (meshManagerJoined() && states[ENGINE_PCAP] != ESTATE_DISABLED) {
-        MeshAutoPcapEventPacket pe;
-        uint32_t ageMs = 0;
-        if (meshGetLatestAutoPcapEvent(2000, &pe, &ageMs)) {
-            const char* myId = meshGetLocalNodeId();
-            if (memcmp(pe.source_node_id, myId, MESH_NODE_ID_LEN) < 0) {
-                Serial.printf("[ENGINE] auto-pcap STOP: lower-id peer %.4s capturing -> yield\n",
-                              pe.source_node_id);
-                autoPcapDeadline = millis();
-            }
-        }
-    }
 
     bool pcapDown = (states[ENGINE_PCAP] == ESTATE_DISABLED);
     if (!pcapDown) autoPcapObservedActive = true;

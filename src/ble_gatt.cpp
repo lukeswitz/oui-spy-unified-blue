@@ -62,6 +62,24 @@ static volatile uint8_t  mgrAutoPcapEnabled = 0;
 static volatile uint16_t mgrAutoPcapDurationSec = 10;
 static volatile uint16_t mgrAutoPcapCooldownSec = 0;
 
+static void mgrAutoPcapSave(void) {
+    Preferences p;
+    p.begin("ouispy-mgrap", false);
+    p.putBool("en", mgrAutoPcapEnabled != 0);
+    p.putUShort("dur", mgrAutoPcapDurationSec);
+    p.putUShort("cool", mgrAutoPcapCooldownSec);
+    p.end();
+}
+
+static void mgrAutoPcapLoad(void) {
+    Preferences p;
+    p.begin("ouispy-mgrap", true);
+    mgrAutoPcapEnabled = p.getBool("en", false) ? 1 : 0;
+    mgrAutoPcapDurationSec = p.getUShort("dur", 10);
+    mgrAutoPcapCooldownSec = p.getUShort("cool", 0);
+    p.end();
+}
+
 static uint8_t mgrWardriveCfg[16] = {
     0x03, 0xFA, 0x00, 0x96, 0x00, 0x20, 0x03, 0xDC, 0x05, 0x01, 0x0B
 };
@@ -178,14 +196,9 @@ void bleGattReconcileEngines(void) {
     for (int e = 0; e < ENGINE_COUNT; e++) {
         if (!(missingAny & ENGINE_BITMASK(e))) continue;
         if (e == ENGINE_PCAP || kEngineTargetable[e]) continue;
-        if (lastResend[e] != 0 && (now - lastResend[e]) < 3000) continue;
+        if (lastResend[e] != 0 && (now - lastResend[e]) < 6000) continue;
         lastResend[e] = now;
-        if (e == ENGINE_WARDRIVE) {
-            mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
-            meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
-        } else {
-            meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
-        }
+        meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
         Serial.printf("[MGR-RECONCILE] engine %d missing on a node — re-enable\n", e);
     }
 #endif
@@ -288,10 +301,13 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                 mgrPcapChEnd = p[3];
             } else if (p[0] == 0x10 && plen >= 2) {
                 mgrAutoPcapEnabled = (p[1] != 0) ? 1 : 0;
+                mgrAutoPcapSave();
             } else if (p[0] == 0x11 && plen >= 3) {
                 mgrAutoPcapDurationSec = (uint16_t)(p[1] | (p[2] << 8));
+                mgrAutoPcapSave();
             } else if (p[0] == 0x12 && plen >= 3) {
                 mgrAutoPcapCooldownSec = (uint16_t)(p[1] | (p[2] << 8));
+                mgrAutoPcapSave();
             }
         }
         if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10 && cmd.payload_len >= 11) {
@@ -760,9 +776,11 @@ static SemaphoreHandle_t aggMutex = NULL;
 #define PCAP_IND_MAX_CHUNK     480
 #define PCAP_IND_WATCHDOG_MS   2000
 
+static bool mgrAutoPcapActive(void);
+
 static void flushPcapCoalesced(void) {
     if (!phoneConnected || chrPcapData == nullptr) return;
-    if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_PCAP))) {
+    if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_PCAP)) && !mgrAutoPcapActive()) {
         portENTER_CRITICAL(&pcapCoalesceMux);
         pcapCoalesceLen = 0;
         portEXIT_CRITICAL(&pcapCoalesceMux);
@@ -834,10 +852,17 @@ static void pcapBleFlushTaskFn(void* arg) {
 }
 static TaskHandle_t pcapBleFlushTaskHandle = NULL;
 
+static bool mgrAutoPcapActive(void) {
+    MeshAutoPcapEventPacket ev;
+    uint32_t age = 0;
+    if (!meshGetLatestAutoPcapEvent(20000, &ev, &age)) return false;
+    return age < ((uint32_t)ev.duration_sec * 1000U);
+}
+
 void mgrPcapReasmAdd(const char* src, uint16_t seq,
                      const uint8_t* fragPayload, uint8_t fragLen) {
     if (fragLen < 1) return;
-    if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_PCAP))) return;
+    if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_PCAP)) && !mgrAutoPcapActive()) return;
     const uint8_t hdr = fragPayload[0];
     const bool isLast = (hdr & 0x80) != 0;
     const uint8_t idx = hdr & 0x7F;
@@ -1061,6 +1086,7 @@ static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
 void bleGattInit(void) {
     Serial.println("[BLE] Initializing NimBLE...");
 #ifdef OUISPY_ROLE_MANAGER
+    mgrAutoPcapLoad();
     if (!aggMutex) aggMutex = xSemaphoreCreateMutex();
     if (!pcapReasmMutex) pcapReasmMutex = xSemaphoreCreateMutex();
     if (!pcapBleFlushTaskHandle) {
@@ -1400,12 +1426,26 @@ void bleGattNotifyPcapStats(void) {
     pcapGetStats(&st);
 #ifdef OUISPY_ROLE_MANAGER
     bool pcapCommanded = (mgrCommandedMask & ENGINE_BITMASK(ENGINE_PCAP)) != 0;
-    st.state = pcapCommanded ? 1 : 0;
+    bool autoActive = mgrAutoPcapActive();
+    st.state = (pcapCommanded || autoActive) ? 1 : 0;
     st.mode = mgrPcapMode;
     st.current_channel = mgrPcapChStart;
     st.auto_enabled = mgrAutoPcapEnabled;
     st.auto_duration_sec = mgrAutoPcapDurationSec;
     st.auto_cooldown_sec = mgrAutoPcapCooldownSec;
+    {
+        MeshAutoPcapEventPacket ev;
+        uint32_t ageMs = 0;
+        uint32_t maxAge = (uint32_t)mgrAutoPcapDurationSec * 1000U + 2000U;
+        if (meshGetLatestAutoPcapEvent(maxAge, &ev, &ageMs)) {
+            uint32_t durMs = (uint32_t)ev.duration_sec * 1000U;
+            if (ageMs < durMs) {
+                st.auto_trigger_src = ev.trigger_src;
+                memcpy(st.auto_trigger_mac, ev.trigger_mac, 6);
+                st.auto_remaining_ms = durMs - ageMs;
+            }
+        }
+    }
     st.uptime_ms = (pcapCommanded && mgrPcapStartedMs)
                    ? (uint32_t)(millis() - mgrPcapStartedMs) : 0;
     {
@@ -1456,7 +1496,7 @@ void bleGattNotifyPcapStats(void) {
         }
         xSemaphoreGive(aggMutex);
     }
-    if (!pcapCommanded) {
+    if (!pcapCommanded && !autoActive) {
         for (int i = 0; i < 8; i++) perNode[i].in_use = false;
     }
 #endif
