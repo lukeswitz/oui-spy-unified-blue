@@ -126,4 +126,5 @@ jobs:
 
             **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/<PREVIOUS_TAG>...${{ github.ref_name }}
           files: |
-            artifacts/*
+            artifacts/**/*.bin
+            artifacts/**/*.tar.gz
