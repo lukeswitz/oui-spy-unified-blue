@@ -58,6 +58,9 @@ static volatile uint8_t  mgrPcapMode = 0;
 static volatile uint8_t  mgrPcapChStart = 1;
 static volatile uint8_t  mgrPcapChEnd = 11;
 static volatile uint32_t mgrPcapStartedMs = 0;
+static volatile uint8_t  mgrAutoPcapEnabled = 0;
+static volatile uint16_t mgrAutoPcapDurationSec = 10;
+static volatile uint16_t mgrAutoPcapCooldownSec = 0;
 
 static uint8_t mgrWardriveCfg[16] = {
     0x03, 0xFA, 0x00, 0x96, 0x00, 0x20, 0x03, 0xDC, 0x05, 0x01, 0x0B
@@ -68,7 +71,7 @@ static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
     if (len < 11) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
 
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
-    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_MANAGER_TTL_MS);
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
     MeshLiveNode nodes[MESH_LIVE_NODES_MAX];
     size_t nn = 0;
     for (size_t i = 0; i < total; i++) {
@@ -101,26 +104,89 @@ static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
     }
 }
 
-static uint8_t mgrLastSlicedNodeCount = 0xFF;
+#define MGR_SLICE_DEBOUNCE 3
+static uint32_t mgrLastSliceSetHash = 0xFFFFFFFFu;
+static uint32_t mgrPendingSetHash = 0;
+static uint8_t  mgrPendingStable = 0;
 #endif
 
 void bleGattMaybeResliceWardrive(void) {
 #ifdef OUISPY_ROLE_MANAGER
     if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_WARDRIVE)) || !meshIsEnabled()) {
-        mgrLastSlicedNodeCount = 0xFF;
+        mgrLastSliceSetHash = 0xFFFFFFFFu;
+        mgrPendingStable = 0;
         return;
     }
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    char ids[MESH_LIVE_NODES_MAX][MESH_NODE_ID_LEN];
+    uint8_t nn = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        memcpy(ids[nn++], live[i].id, MESH_NODE_ID_LEN);
+    }
+    for (int a = 1; a < nn; a++) {
+        char tmp[MESH_NODE_ID_LEN];
+        memcpy(tmp, ids[a], MESH_NODE_ID_LEN);
+        int b = a - 1;
+        while (b >= 0 && memcmp(ids[b], tmp, MESH_NODE_ID_LEN) > 0) {
+            memcpy(ids[b + 1], ids[b], MESH_NODE_ID_LEN);
+            b--;
+        }
+        memcpy(ids[b + 1], tmp, MESH_NODE_ID_LEN);
+    }
+    uint32_t h = 2166136261u;
+    h ^= nn; h *= 16777619u;
+    for (int i = 0; i < nn; i++) {
+        for (int j = 0; j < MESH_NODE_ID_LEN; j++) {
+            h ^= (uint8_t)ids[i][j]; h *= 16777619u;
+        }
+    }
+    if (h == mgrLastSliceSetHash) { mgrPendingStable = 0; return; }
+    if (h == mgrPendingSetHash) {
+        if (mgrPendingStable < 255) mgrPendingStable++;
+    } else {
+        mgrPendingSetHash = h;
+        mgrPendingStable = 1;
+    }
+    if (mgrPendingStable < MGR_SLICE_DEBOUNCE) return;
+    mgrLastSliceSetHash = h;
+    mgrPendingStable = 0;
+    Serial.printf("[MGR-SLICE] node set changed (n=%u, stable) — re-slicing wardrive\n", nn);
+    mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+#endif
+}
+
+void bleGattReconcileEngines(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    if (!meshIsEnabled()) return;
+    uint8_t desired = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
+    if (desired == 0) return;
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    uint8_t missingAny = 0;
     uint8_t nodeCount = 0;
     for (size_t i = 0; i < total; i++) {
-        if (live[i].role != MESH_ROLE_MANAGER) nodeCount++;
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        nodeCount++;
+        if (live[i].active_engines & ENGINE_BITMASK(ENGINE_PCAP)) continue;
+        missingAny |= (uint8_t)(desired & ~live[i].active_engines);
     }
-    if (nodeCount == mgrLastSlicedNodeCount) return;
-    mgrLastSlicedNodeCount = nodeCount;
-    if (nodeCount >= 2) {
-        Serial.printf("[MGR-SLICE] live node set -> %u, re-slicing wardrive\n", nodeCount);
-        mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+    if (nodeCount == 0 || missingAny == 0) return;
+    static uint32_t lastResend[ENGINE_COUNT] = {0};
+    uint32_t now = millis();
+    for (int e = 0; e < ENGINE_COUNT; e++) {
+        if (!(missingAny & ENGINE_BITMASK(e))) continue;
+        if (e == ENGINE_PCAP || kEngineTargetable[e]) continue;
+        if (lastResend[e] != 0 && (now - lastResend[e]) < 3000) continue;
+        lastResend[e] = now;
+        if (e == ENGINE_WARDRIVE) {
+            mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+            meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+        } else {
+            meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
+        }
+        Serial.printf("[MGR-RECONCILE] engine %d missing on a node — re-enable\n", e);
     }
 #endif
 }
@@ -213,13 +279,19 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
             for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
             mgrPcapStartedMs = 0;
         }
-        if (cmd.command == 0x10 && cmd.engine_id == ENGINE_PCAP && cmd.payload_len >= 4) {
+        if (cmd.command == 0x10 && cmd.engine_id == ENGINE_PCAP && cmd.payload_len >= 2) {
             const uint8_t* p = cmd.payload;
             uint8_t plen = cmd.payload_len;
             if (plen >= 4 && p[0] == 0x01) {
                 mgrPcapMode = p[1];
                 mgrPcapChStart = p[2];
                 mgrPcapChEnd = p[3];
+            } else if (p[0] == 0x10 && plen >= 2) {
+                mgrAutoPcapEnabled = (p[1] != 0) ? 1 : 0;
+            } else if (p[0] == 0x11 && plen >= 3) {
+                mgrAutoPcapDurationSec = (uint16_t)(p[1] | (p[2] << 8));
+            } else if (p[0] == 0x12 && plen >= 3) {
+                mgrAutoPcapCooldownSec = (uint16_t)(p[1] | (p[2] << 8));
             }
         }
         if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10 && cmd.payload_len >= 11) {
@@ -1331,6 +1403,9 @@ void bleGattNotifyPcapStats(void) {
     st.state = pcapCommanded ? 1 : 0;
     st.mode = mgrPcapMode;
     st.current_channel = mgrPcapChStart;
+    st.auto_enabled = mgrAutoPcapEnabled;
+    st.auto_duration_sec = mgrAutoPcapDurationSec;
+    st.auto_cooldown_sec = mgrAutoPcapCooldownSec;
     st.uptime_ms = (pcapCommanded && mgrPcapStartedMs)
                    ? (uint32_t)(millis() - mgrPcapStartedMs) : 0;
     {

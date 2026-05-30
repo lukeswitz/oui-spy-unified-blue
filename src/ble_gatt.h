@@ -25,6 +25,9 @@ bool bleGattIsConnected(void);
 // Manager: re-slice wardrive channel ranges when the live-node set changes
 void bleGattMaybeResliceWardrive(void);
 
+// Manager: re-send desired engines to any node whose reported mask lacks them
+void bleGattReconcileEngines(void);
+
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);
 

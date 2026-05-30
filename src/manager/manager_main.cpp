@@ -45,6 +45,7 @@ static void heartbeatTask(void*) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         tick++;
         bleGattMaybeResliceWardrive();
+        bleGattReconcileEngines();
         if (bleGattIsConnected()) {
             bleGattNotifyPcapStats();
             bleGattNotifyMeshStatus();
@@ -128,6 +129,31 @@ void loop() {
         stDisabled = true;
         meshBroadcastCommand(0x00, ENGINE_PCAP, nullptr, 0);
         Serial.println("[SELFTEST] DISABLE pcap");
+    }
+#endif
+#ifdef OUISPY_WD_MGR_SELFTEST
+    static bool wdOn = false;
+    static uint32_t wdLast = 0;
+    if (!wdOn && millis() > 8000) {
+        MeshLiveNode ln[8];
+        size_t n = meshGetLiveNodes(ln, 8, 30000);
+        if (n > 0) {
+            wdOn = true;
+            uint8_t cfg[11] = {0}; cfg[9] = 1; cfg[10] = 11;
+            meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, sizeof(cfg));
+            delay(120);
+            meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+            Serial.printf("[WDMGR] wardrive ENABLE -> %u node(s)\n", (unsigned)n);
+        }
+    }
+    if (wdOn && millis() - wdLast > 5000) {
+        wdLast = millis();
+        uint8_t cfg[11] = {0}; cfg[9] = 1; cfg[10] = 11;
+        meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, sizeof(cfg));
+        MeshLiveNode ln[8];
+        size_t n = meshGetLiveNodes(ln, 8, 30000);
+        Serial.printf("[WDMGR] role keepalive (CONFIG only), live=%u heap=%u\n",
+                      (unsigned)n, (unsigned)ESP.getFreeHeap());
     }
 #endif
 }

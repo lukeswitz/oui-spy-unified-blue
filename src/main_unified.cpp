@@ -113,6 +113,23 @@ static void detectionChime(void) {
     ledcDetachPin(PIN_BUZZER);
 }
 
+static QueueHandle_t chimeQueue = NULL;
+
+static void chimeTaskFn(void* param) {
+    uint8_t req;
+    for (;;) {
+        if (xQueueReceive(chimeQueue, &req, portMAX_DELAY) == pdTRUE) {
+            detectionChime();
+        }
+    }
+}
+
+static void requestChime(void) {
+    if (!chimeQueue) return;
+    uint8_t one = 1;
+    xQueueSend(chimeQueue, &one, 0);
+}
+
 // ============================================================================
 // Boot melody — quick ascending chirp to indicate v3 app-controlled mode
 // ============================================================================
@@ -203,7 +220,7 @@ static void detectionNotifyTask(void* param) {
             // Audible + visual feedback only for target engines
             if (isAlertableEngine(evt.engine_id)) {
                 Serial.printf("[CHIME] engine=%d\n", evt.engine_id);
-                detectionChime();
+                requestChime();
                 if (hwLedEnabled) {
                     digitalWrite(PIN_LED, LOW);
                 }
@@ -273,10 +290,14 @@ static void statusHeartbeatTask(void* param) {
         }
 
         // Serial heartbeat
-        Serial.printf("[STATUS] engines=0x%02X heap=%d gps=%s\n",
+        Serial.printf("[STATUS] engines=0x%02X heap=%d gps=%s id=%s cmdRx=%lu rxWin=%lu slice=%d\n",
                       engineGetActiveMask(),
                       esp_get_free_heap_size(),
-                      gpsValid ? "valid" : "none");
+                      gpsValid ? "valid" : "none",
+                      meshGetLocalNodeId(),
+                      (unsigned long)g_meshCmdRx,
+                      (unsigned long)g_meshRxWin,
+                      meshTimeSlicingActive() ? 1 : 0);
     }
 }
 
@@ -368,6 +389,51 @@ static void engineSelftestTask(void* arg) {
 }
 #endif
 
+#ifdef OUISPY_AUTOPCAP_SELFTEST
+static void autoPcapSelftestTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(6000));
+    uint32_t t0 = millis();
+    while (millis() - t0 < 30000) {
+        if (meshManagerJoined() &&
+            (engineGetActiveMask() & ENGINE_BITMASK(ENGINE_WARDRIVE))) break;
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
+    Serial.printf("[APTEST] ready mgrJoined=%d slicing=%d window=%d mask=0x%02X heap=%lu\n",
+        meshManagerJoined() ? 1 : 0, meshTimeSlicingActive() ? 1 : 0,
+        meshInMeshWindow() ? 1 : 0, engineGetActiveMask(),
+        (unsigned long)esp_get_free_heap_size());
+
+    engineSetAutoPcap(true);
+    for (int round = 0; round < 3; round++) {
+        Serial.printf("[APTEST] === ROUND %d: inject FLOCK_WIFI x3 (autoPcap=%d slicing=%d) ===\n",
+            round, engineAutoPcapEnabled() ? 1 : 0, meshTimeSlicingActive() ? 1 : 0);
+        for (int n = 0; n < 3; n++) {
+            DetectionEvent evt = {};
+            evt.engine_id = ENGINE_FLOCK_WIFI;
+            uint8_t fmac[6] = {0xDE,0xAD,0xBE,0xEF,(uint8_t)round,(uint8_t)(0x01 + n)};
+            memcpy(evt.mac, fmac, 6);
+            evt.rssi = -40; evt.channel = (uint8_t)(6 + n); evt.method = 0;
+            pushDetection(&evt);
+        }
+        for (int i = 0; i < 44; i++) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            PcapStats ps; pcapGetStats(&ps);
+            uint32_t frames = ps.beacon_count + ps.probe_req_count + ps.probe_resp_count
+                            + ps.data_count + ps.ctrl_count + ps.mgmt_other_count;
+            uint8_t m = engineGetActiveMask();
+            bool pcapOn = (m & ENGINE_BITMASK(ENGINE_PCAP)) != 0;
+            Serial.printf("[APTEST] r%d t=%.1fs slice=%d win=%d mask=0x%02X PCAP=%d frames=%lu heap=%lu\n",
+                round, i * 0.5, meshTimeSlicingActive() ? 1 : 0, meshInMeshWindow() ? 1 : 0,
+                m, pcapOn ? 1 : 0, (unsigned long)frames,
+                (unsigned long)esp_get_free_heap_size());
+        }
+    }
+    Serial.println("[APTEST] DONE — survived auto-pcap+mesh-forward under load");
+    vTaskDelete(NULL);
+}
+#endif
+
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -392,6 +458,7 @@ void setup() {
     // Create FreeRTOS queues
     detectionQueue = xQueueCreate(64, sizeof(DetectionEvent));
     engineCmdQueue = xQueueCreate(8, sizeof(EngineCommand));
+    chimeQueue = xQueueCreate(1, sizeof(uint8_t));
 
     if (detectionQueue == NULL || engineCmdQueue == NULL) {
         Serial.println("[FATAL] Queue creation failed!");
@@ -431,6 +498,7 @@ void setup() {
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(engineCmdTask, "eng_cmd", 4096, NULL, 1, NULL, 1);
     xTaskCreatePinnedToCore(statusHeartbeatTask, "status_hb", 6144, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(chimeTaskFn, "chime", 2048, NULL, 1, NULL, 1);
 
     Serial.println("[INIT] Tasks created");
 
@@ -454,6 +522,10 @@ void setup() {
         meshEnable(&cfg);
         Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
     }
+#ifdef OUISPY_AUTOPCAP_SELFTEST
+    xTaskCreatePinnedToCore(autoPcapSelftestTask, "aptest", 4096, NULL, 1, NULL, 1);
+    Serial.println("[INIT] AUTO-PCAP SELFTEST armed");
+#endif
 #else
     xTaskCreatePinnedToCore(engineSelftestTask, "selftest", 8192, NULL, 1, NULL, 1);
     Serial.println("[INIT] ENGINE SELF-TEST mode (mesh disabled)");

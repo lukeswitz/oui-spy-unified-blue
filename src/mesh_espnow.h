@@ -21,6 +21,11 @@ bool meshIsEnabled(void);
 bool meshInMeshWindow(void);
 bool meshTimeSlicingActive(void);
 bool meshManagerJoined(void);
+extern volatile uint32_t g_meshCmdRx;
+extern volatile uint32_t g_meshRxWin;
+#ifdef OUISPY_AUTOPCAP_SELFTEST
+void meshDebugForceManager(void);
+#endif
 const char* meshGetLocalNodeId(void);
 MeshStatus meshGetStatus(void);
 

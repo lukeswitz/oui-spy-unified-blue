@@ -36,6 +36,9 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   StreamSubscription<int>? _bytesSub;
   StreamSubscription<File>? _savedSub;
   Timer? _bytesTimer;
+  Timer? _toggleTimeout;
+  bool _pendingStart = false;
+  bool _pendingStop = false;
   int _pendingBytes = 0;
 
   @override
@@ -82,6 +85,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
     _bytesSub?.cancel();
     _savedSub?.cancel();
     _bytesTimer?.cancel();
+    _toggleTimeout?.cancel();
     super.dispose();
   }
 
@@ -131,12 +135,13 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
             channelEnd: _chanEnd,
             targetNodeId: mgr ? target : null,
           );
+      if (mounted) setState(() { _pendingStart = true; });
+      _armToggleTimeout();
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Start failed: $e')));
+        setState(() { _toggling = false; _pendingStart = false; });
       }
-    } finally {
-      if (mounted) setState(() => _toggling = false);
     }
   }
 
@@ -148,13 +153,23 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
       await ref.read(bleManagerProvider).stopPcap(
             targetNodeId: mgr ? _targetNode : null,
           );
+      if (mounted) setState(() { _pendingStop = true; });
+      _armToggleTimeout();
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Stop failed: $e')));
+        setState(() { _toggling = false; _pendingStop = false; });
       }
-    } finally {
-      if (mounted) setState(() => _toggling = false);
     }
+  }
+
+  void _armToggleTimeout() {
+    _toggleTimeout?.cancel();
+    _toggleTimeout = Timer(const Duration(seconds: 6), () {
+      if (mounted) {
+        setState(() { _toggling = false; _pendingStart = false; _pendingStop = false; });
+      }
+    });
   }
 
   Future<void> _shareFile(File f) async {
@@ -184,6 +199,14 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
         builder: (context, snap) {
           final s = snap.data ?? PcapStats.empty;
           final isCapturing = s.state == 1;
+          if ((_pendingStart && isCapturing) || (_pendingStop && !isCapturing)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _toggleTimeout?.cancel();
+                setState(() { _toggling = false; _pendingStart = false; _pendingStop = false; });
+              }
+            });
+          }
           if (isCapturing) _heldStats = s;
           final gridStats = isCapturing ? s : (_heldStats ?? s);
           final activeMode = isCapturing ? s.modeEnum : _mode;
@@ -1085,7 +1108,7 @@ class _NodePicker extends ConsumerWidget {
               items: nodes
                   .map((id) => DropdownMenuItem(
                         value: id,
-                        child: Text(appState.labelForNode(id),
+                        child: Text('${appState.labelForNode(id)}  ·  $id',
                             style: TextStyle(color: t.textPrimary)),
                       ))
                   .toList(),

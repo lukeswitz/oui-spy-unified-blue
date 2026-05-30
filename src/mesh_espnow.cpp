@@ -34,9 +34,59 @@ struct PendingCmd {
     bool     acked;
     uint8_t  acks;
     uint8_t  expected;
+    uint32_t created_ms;
 };
 static PendingCmd pendingCmds[MESH_CMD_PENDING_MAX] = {};
 static SemaphoreHandle_t pendingMutex = NULL;
+
+#define MESH_CMD_DEAF_THRESHOLD 3
+struct CmdHealth {
+    char     id[MESH_NODE_ID_LEN];
+    uint8_t  misses;
+    uint32_t last_ack_ms;
+};
+static CmdHealth cmdHealth[MESH_LIVE_NODES_MAX] = {};
+
+static CmdHealth* cmdHealthSlot(const char* id) {
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (memcmp(cmdHealth[i].id, id, MESH_NODE_ID_LEN) == 0 && cmdHealth[i].id[0]) {
+            return &cmdHealth[i];
+        }
+    }
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (cmdHealth[i].id[0] == 0) {
+            memcpy(cmdHealth[i].id, id, MESH_NODE_ID_LEN);
+            return &cmdHealth[i];
+        }
+    }
+    return &cmdHealth[0];
+}
+
+static void cmdHealthAck(const char* id) {
+    CmdHealth* h = cmdHealthSlot(id);
+    if (h->misses >= MESH_CMD_DEAF_THRESHOLD) {
+        Serial.printf("[MESH-CMD-HEALTH] node %.4s recovered (was deaf)\n", id);
+    }
+    h->misses = 0;
+    h->last_ack_ms = millis();
+}
+
+static bool cmdNodeDeaf(const char* id) {
+    CmdHealth* h = cmdHealthSlot(id);
+    return h->misses >= MESH_CMD_DEAF_THRESHOLD;
+}
+
+static void cmdHealthMiss(const char* id) {
+    CmdHealth* h = cmdHealthSlot(id);
+    if (h->misses < 255) h->misses++;
+    if (h->misses == MESH_CMD_DEAF_THRESHOLD) {
+        Serial.printf("[MESH-CMD-HEALTH] node %.4s marked DEAF (%u consec misses) — dropped from ACK expected\n",
+                      id, h->misses);
+    }
+}
+
+volatile uint32_t g_meshCmdRx = 0;
+volatile uint32_t g_meshRxWin = 0;
 static TaskHandle_t      retryTaskHandle = NULL;
 static uint8_t           seqCounter = 0;
 static const uint8_t     kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
@@ -230,7 +280,7 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
     return true;
 }
 
-static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
+static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int len) {
     if (!meshCurrentConfig.enabled) return;
 
     if (len == (int)sizeof(MeshInvitePacket) && data[0] == MESH_PKT_INVITE) {
@@ -292,6 +342,7 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         Serial.printf("[MESH-ACK] seq=%u cmd=0x%02x engine=%u from=%.5s\n",
             ack.ack_seq, ack.ack_cmd, ack.ack_engine_id, ack.source_node_id);
         recordLiveNode(ack.source_node_id, 0, 0);
+        cmdHealthAck(ack.source_node_id);
         if (pendingMutex && xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             for (int i = 0; i < MESH_CMD_PENDING_MAX; i++) {
                 if (pendingCmds[i].in_use && pendingCmds[i].seq == ack.ack_seq) {
@@ -339,8 +390,11 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         cmdDedupe[cmdDedupeIdx].ts = nowDedup;
         cmdDedupeIdx = (cmdDedupeIdx + 1) % 32;
         recordLiveNode(cmd.source_node_id, MESH_ROLE_MANAGER, 0);
-        Serial.printf("[MESH-CMD] seq=%u cmd=0x%02x engine=%u plen=%u from=%.5s\n",
-            cmd.seq, cmd.command, cmd.engine_id, cmd.payload_len, cmd.source_node_id);
+        g_meshCmdRx++;
+        uint8_t rxch = 0; wifi_second_chan_t rxsec;
+        esp_wifi_get_channel(&rxch, &rxsec);
+        Serial.printf("[MESH-CMD] seq=%u cmd=0x%02x engine=%u plen=%u from=%.5s rxch=%u\n",
+            cmd.seq, cmd.command, cmd.engine_id, cmd.payload_len, cmd.source_node_id, rxch);
         bool targetMatch = true;
         bool targetableEngine = (cmd.engine_id < ENGINE_COUNT)
                                  && kEngineTargetable[cmd.engine_id];
@@ -460,6 +514,47 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
     }
 }
 
+#ifndef OUISPY_ROLE_MANAGER
+struct MeshRxItem {
+    uint8_t  mac[6];
+    uint16_t len;
+    uint8_t  data[MESH_TX_MAX_LEN];
+};
+static QueueHandle_t meshRxQueue = NULL;
+static TaskHandle_t  meshRxWorkerHandle = NULL;
+
+static void meshRxWorkerFn(void* arg) {
+    (void)arg;
+    MeshRxItem item;
+    for (;;) {
+        if (xQueueReceive(meshRxQueue, &item, portMAX_DELAY) == pdTRUE) {
+            meshProcessRxPacket(item.mac, item.data, (int)item.len);
+        }
+    }
+}
+#endif
+
+static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
+    if (!meshCurrentConfig.enabled) return;
+    if (len <= 0 || len > MESH_TX_MAX_LEN) return;
+#ifdef OUISPY_ROLE_MANAGER
+    meshProcessRxPacket(macAddr, data, len);
+#else
+    if (!meshRxQueue) return;
+    MeshRxItem item;
+    if (macAddr) memcpy(item.mac, macAddr, 6);
+    else memset(item.mac, 0, 6);
+    item.len = (uint16_t)len;
+    memcpy(item.data, data, (size_t)len);
+    if (xQueueSend(meshRxQueue, &item, 0) != pdTRUE) {
+        if (meshMutex && xSemaphoreTake(meshMutex, 0) == pdTRUE) {
+            meshCurrentStatus.rx_errors++;
+            xSemaphoreGive(meshMutex);
+        }
+    }
+#endif
+}
+
 static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
     (void)macAddr;
     (void)status;
@@ -492,6 +587,12 @@ bool meshTimeSlicingActive(void) {
     return meshCurrentConfig.enabled && meshManagerJoined();
 }
 
+#ifdef OUISPY_AUTOPCAP_SELFTEST
+void meshDebugForceManager(void) {
+    recordLiveNode("MGRX", MESH_ROLE_MANAGER, 0);
+}
+#endif
+
 #ifndef OUISPY_ROLE_MANAGER
 static void meshSchedTaskFn(void* arg) {
     (void)arg;
@@ -500,6 +601,7 @@ static void meshSchedTaskFn(void* arg) {
         vTaskDelay(pdMS_TO_TICKS(MESH_SCAN_WINDOW_MS));
         if (!meshTimeSlicingActive()) { g_meshWindow = false; continue; }
         g_meshWindow = true;
+        g_meshRxWin++;
         if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
             xSemaphoreGive(txMutex);
@@ -538,10 +640,17 @@ void meshInit(void) {
     if (!meshTxQueue) {
         Serial.println("[MESH] tx queue create FAIL");
     }
+#ifndef OUISPY_ROLE_MANAGER
+    meshRxQueue = xQueueCreate(8, sizeof(MeshRxItem));
+    if (!meshRxQueue) {
+        Serial.println("[MESH] rx queue create FAIL");
+    }
+    xTaskCreate(meshRxWorkerFn, "meshRxWk", 6144, NULL, 4, &meshRxWorkerHandle);
+#endif
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
     xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
 #ifndef OUISPY_ROLE_MANAGER
-    xTaskCreate(meshSchedTaskFn, "meshSched", 3072, NULL, 2, &meshSchedTaskHandle);
+    xTaskCreate(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle);
 #endif
 
     Serial.printf("[MESH] Initialized, localNodeId=%s\n", localNodeId);
@@ -854,13 +963,20 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     p.payload_len = (payload && payload_len <= sizeof(p.payload)) ? payload_len : 0;
     if (p.payload_len > 0) memcpy(p.payload, payload, p.payload_len);
     p.last_send_ms = millis();
+    p.created_ms = millis();
     p.retries_left = MESH_CMD_MAX_RETRIES;
     p.acked = false;
     p.acks = 0;
     {
         MeshLiveNode ln[MESH_LIVE_NODES_MAX];
         size_t lc = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, 30000);
-        p.expected = (lc == 0) ? 1 : (uint8_t)lc;
+        uint8_t reachable = 0;
+        for (size_t i = 0; i < lc; i++) {
+            if (ln[i].role == MESH_ROLE_MANAGER) continue;
+            if (cmdNodeDeaf(ln[i].id)) continue;
+            reachable++;
+        }
+        p.expected = (reachable == 0) ? 1 : reachable;
     }
     xSemaphoreGive(pendingMutex);
 
@@ -939,6 +1055,13 @@ static void retryTaskFn(void* arg) {
                     p.seq, p.command, p.engine_id, p.acks, p.expected, MESH_CMD_MAX_RETRIES);
                 pendingCmds[i].in_use = false;
                 xSemaphoreGive(pendingMutex);
+                MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+                size_t lc = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, 30000);
+                for (size_t k = 0; k < lc; k++) {
+                    if (ln[k].role == MESH_ROLE_MANAGER) continue;
+                    CmdHealth* h = cmdHealthSlot(ln[k].id);
+                    if (h->last_ack_ms < p.created_ms) cmdHealthMiss(ln[k].id);
+                }
                 continue;
             }
             pendingCmds[i].retries_left -= 1;
