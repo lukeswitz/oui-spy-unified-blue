@@ -221,10 +221,12 @@ The device has no filesystem for captures. Frames are written to a double-buffer
 
 ### OTA Firmware Updates
 
-In `Settings → Updates`:
+`Settings → Updates` is the main way to update — no cables. Tap **Check for Update**; the app compares the connected device against the latest GitHub release and offers:
 
 - **Install (WiFi)** — give the device credentials once (`STATION MODE` section). Device joins your LAN, pulls the firmware. Fast.
 - **Install (BLE)** — works anywhere, no router. Slow.
+
+**Updating nodes (when connected to a manager):** the Updates tab also lists each live node under **NODES**. Tap **UPDATE** on a node and the app disconnects from the manager, connects straight to that node over BLE, flashes it, then reconnects to the manager — one node at a time. (Nodes are flashed directly; firmware isn't relayed over the mesh.) When the app is connected directly to a single device, Check for Update just updates that device.
 
 App fetches release notes from GitHub Releases and shows the version available.
 

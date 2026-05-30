@@ -353,6 +353,72 @@ class BleManager {
 
   Future<void> stopScan() async => FlutterBluePlus.stopScan();
 
+  /// Scan and return the first device whose advertised/platform name matches
+  /// [exactName] (case-insensitive). Null if not seen within [timeout].
+  Future<BluetoothDevice?> scanForDeviceNamed(String exactName,
+      {Duration timeout = const Duration(seconds: 12)}) async {
+    final target = exactName.toUpperCase();
+    final completer = Completer<BluetoothDevice?>();
+    final sub = scanResults.listen((results) {
+      for (final r in results) {
+        final n = r.device.platformName.toUpperCase();
+        final a = r.advertisementData.advName.toUpperCase();
+        if ((n == target || a == target) && !completer.isCompleted) {
+          completer.complete(r.device);
+        }
+      }
+    });
+    try {
+      await startScan(timeout: timeout);
+    } on Exception catch (e) {
+      DebugLog.log('BLE: scanForDeviceNamed scan error $e');
+    }
+    final found = await completer.future
+        .timeout(timeout + const Duration(seconds: 2), onTimeout: () => null);
+    await sub.cancel();
+    await stopScan();
+    return found;
+  }
+
+  /// Connect to [device], mark it primary, and resolve true once the link
+  /// reaches `ready` (or false on disconnect / timeout).
+  Future<bool> connectAndReady(BluetoothDevice device,
+      {Duration timeout = const Duration(seconds: 25)}) async {
+    final completer = Completer<bool>();
+    final sub = connectionState.listen((s) {
+      if (s == NodeConnectionState.ready && !completer.isCompleted) {
+        completer.complete(true);
+      } else if (s == NodeConnectionState.disconnected &&
+          !completer.isCompleted) {
+        completer.complete(false);
+      }
+    });
+    try {
+      await connect(device,
+          sessionId: 'ota-${DateTime.now().microsecondsSinceEpoch}');
+      markAsPrimary();
+    } on Exception catch (e) {
+      DebugLog.log('BLE: connectAndReady connect error $e');
+      if (!completer.isCompleted) completer.complete(false);
+    }
+    final ok =
+        await completer.future.timeout(timeout, onTimeout: () => isConnected);
+    await sub.cancel();
+    return ok;
+  }
+
+  /// Reconnect to a previously-seen device by its remoteId (no scan needed).
+  Future<bool> connectByIdAndReady(String remoteId,
+      {Duration timeout = const Duration(seconds: 25)}) async {
+    try {
+      return await connectAndReady(BluetoothDevice.fromId(remoteId),
+          timeout: timeout);
+    } on Exception catch (e) {
+      DebugLog.log('BLE: connectByIdAndReady error $e');
+      return false;
+    }
+  }
+
   // -- Connection --
 
   /// Connect to a specific device and set up GATT subscriptions.

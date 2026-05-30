@@ -3627,6 +3627,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   int _wifiBytesRead = 0;
   int? _wifiStatus;
   Timer? _wifiPoll;
+  OtaRelease? _nodeRelease;
+  String? _nodeStatus;
+  String? _busyNode;
 
   @override
   void initState() {
@@ -3686,9 +3689,18 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
         board: ble.board,
         role: ble.role,
       );
+      OtaRelease? nodeRel;
+      if (ble.isManagerConnected) {
+        try {
+          nodeRel = await ota.fetchLatestRelease(board: 'xiao_s3', role: 'node');
+        } catch (e) {
+          DebugLog.log('OTA: node release check failed: $e');
+        }
+      }
       if (!mounted) return;
       setState(() {
         _availableRelease = r;
+        _nodeRelease = nodeRel;
         _checkStatus = r == null
             ? 'Already up to date'
             : 'Update available: ${r.tag}';
@@ -3697,6 +3709,173 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       if (!mounted) return;
       setState(() => _checkStatus = 'Check failed: $e');
     }
+  }
+
+  Future<void> _restoreManager(String? managerId) async {
+    if (managerId == null) return;
+    final ble = ref.read(bleManagerProvider);
+    if (mounted) setState(() => _nodeStatus = 'Reconnecting to manager...');
+    await ble.disconnect();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    final ok = await ble.connectByIdAndReady(managerId);
+    if (mounted) {
+      setState(() => _nodeStatus =
+          ok ? 'Reconnected to manager.' : 'Could not auto-reconnect — tap CONNECT.');
+    }
+  }
+
+  Future<void> _updateNode(String nodeId) async {
+    final ble = ref.read(bleManagerProvider);
+    final release = _nodeRelease;
+    if (release == null) {
+      setState(() => _nodeStatus = 'Check for update first.');
+      return;
+    }
+    final managerId = ble.connectedDeviceId;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Update node $nodeId?'),
+        content: Text(
+            'The app will disconnect from the manager, connect directly to '
+            'node $nodeId, flash ${release.tag} over BLE, then reconnect to '
+            'the manager. Keep the node powered and in range.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('CANCEL')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('UPDATE')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() {
+      _busyNode = nodeId;
+      _nodeStatus = 'Disconnecting from manager...';
+    });
+    try {
+      await ble.disconnect();
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+
+      setState(() => _nodeStatus = 'Finding node $nodeId over BLE...');
+      final dev = await ble.scanForDeviceNamed('OUI-SPY-$nodeId');
+      if (dev == null) {
+        setState(() => _nodeStatus =
+            'Node $nodeId not found over BLE — must be powered and in range.');
+        await _restoreManager(managerId);
+        return;
+      }
+
+      setState(() => _nodeStatus = 'Connecting to node $nodeId...');
+      final connected = await ble.connectAndReady(dev);
+      if (!connected) {
+        setState(() => _nodeStatus = 'Failed to connect to node $nodeId.');
+        await _restoreManager(managerId);
+        return;
+      }
+      if (ble.role != 'node') {
+        setState(() => _nodeStatus =
+            'Connected device is not a node (role="${ble.role}") — aborting.');
+        await _restoreManager(managerId);
+        return;
+      }
+
+      setState(() => _nodeStatus = 'Flashing node $nodeId — ${release.tag}...');
+      final flashed = await ref.read(otaServiceProvider).performUpdate(release);
+      setState(() => _nodeStatus = flashed
+          ? 'Node $nodeId flashed ${release.tag}. Reconnecting manager...'
+          : 'Node $nodeId flash failed.');
+      await Future<void>.delayed(const Duration(seconds: 2));
+      await _restoreManager(managerId);
+    } catch (e) {
+      setState(() => _nodeStatus = 'Node update error: $e');
+      await _restoreManager(managerId);
+    } finally {
+      if (mounted) setState(() => _busyNode = null);
+    }
+  }
+
+  List<Widget> _buildNodeUpdateSection(ResolvedTheme t, bool busy) {
+    final ble = ref.read(bleManagerProvider);
+    if (!ble.isManagerConnected) return const [];
+    final appState = ref.watch(appStateProvider);
+    final nodes = appState.liveKnownNodes
+        .where((n) => n.isNotEmpty && n != appState.nodeId)
+        .toList()
+      ..sort();
+
+    return [
+      const Divider(height: 24),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        child: Row(
+          children: [
+            Icon(Icons.hub_outlined, size: 14, color: t.textSecondary),
+            const SizedBox(width: 6),
+            Text('NODES',
+                style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 11,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.w600)),
+            const Spacer(),
+            if (_nodeRelease != null)
+              Text('latest ${_nodeRelease!.tag}',
+                  style: TextStyle(color: t.textDim, fontSize: 10)),
+          ],
+        ),
+      ),
+      if (nodes.isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text('No live nodes. Power them on and Check for Update.',
+              style: TextStyle(color: t.textDim, fontSize: 11)),
+        )
+      else if (_nodeRelease == null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text('Tap Check for Update to fetch the latest node firmware.',
+              style: TextStyle(color: t.textDim, fontSize: 11)),
+        ),
+      for (final id in nodes)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(appState.labelForNode(id),
+                    style: TextStyle(color: t.textPrimary, fontSize: 12)),
+              ),
+              if (_busyNode == id)
+                const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                OutlinedButton(
+                  onPressed: (busy || _busyNode != null || _nodeRelease == null)
+                      ? null
+                      : () => _updateNode(id),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.accent,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    minimumSize: const Size(0, 32),
+                  ),
+                  child: const Text('UPDATE', style: TextStyle(fontSize: 11)),
+                ),
+            ],
+          ),
+        ),
+      if (_nodeStatus != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Text(_nodeStatus!,
+              style: TextStyle(color: t.textSecondary, fontSize: 11)),
+        ),
+    ];
   }
 
   Future<void> _installBle() async {
@@ -3877,6 +4056,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
               ),
             ),
         ],
+        ..._buildNodeUpdateSection(t, busy),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: OutlinedButton.icon(
