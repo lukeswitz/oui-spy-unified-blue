@@ -480,9 +480,11 @@ static void wardriveStart(void) {
     lastChannelHop = millis();
 
     if (wardriveRadio & 0x01) {
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect(false, false);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        if (!meshIsEnabled()) {
+            WiFi.mode(WIFI_STA);
+            WiFi.disconnect(false, false);
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
 
         wifi_country_t country = {
             .cc = "JP",
