@@ -54,7 +54,9 @@ companion app
 
 **2 · Install the app** — [Android APK](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest), [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2), or [macOS signed .app](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest).
 
-**3 · Pair over BLE** — open the app, tap the device. Done. From here every engine, channel, watchlist, and PCAP is app-side.
+**3 · Connect over BLE** — open the app, tap **CONNECT**, then tap your device in the **SCAN FOR OUI-SPY** list. From here every engine, channel, watchlist, and PCAP is app-side.
+
+> The app does **not** auto-connect. On launch it clears any stale BLE link and waits — you choose what to connect to (handy when juggling a manager + several nodes). Reconnecting is always one tap.
 
 ---
 
@@ -94,7 +96,18 @@ Flock OUIs resolve in-app to surveillance labels *and* chip vendor, e.g. `Flock 
 
 ## Node Mode
 
-Flash one board as **manager** (`mgr-xiao_c3`/`mgr-wroom`), others as **nodes** (`node-xiao_s3`). Power on — nodes auto-join in ~10 s (**Config → NODES** shows them `LIVE`). Connect the app to the manager. Detection engines run across all nodes; PCAP runs on one node you pick. Detections show which node found them. Toggling off or closing the app stops the nodes.
+Run several boards as one swarm: a **manager** the phone talks to, and any number of **nodes** that scan for it.
+
+**What nodes add:** more radios working in parallel. The manager splits the WiFi channel range into disjoint slices across the live nodes, so two nodes cover the band roughly twice as fast as one — and they cover more physical ground. Every detection is tagged with the node that found it.
+
+**Set it up:**
+
+1. **Flash roles** — one board as **manager** (`mgr-xiao_c3` or `mgr-wroom`), the rest as **nodes** (`node-xiao_s3`). Use the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) and pick the matching target per board.
+2. **Power on** — nodes auto-join the manager in ~10 s. No pairing step.
+3. **Connect the app to the *manager*** (not the nodes) — tap **CONNECT**, pick the `OUI-SPY-MGR…` device. **Config → NODES** lists every joined node as `LIVE` (older ones drop to `OFFLINE`).
+4. **Run engines** — detection engines (Detector, Flock, Sky Spy, Wardrive, …) run across **all** nodes at once; the feed shows which node each hit came from. **PCAP** captures from **one** node you pick on the PCAP screen.
+
+Toggling an engine off, or closing the app, stops the nodes — they don't keep scanning unattended.
 
 ---
 
@@ -105,8 +118,16 @@ Flutter app. iOS, macOS, Android. BLE GATT to the device. Every control, every r
 ### Home
 
 - Per-engine cards — tap a card to open that engine's settings screen.
-- Connect / Cancel-connect / Stop-reconnect controls when the device drops.
-- Status bar — mesh node count, GPS state, connection state.
+- Status bar — node count, GPS state, connection state.
+
+**Connecting & disconnecting** (no auto-connect — you're always in control):
+
+| Want to | Tap |
+|---------|-----|
+| **Connect** | **CONNECT** button on the home screen → pick your device from **SCAN FOR OUI-SPY** |
+| **Disconnect / switch device** | The device-name chip (top-right of the status bar, `⇄` icon) → drops the link and reopens the scan list |
+| **Cancel a connect in progress** | **CANCEL** |
+| **Stop auto-reconnect after a drop** | **STOP RECONNECT** (the app retries a lost link on its own; this aborts it) |
 
 ### Live Feed
 
@@ -285,18 +306,11 @@ iPhone 14 Pro+ on iOS 16.2+. Active sessions show in the Dynamic Island and Lock
 
 ## Flash
 
+**Updates come from the app over OTA** (`Settings → Updates`, WiFi or BLE) — that's the main path once a board is running. The web flasher is for the **first flash on a bare board**, or as a recovery fallback.
+
 ### Web Flasher
 
-[lukeswitz.github.io/oui-spy-unified-blue](https://lukeswitz.github.io/oui-spy-unified-blue/) — Chrome / Edge 89+. Plug in via USB-C. Connect & Flash. *(Chromium only — Web Serial API.)*
-
-### Python
-
-```bash
-pip install -r requirements.txt
-python3 flash.py              # single board, interactive
-python3 flash.py --batch      # hands-free batch
-python3 flash.py --erase      # full erase before write
-```
+[lukeswitz.github.io/oui-spy-unified-blue](https://lukeswitz.github.io/oui-spy-unified-blue/) — Chrome / Edge 89+. Plug in via USB-C, pick the target (node / manager board), Connect & Flash. *(Chromium only — Web Serial API.)*
 
 ### Layout
 
