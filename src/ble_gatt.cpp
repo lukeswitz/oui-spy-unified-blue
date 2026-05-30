@@ -50,6 +50,9 @@ static NimBLECharacteristic* chrPcapData = nullptr;
 
 static bool phoneConnected = false;
 static volatile bool pcapDownloadRunning = false;
+static volatile uint32_t mgrPhoneGoneMs = 0;
+static volatile bool mgrTornDown = false;
+#define MGR_PHONE_GRACE_MS 8000
 
 #ifdef OUISPY_ROLE_MANAGER
 static volatile uint8_t  mgrCommandedMask = 0;
@@ -177,29 +180,47 @@ void bleGattMaybeResliceWardrive(void) {
 
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
+    if (mgrPhoneGoneMs != 0 && !phoneConnected && !mgrTornDown &&
+        (millis() - mgrPhoneGoneMs) > MGR_PHONE_GRACE_MS) {
+        mgrTornDown = true;
+        mgrCommandedMask = 0;
+        for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+        if (meshIsEnabled()) meshBroadcastCommand(0x0F, 0, nullptr, 0);
+        Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL to nodes");
+    }
     if (!meshIsEnabled()) return;
-    uint8_t desired = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
-    if (desired == 0) return;
+    const uint8_t pcapBit = ENGINE_BITMASK(ENGINE_PCAP);
+    uint8_t desired = (uint8_t)(mgrCommandedMask & ~pcapBit);
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
     uint8_t missingAny = 0;
+    uint8_t extraAny = 0;
     uint8_t nodeCount = 0;
     for (size_t i = 0; i < total; i++) {
         if (live[i].role == MESH_ROLE_MANAGER) continue;
         nodeCount++;
-        if (live[i].active_engines & ENGINE_BITMASK(ENGINE_PCAP)) continue;
-        missingAny |= (uint8_t)(desired & ~live[i].active_engines);
+        if (live[i].active_engines & pcapBit) continue;
+        uint8_t have = (uint8_t)(live[i].active_engines & ~pcapBit);
+        missingAny |= (uint8_t)(desired & ~have);
+        extraAny   |= (uint8_t)(have & ~desired);
     }
-    if (nodeCount == 0 || missingAny == 0) return;
-    static uint32_t lastResend[ENGINE_COUNT] = {0};
+    if (nodeCount == 0) return;
+    static uint32_t lastEnable[ENGINE_COUNT] = {0};
+    static uint32_t lastDisable[ENGINE_COUNT] = {0};
     uint32_t now = millis();
     for (int e = 0; e < ENGINE_COUNT; e++) {
-        if (!(missingAny & ENGINE_BITMASK(e))) continue;
         if (e == ENGINE_PCAP || kEngineTargetable[e]) continue;
-        if (lastResend[e] != 0 && (now - lastResend[e]) < 6000) continue;
-        lastResend[e] = now;
-        meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
-        Serial.printf("[MGR-RECONCILE] engine %d missing on a node — re-enable\n", e);
+        if (missingAny & ENGINE_BITMASK(e)) {
+            if (lastEnable[e] != 0 && (now - lastEnable[e]) < 6000) continue;
+            lastEnable[e] = now;
+            meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
+            Serial.printf("[MGR-RECONCILE] engine %d missing — re-enable\n", e);
+        } else if (extraAny & ENGINE_BITMASK(e)) {
+            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 6000) continue;
+            lastDisable[e] = now;
+            meshBroadcastCommand(0x00, (uint8_t)e, nullptr, 0);
+            Serial.printf("[MGR-RECONCILE] engine %d not commanded — disable\n", e);
+        }
     }
 #endif
 }
@@ -207,6 +228,10 @@ void bleGattReconcileEngines(void) {
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
         phoneConnected = true;
+#ifdef OUISPY_ROLE_MANAGER
+        mgrPhoneGoneMs = 0;
+        mgrTornDown = false;
+#endif
         NimBLEScan* scan = NimBLEDevice::getScan();
         if (scan && scan->isScanning()) {
             scan->stop();
@@ -223,18 +248,14 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
     void onDisconnect(NimBLEServer* server) override {
         phoneConnected = false;
-        Serial.println("[BLE] Phone disconnected — disabling local engines");
-        engineDisableAll();
 #ifdef OUISPY_ROLE_MANAGER
-        mgrCommandedMask = 0;
-        for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
-        if (meshIsEnabled()) {
-            meshBroadcastCommand(0x0F, 0, nullptr, 0);
-            Serial.println("[BLE] App gone — broadcast DISABLE_ALL to all nodes (back to idle)");
-        }
+        mgrPhoneGoneMs = millis();
+        Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
+#else
+        engineDisableAll();
+        Serial.println("[BLE] Phone disconnected — engines off");
 #endif
         NimBLEDevice::startAdvertising();
-        Serial.println("[BLE] Advertising restarted");
     }
 };
 
