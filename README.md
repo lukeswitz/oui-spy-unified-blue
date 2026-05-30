@@ -1,18 +1,21 @@
 <div align="center">
 
-<img width="220" alt="OUI-SPY APEX" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
-
-# OUI SPY APEX
-
-**Eight surveillance-detection engines on one XIAO ESP32-S3. Controlled from your phone. No reboot to switch modes.**
-
-> Fork of [colonelpanichacks/oui-spy-unified-blue](https://github.com/colonelpanichacks/oui-spy-unified-blue). Upstream is a 4-mode firmware with a boot-time AP selector — you pick a mode, reboot, and use it. This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a single companion app over BLE GATT
-
 [![Release](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-blue.svg?logo=apple)](https://testflight.apple.com/join/5RCKgnJ2)
 ![Platforms](https://img.shields.io/badge/iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
 ![Firmware](https://img.shields.io/badge/firmware-ESP32--S3-ff6600)
 [![CodeQL](https://github.com/lukeswitz/oui-spy-unified-blue/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/lukeswitz/oui-spy-unified-blue/actions/workflows/github-code-scanning/codeql)
+
+<img width="220" alt="OUI-SPY APEX" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
+
+# OUI SPY APEX
+
+**Eight surveillance-detection engines on one XIAO ESP32-S3. Controlled from your phone.**
+
+This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a 
+companion app
+
+
 
 [**Quick Start**](#quick-start) · [**Engines**](#engines) · [**App**](#companion-app) · [**Gestures**](#gestures) · [**Flash**](#flash) · [**Hardware**](#hardware)
 
