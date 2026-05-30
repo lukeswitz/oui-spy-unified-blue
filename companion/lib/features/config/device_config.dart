@@ -871,15 +871,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   Widget _buildFirmwareTab() {
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
+    final isMgr = ref.read(bleManagerProvider).isManagerConnected;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'NODE INFO'),
+        ConfigSectionHeader(label: isMgr ? 'MANAGER INFO' : 'NODE INFO'),
         ConfigInfoRow(
           icon: Icons.numbers, label: 'Version', value: _fwVersion,
         ),
         ConfigInfoRow(
-          icon: Icons.fingerprint, label: 'Node ID', value: _nodeId,
+          icon: Icons.fingerprint,
+          label: isMgr ? 'Manager ID' : 'Node ID',
+          value: _nodeId,
         ),
         ConfigInfoRow(
           icon: Icons.memory, label: 'Free Heap', value: _heapFree,
@@ -3732,14 +3735,21 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       return;
     }
     final managerId = ble.connectedDeviceId;
+    final cur = OtaService.parseVersion(widget.currentVersion);
+    final notNewer =
+        cur != null && OtaService.compareVersion(release.version, cur) <= 0;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Update node $nodeId?'),
         content: Text(
-            'The app will disconnect from the manager, connect directly to '
-            'node $nodeId, flash ${release.tag} over BLE, then reconnect to '
-            'the manager. Keep the node powered and in range.'),
+            (notNewer
+                    ? '⚠ ${release.tag} is NOT newer than this device '
+                        '(v${widget.currentVersion}). This may DOWNGRADE the node.\n\n'
+                    : '') +
+                'The app will disconnect from the manager, connect directly to '
+                'node $nodeId, flash ${release.tag} over BLE, then reconnect to '
+                'the manager. Keep the node powered and in range.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -3806,6 +3816,10 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
         .where((n) => n.isNotEmpty && n != appState.nodeId)
         .toList()
       ..sort();
+    final cur = OtaService.parseVersion(widget.currentVersion);
+    final nodeNewer = _nodeRelease != null &&
+        cur != null &&
+        OtaService.compareVersion(_nodeRelease!.version, cur) > 0;
 
     return [
       const Divider(height: 24),
@@ -3815,7 +3829,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
           children: [
             Icon(Icons.hub_outlined, size: 14, color: t.textSecondary),
             const SizedBox(width: 6),
-            Text('NODES',
+            Text('REMOTE NODES',
                 style: TextStyle(
                     color: t.textSecondary,
                     fontSize: 11,
@@ -3823,8 +3837,13 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                     fontWeight: FontWeight.w600)),
             const Spacer(),
             if (_nodeRelease != null)
-              Text('latest ${_nodeRelease!.tag}',
-                  style: TextStyle(color: t.textDim, fontSize: 10)),
+              Text(
+                  nodeNewer
+                      ? 'latest ${_nodeRelease!.tag}'
+                      : 'latest ${_nodeRelease!.tag} · not newer',
+                  style: TextStyle(
+                      color: nodeNewer ? AppTheme.accent : t.textDim,
+                      fontSize: 10)),
           ],
         ),
       ),
@@ -3893,7 +3912,12 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   }
 
   Future<void> _flashLocalBin() async {
-    const typeGroup = XTypeGroup(label: 'firmware', extensions: ['bin']);
+    const typeGroup = XTypeGroup(
+      label: 'firmware',
+      extensions: ['bin'],
+      uniformTypeIdentifiers: ['public.data'],
+      mimeTypes: ['application/octet-stream'],
+    );
     final file = await openFile(acceptedTypeGroups: const [typeGroup]);
     if (file == null) return;
     final bytes = await file.readAsBytes();
