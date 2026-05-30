@@ -338,6 +338,7 @@ static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
         cmdDedupe[cmdDedupeIdx].seq = cmd.seq;
         cmdDedupe[cmdDedupeIdx].ts = nowDedup;
         cmdDedupeIdx = (cmdDedupeIdx + 1) % 32;
+        recordLiveNode(cmd.source_node_id, MESH_ROLE_MANAGER, 0);
         Serial.printf("[MESH-CMD] seq=%u cmd=0x%02x engine=%u plen=%u from=%.5s\n",
             cmd.seq, cmd.command, cmd.engine_id, cmd.payload_len, cmd.source_node_id);
         bool targetMatch = true;
@@ -465,10 +466,31 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
 }
 
 #define MESH_SCAN_WINDOW_MS  900
-#define MESH_RX_WINDOW_MS    450
+#define MESH_RX_WINDOW_MS    300
+#define MESH_RX_MIN_MS       100
 static volatile bool g_meshWindow = false;
 static TaskHandle_t  meshSchedTaskHandle = NULL;
 bool meshInMeshWindow(void) { return g_meshWindow; }
+
+bool meshManagerJoined(void) {
+    if (!liveMutex) return false;
+    if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return false;
+    uint32_t now = millis();
+    bool joined = false;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (liveNodes[i].id[0] == 0) continue;
+        if (liveNodes[i].role != MESH_ROLE_MANAGER) continue;
+        if ((now - liveNodes[i].last_ms) > MESH_MANAGER_TTL_MS) continue;
+        joined = true;
+        break;
+    }
+    xSemaphoreGive(liveMutex);
+    return joined;
+}
+
+bool meshTimeSlicingActive(void) {
+    return meshCurrentConfig.enabled && meshManagerJoined();
+}
 
 #ifndef OUISPY_ROLE_MANAGER
 static void meshSchedTaskFn(void* arg) {
@@ -476,14 +498,21 @@ static void meshSchedTaskFn(void* arg) {
     for (;;) {
         g_meshWindow = false;
         vTaskDelay(pdMS_TO_TICKS(MESH_SCAN_WINDOW_MS));
-        if (!meshCurrentConfig.enabled) { g_meshWindow = false; continue; }
+        if (!meshTimeSlicingActive()) { g_meshWindow = false; continue; }
         g_meshWindow = true;
         if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
             xSemaphoreGive(txMutex);
         }
         if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
-        vTaskDelay(pdMS_TO_TICKS(MESH_RX_WINDOW_MS));
+        uint32_t t0 = millis();
+        for (;;) {
+            uint32_t el = millis() - t0;
+            if (el >= MESH_RX_WINDOW_MS) break;
+            if (el >= MESH_RX_MIN_MS && meshTxQueue &&
+                uxQueueMessagesWaiting(meshTxQueue) == 0) break;
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
     }
 }
 #endif
@@ -874,8 +903,11 @@ static void retryTaskFn(void* arg) {
         {
             uint32_t nowHb = millis();
             if (nowHb - lastHeartbeat >= 5000u) {
-                lastHeartbeat = nowHb;
-                meshSendHeartbeat(engineGetActiveMask());
+                bool onHomeChannel = !meshTimeSlicingActive() || meshInMeshWindow();
+                if (onHomeChannel) {
+                    lastHeartbeat = nowHb;
+                    meshSendHeartbeat(engineGetActiveMask());
+                }
             }
         }
 

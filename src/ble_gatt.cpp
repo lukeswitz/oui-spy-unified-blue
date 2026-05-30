@@ -58,7 +58,72 @@ static volatile uint8_t  mgrPcapMode = 0;
 static volatile uint8_t  mgrPcapChStart = 1;
 static volatile uint8_t  mgrPcapChEnd = 11;
 static volatile uint32_t mgrPcapStartedMs = 0;
+
+static uint8_t mgrWardriveCfg[16] = {
+    0x03, 0xFA, 0x00, 0x96, 0x00, 0x20, 0x03, 0xDC, 0x05, 0x01, 0x0B
+};
+static uint8_t mgrWardriveCfgLen = 11;
+
+static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
+    if (len < 11) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
+
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_MANAGER_TTL_MS);
+    MeshLiveNode nodes[MESH_LIVE_NODES_MAX];
+    size_t nn = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        nodes[nn++] = live[i];
+    }
+    if (nn <= 1) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
+
+    uint8_t cs = cfg[9], ce = cfg[10];
+    if (cs < 1 || cs > 14) cs = 1;
+    if (ce < cs || ce > 14) ce = 11;
+    uint16_t span = (uint16_t)(ce - cs + 1);
+
+    for (size_t i = 0; i < nn; i++) {
+        uint8_t sStart = (uint8_t)(cs + (span * i) / nn);
+        uint8_t sEnd   = (uint8_t)(cs + (span * (i + 1)) / nn - 1);
+        if (sEnd < sStart) sEnd = sStart;
+
+        uint8_t clen = len > 64 ? 64 : len;
+        uint8_t out[CFG_TGT_OVERHEAD + 64];
+        out[0] = CFG_TGT_PREFIX;
+        memcpy(out + 1, nodes[i].id, MESH_NODE_ID_LEN - 1);
+        out[5] = 0x00;
+        memcpy(out + CFG_TGT_OVERHEAD, cfg, clen);
+        out[CFG_TGT_OVERHEAD + 9]  = sStart;
+        out[CFG_TGT_OVERHEAD + 10] = sEnd;
+        meshBroadcastCommand(0x10, ENGINE_WARDRIVE, out, (uint8_t)(CFG_TGT_OVERHEAD + clen));
+        Serial.printf("[MGR-SLICE] node=%.4s ch=%u-%u (%u nodes)\n",
+                      nodes[i].id, sStart, sEnd, (unsigned)nn);
+    }
+}
+
+static uint8_t mgrLastSlicedNodeCount = 0xFF;
 #endif
+
+void bleGattMaybeResliceWardrive(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_WARDRIVE)) || !meshIsEnabled()) {
+        mgrLastSlicedNodeCount = 0xFF;
+        return;
+    }
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    uint8_t nodeCount = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role != MESH_ROLE_MANAGER) nodeCount++;
+    }
+    if (nodeCount == mgrLastSlicedNodeCount) return;
+    mgrLastSlicedNodeCount = nodeCount;
+    if (nodeCount >= 2) {
+        Serial.printf("[MGR-SLICE] live node set -> %u, re-slicing wardrive\n", nodeCount);
+        mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+    }
+#endif
+}
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
@@ -157,10 +222,23 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                 mgrPcapChEnd = p[3];
             }
         }
+        if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10 && cmd.payload_len >= 11) {
+            mgrWardriveCfgLen = cmd.payload_len > sizeof(mgrWardriveCfg)
+                                  ? sizeof(mgrWardriveCfg) : cmd.payload_len;
+            memcpy(mgrWardriveCfg, cmd.payload, mgrWardriveCfgLen);
+        }
         if (meshIsEnabled()) {
-            meshBroadcastCommand(cmd.command, cmd.engine_id,
-                cmd.payload_len > 0 ? cmd.payload : nullptr,
-                cmd.payload_len);
+            if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10) {
+                mgrBroadcastWardriveSliced(cmd.payload, cmd.payload_len);
+            } else if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x01) {
+                mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+                meshBroadcastCommand(cmd.command, cmd.engine_id,
+                    cmd.payload_len > 0 ? cmd.payload : nullptr, cmd.payload_len);
+            } else {
+                meshBroadcastCommand(cmd.command, cmd.engine_id,
+                    cmd.payload_len > 0 ? cmd.payload : nullptr,
+                    cmd.payload_len);
+            }
         }
         bleGattNotifyEngineState();
         if (cmd.engine_id == ENGINE_PCAP || cmd.command == 0x0F) {

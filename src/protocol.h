@@ -362,6 +362,9 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_HEARTBEAT       = 0x09,
 };
 
+#define MESH_ROLE_NODE     0
+#define MESH_ROLE_MANAGER  1
+
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;
     char     source_node_id[MESH_NODE_ID_LEN];

@@ -44,6 +44,7 @@ static void heartbeatTask(void*) {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         tick++;
+        bleGattMaybeResliceWardrive();
         if (bleGattIsConnected()) {
             bleGattNotifyPcapStats();
             bleGattNotifyMeshStatus();
@@ -95,7 +96,7 @@ void setup() {
     }
 
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(heartbeatTask,       "hb",         2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(heartbeatTask,       "hb",         6144, NULL, 1, NULL, 1);
 
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);

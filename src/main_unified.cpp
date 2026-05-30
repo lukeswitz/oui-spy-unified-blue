@@ -430,7 +430,7 @@ void setup() {
     // Create FreeRTOS tasks
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(engineCmdTask, "eng_cmd", 4096, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(statusHeartbeatTask, "status_hb", 2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(statusHeartbeatTask, "status_hb", 6144, NULL, 1, NULL, 1);
 
     Serial.println("[INIT] Tasks created");
 

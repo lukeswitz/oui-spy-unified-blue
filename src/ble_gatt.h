@@ -22,6 +22,9 @@ void bleGattNotifyEngineState(void);
 // Check if a phone is connected
 bool bleGattIsConnected(void);
 
+// Manager: re-slice wardrive channel ranges when the live-node set changes
+void bleGattMaybeResliceWardrive(void);
+
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);
 

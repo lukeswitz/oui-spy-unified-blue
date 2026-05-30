@@ -48,28 +48,17 @@ static uint16_t scanDwellForChannel(uint8_t ch) {
 
 static void buildHopSchedule(void) {
     hopScheduleLen = 0;
-    bool meshOn = meshIsEnabled();
-    bool meshChInRange = meshOn &&
-        MESH_RENDEZVOUS_CH >= channelStart && MESH_RENDEZVOUS_CH <= channelEnd;
-
     for (uint16_t c = channelStart; c <= channelEnd && hopScheduleLen < 32; c++) {
         hopSchedule[hopScheduleLen] = (uint8_t)c;
         hopDwellMs[hopScheduleLen] = scanDwellForChannel((uint8_t)c);
         hopScheduleLen++;
-        if (meshChInRange && (uint8_t)c != MESH_RENDEZVOUS_CH && hopScheduleLen < 32) {
-            hopSchedule[hopScheduleLen] = MESH_RENDEZVOUS_CH;
-            hopDwellMs[hopScheduleLen] = MESH_RENDEZVOUS_DWELL_MS;
-            hopScheduleLen++;
-        }
     }
-    if (!meshOn) {
-        const uint8_t kPri[3] = {1, 6, 11};
-        for (uint8_t i = 0; i < 3 && hopScheduleLen < 32; i++) {
-            if (kPri[i] >= channelStart && kPri[i] <= channelEnd) {
-                hopSchedule[hopScheduleLen] = kPri[i];
-                hopDwellMs[hopScheduleLen] = scanDwellForChannel(kPri[i]);
-                hopScheduleLen++;
-            }
+    const uint8_t kPri[3] = {1, 6, 11};
+    for (uint8_t i = 0; i < 3 && hopScheduleLen < 32; i++) {
+        if (kPri[i] >= channelStart && kPri[i] <= channelEnd) {
+            hopSchedule[hopScheduleLen] = kPri[i];
+            hopDwellMs[hopScheduleLen] = scanDwellForChannel(kPri[i]);
+            hopScheduleLen++;
         }
     }
     if (hopScheduleLen == 0) {
@@ -491,10 +480,8 @@ static void wardriveStart(void) {
     lastChannelHop = millis();
 
     if (wardriveRadio & 0x01) {
-        if (!meshIsEnabled()) {
-            WiFi.mode(WIFI_STA);
-            WiFi.disconnect(false, true);
-        }
+        WiFi.mode(WIFI_STA);
+        WiFi.disconnect(false, false);
         vTaskDelay(pdMS_TO_TICKS(50));
 
         wifi_country_t country = {
@@ -607,6 +594,9 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
         return;
     }
     if (len < 1) return;
+    uint8_t  prevStart = channelStart, prevEnd = channelEnd;
+    uint16_t prevPri = priorityDwellMs, prevNorm = normalDwellMs;
+
     uint8_t newRadio = payload[0] & 0x03;
     if (newRadio == 0) newRadio = 0x03;
     wardriveRadio = newRadio;
@@ -629,7 +619,14 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
         if (cs >= 1 && cs <= 14) channelStart = cs;
         if (ce >= channelStart && ce <= 14) channelEnd = ce;
     }
-    buildHopSchedule();
+
+    bool scheduleChanged = (channelStart != prevStart) || (channelEnd != prevEnd) ||
+                           (priorityDwellMs != prevPri) || (normalDwellMs != prevNorm);
+    if (scheduleChanged || !wardriveActive) {
+        buildHopSchedule();
+    } else {
+        return;
+    }
 
     Serial.printf("[WARDRIVE] Config: radio=0x%02X ch=%d-%d pri=%dms norm=%dms ble=%d/%d\n",
         wardriveRadio, channelStart, channelEnd,
