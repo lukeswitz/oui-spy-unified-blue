@@ -254,6 +254,16 @@ void mgrDebugSetCommanded(uint8_t mask) {
 
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
+    // Advertising watchdog: if no phone is connected, ensure we are advertising.
+    // Under heavy mesh load NimBLE can leave advertising stopped after a
+    // disconnect, making the manager invisible/unconnectable until a power-cycle.
+    if (!phoneConnected) {
+        NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+        if (adv && !adv->isAdvertising()) {
+            NimBLEDevice::startAdvertising();
+            Serial.println("[MGR] advertising was DOWN — restarted (watchdog)");
+        }
+    }
     if (mgrPhoneGoneMs != 0 && !phoneConnected && !mgrTornDown &&
         (millis() - mgrPhoneGoneMs) > MGR_PHONE_GRACE_MS) {
         mgrTornDown = true;
