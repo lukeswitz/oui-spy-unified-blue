@@ -125,8 +125,17 @@ static void chimeTaskFn(void* param) {
     }
 }
 
+// Coalesce beeps: one chime per hit, not per detection event. A single device
+// often fires multiple alertable detections in a burst (e.g. a Flock cam seen
+// on BLE and WiFi = two different MACs the per-MAC dedup can't merge). Gate the
+// chime on a short global cooldown so the swarm beeps once.
+#define CHIME_DEDUP_MS 1500
+static volatile uint32_t lastChimeMs = 0;
 static void requestChime(void) {
     if (!chimeQueue) return;
+    uint32_t now = millis();
+    if (lastChimeMs != 0 && (uint32_t)(now - lastChimeMs) < CHIME_DEDUP_MS) return;
+    lastChimeMs = now;
     uint8_t one = 1;
     xQueueSend(chimeQueue, &one, 0);
 }

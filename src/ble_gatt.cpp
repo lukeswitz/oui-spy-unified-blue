@@ -259,7 +259,10 @@ void bleGattReconcileEngines(void) {
         mgrTornDown = true;
         g_meshManagerActive = false;
         mgrCommandedMask = 0;
-        for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+        for (int i = 0; i < ENGINE_COUNT; i++) {
+            mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+            if (i != ENGINE_PCAP) meshMarkNodesEngine((uint8_t)i, false);
+        }
         if (meshIsEnabled()) meshBroadcastCommand(0x0F, 0, nullptr, 0);
         Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL + manager demoted (nodes will self-idle)");
     }
@@ -289,11 +292,13 @@ void bleGattReconcileEngines(void) {
             if (lastEnable[e] != 0 && (now - lastEnable[e]) < 6000) continue;
             lastEnable[e] = now;
             meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
+            meshMarkNodesEngine((uint8_t)e, true);
             Serial.printf("[MGR-RECONCILE] engine %d missing — re-enable\n", e);
         } else if (extraAny & ENGINE_BITMASK(e)) {
-            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 1500) continue;
+            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 6000) continue;
             lastDisable[e] = now;
             meshBroadcastCommand(0x00, (uint8_t)e, nullptr, 0);
+            meshMarkNodesEngine((uint8_t)e, false);
             Serial.printf("[MGR-RECONCILE] engine %d not commanded — disable\n", e);
         }
     }
@@ -380,13 +385,18 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
             mgrCommandedMask |= (1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_SCANNING;
             if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = millis();
+            if (cmd.engine_id != ENGINE_PCAP) meshMarkNodesEngine(cmd.engine_id, true);
         } else if (cmd.command == 0x00 && cmd.engine_id < ENGINE_COUNT) {
             mgrCommandedMask &= ~(1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_DISABLED;
             if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = 0;
+            if (cmd.engine_id != ENGINE_PCAP) meshMarkNodesEngine(cmd.engine_id, false);
         } else if (cmd.command == 0x0F) {
             mgrCommandedMask = 0;
-            for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+            for (int i = 0; i < ENGINE_COUNT; i++) {
+                mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+                if (i != ENGINE_PCAP) meshMarkNodesEngine((uint8_t)i, false);
+            }
             mgrPcapStartedMs = 0;
         }
         if (cmd.command == 0x10 && cmd.engine_id == ENGINE_PCAP && cmd.payload_len >= 2) {

@@ -223,6 +223,44 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines) {
     xSemaphoreGive(liveMutex);
 }
 
+// Optimistically reflect a just-issued engine command in every live node's
+// mask, so reconcile sees intent satisfied immediately instead of spamming the
+// command for the ~5s until the next heartbeat confirms it. A heartbeat that
+// disagrees later re-reveals genuine drift (bounded to one re-issue per HB).
+void meshMarkNodesEngine(uint8_t engine, bool on) {
+    if (!liveMutex || engine >= 8) return;
+    uint8_t bit = (uint8_t)(1u << engine);
+    if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (liveNodes[i].id[0] == 0) continue;
+        if (liveNodes[i].role == MESH_ROLE_MANAGER) continue;
+        if (on) liveNodes[i].active_engines |= bit;
+        else    liveNodes[i].active_engines &= (uint8_t)~bit;
+    }
+    xSemaphoreGive(liveMutex);
+}
+
+// Liveness-only refresh. ACK and detection RX must NOT clobber the node's
+// engine mask/role — only HEARTBEAT carries those. Zeroing them here makes
+// reconcile see engines as "missing" between heartbeats and storm re-enables.
+static void recordLiveSeen(const char* id) {
+    if (!liveMutex) return;
+    if (id[0] == 0) return;
+    if (memcmp(id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+    if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    uint32_t now = millis();
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (liveNodes[i].id[0] == 0) continue;
+        if (memcmp(liveNodes[i].id, id, MESH_NODE_ID_LEN) == 0) {
+            liveNodes[i].last_ms = now;
+            xSemaphoreGive(liveMutex);
+            return;
+        }
+    }
+    xSemaphoreGive(liveMutex);
+    recordLiveNode(id, 0, 0);  // first sight only — HEARTBEAT fills in role+engines
+}
+
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
     if (!liveMutex || !out || maxOut == 0) return 0;
     if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
@@ -377,7 +415,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         dedupeIdx = (dedupeIdx + 1) % MESH_ACK_DEDUPE_SLOTS;
         Serial.printf("[MESH-ACK] seq=%u cmd=0x%02x engine=%u from=%.5s\n",
             ack.ack_seq, ack.ack_cmd, ack.ack_engine_id, ack.source_node_id);
-        recordLiveNode(ack.source_node_id, 0, 0);
+        recordLiveSeen(ack.source_node_id);
         cmdHealthAck(ack.source_node_id);
         if (pendingMutex && xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             for (int i = 0; i < MESH_CMD_PENDING_MAX; i++) {
@@ -562,7 +600,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     }
 
     pushDetection(&evt);
-    recordLiveNode(pkt.source_node_id, 0, 0);
+    recordLiveSeen(pkt.source_node_id);
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         MeshStatus s;

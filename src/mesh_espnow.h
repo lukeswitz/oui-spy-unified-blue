@@ -21,6 +21,7 @@ bool meshIsEnabled(void);
 bool meshInMeshWindow(void);
 bool meshTimeSlicingActive(void);
 void meshNoteOnHome(void);
+void meshMarkNodesEngine(uint8_t engine, bool on);
 bool meshManagerJoined(void);
 void meshAddFleetMac(const uint8_t* mac);
 bool meshIsFleetMac(const uint8_t* mac);
