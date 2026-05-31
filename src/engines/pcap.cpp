@@ -398,6 +398,7 @@ static void pcapStart(void) {
                            WIFI_PROMIS_FILTER_MASK_DATA |
                            WIFI_PROMIS_FILTER_MASK_CTRL
         };
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
         esp_wifi_set_promiscuous_filter(&f);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(pcapWifiCb);

@@ -166,6 +166,7 @@ static void flockWifiStart(void) {
         .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
                        WIFI_PROMIS_FILTER_MASK_DATA
     };
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     esp_wifi_set_promiscuous_filter(&filter);
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);

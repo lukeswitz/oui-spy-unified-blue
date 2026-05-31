@@ -519,6 +519,7 @@ static void wardriveStart(void) {
         esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous_ctrl_filter(&ctrl_filter);
 
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wardriveWifiCb);
         esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
