@@ -202,6 +202,7 @@ static void flockWifiLoop(void) {
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
         sendWildcardProbe();
+        if (meshIsEnabled() && channels[channelIdx] == 1) meshNoteOnHome();
     }
 }
 

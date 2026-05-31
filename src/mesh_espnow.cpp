@@ -619,12 +619,25 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
     (void)status;
 }
 
-#define MESH_SCAN_WINDOW_MS  900
 #define MESH_RX_WINDOW_MS    300
 #define MESH_RX_MIN_MS       100
+// Backstop: if a scanning node hasn't naturally dwelt on the mesh channel
+// within this window, force a brief ch1 visit so mesh stays alive. Normal
+// scanning weaves through ch1 (a priority channel) every sweep, so this rarely
+// fires — that's what recovers v0.3.9-class scan speed (no forced park).
+#define MESH_HOME_MAX_GAP_MS 1500
 static volatile bool g_meshWindow = false;
+static volatile uint32_t g_lastHomeMs = 0;
 static TaskHandle_t  meshSchedTaskHandle = NULL;
 bool meshInMeshWindow(void) { return g_meshWindow; }
+
+// Called by a scanning engine when it dwells on the mesh channel (ch1). The
+// radio is already there, so drain queued mesh TX now; ESP-NOW RX is active on
+// the current channel. No channel change, no scan pause.
+void meshNoteOnHome(void) {
+    g_lastHomeMs = millis();
+    if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
+}
 
 bool meshManagerJoined(void) {
     if (!liveMutex) return false;
@@ -672,8 +685,13 @@ static void meshSchedTaskFn(void* arg) {
     (void)arg;
     for (;;) {
         g_meshWindow = false;
-        vTaskDelay(pdMS_TO_TICKS(MESH_SCAN_WINDOW_MS));
-        if (!meshTimeSlicingActive()) { g_meshWindow = false; continue; }
+        vTaskDelay(pdMS_TO_TICKS(150));
+        if (!meshTimeSlicingActive()) { g_lastHomeMs = millis(); continue; }
+        // Engines weave through ch1 each sweep and call meshNoteOnHome there,
+        // refreshing g_lastHomeMs without ever pausing the scan. Only force a
+        // ch1 park if that hasn't happened recently (e.g. an engine parked on a
+        // non-ch1 channel like Sky Spy ch6, or a very long sweep).
+        if ((uint32_t)(millis() - g_lastHomeMs) < MESH_HOME_MAX_GAP_MS) continue;
         g_meshWindow = true;
         g_meshRxWin++;
         if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -689,6 +707,7 @@ static void meshSchedTaskFn(void* arg) {
                 uxQueueMessagesWaiting(meshTxQueue) == 0) break;
             vTaskDelay(pdMS_TO_TICKS(20));
         }
+        g_lastHomeMs = millis();
     }
 }
 #endif
@@ -990,9 +1009,20 @@ static void meshTxTaskFn(void* arg) {
 
         uint8_t cur_ch = 0; wifi_second_chan_t sec;
         esp_wifi_get_channel(&cur_ch, &sec);
+#ifdef OUISPY_ROLE_MANAGER
+        // Manager has no scan to disrupt — it lives on ch1; force it if drifted.
         if (cur_ch != MESH_RENDEZVOUS_CH) {
             esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
         }
+#else
+        // Node: never yank the radio off the scan channel. Send only while the
+        // scan is naturally dwelling on ch1 (meshNoteOnHome fired); otherwise
+        // wait for the next ch1 dwell. Keeps the scan sweep unbroken.
+        if (cur_ch != MESH_RENDEZVOUS_CH) {
+            xSemaphoreGive(txMutex);
+            continue;
+        }
+#endif
 
         int sent = 0;
         while (sent < MESH_TX_DRAIN_BURST) {
@@ -1128,7 +1158,11 @@ static void retryTaskFn(void* arg) {
         {
             uint32_t nowHb = millis();
             if (nowHb - lastHeartbeat >= 5000u) {
-                bool onHomeChannel = !meshTimeSlicingActive() || meshInMeshWindow();
+                uint8_t hbCh = 0; wifi_second_chan_t hbSec;
+                esp_wifi_get_channel(&hbCh, &hbSec);
+                bool onHomeChannel = !meshTimeSlicingActive() ||
+                                     meshInMeshWindow() ||
+                                     hbCh == MESH_RENDEZVOUS_CH;
                 if (onHomeChannel) {
                     lastHeartbeat = nowHb;
                     meshSendHeartbeat(engineGetActiveMask());

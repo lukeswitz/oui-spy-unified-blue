@@ -236,6 +236,7 @@ static void detectorLoop(void) {
         channelIdx = (channelIdx + 1) % channelCount;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
+        if (meshIsEnabled() && channels[channelIdx] == 1) meshNoteOnHome();
     }
 
     if (bleScan && millis() - lastScanStart >= SCAN_INTERVAL_MS) {

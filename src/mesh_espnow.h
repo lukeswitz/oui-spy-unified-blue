@@ -20,6 +20,7 @@ bool meshGetLatestAutoPcapEvent(uint32_t max_age_ms, MeshAutoPcapEventPacket* ou
 bool meshIsEnabled(void);
 bool meshInMeshWindow(void);
 bool meshTimeSlicingActive(void);
+void meshNoteOnHome(void);
 bool meshManagerJoined(void);
 void meshAddFleetMac(const uint8_t* mac);
 bool meshIsFleetMac(const uint8_t* mac);

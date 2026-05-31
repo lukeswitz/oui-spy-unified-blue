@@ -492,6 +492,7 @@ static void pcapLoop(void) {
             }
             esp_wifi_set_channel(pcapCurChan, WIFI_SECOND_CHAN_NONE);
             pcapLastHop = now;
+            if (meshOn && pcapCurChan == 1) meshNoteOnHome();
         }
     }
     if (pcapSenderHandle && (bufSizeA + bufSizeB) > (PCAP_BUF_SIZE / 4)) {

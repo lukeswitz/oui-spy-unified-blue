@@ -106,8 +106,11 @@ Run several boards as one swarm: a **manager** the phone talks to, and any numbe
 2. **Power on** — nodes auto-join the manager in ~10 s. No pairing step.
 3. **Connect the app to the *manager*** (not the nodes) — tap **CONNECT**, pick the `OUI-SPY-MGR…` device. **Config → NODES** lists every joined node as `LIVE` (older ones drop to `OFFLINE`).
 4. **Run engines** — detection engines (Detector, Flock, Sky Spy, Wardrive, …) run across **all** nodes at once; the feed shows which node each hit came from. **PCAP** captures from **one** node you pick on the PCAP screen.
+5. **Per-node radio (optional)** — when you **START** a WiGLE / WiGLE+Flock wardrive with nodes joined, a popup lets you set each node to **WiFi**, **BLE**, or **Both** (default Both). WiFi nodes split the channel range between them; a BLE-only node scans BLE continuously without taking a WiFi slice. The manager remembers each node's role.
 
 Toggling an engine off, or closing the app, stops the nodes — they don't keep scanning unattended.
+
+**Settings are manager-authoritative in node mode.** Device-wide settings changed on the manager — buzzer / LED / brightness, alert timing, and the ignore list — are pushed to **every** node and **override** each node's own copy. The single global Wardrive Radio toggle is likewise overridden by the per-node popup above. This is intentional (one place to drive the whole swarm) but can surprise you if you expected a node to keep its own setting: in node mode the manager's settings always win. Nothing is stored per-node in flash — the manager re-asserts the current settings continuously, so re-flashing or power-cycling a node never leaves it on a stale config.
 
 ---
 
@@ -120,7 +123,7 @@ Flutter app. iOS, macOS, Android. BLE GATT to the device. Every control, every r
 - Per-engine cards — tap a card to open that engine's settings screen.
 - Status bar — node count, GPS state, connection state.
 
-**Connecting & disconnecting** (no auto-connect — you're always in control):
+**Connecting & disconnecting** (auto-connect is **off by default** — opt in at *Settings → App → Connection → Auto-connect on launch*, which reconnects to the last device at startup):
 
 | Want to | Tap |
 |---------|-----|
@@ -155,7 +158,7 @@ The map screen — see detections plotted live as you drive / walk.
 |---------|------|
 | **START** / **PAUSE** / **RESUME** / **STOP** | Session lifecycle |
 | Target mode | WiGLE · Flock · Drone · Detector · WiGLE+Flock |
-| Radio | WiFi · BLE · both |
+| Radio | WiFi · BLE · both — in node mode a per-node popup on **START** overrides this for each node |
 | Follow-mode (`my_location`) | Toggle camera-tracks-you |
 | Layers (`layers` icon) | Map theme (dark / light) + tile source (CARTO Dark / Light / Voyager, OSM, OpenTopoMap, Stamen Toner / Terrain) |
 | Geofence (`fence` icon) | Open geofence editor |

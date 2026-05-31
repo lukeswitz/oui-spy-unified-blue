@@ -61,6 +61,20 @@ static void buildHopSchedule(void) {
             hopScheduleLen++;
         }
     }
+    // Node mode: ensure the sweep visits the mesh channel (ch1) so ESP-NOW
+    // rides the natural dwell instead of a forced scan-pausing park. ch1 is a
+    // real, dense channel, so this dwell still logs networks. Skipped in solo
+    // (no manager) — full v0.3.9 sweep, no mesh tax.
+    if (meshIsEnabled() && meshManagerJoined()) {
+        bool hasMeshCh = false;
+        for (uint8_t i = 0; i < hopScheduleLen; i++)
+            if (hopSchedule[i] == MESH_RENDEZVOUS_CH) { hasMeshCh = true; break; }
+        if (!hasMeshCh && hopScheduleLen < 32) {
+            hopSchedule[hopScheduleLen] = MESH_RENDEZVOUS_CH;
+            hopDwellMs[hopScheduleLen] = scanDwellForChannel(MESH_RENDEZVOUS_CH);
+            hopScheduleLen++;
+        }
+    }
     if (hopScheduleLen == 0) {
         hopSchedule[0] = channelStart;
         hopDwellMs[0] = scanDwellForChannel(channelStart);
@@ -574,6 +588,7 @@ static void wardriveLoop(void) {
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = now;
             sendWildcardProbe();
+            if (meshIsEnabled() && currentChannel == MESH_RENDEZVOUS_CH) meshNoteOnHome();
         }
     }
 

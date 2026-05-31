@@ -327,6 +327,7 @@ static void foxhunterLoop(void) {
             if (currentChannel > 14) currentChannel = 1;
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = millis();
+            if (meshIsEnabled() && currentChannel == 1) meshNoteOnHome();
         }
     }
 
