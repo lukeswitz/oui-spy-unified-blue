@@ -27,6 +27,9 @@ void bleGattMaybeResliceWardrive(void);
 
 // Manager: re-send desired engines to any node whose reported mask lacks them
 void bleGattReconcileEngines(void);
+#ifdef OUISPY_STOP_SELFTEST
+void mgrDebugSetCommanded(uint8_t mask);
+#endif
 
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);

@@ -5,6 +5,7 @@
 #include "../protocol.h"
 #include "../ble_gatt.h"
 #include "../mesh_espnow.h"
+#include "../ignore_list.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -46,6 +47,11 @@ static void heartbeatTask(void*) {
         tick++;
         bleGattMaybeResliceWardrive();
         bleGattReconcileEngines();
+        if ((tick % 7) == 0 && meshIsEnabled() && ignoreListCount() > 0) {
+            uint8_t ib[256];
+            size_t in = ignoreListSerialize(ib, sizeof(ib));
+            meshBroadcastIgnoreList(ib, in);
+        }
         if (bleGattIsConnected()) {
             bleGattNotifyPcapStats();
             bleGattNotifyMeshStatus();
@@ -87,6 +93,7 @@ void setup() {
 
     meshInit();
     bleGattInit();
+    ignoreListInit();
 
     {
         MeshConfig cfg = {};
@@ -154,6 +161,33 @@ void loop() {
         size_t n = meshGetLiveNodes(ln, 8, 30000);
         Serial.printf("[WDMGR] role keepalive (CONFIG only), live=%u heap=%u\n",
                       (unsigned)n, (unsigned)ESP.getFreeHeap());
+    }
+#endif
+#ifdef OUISPY_STOP_SELFTEST
+    static bool stOn = false;
+    static bool stStopped = false;
+    static uint32_t stT0 = 0;
+    static uint32_t stReassert = 0;
+    if (!stOn && millis() > 8000) {
+        MeshLiveNode ln[8];
+        size_t n = meshGetLiveNodes(ln, 8, 30000);
+        if (n > 0) {
+            stOn = true; stT0 = millis();
+            mgrDebugSetCommanded((1u << ENGINE_WARDRIVE) | (1u << ENGINE_FLOCK_BLE));
+            uint8_t cfg[11] = {0}; cfg[9] = 1; cfg[10] = 11;
+            meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, sizeof(cfg));
+            delay(120);
+            meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+            meshBroadcastCommand(0x01, ENGINE_FLOCK_BLE, nullptr, 0);
+            Serial.printf("[STOPTEST] ENABLE wardrive+flock_ble (commanded) -> %u nodes; STOP at +22s\n", (unsigned)n);
+        }
+    }
+    if (stOn && !stStopped && (millis() - stT0) > 22000) {
+        stStopped = true;
+        Serial.println("[STOPTEST] ===== STOP PRESSED ===== clear commanded + DISABLE_ALL + demote");
+        mgrDebugSetCommanded(0);
+        meshBroadcastCommand(0x0F, 0, nullptr, 0);
+        g_meshManagerActive = false;
     }
 #endif
 }

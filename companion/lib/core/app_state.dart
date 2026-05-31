@@ -394,6 +394,7 @@ class AppState extends ChangeNotifier {
         nodeId = canonicalNodeId(_ble.nodeId);
         if (nodeId.isNotEmpty) _recordSeenNode(nodeId);
         sessionStartTime = DateTime.now();
+        _ble.setIgnoreList(_ignoreList.serializeForFirmware());
         _gps.start().catchError((e) {
           DebugLog.log('GPS: start failed from BLE connect: $e');
           return false;

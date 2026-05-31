@@ -38,6 +38,7 @@ class BleManager {
   BluetoothCharacteristic? _gpsReceive;
   BluetoothCharacteristic? _hardwareConfig;
   BluetoothCharacteristic? _alertConfig;
+  BluetoothCharacteristic? _ignoreList;
   BluetoothCharacteristic? _foxhunterRssi;
   BluetoothCharacteristic? _skySpyTelemetry;
   BluetoothCharacteristic? _unipwnDevices;
@@ -297,6 +298,7 @@ class BleManager {
     if (uuid == GattUuids.gpsReceive) return _gpsReceive;
     if (uuid == GattUuids.hardwareConfig) return _hardwareConfig;
     if (uuid == GattUuids.alertConfig) return _alertConfig;
+    if (uuid == GattUuids.ignoreList) return _ignoreList;
     if (uuid == GattUuids.foxhunterRssi) return _foxhunterRssi;
     if (uuid == GattUuids.foxhunterConfig) return _foxhunterConfig;
     if (uuid == GattUuids.meshConfig) return _meshConfig;
@@ -518,6 +520,7 @@ class BleManager {
       if (c.uuid == GattUuids.gpsReceive) _gpsReceive = c;
       if (c.uuid == GattUuids.hardwareConfig) _hardwareConfig = c;
       if (c.uuid == GattUuids.alertConfig) _alertConfig = c;
+      if (c.uuid == GattUuids.ignoreList) _ignoreList = c;
       if (c.uuid == GattUuids.foxhunterRssi) _foxhunterRssi = c;
       if (c.uuid == GattUuids.skySpyTelemetry) _skySpyTelemetry = c;
       if (c.uuid == GattUuids.unipwnDevices) _unipwnDevices = c;
@@ -749,6 +752,11 @@ class BleManager {
       Uint8List.fromList([0xF2]),
       withoutResponse: false,
     );
+  }
+
+  Future<void> setIgnoreList(List<int> bytes) async {
+    if (_ignoreList == null) return;
+    await _ignoreList!.write(bytes, withoutResponse: false);
   }
 
   Future<void> setAutoPcap(bool enabled) async {

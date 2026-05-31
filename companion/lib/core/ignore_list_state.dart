@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 
 enum IgnoreType {
   ssid('SSID'),
@@ -95,6 +96,7 @@ class IgnoreListState extends ChangeNotifier {
 
   final List<IgnoreEntry> _entries = [];
   final Map<int, String> _ouiHexCache = {};
+  void Function()? onChanged;
   List<IgnoreEntry> get entries => List.unmodifiable(_entries);
 
   void add(IgnoreEntry entry) {
@@ -158,6 +160,45 @@ class IgnoreListState extends ChangeNotifier {
     return false;
   }
 
+  // Wire format for firmware (matches src/ignore_list.cpp):
+  //   [count:1] then per entry [type:1][scope:1][len:1][value:len]
+  //   type: ssid=0 mac=1 oui=2 (IgnoreType.index); scope: both=0 wifi=1 ble=2 (IgnoreScope.index)
+  List<int> serializeForFirmware() {
+    final encoded = <List<int>>[];
+    for (final e in _entries) {
+      if (!e.enabled) continue;
+      if (encoded.length >= 48) break;
+      List<int> value;
+      switch (e.type) {
+        case IgnoreType.ssid:
+          value = utf8.encode(e.value);
+          if (value.length > 32) value = value.sublist(0, 32);
+        case IgnoreType.mac:
+          value = _hexToBytes(e.value, 6);
+        case IgnoreType.oui:
+          value = _hexToBytes(e.value, 3);
+      }
+      if (value.isEmpty) continue;
+      encoded.add([e.type.index, e.scope.index, value.length, ...value]);
+    }
+    final out = <int>[encoded.length & 0xFF];
+    for (final en in encoded) {
+      out.addAll(en);
+    }
+    return out;
+  }
+
+  static List<int> _hexToBytes(String s, int n) {
+    final hex = s.toLowerCase().replaceAll(_macStripRegex, '');
+    final out = <int>[];
+    for (int i = 0; i + 1 < hex.length && out.length < n; i += 2) {
+      final b = int.tryParse(hex.substring(i, i + 2), radix: 16);
+      if (b == null) return const [];
+      out.add(b);
+    }
+    return out.length == n ? out : const [];
+  }
+
   void _rebuildOuiCache() {
     _ouiHexCache.clear();
     for (int i = 0; i < _entries.length; i++) {
@@ -201,9 +242,14 @@ class IgnoreListState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final json = jsonEncode(_entries.map((e) => e.toJson()).toList());
     await prefs.setString(_prefsKey, json);
+    onChanged?.call();
   }
 }
 
 final ignoreListProvider = ChangeNotifierProvider<IgnoreListState>((ref) {
-  return IgnoreListState();
+  final state = IgnoreListState();
+  state.onChanged = () {
+    ref.read(bleManagerProvider).setIgnoreList(state.serializeForFirmware());
+  };
+  return state;
 });

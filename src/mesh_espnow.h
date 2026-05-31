@@ -23,8 +23,10 @@ bool meshTimeSlicingActive(void);
 bool meshManagerJoined(void);
 extern volatile uint32_t g_meshCmdRx;
 extern volatile uint32_t g_meshRxWin;
+extern volatile bool g_meshManagerActive;
 void meshResetTxDedup(void);
-#ifdef OUISPY_AUTOPCAP_SELFTEST
+void meshBroadcastIgnoreList(const uint8_t* data, size_t len);
+#if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)
 void meshDebugForceManager(void);
 #endif
 const char* meshGetLocalNodeId(void);

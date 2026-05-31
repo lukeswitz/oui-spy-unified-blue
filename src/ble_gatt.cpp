@@ -13,6 +13,7 @@
  */
 #include "ble_gatt.h"
 #include "engine_registry.h"
+#include "ignore_list.h"
 #include "engines/pcap.h"
 #include "engines/detector.h"
 #include "mesh_espnow.h"
@@ -35,6 +36,7 @@ static NimBLECharacteristic* chrDeviceStatus = nullptr;
 static NimBLECharacteristic* chrGpsReceive = nullptr;
 static NimBLECharacteristic* chrHardwareConfig = nullptr;
 static NimBLECharacteristic* chrAlertConfig = nullptr;
+static NimBLECharacteristic* chrIgnoreList = nullptr;
 static NimBLECharacteristic* chrFoxhunterRssi = nullptr;
 static NimBLECharacteristic* chrFoxhunterConfig = nullptr;
 static NimBLECharacteristic* chrUnipwnCommand = nullptr;
@@ -178,15 +180,24 @@ void bleGattMaybeResliceWardrive(void) {
 #endif
 }
 
+#ifdef OUISPY_STOP_SELFTEST
+void mgrDebugSetCommanded(uint8_t mask) {
+    mgrCommandedMask = mask;
+    for (int i = 0; i < ENGINE_COUNT; i++)
+        mgrCommandedStates[i] = (mask & (1u << i)) ? (uint8_t)ESTATE_SCANNING : (uint8_t)ESTATE_DISABLED;
+}
+#endif
+
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
     if (mgrPhoneGoneMs != 0 && !phoneConnected && !mgrTornDown &&
         (millis() - mgrPhoneGoneMs) > MGR_PHONE_GRACE_MS) {
         mgrTornDown = true;
+        g_meshManagerActive = false;
         mgrCommandedMask = 0;
         for (int i = 0; i < ENGINE_COUNT; i++) mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
         if (meshIsEnabled()) meshBroadcastCommand(0x0F, 0, nullptr, 0);
-        Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL to nodes");
+        Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL + manager demoted (nodes will self-idle)");
     }
     if (!meshIsEnabled()) return;
     const uint8_t pcapBit = ENGINE_BITMASK(ENGINE_PCAP);
@@ -216,7 +227,7 @@ void bleGattReconcileEngines(void) {
             meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
             Serial.printf("[MGR-RECONCILE] engine %d missing — re-enable\n", e);
         } else if (extraAny & ENGINE_BITMASK(e)) {
-            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 6000) continue;
+            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 1500) continue;
             lastDisable[e] = now;
             meshBroadcastCommand(0x00, (uint8_t)e, nullptr, 0);
             Serial.printf("[MGR-RECONCILE] engine %d not commanded — disable\n", e);
@@ -231,6 +242,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 #ifdef OUISPY_ROLE_MANAGER
         mgrPhoneGoneMs = 0;
         mgrTornDown = false;
+        g_meshManagerActive = true;
 #endif
         NimBLEScan* scan = NimBLEDevice::getScan();
         if (scan && scan->isScanning()) {
@@ -473,6 +485,19 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 extern void foxhunterSetTarget(const uint8_t* mac, uint8_t channel);
+
+class IgnoreListCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        ignoreListSet((const uint8_t*)val.data(), val.length());
+#ifdef OUISPY_ROLE_MANAGER
+        if (meshIsEnabled()) meshBroadcastIgnoreList((const uint8_t*)val.data(), val.length());
+#endif
+        Serial.printf("[BLE] Ignore list write: %u bytes -> %u entries\n",
+                      (unsigned)val.length(), ignoreListCount());
+    }
+};
+static IgnoreListCallbacks ignoreListCb;
 
 class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
@@ -1198,6 +1223,13 @@ void bleGattInit(void) {
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
     );
     chrAlertConfig->setCallbacks(&alertConfigCb);
+
+    // -- Ignore List (READ, WRITE) — mutes chime/auto-pcap for ignored MAC/OUI/SSID --
+    chrIgnoreList = svc->createCharacteristic(
+        CHR_IGNORE_LIST,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+    );
+    chrIgnoreList->setCallbacks(&ignoreListCb);
 
     // -- Foxhunter Config (WRITE) --
     chrFoxhunterConfig = svc->createCharacteristic(

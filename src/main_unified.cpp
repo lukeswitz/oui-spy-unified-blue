@@ -19,6 +19,7 @@
 
 #include "protocol.h"
 #include "engine_registry.h"
+#include "ignore_list.h"
 #include "ble_gatt.h"
 #include "mesh_espnow.h"
 #include "wifi_ota_handler.h"
@@ -214,6 +215,14 @@ static void detectionNotifyTask(void* param) {
 
     for (;;) {
         if (xQueueReceive(detectionQueue, &evt, portMAX_DELAY) == pdTRUE) {
+            bool evtIsBle = (evt.engine_id == ENGINE_FLOCK_BLE ||
+                             evt.engine_id == ENGINE_UNIPWN ||
+                             evt.channel == 0);
+            const char* evtSsid =
+                (evt.engine_id == ENGINE_WARDRIVE && !evtIsBle)
+                    ? evt.ext.wardrive.ssid : "";
+            if (ignoreListMatch(evt.mac, evtSsid, evtIsBle)) continue;
+
             if (evt.engine_id != ENGINE_WARDRIVE &&
                 isNotifyDedupCooldown(evt.mac, evt.engine_id)) continue;
 
@@ -298,6 +307,19 @@ static void statusHeartbeatTask(void* param) {
                       (unsigned long)g_meshCmdRx,
                       (unsigned long)g_meshRxWin,
                       meshTimeSlicingActive() ? 1 : 0);
+
+        static bool wasManaged = false;
+        if (meshIsEnabled()) {
+            if (meshManagerJoined()) {
+                wasManaged = true;
+            } else if (wasManaged && engineGetActiveMask() != 0) {
+                Serial.println("[WATCHDOG] manager lost — self-idle all engines");
+                engineDisableAll();
+                wasManaged = false;
+            } else if (wasManaged) {
+                wasManaged = false;
+            }
+        }
     }
 }
 
@@ -434,6 +456,33 @@ static void autoPcapSelftestTask(void* arg) {
 }
 #endif
 
+#ifdef OUISPY_WATCHDOG_SELFTEST
+static void watchdogSelftestTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(6000));
+    meshDebugForceManager();
+    vTaskDelay(pdMS_TO_TICKS(300));
+    {
+        EngineCommand ec = {};
+        ec.command = 0x01;
+        ec.engine_id = ENGINE_WARDRIVE;
+        ec.payload_len = 0;
+        xQueueSend(engineCmdQueue, &ec, portMAX_DELAY);
+    }
+    vTaskDelay(pdMS_TO_TICKS(500));
+    Serial.printf("[WDTEST] forced manager + wardrive ENABLE (mask=0x%02X); NOT refreshing manager -> "
+                  "watchdog must self-idle in ~%lus\n",
+                  engineGetActiveMask(), (unsigned long)(MESH_MANAGER_TTL_MS / 1000));
+    for (int i = 0; i < 12; i++) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        Serial.printf("[WDTEST] t=%ds mgrJoined=%d mask=0x%02X\n",
+                      (i + 1) * 5, meshManagerJoined() ? 1 : 0, engineGetActiveMask());
+    }
+    Serial.println("[WDTEST] DONE");
+    vTaskDelete(NULL);
+}
+#endif
+
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -454,6 +503,7 @@ void setup() {
 
     // Load hardware config (buzzer/LED/neopixel) from NVS
     loadHardwareConfig();
+    ignoreListInit();
 
     // Create FreeRTOS queues
     detectionQueue = xQueueCreate(64, sizeof(DetectionEvent));
@@ -525,6 +575,10 @@ void setup() {
 #ifdef OUISPY_AUTOPCAP_SELFTEST
     xTaskCreatePinnedToCore(autoPcapSelftestTask, "aptest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] AUTO-PCAP SELFTEST armed");
+#endif
+#ifdef OUISPY_WATCHDOG_SELFTEST
+    xTaskCreatePinnedToCore(watchdogSelftestTask, "wdtest", 4096, NULL, 1, NULL, 1);
+    Serial.println("[INIT] WATCHDOG SELFTEST armed");
 #endif
 #else
     xTaskCreatePinnedToCore(engineSelftestTask, "selftest", 8192, NULL, 1, NULL, 1);

@@ -258,6 +258,7 @@ extern volatile uint8_t hwNeopixelBrightness;
 #define CHR_DFU_DATA         "00000051-" UUID_BASE
 #define CHR_SYSTEM_CONTROL   "00000052-" UUID_BASE
 #define CHR_WIFI_CONFIG      "00000040-" UUID_BASE
+#define CHR_IGNORE_LIST      "00000023-" UUID_BASE
 // PCAP engine
 #define CHR_PCAP_CONTROL     "00000160-" UUID_BASE
 #define CHR_PCAP_STATS       "00000161-" UUID_BASE
@@ -360,7 +361,16 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_AUTOPCAP_EVENT  = 0x07,
     MESH_PKT_RAW_NOTIFY      = 0x08,
     MESH_PKT_HEARTBEAT       = 0x09,
+    MESH_PKT_IGNORELIST      = 0x0A,
 };
+
+#define MESH_IGNORELIST_MAX 220
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  len;
+    uint8_t  data[MESH_IGNORELIST_MAX];
+} MeshIgnoreListPacket;
 
 #define MESH_ROLE_NODE     0
 #define MESH_ROLE_MANAGER  1

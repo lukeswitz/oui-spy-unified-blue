@@ -35,6 +35,9 @@ class GattUuids {
   /// READ, WRITE: cooldown, heartbeat, rediscover timing
   static final alertConfig = Guid('00000021-$_base');
 
+  /// READ, WRITE: ignore list (mutes chime/auto-pcap for ignored MAC/OUI/SSID)
+  static final ignoreList = Guid('00000023-$_base');
+
   /// READ, NOTIFY: chunked session data download
   static final sessionSync = Guid('00000030-$_base');
 

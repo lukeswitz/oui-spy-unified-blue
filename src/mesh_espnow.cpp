@@ -1,5 +1,7 @@
 #include "mesh_espnow.h"
 #include "engine_registry.h"
+#include "ignore_list.h"
+#include <stddef.h>
 #include "ble_gatt.h"
 #include <Arduino.h>
 #include <esp_now.h>
@@ -87,6 +89,7 @@ static void cmdHealthMiss(const char* id) {
 
 volatile uint32_t g_meshCmdRx = 0;
 volatile uint32_t g_meshRxWin = 0;
+volatile bool g_meshManagerActive = true;
 static TaskHandle_t      retryTaskHandle = NULL;
 static uint8_t           seqCounter = 0;
 static const uint8_t     kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
@@ -446,6 +449,17 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
+    if (plainLen >= 7 && plainBuf[0] == MESH_PKT_IGNORELIST) {
+        MeshIgnoreListPacket il;
+        size_t cp = plainLen <= sizeof(il) ? plainLen : sizeof(il);
+        memcpy(&il, plainBuf, cp);
+        if (memcmp(il.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        uint8_t n = il.len;
+        if (n > MESH_IGNORELIST_MAX) n = MESH_IGNORELIST_MAX;
+        ignoreListSet(il.data, n);
+        return;
+    }
+
     if (plainLen == sizeof(MeshAutoPcapEventPacket) && plainBuf[0] == MESH_PKT_AUTOPCAP_EVENT) {
         MeshAutoPcapEventPacket ev;
         memcpy(&ev, plainBuf, sizeof(ev));
@@ -591,7 +605,7 @@ bool meshTimeSlicingActive(void) {
     return meshCurrentConfig.enabled && meshManagerJoined();
 }
 
-#ifdef OUISPY_AUTOPCAP_SELFTEST
+#if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)
 void meshDebugForceManager(void) {
     recordLiveNode("MGRX", MESH_ROLE_MANAGER, 0);
 }
@@ -789,6 +803,20 @@ void meshDisable(void) {
     Serial.println("[MESH] Disabled");
 }
 
+void meshBroadcastIgnoreList(const uint8_t* data, size_t len) {
+    if (!meshCurrentConfig.enabled) return;
+    if (len > MESH_IGNORELIST_MAX) len = MESH_IGNORELIST_MAX;
+    MeshIgnoreListPacket pkt = {};
+    pkt.pkt_type = MESH_PKT_IGNORELIST;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    pkt.len = (uint8_t)len;
+    if (len) memcpy(pkt.data, data, len);
+    size_t pktSize = offsetof(MeshIgnoreListPacket, data) + len;
+    uint8_t enc[256]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
+    enqueueTx(enc, encLen);
+}
+
 void meshBroadcastDetection(const DetectionEvent* evt) {
     if (!meshCurrentConfig.enabled) return;
     if (evt->source_node_id[0] != '\0') return;
@@ -817,6 +845,9 @@ void meshBroadcastDetection(const DetectionEvent* evt) {
             break;
         case ENGINE_DETECTOR:
             extSize = sizeof(evt->ext.detector);
+            break;
+        case ENGINE_WARDRIVE:
+            extSize = sizeof(evt->ext.wardrive);
             break;
         default:
             break;
@@ -1186,7 +1217,7 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     hb.uptime_s = millis() / 1000u;
     hb.free_heap = (uint32_t)ESP.getFreeHeap();
 #ifdef OUISPY_ROLE_MANAGER
-    hb.role = 1;
+    hb.role = g_meshManagerActive ? 1 : 0;
 #else
     hb.role = 0;
 #endif
