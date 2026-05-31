@@ -123,7 +123,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final app = ref.read(appStateProvider);
     final wd = ref.read(wardriveProvider);
     if (!wd.target.engines(wd.radio).contains(Engine.wardrive)) return true;
-    final nodes = app.liveKnownNodes.toList()..sort();
+    final mgrId = AppState.canonicalNodeId(app.nodeId);
+    final nodes = app.liveKnownNodes
+        .where((id) => !(app.isManagerConnected && id == mgrId))
+        .toList()
+      ..sort();
     if (nodes.isEmpty) return true;
     final roles = <String, int>{
       for (final n in nodes) n: app.wardriveRadioForNode(n),
