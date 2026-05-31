@@ -38,13 +38,13 @@ static void autoPcapLoad(void);
 static void autoPcapSave(void);
 
 static volatile uint32_t g_notifyCooldownMs = 5000;
-static volatile uint32_t g_rediscoverMs     = 30000;
+static volatile uint32_t g_rediscoverMs     = 10000;
 
 void engineLoadAlertPrefs(void) {
     Preferences p;
     p.begin("ouispy-alert", true);
     uint16_t cool  = p.getUShort("cooldown",   5000);
-    uint16_t redis = p.getUShort("rediscover", 30000);
+    uint16_t redis = p.getUShort("rediscover", 10000);
     p.end();
     if (cool  < 100)   cool  = 100;
     if (redis < 1000)  redis = 1000;
