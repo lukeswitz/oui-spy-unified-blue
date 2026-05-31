@@ -278,7 +278,7 @@ App-side filter: hits inside excluded zones are dropped from feed, map, DB, and 
 | **Channel Range** | Default WiFi channel range |
 | **OUI Database** | View / update the 39k+ vendor DB; import WiGLE CSVs |
 | **WiGLE** | Log in / out, paste API token, view your WiGLE stats and rank |
-| **Audio** | Buzzer volume (PWM) |
+| **Audio** | Buzzer volume (PWM) — one beep per detection (deduped, even when a device is seen on both BLE and WiFi) |
 | **Lighting** | NeoPixel brightness |
 | **Firmware Timing** | Rediscover window, auto-PCAP cooldown |
 | **Station Mode** | WiFi credentials for OTA / mesh (with **WIPE** confirmation) |
