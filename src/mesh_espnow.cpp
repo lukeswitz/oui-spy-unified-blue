@@ -162,6 +162,32 @@ static SemaphoreHandle_t       autoPcapEventMutex = NULL;
 static MeshLiveNode liveNodes[MESH_LIVE_NODES_MAX] = {};
 static SemaphoreHandle_t liveMutex = NULL;
 
+#define MESH_FLEET_MAC_MAX 24
+static uint8_t fleetMacs[MESH_FLEET_MAC_MAX][6];
+static volatile int fleetMacCount = 0;
+
+void meshAddFleetMac(const uint8_t* mac) {
+    if (!mac) return;
+    static const uint8_t zero[6]  = {0, 0, 0, 0, 0, 0};
+    static const uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (memcmp(mac, zero, 6) == 0 || memcmp(mac, bcast, 6) == 0) return;
+    int n = fleetMacCount;
+    for (int i = 0; i < n; i++)
+        if (memcmp(fleetMacs[i], mac, 6) == 0) return;
+    if (n < MESH_FLEET_MAC_MAX) {
+        memcpy(fleetMacs[n], mac, 6);
+        fleetMacCount = n + 1;
+    }
+}
+
+bool meshIsFleetMac(const uint8_t* mac) {
+    if (!mac) return false;
+    int n = fleetMacCount;
+    for (int i = 0; i < n; i++)
+        if (memcmp(fleetMacs[i], mac, 6) == 0) return true;
+    return false;
+}
+
 static void recordLiveNode(const char* id, uint8_t role, uint8_t engines) {
     if (!liveMutex) return;
     if (id[0] == 0) return;
@@ -289,6 +315,8 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
 
 static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int len) {
     if (!meshCurrentConfig.enabled) return;
+
+    if (macAddr) meshAddFleetMac(macAddr);
 
     if (len == (int)sizeof(MeshInvitePacket) && data[0] == MESH_PKT_INVITE) {
         MeshInvitePacket inv;
@@ -653,6 +681,9 @@ void meshInit(void) {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_BT);
     snprintf(localNodeId, MESH_NODE_ID_LEN, "%02X%02X", mac[4], mac[5]);
+    meshAddFleetMac(mac);
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) meshAddFleetMac(mac);
+    if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) == ESP_OK) meshAddFleetMac(mac);
 
     meshTxQueue = xQueueCreate(MESH_TX_QUEUE_DEPTH, sizeof(MeshTxItem));
     if (!meshTxQueue) {

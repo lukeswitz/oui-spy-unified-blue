@@ -261,6 +261,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
 
         const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'CONNECTION'),
+        const _AutoConnectToggle(),
+
+        const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'WARDRIVE — RSSI'),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
@@ -981,7 +985,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 class _ScanTimingSliders extends ConsumerWidget {
   const _ScanTimingSliders();
 
-  static const _steps = [50, 100, 150, 200, 250, 300, 350, 400, 500, 800, 1000, 1500, 2000, 3000, 5000];
+  static const _steps = [50, 100, 110, 150, 200, 250, 300, 350, 400, 500, 800, 1000, 1500, 2000, 3000, 5000];
 
   int _prevStep(int current) {
     for (int i = _steps.length - 1; i >= 0; i--) {
@@ -1138,6 +1142,46 @@ class _ChannelRangeSlider extends ConsumerWidget {
           onUp: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd + 1,
         ),
       ],
+    );
+  }
+}
+
+class _AutoConnectToggle extends StatefulWidget {
+  const _AutoConnectToggle();
+
+  @override
+  State<_AutoConnectToggle> createState() => _AutoConnectToggleState();
+}
+
+class _AutoConnectToggleState extends State<_AutoConnectToggle> {
+  bool _value = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      if (!mounted) return;
+      setState(() => _value = p.getBool('autoConnectEnabled') ?? false);
+    });
+  }
+
+  Future<void> _set(bool v) async {
+    setState(() => _value = v);
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('autoConnectEnabled', v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConfigToggleRow(
+      icon: _value ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+      label: 'Auto-connect on launch',
+      subtitle: _value
+          ? 'Reconnects to the last OUI-SPY device at startup'
+          : 'Connect manually from the home screen',
+      color: AppTheme.accent,
+      value: _value,
+      onChanged: _set,
     );
   }
 }

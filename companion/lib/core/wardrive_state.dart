@@ -98,12 +98,19 @@ class WardriveController extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
-    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
-    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
+    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 250;
+    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 110;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
     _channelEnd = p.getInt('wd_channelEnd') ?? 14;
+    if (!(p.getBool('wd_dwellFastReset_v2') ?? false)) {
+      _wifiScanInterval = 250;
+      _wifiDwellPerCh = 110;
+      await p.setInt('wd_wifiScanInterval', _wifiScanInterval);
+      await p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
+      await p.setBool('wd_dwellFastReset_v2', true);
+    }
     notifyListeners();
   }
 
@@ -118,6 +125,13 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_channelStart', _channelStart);
     p.setInt('wd_channelEnd', _channelEnd);
   }
+
+  /// Map a radio mask (0x01/0x02/0x03) to the [WardriveRadio] enum.
+  static WardriveRadio radioFromMask(int mask) => switch (mask & 0x03) {
+    0x01 => WardriveRadio.wifi,
+    0x02 => WardriveRadio.ble,
+    _ => WardriveRadio.both,
+  };
 
   final BleManager _ble;
   final GpsProvider _gps;
@@ -147,11 +161,11 @@ class WardriveController extends ChangeNotifier {
   int get bleRssiRelogDb => _bleRssiRelogDb;
   set bleRssiRelogDb(int v) { _bleRssiRelogDb = v; notifyListeners(); _savePrefs(); }
 
-  int _wifiScanInterval = 350;
+  int _wifiScanInterval = 250;
   int get wifiScanInterval => _wifiScanInterval;
   set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); }
 
-  int _wifiDwellPerCh = 150;
+  int _wifiDwellPerCh = 110;
   int get wifiDwellPerCh => _wifiDwellPerCh;
   set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); }
 

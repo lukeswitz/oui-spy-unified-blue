@@ -38,6 +38,9 @@ class GattUuids {
   /// READ, WRITE: ignore list (mutes chime/auto-pcap for ignored MAC/OUI/SSID)
   static final ignoreList = Guid('00000023-$_base');
 
+  /// READ, WRITE: per-node radio role (WiFi/BLE/Both) for wardrive slicing
+  static final nodeRadio = Guid('00000024-$_base');
+
   /// READ, NOTIFY: chunked session data download
   static final sessionSync = Guid('00000030-$_base');
 

@@ -259,6 +259,7 @@ extern volatile uint8_t hwNeopixelBrightness;
 #define CHR_SYSTEM_CONTROL   "00000052-" UUID_BASE
 #define CHR_WIFI_CONFIG      "00000040-" UUID_BASE
 #define CHR_IGNORE_LIST      "00000023-" UUID_BASE
+#define CHR_NODE_RADIO       "00000024-" UUID_BASE
 // PCAP engine
 #define CHR_PCAP_CONTROL     "00000160-" UUID_BASE
 #define CHR_PCAP_STATS       "00000161-" UUID_BASE

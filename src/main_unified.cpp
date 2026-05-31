@@ -221,6 +221,13 @@ static void detectionNotifyTask(void* param) {
             const char* evtSsid =
                 (evt.engine_id == ENGINE_WARDRIVE && !evtIsBle)
                     ? evt.ext.wardrive.ssid : "";
+            const char* evtName =
+                (evt.engine_id == ENGINE_WARDRIVE)
+                    ? (evtIsBle ? evt.ext.wardrive.device_name : evt.ext.wardrive.ssid)
+                    : "";
+            if (strncmp(evtName, "OUI-SPY", 7) == 0 || meshIsFleetMac(evt.mac)) {
+                continue;
+            }
             if (ignoreListMatch(evt.mac, evtSsid, evtIsBle)) {
                 Serial.printf("[IGNORE-SKIP] eng=%d ble=%d mac=%02X:%02X:%02X:%02X:%02X:%02X ssid='%s'\n",
                               evt.engine_id, evtIsBle ? 1 : 0,

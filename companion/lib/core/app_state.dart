@@ -215,20 +215,48 @@ class AppState extends ChangeNotifier {
   final Map<String, int> _nodeWardriveRadio = {};
   Map<String, String> get nodeLabels => Map.unmodifiable(_nodeLabels);
   Map<String, int> get nodeWardriveRadio => Map.unmodifiable(_nodeWardriveRadio);
-  int wardriveRadioForNode(String id) => _nodeWardriveRadio[id] ?? 0x03;
-  Future<void> setWardriveRadioForNode(String id, int mask) async {
-    final m = (mask & 0x03) == 0 ? 0x03 : (mask & 0x03);
-    _nodeWardriveRadio[id] = m;
+  int wardriveRadioForNode(String id) =>
+      _nodeWardriveRadio[canonicalNodeId(id)] ?? 0x03;
+
+  Future<void> _persistNodeWardriveRadio() async {
     final p = await SharedPreferences.getInstance();
     await p.setStringList(
       'nodeWardriveRadio',
       _nodeWardriveRadio.entries.map((e) => '${e.key}=${e.value}').toList(),
     );
+  }
+
+  /// Push the whole per-node radio map to the firmware. The manager applies
+  /// each node's radio while slicing channels (manager mode); in solo a single
+  /// node uses the global wardrive radio (set by the caller). Pushing the map
+  /// to a solo node is a harmless no-op.
+  Future<void> _pushNodeRadioRoles() async {
     try {
-      await _ble.setWardriveNodeRadio(id, m);
+      await _ble.setNodeRadioRoles(_nodeWardriveRadio);
     } on Exception catch (e) {
-      DebugLog.log('AppState: setWardriveNodeRadio($id) error: $e');
+      DebugLog.log('AppState: setNodeRadioRoles error: $e');
     }
+  }
+
+  Future<void> setWardriveRadioForNode(String id, int mask) async {
+    final canon = canonicalNodeId(id);
+    final m = (mask & 0x03) == 0 ? 0x03 : (mask & 0x03);
+    _nodeWardriveRadio[canon] = m;
+    await _persistNodeWardriveRadio();
+    await _pushNodeRadioRoles();
+    notifyListeners();
+  }
+
+  /// Bulk-set per-node radio roles (from the wardrive-start popup), persist,
+  /// and push once to the firmware.
+  Future<void> applyNodeRadioRoles(Map<String, int> roles) async {
+    roles.forEach((id, mask) {
+      final canon = canonicalNodeId(id);
+      if (canon.isEmpty) return;
+      _nodeWardriveRadio[canon] = (mask & 0x03) == 0 ? 0x03 : (mask & 0x03);
+    });
+    await _persistNodeWardriveRadio();
+    await _pushNodeRadioRoles();
     notifyListeners();
   }
   Set<String> get liveKnownNodes {

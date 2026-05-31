@@ -21,6 +21,8 @@ bool meshIsEnabled(void);
 bool meshInMeshWindow(void);
 bool meshTimeSlicingActive(void);
 bool meshManagerJoined(void);
+void meshAddFleetMac(const uint8_t* mac);
+bool meshIsFleetMac(const uint8_t* mac);
 extern volatile uint32_t g_meshCmdRx;
 extern volatile uint32_t g_meshRxWin;
 extern volatile bool g_meshManagerActive;

@@ -37,6 +37,7 @@ static NimBLECharacteristic* chrGpsReceive = nullptr;
 static NimBLECharacteristic* chrHardwareConfig = nullptr;
 static NimBLECharacteristic* chrAlertConfig = nullptr;
 static NimBLECharacteristic* chrIgnoreList = nullptr;
+static NimBLECharacteristic* chrNodeRadio = nullptr;
 static NimBLECharacteristic* chrFoxhunterRssi = nullptr;
 static NimBLECharacteristic* chrFoxhunterConfig = nullptr;
 static NimBLECharacteristic* chrUnipwnCommand = nullptr;
@@ -90,28 +91,70 @@ static uint8_t mgrWardriveCfg[16] = {
 };
 static uint8_t mgrWardriveCfgLen = 11;
 
+#define MGR_NODE_RADIO_MAX MESH_LIVE_NODES_MAX
+static struct { char id[MESH_NODE_ID_LEN]; uint8_t radio; } mgrNodeRadio[MGR_NODE_RADIO_MAX];
+static uint8_t mgrNodeRadioCount = 0;
+
+static uint8_t mgrGetNodeRadio(const char* id) {
+    for (uint8_t i = 0; i < mgrNodeRadioCount; i++)
+        if (memcmp(mgrNodeRadio[i].id, id, MESH_NODE_ID_LEN - 1) == 0)
+            return mgrNodeRadio[i].radio;
+    return 0x03;
+}
+
+static void mgrNodeRadioSave(void) {
+    Preferences p;
+    p.begin("ouispy-nrad", false);
+    p.putUChar("n", mgrNodeRadioCount);
+    p.putBytes("map", mgrNodeRadio, (size_t)mgrNodeRadioCount * sizeof(mgrNodeRadio[0]));
+    p.end();
+}
+
+static void mgrNodeRadioLoad(void) {
+    Preferences p;
+    p.begin("ouispy-nrad", true);
+    uint8_t n = p.getUChar("n", 0);
+    if (n > MGR_NODE_RADIO_MAX) n = MGR_NODE_RADIO_MAX;
+    size_t want = (size_t)n * sizeof(mgrNodeRadio[0]);
+    size_t got = p.getBytes("map", mgrNodeRadio, want);
+    mgrNodeRadioCount = (got == want) ? n : 0;
+    p.end();
+}
+
 static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
     if (len < 11) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
 
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
     MeshLiveNode nodes[MESH_LIVE_NODES_MAX];
+    uint8_t radios[MESH_LIVE_NODES_MAX];
     size_t nn = 0;
     for (size_t i = 0; i < total; i++) {
         if (live[i].role == MESH_ROLE_MANAGER) continue;
-        nodes[nn++] = live[i];
+        nodes[nn] = live[i];
+        radios[nn] = mgrGetNodeRadio(live[i].id);
+        nn++;
     }
-    if (nn <= 1) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
+    if (nn == 0) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
 
     uint8_t cs = cfg[9], ce = cfg[10];
     if (cs < 1 || cs > 14) cs = 1;
     if (ce < cs || ce > 14) ce = 11;
     uint16_t span = (uint16_t)(ce - cs + 1);
 
+    uint8_t wifiCount = 0;
+    for (size_t i = 0; i < nn; i++) if (radios[i] & 0x01) wifiCount++;
+
+    uint8_t wifiIdx = 0;
     for (size_t i = 0; i < nn; i++) {
-        uint8_t sStart = (uint8_t)(cs + (span * i) / nn);
-        uint8_t sEnd   = (uint8_t)(cs + (span * (i + 1)) / nn - 1);
-        if (sEnd < sStart) sEnd = sStart;
+        uint8_t r = radios[i];
+        uint8_t sStart = cs, sEnd = ce;
+        if ((r & 0x01) && wifiCount > 1) {
+            sStart = (uint8_t)(cs + (span * wifiIdx) / wifiCount);
+            sEnd   = (uint8_t)(cs + (span * (wifiIdx + 1)) / wifiCount - 1);
+            if (sEnd < sStart) sEnd = sStart;
+        }
+        if (r & 0x01) wifiIdx++;
 
         uint8_t clen = len > 64 ? 64 : len;
         uint8_t out[CFG_TGT_OVERHEAD + 64];
@@ -119,12 +162,33 @@ static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
         memcpy(out + 1, nodes[i].id, MESH_NODE_ID_LEN - 1);
         out[5] = 0x00;
         memcpy(out + CFG_TGT_OVERHEAD, cfg, clen);
+        out[CFG_TGT_OVERHEAD + 0]  = r;
         out[CFG_TGT_OVERHEAD + 9]  = sStart;
         out[CFG_TGT_OVERHEAD + 10] = sEnd;
         meshBroadcastCommand(0x10, ENGINE_WARDRIVE, out, (uint8_t)(CFG_TGT_OVERHEAD + clen));
-        Serial.printf("[MGR-SLICE] node=%.4s ch=%u-%u (%u nodes)\n",
-                      nodes[i].id, sStart, sEnd, (unsigned)nn);
+        Serial.printf("[MGR-SLICE] node=%.4s radio=0x%02X ch=%u-%u (%u nodes, %u wifi)\n",
+                      nodes[i].id, r, sStart, sEnd, (unsigned)nn, wifiCount);
     }
+}
+
+static void mgrSetNodeRadioList(const uint8_t* data, size_t len) {
+    if (len < 1) return;
+    uint8_t count = data[0];
+    if ((size_t)1 + (size_t)count * 5 > len) return;
+    if (count > MGR_NODE_RADIO_MAX) count = MGR_NODE_RADIO_MAX;
+    mgrNodeRadioCount = 0;
+    for (uint8_t i = 0; i < count; i++) {
+        const uint8_t* e = data + 1 + (size_t)i * 5;
+        memcpy(mgrNodeRadio[mgrNodeRadioCount].id, e, MESH_NODE_ID_LEN - 1);
+        mgrNodeRadio[mgrNodeRadioCount].id[MESH_NODE_ID_LEN - 1] = 0;
+        uint8_t r = e[4] & 0x03;
+        mgrNodeRadio[mgrNodeRadioCount].radio = r ? r : 0x03;
+        mgrNodeRadioCount++;
+    }
+    mgrNodeRadioSave();
+    Serial.printf("[NODE-RADIO] set %u entries\n", mgrNodeRadioCount);
+    if ((mgrCommandedMask & ENGINE_BITMASK(ENGINE_WARDRIVE)) && meshIsEnabled())
+        mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
 }
 
 #define MGR_SLICE_DEBOUNCE 3
@@ -343,18 +407,24 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                 mgrAutoPcapSave();
             }
         }
-        if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10 && cmd.payload_len >= 11) {
-            mgrWardriveCfgLen = cmd.payload_len > sizeof(mgrWardriveCfg)
-                                  ? sizeof(mgrWardriveCfg) : cmd.payload_len;
-            memcpy(mgrWardriveCfg, cmd.payload, mgrWardriveCfgLen);
+        if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10) {
+            if (cmd.payload_len >= 11) {
+                mgrWardriveCfgLen = cmd.payload_len > sizeof(mgrWardriveCfg)
+                                      ? sizeof(mgrWardriveCfg) : cmd.payload_len;
+                memcpy(mgrWardriveCfg, cmd.payload, mgrWardriveCfgLen);
+            } else if (cmd.payload_len >= 1) {
+                mgrWardriveCfg[0] = cmd.payload[0] & 0x03;
+                if (mgrWardriveCfg[0] == 0) mgrWardriveCfg[0] = 0x03;
+            }
         }
         if (meshIsEnabled()) {
-            if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10) {
-                mgrBroadcastWardriveSliced(cmd.payload, cmd.payload_len);
-            } else if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x01) {
+            if (cmd.engine_id == ENGINE_WARDRIVE &&
+                (cmd.command == 0x10 || cmd.command == 0x01)) {
                 mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
-                meshBroadcastCommand(cmd.command, cmd.engine_id,
-                    cmd.payload_len > 0 ? cmd.payload : nullptr, cmd.payload_len);
+                if (cmd.command == 0x01) {
+                    meshBroadcastCommand(cmd.command, cmd.engine_id,
+                        cmd.payload_len > 0 ? cmd.payload : nullptr, cmd.payload_len);
+                }
             } else {
                 meshBroadcastCommand(cmd.command, cmd.engine_id,
                     cmd.payload_len > 0 ? cmd.payload : nullptr,
@@ -498,6 +568,16 @@ class IgnoreListCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 static IgnoreListCallbacks ignoreListCb;
+
+class NodeRadioCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+#ifdef OUISPY_ROLE_MANAGER
+        std::string val = chr->getValue();
+        mgrSetNodeRadioList((const uint8_t*)val.data(), val.length());
+#endif
+    }
+};
+static NodeRadioCallbacks nodeRadioCb;
 
 class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
@@ -1133,6 +1213,7 @@ void bleGattInit(void) {
     Serial.println("[BLE] Initializing NimBLE...");
 #ifdef OUISPY_ROLE_MANAGER
     mgrAutoPcapLoad();
+    mgrNodeRadioLoad();
     if (!aggMutex) aggMutex = xSemaphoreCreateMutex();
     if (!pcapReasmMutex) pcapReasmMutex = xSemaphoreCreateMutex();
     if (!pcapBleFlushTaskHandle) {
@@ -1230,6 +1311,13 @@ void bleGattInit(void) {
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
     );
     chrIgnoreList->setCallbacks(&ignoreListCb);
+
+    // -- Node Radio Role (WRITE) — per-node WiFi/BLE/Both for wardrive slicing --
+    chrNodeRadio = svc->createCharacteristic(
+        CHR_NODE_RADIO,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+    );
+    chrNodeRadio->setCallbacks(&nodeRadioCb);
 
     // -- Foxhunter Config (WRITE) --
     chrFoxhunterConfig = svc->createCharacteristic(

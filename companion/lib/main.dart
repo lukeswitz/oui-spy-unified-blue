@@ -39,7 +39,12 @@ void main() async {
 
   container.read(appStateProvider);
 
-  _forceCleanBleState();
+  _forceCleanBleState().then((_) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('autoConnectEnabled') ?? false) {
+      await _autoConnect(container);
+    }
+  });
 
   runApp(UncontrolledProviderScope(
     container: container,

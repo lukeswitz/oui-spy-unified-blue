@@ -116,6 +116,37 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     return true;
   }
 
+  /// Popup on wardrive start: assign each live node WiFi / BLE / Both. Only
+  /// shown for targets that use the wardrive engine. Returns false if the user
+  /// cancels (abort start).
+  Future<bool> _confirmRadioRoles() async {
+    final app = ref.read(appStateProvider);
+    final wd = ref.read(wardriveProvider);
+    if (!wd.target.engines(wd.radio).contains(Engine.wardrive)) return true;
+    final nodes = app.liveKnownNodes.toList()..sort();
+    if (nodes.isEmpty) return true;
+    final roles = <String, int>{
+      for (final n in nodes) n: app.wardriveRadioForNode(n),
+    };
+    if (!mounted) return false;
+    final result = await showDialog<Map<String, int>>(
+      context: context,
+      builder: (_) => _RadioRolePopup(
+        nodes: nodes,
+        labelFor: app.labelForNode,
+        initial: roles,
+      ),
+    );
+    if (result == null) return false;
+    await app.applyNodeRadioRoles(result);
+    if (!app.isManagerConnected && result.length == 1) {
+      final mask = result.values.first;
+      wd.setRadio(WardriveController.radioFromMask(mask));
+      app.setEngineRadio(Engine.wardrive, mask);
+    }
+    return true;
+  }
+
   Future<void> _showIosAlwaysUpgradeDialog() async {
     final p = await SharedPreferences.getInstance();
     if (p.getBool('ios_always_upgrade_dismissed') == true) return;
@@ -796,6 +827,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   onGeofenceReturn: _loadExclusionZones,
                   onStart: () async {
                     if (!await _primeLocationPermission()) return;
+                    if (!await _confirmRadioRoles()) return;
                     await ref.read(wardriveProvider).startSession();
                   },
                 ),
@@ -4824,4 +4856,95 @@ class _CaptureFlashPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _CaptureFlashPainter old) =>
       old.phase != phase || old.color != color;
+}
+
+class _RadioRolePopup extends StatefulWidget {
+  const _RadioRolePopup({
+    required this.nodes,
+    required this.labelFor,
+    required this.initial,
+  });
+
+  final List<String> nodes;
+  final String Function(String) labelFor;
+  final Map<String, int> initial;
+
+  @override
+  State<_RadioRolePopup> createState() => _RadioRolePopupState();
+}
+
+class _RadioRolePopupState extends State<_RadioRolePopup> {
+  late final Map<String, int> _roles = {
+    for (final n in widget.nodes) n: widget.initial[n] ?? 0x03,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('NODE RADIOS'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Assign each node WiFi, BLE, or Both for this wardrive. '
+                'WiFi nodes split channels; BLE nodes cover BLE.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            ...widget.nodes.map((id) {
+              final mask = _roles[id] ?? 0x03;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.labelFor(id),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<int>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      segments: const [
+                        ButtonSegment(
+                            value: 0x01, icon: Icon(Icons.wifi, size: 16), tooltip: 'WiFi'),
+                        ButtonSegment(
+                            value: 0x02, icon: Icon(Icons.bluetooth, size: 16), tooltip: 'BLE'),
+                        ButtonSegment(
+                            value: 0x03, icon: Icon(Icons.sensors, size: 16), tooltip: 'Both'),
+                      ],
+                      selected: {mask},
+                      onSelectionChanged: (s) =>
+                          setState(() => _roles[id] = s.first),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('CANCEL'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _roles),
+          child: const Text('START'),
+        ),
+      ],
+    );
+  }
 }

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,6 +40,7 @@ class BleManager {
   BluetoothCharacteristic? _hardwareConfig;
   BluetoothCharacteristic? _alertConfig;
   BluetoothCharacteristic? _ignoreList;
+  BluetoothCharacteristic? _nodeRadio;
   BluetoothCharacteristic? _foxhunterRssi;
   BluetoothCharacteristic? _skySpyTelemetry;
   BluetoothCharacteristic? _unipwnDevices;
@@ -288,6 +290,11 @@ class BleManager {
 
   void markAsPrimary() {
     _primaryDeviceId = _lastDeviceId;
+    final id = _primaryDeviceId;
+    if (id != null && id.isNotEmpty) {
+      SharedPreferences.getInstance()
+          .then((p) => p.setString('lastPrimaryDeviceId', id));
+    }
   }
 
   /// Get a discovered characteristic by UUID (for direct read/write).
@@ -299,6 +306,7 @@ class BleManager {
     if (uuid == GattUuids.hardwareConfig) return _hardwareConfig;
     if (uuid == GattUuids.alertConfig) return _alertConfig;
     if (uuid == GattUuids.ignoreList) return _ignoreList;
+    if (uuid == GattUuids.nodeRadio) return _nodeRadio;
     if (uuid == GattUuids.foxhunterRssi) return _foxhunterRssi;
     if (uuid == GattUuids.foxhunterConfig) return _foxhunterConfig;
     if (uuid == GattUuids.meshConfig) return _meshConfig;
@@ -521,6 +529,7 @@ class BleManager {
       if (c.uuid == GattUuids.hardwareConfig) _hardwareConfig = c;
       if (c.uuid == GattUuids.alertConfig) _alertConfig = c;
       if (c.uuid == GattUuids.ignoreList) _ignoreList = c;
+      if (c.uuid == GattUuids.nodeRadio) _nodeRadio = c;
       if (c.uuid == GattUuids.foxhunterRssi) _foxhunterRssi = c;
       if (c.uuid == GattUuids.skySpyTelemetry) _skySpyTelemetry = c;
       if (c.uuid == GattUuids.unipwnDevices) _unipwnDevices = c;
@@ -757,6 +766,21 @@ class BleManager {
   Future<void> setIgnoreList(List<int> bytes) async {
     if (_ignoreList == null) return;
     await _ignoreList!.write(bytes, withoutResponse: false);
+  }
+
+  /// Push per-node radio roles to the manager. Wire format:
+  /// [count][id:4 ascii][radio:1] per entry (radio 0x01=WiFi,0x02=BLE,0x03=Both).
+  Future<void> setNodeRadioRoles(Map<String, int> roles) async {
+    if (_nodeRadio == null) return;
+    final valid = roles.entries.where((e) => e.key.length == 4).toList();
+    if (valid.length > 255) valid.removeRange(255, valid.length);
+    final bytes = <int>[valid.length];
+    for (final e in valid) {
+      bytes.addAll(e.key.codeUnits);
+      final m = e.value & 0x03;
+      bytes.add(m == 0 ? 0x03 : m);
+    }
+    await _nodeRadio!.write(bytes, withoutResponse: false);
   }
 
   Future<void> setAutoPcap(bool enabled) async {
