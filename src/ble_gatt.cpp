@@ -469,33 +469,106 @@ class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+void hardwareConfigApply(const uint8_t* data, size_t len) {
+    if (len < 3) return;
+    bool buzzer = data[0] != 0;
+    bool led = data[1] != 0;
+    uint8_t brightness = data[2];
+    uint8_t buzzerVol = (len >= 4) ? data[3] : 100;
+
+    hwBuzzerEnabled = buzzer;
+    hwBuzzerVolume = buzzerVol;
+    hwLedEnabled = led;
+    hwNeopixelBrightness = brightness;
+
+    Preferences p;
+    p.begin("ouispy-hw", false);
+    p.putBool("buzzer", buzzer);
+    p.putUChar("bz_vol", buzzerVol);
+    p.putBool("led", led);
+    p.putUChar("neo_brt", brightness);
+    p.end();
+
+    Serial.printf("[CFG] Hardware: buzzer=%d vol=%d led=%d brightness=%d\n",
+                  buzzer, buzzerVol, led, brightness);
+}
+
+void alertConfigApply(const uint8_t* data, size_t len) {
+    if (len < 8) return;
+    uint16_t cooldown   = data[0] | (data[1] << 8);
+    uint16_t heartbeat  = data[2] | (data[3] << 8);
+    uint16_t rediscover = data[4] | (data[5] << 8);
+    uint16_t hbActive   = data[6] | (data[7] << 8);
+
+    Preferences p;
+    p.begin("ouispy-alert", false);
+    p.putUShort("cooldown", cooldown);
+    p.putUShort("heartbeat", heartbeat);
+    p.putUShort("rediscover", rediscover);
+    p.putUShort("hb_active", hbActive);
+    p.end();
+
+    engineLoadAlertPrefs();
+
+    Serial.printf("[CFG] Alert: cool=%d hb=%d redis=%d active=%d\n",
+                  cooldown, heartbeat, rediscover, hbActive);
+}
+
+#ifdef OUISPY_ROLE_MANAGER
+static uint8_t mgrHwCfg[8]    = {0}; static uint8_t mgrHwCfgLen = 0;
+static uint8_t mgrAlertCfg[8] = {0}; static uint8_t mgrAlertCfgLen = 0;
+
+static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len) {
+    if (kind == MESH_CFG_KIND_HW) {
+        mgrHwCfgLen = len > sizeof(mgrHwCfg) ? sizeof(mgrHwCfg) : (uint8_t)len;
+        memcpy(mgrHwCfg, data, mgrHwCfgLen);
+    } else if (kind == MESH_CFG_KIND_ALERT) {
+        mgrAlertCfgLen = len > sizeof(mgrAlertCfg) ? sizeof(mgrAlertCfg) : (uint8_t)len;
+        memcpy(mgrAlertCfg, data, mgrAlertCfgLen);
+    }
+}
+
+void bleGattRebroadcastConfigs(void) {
+    if (!meshIsEnabled()) return;
+    if (mgrHwCfgLen)    meshBroadcastConfig(MESH_CFG_KIND_HW, mgrHwCfg, mgrHwCfgLen);
+    if (mgrAlertCfgLen) meshBroadcastConfig(MESH_CFG_KIND_ALERT, mgrAlertCfg, mgrAlertCfgLen);
+}
+
+static void mgrLoadConfigCaches(void) {
+    Preferences p;
+    p.begin("ouispy-hw", true);
+    uint8_t hw[4];
+    hw[0] = p.getBool("buzzer", true) ? 1 : 0;
+    hw[1] = p.getBool("led", true) ? 1 : 0;
+    hw[2] = p.getUChar("neo_brt", 50);
+    hw[3] = p.getUChar("bz_vol", 100);
+    p.end();
+    mgrCacheConfig(MESH_CFG_KIND_HW, hw, 4);
+
+    Preferences q;
+    q.begin("ouispy-alert", true);
+    uint16_t cool = q.getUShort("cooldown", 5000);
+    uint16_t hb   = q.getUShort("heartbeat", 30000);
+    uint16_t rd   = q.getUShort("rediscover", 30000);
+    uint16_t act  = q.getUShort("hb_active", 3000);
+    q.end();
+    uint8_t al[8] = { (uint8_t)(cool & 0xFF), (uint8_t)(cool >> 8),
+                      (uint8_t)(hb & 0xFF),   (uint8_t)(hb >> 8),
+                      (uint8_t)(rd & 0xFF),   (uint8_t)(rd >> 8),
+                      (uint8_t)(act & 0xFF),  (uint8_t)(act >> 8) };
+    mgrCacheConfig(MESH_CFG_KIND_ALERT, al, 8);
+}
+#endif
+
 class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
-        if (val.length() < 3) return;
-
-        bool buzzer = val[0] != 0;
-        bool led = val[1] != 0;
-        uint8_t brightness = (uint8_t)val[2];
-        uint8_t buzzerVol = (val.length() >= 4) ? (uint8_t)val[3] : 100;
-
-        // Update runtime state immediately
-        hwBuzzerEnabled = buzzer;
-        hwBuzzerVolume = buzzerVol;
-        hwLedEnabled = led;
-        hwNeopixelBrightness = brightness;
-
-        // Persist to NVS
-        Preferences p;
-        p.begin("ouispy-hw", false);
-        p.putBool("buzzer", buzzer);
-        p.putUChar("bz_vol", buzzerVol);
-        p.putBool("led", led);
-        p.putUChar("neo_brt", brightness);
-        p.end();
-
-        Serial.printf("[BLE] Hardware config: buzzer=%d vol=%d led=%d brightness=%d\n",
-                      buzzer, buzzerVol, led, brightness);
+        hardwareConfigApply((const uint8_t*)val.data(), val.length());
+#ifdef OUISPY_ROLE_MANAGER
+        mgrCacheConfig(MESH_CFG_KIND_HW, (const uint8_t*)val.data(), val.length());
+        if (meshIsEnabled())
+            meshBroadcastConfig(MESH_CFG_KIND_HW, (const uint8_t*)val.data(), val.length());
+#endif
     }
 
     void onRead(NimBLECharacteristic* chr) override {
@@ -514,26 +587,12 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
 class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
-        if (val.length() < 8) return;
-
-        const uint8_t* data = (const uint8_t*)val.data();
-        uint16_t cooldown   = data[0] | (data[1] << 8);
-        uint16_t heartbeat  = data[2] | (data[3] << 8);
-        uint16_t rediscover = data[4] | (data[5] << 8);
-        uint16_t hbActive   = data[6] | (data[7] << 8);
-
-        Preferences p;
-        p.begin("ouispy-alert", false);
-        p.putUShort("cooldown", cooldown);
-        p.putUShort("heartbeat", heartbeat);
-        p.putUShort("rediscover", rediscover);
-        p.putUShort("hb_active", hbActive);
-        p.end();
-
-        engineLoadAlertPrefs();
-
-        Serial.printf("[BLE] Alert config: cool=%d hb=%d redis=%d active=%d\n",
-                      cooldown, heartbeat, rediscover, hbActive);
+        alertConfigApply((const uint8_t*)val.data(), val.length());
+#ifdef OUISPY_ROLE_MANAGER
+        mgrCacheConfig(MESH_CFG_KIND_ALERT, (const uint8_t*)val.data(), val.length());
+        if (meshIsEnabled())
+            meshBroadcastConfig(MESH_CFG_KIND_ALERT, (const uint8_t*)val.data(), val.length());
+#endif
     }
 
     void onRead(NimBLECharacteristic* chr) override {
@@ -1214,6 +1273,7 @@ void bleGattInit(void) {
 #ifdef OUISPY_ROLE_MANAGER
     mgrAutoPcapLoad();
     mgrNodeRadioLoad();
+    mgrLoadConfigCaches();
     if (!aggMutex) aggMutex = xSemaphoreCreateMutex();
     if (!pcapReasmMutex) pcapReasmMutex = xSemaphoreCreateMutex();
     if (!pcapBleFlushTaskHandle) {

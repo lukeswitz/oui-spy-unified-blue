@@ -27,6 +27,13 @@ void bleGattMaybeResliceWardrive(void);
 
 // Manager: re-send desired engines to any node whose reported mask lacks them
 void bleGattReconcileEngines(void);
+
+// Apply device-wide config (callable from BLE write or relayed mesh packet)
+void hardwareConfigApply(const uint8_t* data, size_t len);
+void alertConfigApply(const uint8_t* data, size_t len);
+
+// Manager: periodically re-broadcast cached device-wide config to all nodes
+void bleGattRebroadcastConfigs(void);
 #ifdef OUISPY_STOP_SELFTEST
 void mgrDebugSetCommanded(uint8_t mask);
 #endif

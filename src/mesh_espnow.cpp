@@ -488,6 +488,18 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
+    if (plainLen >= offsetof(MeshConfigPacket, data) && plainBuf[0] == MESH_PKT_CONFIG) {
+        MeshConfigPacket cp;
+        size_t c = plainLen <= sizeof(cp) ? plainLen : sizeof(cp);
+        memcpy(&cp, plainBuf, c);
+        if (memcmp(cp.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        uint8_t n = cp.len;
+        if (n > MESH_CONFIG_MAX) n = MESH_CONFIG_MAX;
+        if (cp.cfg_kind == MESH_CFG_KIND_HW)         hardwareConfigApply(cp.data, n);
+        else if (cp.cfg_kind == MESH_CFG_KIND_ALERT) alertConfigApply(cp.data, n);
+        return;
+    }
+
     if (plainLen == sizeof(MeshAutoPcapEventPacket) && plainBuf[0] == MESH_PKT_AUTOPCAP_EVENT) {
         MeshAutoPcapEventPacket ev;
         memcpy(&ev, plainBuf, sizeof(ev));
@@ -843,6 +855,21 @@ void meshBroadcastIgnoreList(const uint8_t* data, size_t len) {
     pkt.len = (uint8_t)len;
     if (len) memcpy(pkt.data, data, len);
     size_t pktSize = offsetof(MeshIgnoreListPacket, data) + len;
+    uint8_t enc[256]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
+    enqueueTx(enc, encLen);
+}
+
+void meshBroadcastConfig(uint8_t kind, const uint8_t* data, size_t len) {
+    if (!meshCurrentConfig.enabled) return;
+    if (len > MESH_CONFIG_MAX) len = MESH_CONFIG_MAX;
+    MeshConfigPacket pkt = {};
+    pkt.pkt_type = MESH_PKT_CONFIG;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    pkt.cfg_kind = kind;
+    pkt.len = (uint8_t)len;
+    if (len) memcpy(pkt.data, data, len);
+    size_t pktSize = offsetof(MeshConfigPacket, data) + len;
     uint8_t enc[256]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
     enqueueTx(enc, encLen);

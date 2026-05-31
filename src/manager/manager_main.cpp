@@ -52,6 +52,9 @@ static void heartbeatTask(void*) {
             size_t in = ignoreListSerialize(ib, sizeof(ib));
             meshBroadcastIgnoreList(ib, in);
         }
+        if ((tick % 7) == 3 && meshIsEnabled()) {
+            bleGattRebroadcastConfigs();
+        }
         if (bleGattIsConnected()) {
             bleGattNotifyPcapStats();
             bleGattNotifyMeshStatus();
