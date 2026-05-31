@@ -47,7 +47,7 @@ static void heartbeatTask(void*) {
         tick++;
         bleGattMaybeResliceWardrive();
         bleGattReconcileEngines();
-        if ((tick % 7) == 0 && meshIsEnabled() && ignoreListCount() > 0) {
+        if ((tick % 7) == 0 && meshIsEnabled()) {
             uint8_t ib[256];
             size_t in = ignoreListSerialize(ib, sizeof(ib));
             meshBroadcastIgnoreList(ib, in);

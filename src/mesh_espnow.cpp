@@ -1,5 +1,6 @@
 #include "mesh_espnow.h"
 #include "engine_registry.h"
+#include "engines/wardrive.h"
 #include "ignore_list.h"
 #include <stddef.h>
 #include "ble_gatt.h"
@@ -641,8 +642,23 @@ bool meshManagerJoined(void) {
     return joined;
 }
 
+// True when this node is hopping WiFi channels (promiscuous scan). BLE-only
+// engines (flock_ble, unipwn, wardrive radio=0x02) stay on the mesh channel,
+// so they coexist with ESP-NOW without time-multiplexing.
+static bool meshNodeHopsWifi(void) {
+    uint8_t m = engineGetActiveMask();
+    const uint8_t wifiHop = ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
+                          | ENGINE_BITMASK(ENGINE_DETECTOR)
+                          | ENGINE_BITMASK(ENGINE_FOXHUNTER)
+                          | ENGINE_BITMASK(ENGINE_SKYSPY)
+                          | ENGINE_BITMASK(ENGINE_PCAP);
+    if (m & wifiHop) return true;
+    if ((m & ENGINE_BITMASK(ENGINE_WARDRIVE)) && (wardriveGetRadio() & 0x01)) return true;
+    return false;
+}
+
 bool meshTimeSlicingActive(void) {
-    return meshCurrentConfig.enabled && meshManagerJoined();
+    return meshCurrentConfig.enabled && meshManagerJoined() && meshNodeHopsWifi();
 }
 
 #if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)

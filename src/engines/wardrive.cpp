@@ -639,6 +639,7 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
 
 uint16_t wardriveGetBleScanDurationMs(void) { return bleScanDurationMs; }
 uint16_t wardriveGetBleScanIntervalMs(void) { return bleScanIntervalMs; }
+uint8_t  wardriveGetRadio(void) { return wardriveRadio; }
 
 static void wardriveApplyPrefs(void) {
     uint32_t relog = engineGetRediscoverMs();

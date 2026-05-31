@@ -16,31 +16,20 @@ static uint8_t g_count = 0;
 static uint32_t g_version = 0;
 static portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
 
-static void ignoreSave(void) {
-    Preferences p;
-    p.begin("ouispy-ign", false);
-    uint8_t buf[512];
-    size_t n = ignoreListSerialize(buf, sizeof(buf));
-    p.putBytes("list", buf, n);
-    p.end();
-}
-
-static void ignoreLoadFromNvs(void) {
-    Preferences p;
-    p.begin("ouispy-ign", true);
-    size_t n = p.getBytesLength("list");
-    if (n > 0 && n <= 512) {
-        uint8_t buf[512];
-        p.getBytes("list", buf, n);
-        p.end();
-        ignoreListSet(buf, n);
-        return;
-    }
-    p.end();
-}
-
 void ignoreListInit(void) {
-    ignoreLoadFromNvs();
+    // Runtime-only. The app is the single source of truth: it pushes the list
+    // on every connect and the manager re-broadcasts it to all nodes, so no
+    // per-node copy can diverge. Nothing is persisted. Wipe any list a prior
+    // firmware left in NVS (a normal flash does NOT erase NVS).
+    Preferences p;
+    if (p.begin("ouispy-ign", false)) {
+        p.clear();
+        p.end();
+    }
+    portENTER_CRITICAL(&g_mux);
+    g_count = 0;
+    g_version++;
+    portEXIT_CRITICAL(&g_mux);
 }
 
 void ignoreListSet(const uint8_t* buf, size_t len) {
@@ -49,7 +38,6 @@ void ignoreListSet(const uint8_t* buf, size_t len) {
         g_count = 0;
         g_version++;
         portEXIT_CRITICAL(&g_mux);
-        ignoreSave();
         Serial.println("[IGNORE] list cleared");
         return;
     }
@@ -80,7 +68,6 @@ void ignoreListSet(const uint8_t* buf, size_t len) {
     }
     portEXIT_CRITICAL(&g_mux);
     if (same) return;
-    ignoreSave();
     Serial.printf("[IGNORE] list set: %u entries (declared %u, v%lu)\n",
                   cnt, declared, (unsigned long)g_version);
 }
