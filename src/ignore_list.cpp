@@ -70,11 +70,16 @@ void ignoreListSet(const uint8_t* buf, size_t len) {
         i += vlen;
         cnt++;
     }
+    bool same;
     portENTER_CRITICAL(&g_mux);
-    memcpy(g_entries, tmp, sizeof(IgnoreSlot) * cnt);
-    g_count = cnt;
-    g_version++;
+    same = (cnt == g_count) && (memcmp(g_entries, tmp, sizeof(IgnoreSlot) * cnt) == 0);
+    if (!same) {
+        memcpy(g_entries, tmp, sizeof(IgnoreSlot) * cnt);
+        g_count = cnt;
+        g_version++;
+    }
     portEXIT_CRITICAL(&g_mux);
+    if (same) return;
     ignoreSave();
     Serial.printf("[IGNORE] list set: %u entries (declared %u, v%lu)\n",
                   cnt, declared, (unsigned long)g_version);

@@ -221,7 +221,13 @@ static void detectionNotifyTask(void* param) {
             const char* evtSsid =
                 (evt.engine_id == ENGINE_WARDRIVE && !evtIsBle)
                     ? evt.ext.wardrive.ssid : "";
-            if (ignoreListMatch(evt.mac, evtSsid, evtIsBle)) continue;
+            if (ignoreListMatch(evt.mac, evtSsid, evtIsBle)) {
+                Serial.printf("[IGNORE-SKIP] eng=%d ble=%d mac=%02X:%02X:%02X:%02X:%02X:%02X ssid='%s'\n",
+                              evt.engine_id, evtIsBle ? 1 : 0,
+                              evt.mac[0], evt.mac[1], evt.mac[2], evt.mac[3], evt.mac[4], evt.mac[5],
+                              evtSsid);
+                continue;
+            }
 
             if (evt.engine_id != ENGINE_WARDRIVE &&
                 isNotifyDedupCooldown(evt.mac, evt.engine_id)) continue;
