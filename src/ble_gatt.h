@@ -31,6 +31,8 @@ void bleGattReconcileEngines(void);
 // Apply device-wide config (callable from BLE write or relayed mesh packet)
 void hardwareConfigApply(const uint8_t* data, size_t len);
 void alertConfigApply(const uint8_t* data, size_t len);
+void autoPcapConfigApply(const uint8_t* data, size_t len);
+void foxhunterConfigApply(const uint8_t* data, size_t len);
 
 // Manager: periodically re-broadcast cached device-wide config to all nodes
 void bleGattRebroadcastConfigs(void);

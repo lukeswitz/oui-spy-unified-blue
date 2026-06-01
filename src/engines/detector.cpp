@@ -150,6 +150,35 @@ void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* d
 
 int detectorFilterCount(void) { return filterCount; }
 
+size_t detectorSerialize(uint8_t* out, size_t maxLen) {
+    if (out == nullptr || maxLen < 1) return 0;
+    size_t off = 1;
+    uint8_t cnt = 0;
+    for (int i = 0; i < filterCount; i++) {
+        if (off + 7 > maxLen) break;
+        out[off++] = filters[i].prefixLen;
+        memcpy(out + off, filters[i].macBytes, 6);
+        off += 6;
+        cnt++;
+    }
+    out[0] = cnt;
+    return off;
+}
+
+void detectorSetFilters(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < 1) return;
+    detectorClearFilters();
+    uint8_t cnt = data[0];
+    size_t off = 1;
+    for (uint8_t i = 0; i < cnt; i++) {
+        if (off + 7 > len) break;
+        uint8_t prefixLen = data[off];
+        detectorAddFilter(data + off + 1, prefixLen, "");
+        off += 7;
+    }
+    Serial.printf("[CFG] Detector watchlist: %u filters\n", detectorFilterCount());
+}
+
 static void detectorInit(void) {
     dedup.reset();
     Serial.printf("[DETECTOR] Initialized (preserved filters=%d)\n", filterCount);

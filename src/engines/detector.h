@@ -14,5 +14,7 @@ void detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t channel);
 void detectorClearFilters(void);
 void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* desc);
 int detectorFilterCount(void);
+size_t detectorSerialize(uint8_t* out, size_t maxLen);
+void detectorSetFilters(const uint8_t* data, size_t len);
 
 #endif

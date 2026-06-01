@@ -30,6 +30,7 @@ extern volatile uint32_t g_meshRxWin;
 extern volatile bool g_meshManagerActive;
 void meshResetTxDedup(void);
 void meshBroadcastIgnoreList(const uint8_t* data, size_t len);
+void meshBroadcastDetectorList(const uint8_t* data, size_t len);
 void meshBroadcastConfig(uint8_t kind, const uint8_t* data, size_t len);
 #if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)
 void meshDebugForceManager(void);

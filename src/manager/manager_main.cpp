@@ -6,6 +6,7 @@
 #include "../ble_gatt.h"
 #include "../mesh_espnow.h"
 #include "../ignore_list.h"
+#include "../engines/detector.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -54,6 +55,11 @@ static void heartbeatTask(void*) {
         }
         if ((tick % 7) == 3 && meshIsEnabled()) {
             bleGattRebroadcastConfigs();
+        }
+        if ((tick % 7) == 5 && meshIsEnabled()) {
+            uint8_t db[256];
+            size_t dn = detectorSerialize(db, sizeof(db));
+            meshBroadcastDetectorList(db, dn);
         }
         if (bleGattIsConnected()) {
             bleGattNotifyPcapStats();

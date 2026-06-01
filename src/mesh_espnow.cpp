@@ -2,6 +2,7 @@
 #include "engine_registry.h"
 #include "engines/wardrive.h"
 #include "ignore_list.h"
+#include "engines/detector.h"
 #include <stddef.h>
 #include "ble_gatt.h"
 #include <Arduino.h>
@@ -527,6 +528,17 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
+    if (plainLen >= 7 && plainBuf[0] == MESH_PKT_DETECTORLIST) {
+        MeshIgnoreListPacket il;
+        size_t cp = plainLen <= sizeof(il) ? plainLen : sizeof(il);
+        memcpy(&il, plainBuf, cp);
+        if (memcmp(il.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        uint8_t n = il.len;
+        if (n > MESH_IGNORELIST_MAX) n = MESH_IGNORELIST_MAX;
+        detectorSetFilters(il.data, n);
+        return;
+    }
+
     if (plainLen >= offsetof(MeshConfigPacket, data) && plainBuf[0] == MESH_PKT_CONFIG) {
         MeshConfigPacket cp;
         size_t c = plainLen <= sizeof(cp) ? plainLen : sizeof(cp);
@@ -536,6 +548,8 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         if (n > MESH_CONFIG_MAX) n = MESH_CONFIG_MAX;
         if (cp.cfg_kind == MESH_CFG_KIND_HW)         hardwareConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_ALERT) alertConfigApply(cp.data, n);
+        else if (cp.cfg_kind == MESH_CFG_KIND_AUTOPCAP) autoPcapConfigApply(cp.data, n);
+        else if (cp.cfg_kind == MESH_CFG_KIND_FOXHUNTER) foxhunterConfigApply(cp.data, n);
         return;
     }
 
@@ -917,6 +931,20 @@ void meshDisable(void) {
     txCounter = 0;
 
     Serial.println("[MESH] Disabled");
+}
+
+void meshBroadcastDetectorList(const uint8_t* data, size_t len) {
+    if (!meshCurrentConfig.enabled) return;
+    if (len > MESH_IGNORELIST_MAX) len = MESH_IGNORELIST_MAX;
+    MeshIgnoreListPacket pkt = {};
+    pkt.pkt_type = MESH_PKT_DETECTORLIST;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    pkt.len = (uint8_t)len;
+    if (len) memcpy(pkt.data, data, len);
+    size_t pktSize = offsetof(MeshIgnoreListPacket, data) + len;
+    uint8_t enc[256]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
+    enqueueTx(enc, encLen);
 }
 
 void meshBroadcastIgnoreList(const uint8_t* data, size_t len) {

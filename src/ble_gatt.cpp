@@ -67,6 +67,7 @@ static volatile uint32_t mgrPcapStartedMs = 0;
 static volatile uint8_t  mgrAutoPcapEnabled = 0;
 static volatile uint16_t mgrAutoPcapDurationSec = 10;
 static volatile uint16_t mgrAutoPcapCooldownSec = 0;
+static void mgrAutoPcapSyncToNodes(void);
 
 static void mgrAutoPcapSave(void) {
     Preferences p;
@@ -426,6 +427,9 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                 mgrAutoPcapCooldownSec = (uint16_t)(p[1] | (p[2] << 8));
                 mgrAutoPcapSave();
             }
+            if (p[0] == 0x10 || p[0] == 0x11 || p[0] == 0x12) {
+                mgrAutoPcapSyncToNodes();
+            }
         }
         if (cmd.engine_id == ENGINE_WARDRIVE && cmd.command == 0x10) {
             if (cmd.payload_len >= 11) {
@@ -534,9 +538,21 @@ void alertConfigApply(const uint8_t* data, size_t len) {
                   cooldown, heartbeat, rediscover, hbActive);
 }
 
+void autoPcapConfigApply(const uint8_t* data, size_t len) {
+    if (len < 1) return;
+    uint16_t dur  = (len >= 3) ? (uint16_t)(data[1] | (data[2] << 8)) : 0;
+    uint16_t cool = (len >= 5) ? (uint16_t)(data[3] | (data[4] << 8)) : 0;
+    engineSetAutoPcap(data[0] != 0);
+    if (len >= 3) engineSetAutoPcapDuration(dur);
+    if (len >= 5) engineSetAutoPcapCooldown(cool);
+    Serial.printf("[CFG] AutoPcap: en=%d dur=%us cool=%us\n", data[0], dur, cool);
+}
+
 #ifdef OUISPY_ROLE_MANAGER
 static uint8_t mgrHwCfg[8]    = {0}; static uint8_t mgrHwCfgLen = 0;
 static uint8_t mgrAlertCfg[8] = {0}; static uint8_t mgrAlertCfgLen = 0;
+static uint8_t mgrApCfg[5]    = {0}; static uint8_t mgrApCfgLen = 0;
+static uint8_t mgrFoxCfg[7]   = {0}; static uint8_t mgrFoxCfgLen = 0;
 
 static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len) {
     if (kind == MESH_CFG_KIND_HW) {
@@ -545,13 +561,31 @@ static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len) {
     } else if (kind == MESH_CFG_KIND_ALERT) {
         mgrAlertCfgLen = len > sizeof(mgrAlertCfg) ? sizeof(mgrAlertCfg) : (uint8_t)len;
         memcpy(mgrAlertCfg, data, mgrAlertCfgLen);
+    } else if (kind == MESH_CFG_KIND_AUTOPCAP) {
+        mgrApCfgLen = len > sizeof(mgrApCfg) ? sizeof(mgrApCfg) : (uint8_t)len;
+        memcpy(mgrApCfg, data, mgrApCfgLen);
+    } else if (kind == MESH_CFG_KIND_FOXHUNTER) {
+        mgrFoxCfgLen = len > sizeof(mgrFoxCfg) ? sizeof(mgrFoxCfg) : (uint8_t)len;
+        memcpy(mgrFoxCfg, data, mgrFoxCfgLen);
     }
+}
+
+static void mgrAutoPcapSyncToNodes(void) {
+    uint8_t ap[5] = {
+        (uint8_t)mgrAutoPcapEnabled,
+        (uint8_t)(mgrAutoPcapDurationSec & 0xFF), (uint8_t)(mgrAutoPcapDurationSec >> 8),
+        (uint8_t)(mgrAutoPcapCooldownSec & 0xFF), (uint8_t)(mgrAutoPcapCooldownSec >> 8)
+    };
+    mgrCacheConfig(MESH_CFG_KIND_AUTOPCAP, ap, sizeof(ap));
+    if (meshIsEnabled()) meshBroadcastConfig(MESH_CFG_KIND_AUTOPCAP, ap, sizeof(ap));
 }
 
 void bleGattRebroadcastConfigs(void) {
     if (!meshIsEnabled()) return;
     if (mgrHwCfgLen)    meshBroadcastConfig(MESH_CFG_KIND_HW, mgrHwCfg, mgrHwCfgLen);
     if (mgrAlertCfgLen) meshBroadcastConfig(MESH_CFG_KIND_ALERT, mgrAlertCfg, mgrAlertCfgLen);
+    if (mgrApCfgLen)    meshBroadcastConfig(MESH_CFG_KIND_AUTOPCAP, mgrApCfg, mgrApCfgLen);
+    if (mgrFoxCfgLen)   meshBroadcastConfig(MESH_CFG_KIND_FOXHUNTER, mgrFoxCfg, mgrFoxCfgLen);
 }
 
 static void mgrLoadConfigCaches(void) {
@@ -577,6 +611,11 @@ static void mgrLoadConfigCaches(void) {
                       (uint8_t)(rd & 0xFF),   (uint8_t)(rd >> 8),
                       (uint8_t)(act & 0xFF),  (uint8_t)(act >> 8) };
     mgrCacheConfig(MESH_CFG_KIND_ALERT, al, 8);
+
+    uint8_t ap[5] = { (uint8_t)mgrAutoPcapEnabled,
+                      (uint8_t)(mgrAutoPcapDurationSec & 0xFF), (uint8_t)(mgrAutoPcapDurationSec >> 8),
+                      (uint8_t)(mgrAutoPcapCooldownSec & 0xFF),  (uint8_t)(mgrAutoPcapCooldownSec >> 8) };
+    mgrCacheConfig(MESH_CFG_KIND_AUTOPCAP, ap, 5);
 }
 #endif
 
@@ -635,6 +674,11 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
 
 extern void foxhunterSetTarget(const uint8_t* mac, uint8_t channel);
 
+void foxhunterConfigApply(const uint8_t* data, size_t len) {
+    if (len < 6) return;
+    foxhunterSetTarget(data, len >= 7 ? data[6] : 0);
+}
+
 class IgnoreListCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
@@ -685,6 +729,13 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
                 Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
                 break;
         }
+#ifdef OUISPY_ROLE_MANAGER
+        if (meshIsEnabled()) {
+            uint8_t db[256];
+            size_t dn = detectorSerialize(db, sizeof(db));
+            meshBroadcastDetectorList(db, dn);
+        }
+#endif
     }
 };
 
@@ -694,6 +745,11 @@ class FoxhunterConfigCallbacks : public NimBLECharacteristicCallbacks {
         if (val.length() < 6) return;
         uint8_t channel = val.length() >= 7 ? (uint8_t)val[6] : 0;
         foxhunterSetTarget((const uint8_t*)val.data(), channel);
+#ifdef OUISPY_ROLE_MANAGER
+        mgrCacheConfig(MESH_CFG_KIND_FOXHUNTER, (const uint8_t*)val.data(), val.length());
+        if (meshIsEnabled())
+            meshBroadcastConfig(MESH_CFG_KIND_FOXHUNTER, (const uint8_t*)val.data(), val.length());
+#endif
         Serial.printf("[BLE] Foxhunter target set via app (ch=%d)\n", channel);
     }
 };

@@ -364,6 +364,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_HEARTBEAT       = 0x09,
     MESH_PKT_IGNORELIST      = 0x0A,
     MESH_PKT_CONFIG          = 0x0B,
+    MESH_PKT_DETECTORLIST    = 0x0C,
 };
 
 #define MESH_IGNORELIST_MAX 220
@@ -377,6 +378,8 @@ typedef struct __attribute__((packed)) {
 // Device-wide config relay: manager -> all nodes (node mode overrides per-node).
 #define MESH_CFG_KIND_HW    1   // hardware: buzzer/led/neopixel
 #define MESH_CFG_KIND_ALERT 2   // alert timing: cooldown/heartbeat/rediscover
+#define MESH_CFG_KIND_AUTOPCAP 3
+#define MESH_CFG_KIND_FOXHUNTER 4
 #define MESH_CONFIG_MAX     32
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;          // MESH_PKT_CONFIG
