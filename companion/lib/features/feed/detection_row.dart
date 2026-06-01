@@ -306,7 +306,7 @@ class _DetailSummary extends StatelessWidget {
       rows.add(_detailRow(context, 'Vendor', manufacturer!));
     }
     rows.add(_detailRow(context, 'Engine', detection.engine.label));
-    rows.add(_detailRow(context, 'Method', detection.method));
+    rows.add(_detailRow(context, 'Method', methodLabel(detection.method)));
     rows.add(_detailRow(context, 'RSSI', '${detection.rssi} dBm'));
     if (detection.channel > 0) {
       rows.add(_detailRow(context, 'Channel', '${detection.channel}'));
@@ -478,6 +478,27 @@ String _headline(Detection d, String? manufacturer) {
   return d.macAddress.toUpperCase();
 }
 
+String methodLabel(String method) => switch (method) {
+  'oui_addr1' => 'ADDR1 (DST)',
+  'oui_addr2' => 'ADDR2 (SRC)',
+  'oui_addr3' => 'ADDR3 (BSSID)',
+  'ssid' => 'SSID',
+  'wildcard_probe' => 'PROBE REQ',
+  'oui_match' => 'BLE OUI',
+  'name_match' => 'BLE NAME',
+  'mfg_id' => 'MFG DATA',
+  'raven_uuid' => 'RAVEN UUID',
+  'ble_watchlist' => 'WATCHLIST',
+  'wifi_watchlist' => 'WATCHLIST',
+  'ble_proximity' => 'PROXIMITY',
+  'wifi_proximity' => 'PROXIMITY',
+  'wifi_ap' => 'WIFI AP',
+  'ble_adv' => 'BLE ADV',
+  'unitree_ble' => 'UNITREE',
+  'pcap' => 'PCAP',
+  _ => method.toUpperCase(),
+};
+
 class _RssiBlock extends StatelessWidget {
   const _RssiBlock({required this.rssi});
   final int rssi;
@@ -561,6 +582,18 @@ class _DetailLine extends StatelessWidget {
       size: 13,
       color: engine.color,
     ));
+    final discovery = methodLabel(detection.method);
+    if (discovery.isNotEmpty) {
+      tokens.add(const SizedBox(width: 5));
+      tokens.add(Text(discovery,
+          style: TextStyle(
+            color: engine.color,
+            fontSize: 11,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.3,
+          )));
+    }
     if (detection.channel > 0) {
       tokens.add(const SizedBox(width: 5));
       tokens.add(_mono('${detection.channel}'));
