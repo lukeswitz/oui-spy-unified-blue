@@ -101,6 +101,41 @@ class DetectionRow extends ConsumerWidget {
                       maxLines: 2,
                     ),
                   ),
+                  if (detection.sourceNodeId.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warning.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.hub,
+                              size: 11, color: AppTheme.warning),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              nodeLabel.isNotEmpty
+                                  ? nodeLabel
+                                  : detection.sourceNodeId,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                              style: const TextStyle(
+                                color: AppTheme.warning,
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   _RssiBlock(rssi: detection.rssi),
                 ],
@@ -118,7 +153,6 @@ class DetectionRow extends ConsumerWidget {
                         manufacturer: manufacturer,
                         showMac: !headlineIsMac,
                         t: t,
-                        nodeLabel: nodeLabel,
                       ),
                     ),
                   ),
@@ -552,14 +586,12 @@ class _DetailLine extends StatelessWidget {
     required this.manufacturer,
     required this.showMac,
     required this.t,
-    this.nodeLabel = '',
   });
   final Detection detection;
   final Engine engine;
   final String? manufacturer;
   final bool showMac;
   final ResolvedTheme t;
-  final String nodeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -582,8 +614,10 @@ class _DetailLine extends StatelessWidget {
       size: 13,
       color: engine.color,
     ));
+    final isGenericMethod =
+        detection.method == 'wifi_ap' || detection.method == 'ble_adv';
     final discovery = methodLabel(detection.method);
-    if (discovery.isNotEmpty) {
+    if (discovery.isNotEmpty && !isGenericMethod) {
       tokens.add(const SizedBox(width: 5));
       tokens.add(Text(discovery,
           style: TextStyle(
@@ -668,18 +702,6 @@ class _DetailLine extends StatelessWidget {
       }
       tokens.add(_pipe());
       tokens.add(_mono(d.isFullMac ? 'FULL' : 'OUI'));
-    }
-    if (detection.sourceNodeId.isNotEmpty) {
-      tokens.add(_pipe());
-      tokens.add(Icon(Icons.hub, size: 12, color: AppTheme.warning));
-      tokens.add(const SizedBox(width: 3));
-      tokens.add(Text(
-          nodeLabel.isNotEmpty ? nodeLabel : detection.sourceNodeId,
-          style: TextStyle(
-              color: AppTheme.warning,
-              fontSize: 11,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w700)));
     }
     return Row(mainAxisSize: MainAxisSize.min, children: tokens);
   }
