@@ -10,7 +10,7 @@
 
 # OUI-SPY APEX
 
-**Catch surveillance gear with your phone.**
+**Catch surveillance gear OTG.**
 
 Eight detection engines on one ESP32, all driven from a companion app — no reboots, no web portals, no mode switches. Drive around and it maps everything it sees.
 
