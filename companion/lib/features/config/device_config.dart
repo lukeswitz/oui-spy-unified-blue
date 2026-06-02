@@ -312,7 +312,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         const ConfigInfoRow(
           icon: Icons.info_outline,
           label: 'Version',
-          value: '0.4.1',
+          value: '0.4.2',
         ),
         ConfigActionRow(
           icon: Icons.code,
@@ -558,8 +558,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           ),
         ),
         _WifiStatusPanel(),
-        const SizedBox(height: 12),
-        _WifiEnableToggle(),
         const SizedBox(height: 12),
         ConfigTextField(
           icon: Icons.wifi,

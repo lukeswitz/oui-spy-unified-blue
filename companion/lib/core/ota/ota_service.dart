@@ -147,8 +147,13 @@ class OtaService {
     return score;
   }
 
+  static const String _otaApiOverride =
+      String.fromEnvironment('OTA_API', defaultValue: '');
+
   Future<OtaRelease?> fetchLatestRelease({String board = '', String role = ''}) async {
-    final url = 'https://api.github.com/repos/$githubOwner/$githubRepo/releases/latest';
+    final url = _otaApiOverride.isNotEmpty
+        ? _otaApiOverride
+        : 'https://api.github.com/repos/$githubOwner/$githubRepo/releases/latest';
     final resp = await _dio.get<Map<String, dynamic>>(
       url,
       options: Options(

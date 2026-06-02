@@ -155,15 +155,27 @@ bool runOta(const char* url) {
     Serial.printf("[WIFI-OTA] download %s\n", url);
     notify(WIFI_OTA_DOWNLOADING, 0);
 
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(30);
-
     httpUpdate.rebootOnUpdate(false);
     httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     httpUpdate.onProgress(onProgress);
 
-    t_httpUpdate_return ret = httpUpdate.update(client, url);
+    t_httpUpdate_return ret;
+    if (strncmp(url, "https", 5) == 0) {
+        WiFiClientSecure sc;
+        sc.setInsecure();
+        sc.setTimeout(30);
+        ret = httpUpdate.update(sc, url);
+    } else {
+#ifdef OUISPY_ALLOW_HTTP_OTA
+        WiFiClient pc;
+        pc.setTimeout(30);
+        ret = httpUpdate.update(pc, url);
+#else
+        Serial.println("[WIFI-OTA] refusing non-HTTPS OTA URL");
+        notify(WIFI_OTA_ERR_HTTP, 0);
+        return false;
+#endif
+    }
     switch (ret) {
         case HTTP_UPDATE_FAILED:
             Serial.printf("[WIFI-OTA] FAILED %d: %s\n",
@@ -320,6 +332,9 @@ extern "C" bool wifiOtaStageToPartition(const char* url, uint32_t* outSize, uint
     if (!sect) { Serial.println("[STAGE] no heap for stage buffer"); return false; }
 
     bool secure = (strncmp(url, "https", 5) == 0);
+#ifndef OUISPY_ALLOW_HTTP_OTA
+    if (!secure) { Serial.println("[STAGE] refusing non-HTTPS URL"); free(sect); return false; }
+#endif
     WiFiClientSecure sclient;
     WiFiClient pclient;
     WiFiClient* client;

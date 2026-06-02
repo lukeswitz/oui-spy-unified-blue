@@ -151,13 +151,13 @@ void loop() {
         if (!checked && millis() > 9000) {
             checked = true;
             Preferences pf;
-            pf.begin("fleettst5", false);
+            pf.begin("selftst_mgr1", false);
             bool done = pf.getBool("done", false);
             if (!done) {
                 pf.putBool("done", true);
                 pf.end();
-                Serial.println("[SELFTEST] FLEET OTA trigger -> LOCAL dev node image");
-                wifiOtaSetFleetPending("http://192.168.0.13:8000/firmware.bin");
+                Serial.println("[SELFTEST] MANAGER self-OTA trigger -> LOCAL 0.4.2 mgr image");
+                wifiOtaSetPending("http://192.168.0.13:8000/oui-spy-mgr-xiao_c3-v0.4.2.bin");
                 delay(300);
                 esp_restart();
             }
