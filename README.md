@@ -12,8 +12,7 @@
 
 **Eight surveillance-detection engines on one XIAO ESP32-S3. Controlled from your phone.**
 
-This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a 
-companion app
+This fork merges every mode into one image, runs them concurrently, and replaces the per-mode web AP with a companion app. Hunt in wardrive mode with wigle.net integration, or on their own. Import CSV's for analysis and export your findings.
 
 
 
@@ -25,11 +24,12 @@ companion app
 
 ## TL;DR
 
-- One firmware. **Eight scan engines** — Detector, Flock BLE, Flock WiFi, Foxhunter, Sky Spy, UniPwn, Wardrive, PCAP.
+- One firmware. **Seven scan engines** — Detector, Flock BLE, Flock WiFi, Foxhunter, Sky Spy, UniPwn, PCAP.
+- **Wardrive them all** with detection mapping and packet inspection. Upload directly to Wigle.net from the app.
 - Runs them **concurrently** across WiFi promiscuous and BLE radios. Toggle from the app, live, no reboot.
-- **Flutter companion app** for iOS / macOS / Android — full control, live feed, wardrive map, PCAP browser, OTA updates.
+- **Companion app** for iOS / macOS / Android — full control, live feed, wardrive map, PCAP browser, OTA updates.
 - PCAP capture streams over BLE to the phone — raw 802.11 (radiotap) and BLE LL (PHDR), saved as `.pcap` in the app, open in Wireshark.
-- Imports / exports WiGLE-format CSVs. Direct WiGLE upload.
+- Imports / exports WiGLE-format CSVs. Import matches your set OUIs/MACs and Flock to review on map/detection list.
 
 > Beta. File issues — bugs and odd behavior expected.
 
@@ -40,11 +40,11 @@ companion app
 | | |
 |---|---|
 | **No mode switching** | Upstream required selecting a mode at boot and rebooting. Here every engine runs together. |
-| **Auto-PCAP on hit** | Detector / Flock BLE / Flock WiFi / Sky Spy / UniPwn detection → device starts a capture, streams it to the phone for the configured duration (3–120 s), then resumes scanning. Cooldown + per-MAC rediscover window suppress repeats. |
+| **Auto-PCAP on hit** | Optional: Detector / Flock BLE / Flock WiFi / Sky Spy / UniPwn detection → device starts a capture, streams it to the phone for the configured duration (3–120 s) |
 | **OTA updates** | WiFi (STA) or BLE — pick from inside the app. |
 | **39k+ OUI vendors** | Bundled IEEE database. Flock OUIs resolve to surveillance labels *and* the underlying chip vendor. |
 | **Geofences** | Circle / polygon zones — app-side filter on feed, map, CSV. |
-| **Dynamic Island** | iPhone 14 Pro+ / iOS 16.2+ — live counts on Lock Screen and Island. |
+| **Ditributed Nodes** | Encrypted or basic ESPNOW system controls a fleet of esp32-s3 for max coverage |
 
 ---
 
