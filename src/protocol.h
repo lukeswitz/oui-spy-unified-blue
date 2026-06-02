@@ -36,8 +36,8 @@ extern volatile uint32_t g_engRawSeen;
 #define PIN_GPS_TX     43
 
 // Firmware version
-#define FW_VERSION     "0.4.0"
-#define FW_VERSION_NUM 0x000400
+#define FW_VERSION     "0.4.1"
+#define FW_VERSION_NUM 0x000401
 
 #ifndef OUISPY_BOARD
   #define OUISPY_BOARD "unknown"
