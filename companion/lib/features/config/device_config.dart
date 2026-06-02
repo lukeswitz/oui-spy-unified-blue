@@ -23,6 +23,7 @@ import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
+import 'package:oui_spy/features/config/ota_progress_stepper.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -3705,6 +3706,17 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
   }
 }
 
+enum _FleetStatus { queued, active, done, failed }
+
+class _FleetItem {
+  _FleetItem({required this.id, required this.label, required this.isManager});
+  final String id;
+  final String label;
+  final bool isManager;
+  _FleetStatus status = _FleetStatus.queued;
+  String detail = 'Queued';
+}
+
 class _OtaSection extends ConsumerStatefulWidget {
   const _OtaSection({required this.currentVersion});
   final String currentVersion;
@@ -3727,6 +3739,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   OtaRelease? _nodeRelease;
   String? _nodeStatus;
   String? _busyNode;
+  List<_FleetItem> _fleet = const [];
+  bool _fleetRunning = false;
+  bool _mgrReconnecting = false;
 
   @override
   void initState() {
@@ -4002,6 +4017,111 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await ota.performWifiUpdate(release);
   }
 
+  /// One-tap fleet update: manager (BLE DFU) -> reconnect -> each live node
+  /// (direct BLE DFU) -> back to manager. BLE DFU everywhere: reliable, needs
+  /// no WiFi creds, live byte-accurate progress per device.
+  Future<void> _updateAll() async {
+    final ble = ref.read(bleManagerProvider);
+    final ota = ref.read(otaServiceProvider);
+    final mgrRelease = _availableRelease;
+    final managerId = ble.connectedDeviceId;
+    if (mgrRelease == null || managerId == null) {
+      setState(() => _checkStatus = 'Check for Update first.');
+      return;
+    }
+    final appState = ref.read(appStateProvider);
+    final nodeIds = appState.liveKnownNodes
+        .where((n) => n.isNotEmpty && n != appState.nodeId)
+        .toList()
+      ..sort();
+
+    final fleet = <_FleetItem>[
+      _FleetItem(
+          id: 'manager',
+          label: 'Manager ${appState.labelForNode(appState.nodeId)}',
+          isManager: true),
+      for (final id in nodeIds)
+        _FleetItem(id: id, label: appState.labelForNode(id), isManager: false),
+    ];
+    setState(() {
+      _fleet = fleet;
+      _fleetRunning = true;
+      _mgrReconnecting = false;
+    });
+
+    try {
+      // 1) Manager — BLE DFU, then wait for reboot + reconnect.
+      final mgr = fleet.first;
+      setState(() {
+        mgr.status = _FleetStatus.active;
+        mgr.detail = 'Updating manager…';
+      });
+      final mok = await ota.performUpdate(mgrRelease);
+      if (!mok) {
+        setState(() {
+          mgr.status = _FleetStatus.failed;
+          mgr.detail = 'Manager flash failed';
+        });
+        return;
+      }
+      setState(() {
+        _mgrReconnecting = true;
+        mgr.detail = 'Rebooting + reconnecting…';
+      });
+      await Future<void>.delayed(const Duration(seconds: 3));
+      final re = await ble.connectByIdAndReady(managerId);
+      setState(() => _mgrReconnecting = false);
+      if (!re) {
+        setState(() {
+          mgr.status = _FleetStatus.failed;
+          mgr.detail = 'Manager did not reconnect — tap CONNECT';
+        });
+        return;
+      }
+      setState(() {
+        mgr.status = _FleetStatus.done;
+        mgr.detail = 'Updated ${mgrRelease.tag}';
+      });
+
+      // 2) Nodes — direct BLE DFU, one at a time, reconnect manager between.
+      final nodeRelease = _nodeRelease;
+      if (nodeRelease == null) return;
+      for (final item in fleet) {
+        if (item.isManager) continue;
+        setState(() {
+          item.status = _FleetStatus.active;
+          item.detail = 'Connecting to node…';
+        });
+        try {
+          await ble.disconnect();
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+          final dev = await ble.scanForDeviceNamed('OUI-SPY-${item.id}');
+          if (dev == null) throw 'not found over BLE (powered + in range?)';
+          final c = await ble.connectAndReady(dev);
+          if (!c) throw 'connect failed';
+          if (ble.role != 'node') throw 'connected device is not a node';
+          setState(() => item.detail = 'Flashing ${nodeRelease.tag}…');
+          final ok = await ota.performUpdate(nodeRelease);
+          if (!ok) throw 'flash failed';
+          setState(() {
+            item.status = _FleetStatus.done;
+            item.detail = 'Updated ${nodeRelease.tag}';
+          });
+        } catch (e) {
+          setState(() {
+            item.status = _FleetStatus.failed;
+            item.detail = '$e';
+          });
+        } finally {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          await ble.connectByIdAndReady(managerId);
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _fleetRunning = false);
+    }
+  }
+
   Future<void> _flashLocalBin() async {
     const typeGroup = XTypeGroup(
       label: 'firmware',
@@ -4050,22 +4170,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await ota.pushLocalImage(bytes);
   }
 
-  String _wifiStatusLabel(int status) {
-    switch (status) {
-      case 0: return 'Idle';
-      case 1: return 'Connecting to $_wifiSsid...';
-      case 2: return 'Connected to $_wifiSsid';
-      case 3: return 'Downloading: ${(_wifiBytesRead / 1024).toStringAsFixed(0)} KB';
-      case 4: return 'Rebooting into new firmware';
-      case 0x80: return 'Error: no WiFi credentials';
-      case 0x81: return 'Error: WiFi join failed';
-      case 0x82: return 'Error: HTTP/HTTPS request failed';
-      case 0x83: return 'Error: image validation failed';
-      case 0x84: return 'Error: flash write failed';
-      default: return 'Status 0x${status.toRadixString(16)}';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
@@ -4074,6 +4178,20 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
         _progress!.phase != OtaPhase.upToDate &&
         _progress!.phase != OtaPhase.error &&
         _progress!.phase != OtaPhase.rebooting;
+
+    final p = _progress;
+    final bleActive = p != null &&
+        (p.phase == OtaPhase.downloading ||
+            p.phase == OtaPhase.uploading ||
+            p.phase == OtaPhase.verifying ||
+            p.phase == OtaPhase.rebooting ||
+            p.phase == OtaPhase.error);
+    OtaStepperModel? stepper;
+    if (_wifiStatus != null) {
+      stepper = OtaStepperModel.fromWifi(_wifiStatus!, _wifiBytesRead);
+    } else if (bleActive) {
+      stepper = OtaStepperModel.fromBleProgress(p);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4134,6 +4252,17 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                 ),
               ),
             ),
+          if (ref.read(bleManagerProvider).isManagerConnected)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: ElevatedButton.icon(
+                onPressed: _fleetRunning ? null : _updateAll,
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: AppTheme.accent),
+                icon: const Icon(Icons.system_update_alt, size: 16),
+                label: const Text('Update All — manager + nodes'),
+              ),
+            ),
         ],
         ..._buildNodeUpdateSection(t, busy),
         Padding(
@@ -4153,49 +4282,99 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             }),
           ),
         ),
-        if (_wifiStatus != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text(
-              'WiFi OTA: ${_wifiStatusLabel(_wifiStatus!)}',
-              style: TextStyle(
-                color: _wifiStatus! >= 0x80
-                    ? AppTheme.error
-                    : AppTheme.of(context).textSecondary,
-                fontSize: 11,
-              ),
-            ),
-          ),
-        if (_progress != null && busy) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: LinearProgressIndicator(
-              value: _progress!.fraction > 0 ? _progress!.fraction : null,
-              backgroundColor: t.border,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              _progress!.message,
-              style: TextStyle(color: t.textSecondary, fontSize: 11),
-            ),
-          ),
-        ],
-        if (_wifiStatus == 4)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text('Device rebooting into new firmware.',
-                style: TextStyle(color: AppTheme.accent, fontSize: 11)),
-          ),
-        if (_progress?.phase == OtaPhase.error)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text(_progress!.error ?? 'Update failed',
-                style: const TextStyle(color: AppTheme.warning, fontSize: 11)),
-          ),
+        if (_fleet.isNotEmpty)
+          ..._buildFleetProgress(t)
+        else if (stepper != null)
+          OtaProgressStepper(model: stepper),
       ],
     );
+  }
+
+  List<Widget> _buildFleetProgress(ResolvedTheme t) {
+    final done = _fleet.where((f) => f.status == _FleetStatus.done).length;
+    final out = <Widget>[
+      const Divider(height: 20),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        child: Row(
+          children: [
+            Icon(Icons.dns_outlined, size: 14, color: t.textSecondary),
+            const SizedBox(width: 6),
+            Text('FLEET UPDATE',
+                style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 11,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Text('$done / ${_fleet.length}',
+                style: TextStyle(
+                    color: _fleetRunning ? AppTheme.accent : AppTheme.success,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    ];
+    for (final f in _fleet) {
+      if (f.status == _FleetStatus.active) {
+        out.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+          child: Row(
+            children: [
+              Icon(f.isManager ? Icons.router : Icons.sensors,
+                  size: 14, color: AppTheme.accent),
+              const SizedBox(width: 6),
+              Text(f.label,
+                  style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ));
+        out.add(OtaProgressStepper(
+          model: OtaStepperModel.fromBleProgress(
+            _progress ?? const OtaProgress(phase: OtaPhase.uploading),
+            reconnecting: _mgrReconnecting && f.isManager,
+          ),
+        ));
+      } else {
+        final Color c;
+        final IconData icon;
+        switch (f.status) {
+          case _FleetStatus.done:
+            c = AppTheme.success;
+            icon = Icons.check_circle;
+            break;
+          case _FleetStatus.failed:
+            c = AppTheme.error;
+            icon = Icons.error;
+            break;
+          case _FleetStatus.queued:
+          case _FleetStatus.active:
+            c = t.textDim;
+            icon = Icons.radio_button_unchecked;
+            break;
+        }
+        out.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Row(
+            children: [
+              Icon(icon, size: 15, color: c),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(f.label,
+                    style: TextStyle(color: t.textPrimary, fontSize: 12)),
+              ),
+              Text(f.detail,
+                  style: TextStyle(color: c, fontSize: 10)),
+            ],
+          ),
+        ));
+      }
+    }
+    return out;
   }
 }
 

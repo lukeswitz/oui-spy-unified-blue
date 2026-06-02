@@ -365,6 +365,10 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_IGNORELIST      = 0x0A,
     MESH_PKT_CONFIG          = 0x0B,
     MESH_PKT_DETECTORLIST    = 0x0C,
+    MESH_PKT_OTA_BEGIN       = 0x0D,
+    MESH_PKT_OTA_DATA        = 0x0E,
+    MESH_PKT_OTA_END         = 0x0F,
+    MESH_PKT_OTA_ACK         = 0x10,
 };
 
 #define MESH_IGNORELIST_MAX 220
@@ -472,6 +476,49 @@ typedef struct __attribute__((packed)) {
     uint8_t  key[MESH_KEY_LEN];     // Encryption key (plaintext in invite)
     uint8_t  channel;               // ESP-NOW channel
 } MeshInvitePacket;
+
+// ============================================================================
+// Mesh OTA byte-relay (manager downloads node image once over WiFi, streams it
+// to nodes over ESP-NOW — espressif esp-now OTA pattern). Nodes need no WiFi.
+// ============================================================================
+#define MESH_OTA_CHUNK_MAX 192   // payload bytes/chunk (plaintext+GCM fits ESP-NOW 250B)
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_OTA_BEGIN
+    char     source_node_id[MESH_NODE_ID_LEN];  // manager id
+    uint32_t total_size;           // node image bytes
+    uint32_t crc32;                // CRC32 (IEEE) of full image
+    uint32_t fw_version_num;       // target version (heartbeat confirm)
+    uint16_t total_chunks;
+} MeshOtaBeginPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_OTA_DATA
+    char     source_node_id[MESH_NODE_ID_LEN];  // manager id
+    uint16_t seq;                  // chunk index 0..total_chunks-1
+    uint8_t  len;                  // payload bytes this chunk
+    uint8_t  payload[MESH_OTA_CHUNK_MAX];
+} MeshOtaDataPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_OTA_END
+    char     source_node_id[MESH_NODE_ID_LEN];  // manager id
+    uint32_t crc32;
+} MeshOtaEndPacket;
+
+// node -> manager: progress + resume request
+#define MESH_OTA_ST_READY     0
+#define MESH_OTA_ST_RECEIVING 1
+#define MESH_OTA_ST_RESUME    2   // next_needed_seq points at first gap
+#define MESH_OTA_ST_DONE      3
+#define MESH_OTA_ST_ERR       0x80
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_OTA_ACK
+    char     source_node_id[MESH_NODE_ID_LEN];  // node id
+    uint8_t  status;               // MESH_OTA_ST_*
+    uint16_t next_needed_seq;      // first missing chunk (resume)
+    uint16_t recv_count;           // chunks written so far (progress)
+} MeshOtaAckPacket;
 
 // ============================================================================
 // GATT UUIDs — Mesh
