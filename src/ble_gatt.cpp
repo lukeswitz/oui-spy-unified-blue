@@ -884,8 +884,17 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 }
                 if (val.length() < 4) return;
                 std::string url(val.data() + 3, val.length() - 3);
-                Serial.printf("[SYS] WiFi OTA dispatch: %s\n", url.c_str());
+                Serial.printf("[SYS] WiFi OTA: %s\n", url.c_str());
+#ifdef OUISPY_ROLE_MANAGER
+                if (wifiOtaSetPending(url.c_str())) {
+                    Serial.println("[SYS] Manager: reboot into WiFi OTA mode (heap-constrained)");
+                    delay(300);
+                    esp_restart();
+                }
+#else
+                Serial.println("[SYS] Node: in-place WiFi OTA, BLE stays up for progress");
                 wifiOtaDispatch(url.c_str());
+#endif
                 break;
             }
 

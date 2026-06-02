@@ -3720,10 +3720,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   StreamSubscription<({int status, int bytesRead})>? _wifiSub;
   String? _checkStatus;
   bool _wifiConfigured = false;
-  bool _wifiConnected = false;
   String _wifiSsid = '';
-  String _wifiIp = '';
-  int _wifiRssi = 0;
   int _wifiBytesRead = 0;
   int? _wifiStatus;
   Timer? _wifiPoll;
@@ -3757,10 +3754,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       if (!mounted) return;
       setState(() {
         _wifiConfigured = res.hasCreds;
-        _wifiConnected = res.connected;
         _wifiSsid = res.ssid;
-        _wifiIp = res.ip;
-        _wifiRssi = res.rssi;
       });
     } on Exception catch (e) {
       // Older firmware: char absent — leave _wifiConfigured = false
@@ -4097,45 +4091,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                 style: TextStyle(color: t.textSecondary, fontSize: 11)),
           ),
         if (_availableRelease != null && !busy) ...[
-          if (_wifiConnected)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.wifi, size: 14, color: AppTheme.success),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'WiFi: $_wifiSsid · $_wifiIp · ${_wifiRssi}dBm',
-                      style: const TextStyle(
-                        color: AppTheme.success, fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (_wifiConfigured)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.wifi_off, size: 14, color: AppTheme.warning),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'WiFi: $_wifiSsid (not connected — out of range?)',
-                      style: const TextStyle(
-                        color: AppTheme.warning, fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: _wifiConnected
+            child: _wifiConfigured
                 ? ElevatedButton.icon(
                     onPressed: _installWifi,
                     style: ElevatedButton.styleFrom(
@@ -4161,7 +4119,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                 ),
               ),
             ),
-          if (_wifiConnected)
+          if (_wifiConfigured)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: TextButton(

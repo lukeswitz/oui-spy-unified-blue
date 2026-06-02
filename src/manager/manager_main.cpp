@@ -5,6 +5,7 @@
 #include "../protocol.h"
 #include "../ble_gatt.h"
 #include "../mesh_espnow.h"
+#include "../wifi_ota_handler.h"
 #include "../ignore_list.h"
 #include "../engines/detector.h"
 #include <freertos/FreeRTOS.h>
@@ -91,6 +92,12 @@ void setup() {
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     esp_wifi_set_channel(MESH_CH, WIFI_SECOND_CHAN_NONE);
+
+    if (wifiOtaHasPending()) {
+        Serial.println("[BOOT] WiFi OTA pending -> OTA-only mode (BLE/mesh off, full heap)");
+        wifiOtaRunPendingBlocking();
+        Serial.println("[BOOT] WiFi OTA did not complete -> continuing normal boot");
+    }
 
     detectionQueue  = xQueueCreate(64, sizeof(DetectionEvent));
     engineCmdQueue  = xQueueCreate(8,  sizeof(EngineCommand));

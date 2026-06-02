@@ -119,6 +119,9 @@ class OtaService {
     final n = name.toLowerCase();
     if (!n.endsWith('.bin')) return -1;
     if (!n.contains('oui-spy')) return -1;
+    if (n.contains('-bootloader') ||
+        n.contains('-partitions') ||
+        n.contains('-boot_app0')) return -1;
     int score = 1;
     if (board.isNotEmpty && n.contains(board.toLowerCase())) score += 10;
     if (role.isNotEmpty && n.contains('-$role-')) score += 5;
@@ -302,8 +305,10 @@ class OtaService {
       ));
       await _ble.triggerWifiOta(release.assetUrl);
       _progress.add(const OtaProgress(
-        phase: OtaPhase.downloading,
-        message: 'Device downloading via WiFi — watch progress below',
+        phase: OtaPhase.rebooting,
+        message: 'Device rebooting into WiFi-update mode. BLE goes offline while '
+            'it downloads + flashes — it reconnects on its own when done '
+            '(~30–60s). Do not power off.',
       ));
       return true;
     } on StateError catch (e) {

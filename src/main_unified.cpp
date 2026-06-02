@@ -521,6 +521,12 @@ void setup() {
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     WiFi.mode(WIFI_OFF);
 
+    if (wifiOtaHasPending()) {
+        Serial.println("[BOOT] WiFi OTA pending -> OTA-only mode (BLE/mesh/engines skipped, full heap)");
+        wifiOtaRunPendingBlocking();
+        Serial.println("[BOOT] WiFi OTA did not complete -> continuing normal boot");
+    }
+
     initHardware();
 
     // Load hardware config (buzzer/LED/neopixel) from NVS
@@ -560,11 +566,7 @@ void setup() {
 
     bleGattInit();
 
-    if (wifiStaConnect()) {
-        Serial.println("[INIT] WiFi STA up");
-    } else {
-        Serial.println("[INIT] WiFi STA: no creds or join failed");
-    }
+    Serial.println("[INIT] WiFi STA reserved for OTA mode only — mesh stays on ch1");
 
     // Create FreeRTOS tasks
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);

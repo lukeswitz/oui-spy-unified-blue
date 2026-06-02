@@ -40,6 +40,10 @@ int8_t wifiStaGetRssi(void);
 
 bool wifiOtaDispatch(const char* url);
 
+bool wifiOtaSetPending(const char* url);
+bool wifiOtaHasPending(void);
+bool wifiOtaRunPendingBlocking(void);
+
 #ifdef __cplusplus
 }
 #endif

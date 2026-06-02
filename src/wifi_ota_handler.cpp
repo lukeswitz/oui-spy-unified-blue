@@ -19,6 +19,8 @@
 #define K_SSID          "ssid"
 #define K_PASS          "pass"
 #define K_STA_ENABLED   "sta_en"
+#define K_OTA_URL       "ota_url"
+#define K_OTA_PEND      "ota_pend"
 #define JOIN_TIMEOUT_MS 20000
 #define SNTP_WAIT_MS    15000
 #define OP_NOTIFY       0x06
@@ -311,4 +313,50 @@ extern "C" bool wifiOtaDispatch(const char* url) {
     xSemaphoreGive(g_otaLock);
     xTaskNotifyGive(g_otaTask);
     return true;
+}
+
+extern "C" bool wifiOtaSetPending(const char* url) {
+    if (!url || url[0] == '\0') return false;
+    Preferences p;
+    if (!p.begin(NS, false)) return false;
+    p.putString(K_OTA_URL, url);
+    p.putBool(K_OTA_PEND, true);
+    p.end();
+    Serial.printf("[WIFI-OTA] pending saved: %s\n", url);
+    return true;
+}
+
+extern "C" bool wifiOtaHasPending(void) {
+    Preferences p;
+    if (!p.begin(NS, true)) return false;
+    bool pend = p.getBool(K_OTA_PEND, false);
+    p.end();
+    return pend;
+}
+
+extern "C" bool wifiOtaRunPendingBlocking(void) {
+    char url[OTA_URL_MAX] = {0};
+    {
+        Preferences p;
+        if (!p.begin(NS, false)) return false;
+        String u = p.getString(K_OTA_URL, "");
+        p.putBool(K_OTA_PEND, false);
+        p.remove(K_OTA_URL);
+        p.end();
+        if (u.length() == 0) return false;
+        strncpy(url, u.c_str(), sizeof(url) - 1);
+    }
+
+    char ssid[33], pass[65];
+    if (!wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        Serial.println("[WIFI-OTA] OTA mode: no WiFi creds saved");
+        return false;
+    }
+    Serial.printf("[WIFI-OTA] OTA mode: joining '%s'\n", ssid);
+    if (!joinStation(ssid, pass)) {
+        Serial.println("[WIFI-OTA] OTA mode: join failed");
+        return false;
+    }
+    runOta(url);
+    return false;
 }
