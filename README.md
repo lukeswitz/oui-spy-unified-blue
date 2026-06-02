@@ -56,7 +56,7 @@ This fork merges every mode into one image, runs them concurrently, and replaces
 
 **3 · Connect over BLE** — open the app, tap **CONNECT**, then tap your device in the **SCAN FOR OUI-SPY** list. From here every engine, channel, watchlist, and PCAP is app-side.
 
-> The app does **not** auto-connect. On launch it clears any stale BLE link and waits — you choose what to connect to (handy when juggling a manager + several nodes). Reconnecting is always one tap.
+> The app does not auto-reconnect unless set to do so. On launch it clears any stale BLE link and waits — you choose what to connect to (handy when juggling a manager + several nodes). Reconnecting is always one tap.
 
 ---
 
