@@ -150,7 +150,7 @@ class OtaService {
   static const String _otaApiOverride =
       String.fromEnvironment('OTA_API', defaultValue: '');
 
-  Future<OtaRelease?> fetchLatestRelease({String board = '', String role = ''}) async {
+  Future<Map<String, dynamic>?> _getLatestJson() async {
     final url = _otaApiOverride.isNotEmpty
         ? _otaApiOverride
         : 'https://api.github.com/repos/$githubOwner/$githubRepo/releases/latest';
@@ -162,19 +162,15 @@ class OtaService {
           'X-GitHub-Api-Version': '2022-11-28',
         },
         responseType: ResponseType.json,
-        sendTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 12),
+        receiveTimeout: const Duration(seconds: 12),
       ),
     );
-    final data = resp.data;
-    if (data == null) {
-      _progress.add(const OtaProgress(
-        phase: OtaPhase.error,
-        error: 'GitHub returned empty response',
-      ));
-      return null;
-    }
+    return resp.data;
+  }
 
+  OtaRelease? _releaseFromJson(Map<String, dynamic> data, String board, String role,
+      {bool emitError = true}) {
     final tag = data['tag_name']?.toString() ?? '';
     final body = data['body']?.toString() ?? '';
     final publishedRaw = data['published_at']?.toString() ?? '';
@@ -182,10 +178,12 @@ class OtaService {
     final version = parseVersion(tag);
     if (version == null) {
       DebugLog.log('OTA: unparseable release tag "$tag"');
-      _progress.add(OtaProgress(
-        phase: OtaPhase.error,
-        error: 'Latest release tag "$tag" unparseable',
-      ));
+      if (emitError) {
+        _progress.add(OtaProgress(
+          phase: OtaPhase.error,
+          error: 'Latest release tag "$tag" unparseable',
+        ));
+      }
       return null;
     }
 
@@ -204,11 +202,13 @@ class OtaService {
       }
     }
     if (assetName == null || assetUrl == null) {
-      DebugLog.log('OTA: no .bin asset in release $tag');
-      _progress.add(OtaProgress(
-        phase: OtaPhase.error,
-        error: 'Latest release $tag has no firmware .bin asset',
-      ));
+      DebugLog.log('OTA: no .bin asset in release $tag for board=$board role=$role');
+      if (emitError) {
+        _progress.add(OtaProgress(
+          phase: OtaPhase.error,
+          error: 'Latest release $tag has no firmware .bin asset',
+        ));
+      }
       return null;
     }
 
@@ -220,6 +220,61 @@ class OtaService {
       body: body,
       publishedAt: published,
     );
+  }
+
+  Future<OtaRelease?> fetchLatestRelease({String board = '', String role = ''}) async {
+    final data = await _getLatestJson();
+    if (data == null) {
+      _progress.add(const OtaProgress(
+        phase: OtaPhase.error,
+        error: 'GitHub returned empty response',
+      ));
+      return null;
+    }
+    return _releaseFromJson(data, board, role);
+  }
+
+  /// One GitHub round-trip that resolves BOTH the connected device's asset
+  /// (board/role) and the node asset (xiao_s3/node) from the same release —
+  /// avoids a second redundant request (and second timeout/rate-limit risk)
+  /// when a manager + nodes are connected. Catches network errors internally
+  /// and returns them in `error` so the caller can show one status line.
+  Future<({OtaRelease? primary, OtaRelease? node, String? error})> fetchLatestPair({
+    String board = '',
+    String role = '',
+    bool includeNode = false,
+  }) async {
+    _progress.add(const OtaProgress(
+      phase: OtaPhase.checking,
+      message: 'Fetching latest release...',
+    ));
+    Map<String, dynamic>? data;
+    try {
+      data = await _getLatestJson();
+    } on DioException catch (e) {
+      DebugLog.log('OTA: GitHub fetch failed: type=${e.type} status=${e.response?.statusCode} '
+          'msg=${e.message} err=${e.error}');
+      final detail = e.response?.statusCode != null
+          ? 'HTTP ${e.response!.statusCode}'
+          : (e.error?.toString() ?? e.message ?? e.type.name);
+      final msg = 'Update check failed: $detail';
+      _progress.add(OtaProgress(phase: OtaPhase.error, error: msg));
+      return (primary: null, node: null, error: msg);
+    } catch (e) {
+      final msg = 'Update check failed: $e';
+      DebugLog.log('OTA: $msg');
+      _progress.add(OtaProgress(phase: OtaPhase.error, error: msg));
+      return (primary: null, node: null, error: msg);
+    }
+    if (data == null) {
+      const msg = 'GitHub returned empty response';
+      _progress.add(const OtaProgress(phase: OtaPhase.error, error: msg));
+      return (primary: null, node: null, error: msg);
+    }
+    final primary = _releaseFromJson(data, board, role);
+    final node =
+        includeNode ? _releaseFromJson(data, 'xiao_s3', 'node', emitError: false) : null;
+    return (primary: primary, node: node, error: null);
   }
 
   /// Compares latest GitHub release version to current firmware.

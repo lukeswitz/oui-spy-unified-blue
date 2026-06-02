@@ -559,6 +559,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
         _WifiStatusPanel(),
         const SizedBox(height: 12),
+        _WifiEnableToggle(),
+        const SizedBox(height: 12),
         ConfigTextField(
           icon: Icons.wifi,
           label: 'WiFi SSID',
@@ -3788,6 +3790,8 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   List<_FleetItem> _fleet = const [];
   bool _fleetRunning = false;
   bool _mgrReconnecting = false;
+  bool _autoWifiUpdate = true;
+  static const String _autoWifiPrefKey = 'ota_auto_wifi_update';
 
   @override
   void initState() {
@@ -3805,8 +3809,33 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       }
     });
     _readWifiState();
+    _loadAutoWifi();
     // Poll WiFi status every 3s so user sees connection state change
     _wifiPoll = Timer.periodic(const Duration(seconds: 3), (_) => _readWifiState());
+  }
+
+  Future<void> _loadAutoWifi() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getBool(_autoWifiPrefKey);
+    if (v != null && mounted) setState(() => _autoWifiUpdate = v);
+  }
+
+  Future<void> _setAutoWifi(bool v) async {
+    setState(() => _autoWifiUpdate = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoWifiPrefKey, v);
+  }
+
+  /// When the user has opted into auto-connect, enable WiFi STA on the manager
+  /// before a WiFi OTA so it joins the saved network for the download (and
+  /// rejoins after the reboot). No-op without saved credentials.
+  Future<void> _ensureWifiForUpdate() async {
+    if (!_autoWifiUpdate || !_wifiConfigured) return;
+    try {
+      await ref.read(bleManagerProvider).setWifiStaEnabled(true);
+    } on Exception catch (e) {
+      DebugLog.log('OTA: auto-enable STA failed: $e');
+    }
   }
 
   Future<void> _readWifiState() async {
@@ -3839,26 +3868,31 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     try {
       final ota = ref.read(otaServiceProvider);
       final ble = ref.read(bleManagerProvider);
-      final r = await ota.checkForUpdate(
-        widget.currentVersion,
+      final pair = await ota.fetchLatestPair(
         board: ble.board,
         role: ble.role,
+        includeNode: ble.isManagerConnected,
       );
-      OtaRelease? nodeRel;
-      if (ble.isManagerConnected) {
-        try {
-          nodeRel = await ota.fetchLatestRelease(board: 'xiao_s3', role: 'node');
-        } catch (e) {
-          DebugLog.log('OTA: node release check failed: $e');
-        }
-      }
       if (!mounted) return;
+      final primary = pair.primary;
+      String status;
+      OtaRelease? avail;
+      if (pair.error != null) {
+        status = pair.error!;
+      } else if (primary == null) {
+        status = 'No matching firmware in the latest release.';
+      } else {
+        final cur = OtaService.parseVersion(widget.currentVersion) ?? [0, 0, 0];
+        final newer = OtaService.compareVersion(primary.version, cur) > 0;
+        avail = newer ? primary : null;
+        status = newer
+            ? 'Update available: ${primary.tag}'
+            : 'Already up to date (${primary.tag})';
+      }
       setState(() {
-        _availableRelease = r;
-        _nodeRelease = nodeRel;
-        _checkStatus = r == null
-            ? 'Already up to date'
-            : 'Update available: ${r.tag}';
+        _availableRelease = avail;
+        _nodeRelease = pair.node;
+        _checkStatus = status;
       });
     } catch (e) {
       if (!mounted) return;
@@ -4062,6 +4096,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     final release = _availableRelease;
     if (release == null) return;
     final ota = ref.read(otaServiceProvider);
+    await _ensureWifiForUpdate();
     await ota.performWifiUpdate(release);
   }
 
@@ -4188,6 +4223,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       _mgrReconnecting = false;
     });
     ota.markOtaActive(ttl: const Duration(minutes: 8));
+    await _ensureWifiForUpdate();
 
     try {
       if (hasNodes) {
@@ -4317,6 +4353,40 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             child: Text(_checkStatus!,
                 style: TextStyle(color: t.textSecondary, fontSize: 11)),
           ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.wifi_tethering,
+                  size: 18,
+                  color: _autoWifiUpdate ? AppTheme.accent : t.textDim),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Auto-connect WiFi for firmware update',
+                        style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                    Text(
+                      _wifiConfigured
+                          ? 'Manager joins saved WiFi to download the update'
+                          : 'Save WiFi credentials in the WIFI tab to use this',
+                      style: TextStyle(color: t.textSecondary, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _autoWifiUpdate,
+                onChanged: _setAutoWifi,
+                activeThumbColor: AppTheme.accent,
+              ),
+            ],
+          ),
+        ),
         if (_availableRelease != null && !busy) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
