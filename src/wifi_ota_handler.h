@@ -43,6 +43,9 @@ bool wifiOtaDispatch(const char* url);
 bool wifiOtaSetPending(const char* url);
 bool wifiOtaHasPending(void);
 bool wifiOtaRunPendingBlocking(void);
+bool wifiOtaStageToPartition(const char* url, uint32_t* outSize, uint32_t* outCrc);
+bool wifiOtaSetFleetPending(const char* url);
+bool wifiOtaGetRelayPending(uint32_t* size, uint32_t* crc);
 
 #ifdef __cplusplus
 }

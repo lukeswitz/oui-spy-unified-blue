@@ -49,4 +49,9 @@ struct MeshLiveNode {
 };
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms);
 
+bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version);
+bool meshOtaInitiatorRunning(void);
+void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uint8_t* nodesSeen);
+void meshOtaSetProgressCb(void (*cb)(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen));
+
 #endif // MESH_ESPNOW_H

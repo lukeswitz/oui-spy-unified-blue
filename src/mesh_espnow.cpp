@@ -11,6 +11,7 @@
 #include <WiFi.h>
 #include <mbedtls/gcm.h>
 #include <string.h>
+#include <esp_ota_ops.h>
 
 volatile MeshConfig meshCurrentConfig = {};
 volatile MeshStatus meshCurrentStatus = {};
@@ -353,6 +354,257 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
     return true;
 }
 
+#ifndef OUISPY_ROLE_MANAGER
+// ---- Mesh OTA byte-relay responder (node) ----
+#define MESH_OTA_MAX_CHUNKS 16384
+static struct {
+    bool active;
+    esp_ota_handle_t handle;
+    const esp_partition_t* part;
+    uint32_t total_size;
+    uint16_t total_chunks;
+    uint32_t fw_version;
+    uint16_t recv_count;
+    uint32_t last_ack_ms;
+    uint8_t  bitmap[MESH_OTA_MAX_CHUNKS / 8];
+} g_otaRx = {};
+
+static inline bool otaBitTest(uint16_t i) { return g_otaRx.bitmap[i >> 3] & (1 << (i & 7)); }
+static inline void otaBitSet(uint16_t i)  { g_otaRx.bitmap[i >> 3] |= (1 << (i & 7)); }
+static uint16_t otaFirstMissing(void) {
+    for (uint16_t i = 0; i < g_otaRx.total_chunks; i++) if (!otaBitTest(i)) return i;
+    return g_otaRx.total_chunks;
+}
+static void otaRxSendAck(uint8_t status, uint16_t next, uint16_t count) {
+    MeshOtaAckPacket a = {};
+    a.pkt_type = MESH_PKT_OTA_ACK;
+    memcpy(a.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    a.status = status;
+    a.next_needed_seq = next;
+    a.recv_count = count;
+    uint8_t enc[96]; size_t el = 0;
+    if (encryptPacket((const uint8_t*)&a, sizeof(a), enc, &el)) enqueueTx(enc, el);
+}
+static void otaRxBegin(const MeshOtaBeginPacket* b) {
+    if (b->total_chunks == 0 || b->total_chunks > MESH_OTA_MAX_CHUNKS) {
+        otaRxSendAck(MESH_OTA_ST_ERR, 0, 0); return;
+    }
+    engineDisableAll();
+    esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+    if (g_otaRx.active && g_otaRx.handle) esp_ota_abort(g_otaRx.handle);
+    memset(&g_otaRx, 0, sizeof(g_otaRx));
+    g_otaRx.part = esp_ota_get_next_update_partition(NULL);
+    if (!g_otaRx.part) { otaRxSendAck(MESH_OTA_ST_ERR, 0, 0); return; }
+    esp_err_t e = esp_ota_begin(g_otaRx.part, b->total_size, &g_otaRx.handle);
+    if (e != ESP_OK) {
+        Serial.printf("[MESH-OTA-RX] esp_ota_begin fail %s\n", esp_err_to_name(e));
+        otaRxSendAck(MESH_OTA_ST_ERR, 0, 0); return;
+    }
+    g_otaRx.active = true;
+    g_otaRx.total_size = b->total_size;
+    g_otaRx.total_chunks = b->total_chunks;
+    g_otaRx.fw_version = b->fw_version_num;
+    Serial.printf("[MESH-OTA-RX] BEGIN size=%u chunks=%u part=%s\n",
+                  (unsigned)b->total_size, b->total_chunks, g_otaRx.part->label);
+    otaRxSendAck(MESH_OTA_ST_READY, 0, 0);
+}
+static void otaRxData(const MeshOtaDataPacket* d) {
+    if (!g_otaRx.active) return;
+    if (d->seq >= g_otaRx.total_chunks) return;
+    if (otaBitTest(d->seq)) return;
+    uint8_t n = d->len > MESH_OTA_CHUNK_MAX ? MESH_OTA_CHUNK_MAX : d->len;
+    uint32_t off = (uint32_t)d->seq * MESH_OTA_CHUNK_MAX;
+    esp_err_t e = esp_ota_write_with_offset(g_otaRx.handle, d->payload, n, off);
+    if (e != ESP_OK) {
+        Serial.printf("[MESH-OTA-RX] write seq=%u fail %s\n", d->seq, esp_err_to_name(e));
+        otaRxSendAck(MESH_OTA_ST_ERR, otaFirstMissing(), g_otaRx.recv_count);
+        return;
+    }
+    otaBitSet(d->seq);
+    g_otaRx.recv_count++;
+    uint32_t now = millis();
+    if (now - g_otaRx.last_ack_ms > 300) {
+        g_otaRx.last_ack_ms = now;
+        otaRxSendAck(MESH_OTA_ST_RECEIVING, otaFirstMissing(), g_otaRx.recv_count);
+    }
+}
+static void otaRxEnd(const MeshOtaEndPacket* e) {
+    if (!g_otaRx.active) return;
+    if (g_otaRx.recv_count < g_otaRx.total_chunks) {
+        otaRxSendAck(MESH_OTA_ST_RESUME, otaFirstMissing(), g_otaRx.recv_count);
+        return;
+    }
+    esp_err_t er = esp_ota_end(g_otaRx.handle);
+    if (er != ESP_OK) {
+        Serial.printf("[MESH-OTA-RX] esp_ota_end fail %s\n", esp_err_to_name(er));
+        g_otaRx.active = false;
+        otaRxSendAck(MESH_OTA_ST_ERR, 0, g_otaRx.recv_count);
+        return;
+    }
+    if (esp_ota_set_boot_partition(g_otaRx.part) != ESP_OK) {
+        g_otaRx.active = false;
+        otaRxSendAck(MESH_OTA_ST_ERR, 0, g_otaRx.recv_count);
+        return;
+    }
+    g_otaRx.active = false;
+    Serial.println("[MESH-OTA-RX] image complete + verified -> reboot into new firmware");
+    otaRxSendAck(MESH_OTA_ST_DONE, 0, g_otaRx.recv_count);
+    delay(500);
+    esp_restart();
+}
+#endif
+
+#ifdef OUISPY_ROLE_MANAGER
+// ---- Mesh OTA byte-relay initiator (manager) ----
+#include <esp_partition.h>
+struct OtaNodeProg {
+    char id[MESH_NODE_ID_LEN];
+    bool seen;
+    uint8_t status;
+    uint16_t recv;
+    uint16_t next;
+};
+static OtaNodeProg g_otaNodes[MESH_LIVE_NODES_MAX] = {};
+static volatile bool g_otaInitRunning = false;
+static volatile uint16_t g_otaTotalChunks = 0;
+static uint32_t g_otaSize = 0, g_otaCrc = 0, g_otaVer = 0;
+static TaskHandle_t g_otaInitTask = NULL;
+static void (*g_otaProgCb)(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) = nullptr;
+void meshOtaSetProgressCb(void (*cb)(uint8_t, uint8_t, uint8_t, uint8_t)) { g_otaProgCb = cb; }
+
+static OtaNodeProg* otaNodeSlot(const char* id) {
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++)
+        if (g_otaNodes[i].seen && memcmp(g_otaNodes[i].id, id, MESH_NODE_ID_LEN) == 0)
+            return &g_otaNodes[i];
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++)
+        if (!g_otaNodes[i].seen) {
+            memcpy(g_otaNodes[i].id, id, MESH_NODE_ID_LEN);
+            g_otaNodes[i].seen = true;
+            return &g_otaNodes[i];
+        }
+    return NULL;
+}
+static void otaInitOnAck(const MeshOtaAckPacket* a) {
+    OtaNodeProg* s = otaNodeSlot(a->source_node_id);
+    if (!s) return;
+    s->status = a->status;
+    s->recv = a->recv_count;
+    s->next = a->next_needed_seq;
+    Serial.printf("[MESH-OTA-MGR] ACK %.5s st=%u recv=%u/%u next=%u\n",
+        a->source_node_id, a->status, a->recv_count, g_otaTotalChunks, a->next_needed_seq);
+}
+static void otaSendRawOnHome(const uint8_t* plain, size_t len) {
+    uint8_t enc[256]; size_t el = 0;
+    if (!encryptPacket(plain, len, enc, &el)) return;
+    if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+    for (int r = 0; r < 3; r++) {
+        if (esp_now_send(kBroadcastDst, enc, el) == ESP_OK) break;
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+    if (txMutex) xSemaphoreGive(txMutex);
+}
+static void otaSendChunk(const esp_partition_t* src, uint16_t seq) {
+    MeshOtaDataPacket d;
+    d.pkt_type = MESH_PKT_OTA_DATA;
+    memcpy(d.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    d.seq = seq;
+    uint32_t off = (uint32_t)seq * MESH_OTA_CHUNK_MAX;
+    uint32_t remain = g_otaSize - off;
+    uint8_t n = remain >= MESH_OTA_CHUNK_MAX ? MESH_OTA_CHUNK_MAX : (uint8_t)remain;
+    d.len = n;
+    if (esp_partition_read(src, off, d.payload, n) != ESP_OK) return;
+    otaSendRawOnHome((const uint8_t*)&d, offsetof(MeshOtaDataPacket, payload) + n);
+}
+static void otaInitTaskFn(void* arg) {
+    (void)arg;
+    const esp_partition_t* src = esp_ota_get_next_update_partition(NULL);
+    if (!src) { Serial.println("[MESH-OTA-MGR] no staging partition"); g_otaInitRunning = false; g_otaInitTask = NULL; vTaskDelete(NULL); return; }
+    memset(g_otaNodes, 0, sizeof(g_otaNodes));
+    uint16_t chunks = (uint16_t)((g_otaSize + MESH_OTA_CHUNK_MAX - 1) / MESH_OTA_CHUNK_MAX);
+    g_otaTotalChunks = chunks;
+    Serial.printf("[MESH-OTA-MGR] BEGIN size=%u chunks=%u ver=0x%06X\n",
+        (unsigned)g_otaSize, chunks, (unsigned)g_otaVer);
+
+    MeshOtaBeginPacket b = {};
+    b.pkt_type = MESH_PKT_OTA_BEGIN;
+    memcpy(b.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    b.total_size = g_otaSize; b.crc32 = g_otaCrc; b.fw_version_num = g_otaVer; b.total_chunks = chunks;
+    for (int i = 0; i < 5; i++) { otaSendRawOnHome((const uint8_t*)&b, sizeof(b)); vTaskDelay(pdMS_TO_TICKS(150)); }
+    vTaskDelay(pdMS_TO_TICKS(2500));  // nodes erase + esp_ota_begin
+    if (g_otaProgCb) g_otaProgCb(2, 0, 0, 0);
+
+    for (uint16_t seq = 0; seq < chunks; seq++) {
+        otaSendChunk(src, seq);
+        vTaskDelay(pdMS_TO_TICKS(3));
+        if (g_otaProgCb && (seq & 0x1FF) == 0) {
+            g_otaProgCb(2, (uint8_t)((uint32_t)seq * 100 / chunks), 0, 0);
+        }
+    }
+
+    uint8_t doneN = 0, seenN = 0;
+    for (int round = 0; round < 10; round++) {
+        MeshOtaEndPacket e = {};
+        e.pkt_type = MESH_PKT_OTA_END;
+        memcpy(e.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+        e.crc32 = g_otaCrc;
+        for (int i = 0; i < 3; i++) { otaSendRawOnHome((const uint8_t*)&e, sizeof(e)); vTaskDelay(pdMS_TO_TICKS(40)); }
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        uint16_t minNext = chunks; bool anyPending = false;
+        doneN = 0; seenN = 0;
+        for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+            if (!g_otaNodes[i].seen) continue;
+            seenN++;
+            if (g_otaNodes[i].status == MESH_OTA_ST_DONE) { doneN++; continue; }
+            anyPending = true;
+            if (g_otaNodes[i].next < minNext) minNext = g_otaNodes[i].next;
+        }
+        if (g_otaProgCb) {
+            uint8_t pct = chunks ? (uint8_t)((uint32_t)minNext * 100 / chunks) : 100;
+            g_otaProgCb(2, anyPending ? pct : 100, doneN, seenN);
+        }
+        if (!anyPending) { Serial.println("[MESH-OTA-MGR] all nodes DONE"); break; }
+        Serial.printf("[MESH-OTA-MGR] resume round %d from seq=%u\n", round, minNext);
+        for (uint16_t seq = minNext; seq < chunks; seq++) {
+            otaSendChunk(src, seq);
+            vTaskDelay(pdMS_TO_TICKS(3));
+        }
+    }
+    if (g_otaProgCb) g_otaProgCb(3, 100, doneN, seenN);
+    Serial.println("[MESH-OTA-MGR] fleet relay finished");
+    g_otaInitRunning = false;
+    g_otaInitTask = NULL;
+    vTaskDelete(NULL);
+}
+bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version) {
+    if (g_otaInitRunning || size == 0) return false;
+    g_otaSize = size; g_otaCrc = crc; g_otaVer = fw_version;
+    g_otaInitRunning = true;
+    if (xTaskCreatePinnedToCore(otaInitTaskFn, "mesh_ota", 4096, NULL, 1, &g_otaInitTask, 0) != pdPASS) {
+        g_otaInitRunning = false;
+        Serial.printf("[MESH-OTA-MGR] task create FAILED (free heap=%u)\n",
+                      (unsigned)ESP.getFreeHeap());
+        return false;
+    }
+    return true;
+}
+bool meshOtaInitiatorRunning(void) { return g_otaInitRunning; }
+void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uint8_t* nodesSeen) {
+    uint16_t mn = g_otaTotalChunks;
+    uint8_t done = 0, seen = 0;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (!g_otaNodes[i].seen) continue;
+        seen++;
+        if (g_otaNodes[i].status == MESH_OTA_ST_DONE) { done++; continue; }
+        if (g_otaNodes[i].recv < mn) mn = g_otaNodes[i].recv;
+    }
+    if (total) *total = g_otaTotalChunks;
+    if (minRecv) *minRecv = seen ? mn : 0;
+    if (nodesDone) *nodesDone = done;
+    if (nodesSeen) *nodesSeen = seen;
+}
+#endif
+
 static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int len) {
     if (!meshCurrentConfig.enabled) return;
 
@@ -552,6 +804,26 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         else if (cp.cfg_kind == MESH_CFG_KIND_FOXHUNTER) foxhunterConfigApply(cp.data, n);
         return;
     }
+
+#ifndef OUISPY_ROLE_MANAGER
+    if (plainLen == sizeof(MeshOtaBeginPacket) && plainBuf[0] == MESH_PKT_OTA_BEGIN) {
+        MeshOtaBeginPacket b; memcpy(&b, plainBuf, sizeof(b)); otaRxBegin(&b); return;
+    }
+    if (plainLen >= offsetof(MeshOtaDataPacket, payload) && plainBuf[0] == MESH_PKT_OTA_DATA) {
+        MeshOtaDataPacket d;
+        size_t c = plainLen <= sizeof(d) ? plainLen : sizeof(d);
+        memcpy(&d, plainBuf, c);
+        otaRxData(&d); return;
+    }
+    if (plainLen == sizeof(MeshOtaEndPacket) && plainBuf[0] == MESH_PKT_OTA_END) {
+        MeshOtaEndPacket e; memcpy(&e, plainBuf, sizeof(e)); otaRxEnd(&e); return;
+    }
+#endif
+#ifdef OUISPY_ROLE_MANAGER
+    if (plainLen == sizeof(MeshOtaAckPacket) && plainBuf[0] == MESH_PKT_OTA_ACK) {
+        MeshOtaAckPacket a; memcpy(&a, plainBuf, sizeof(a)); otaInitOnAck(&a); return;
+    }
+#endif
 
     if (plainLen == sizeof(MeshAutoPcapEventPacket) && plainBuf[0] == MESH_PKT_AUTOPCAP_EVENT) {
         MeshAutoPcapEventPacket ev;

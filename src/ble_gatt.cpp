@@ -829,8 +829,26 @@ class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
 #define SYS_CMD_FACTORY_RESET     0x02
 #define SYS_CMD_CONFIRM_OTA       0x03  // mark current image valid (cancels rollback)
 #define SYS_CMD_OTA_VIA_WIFI      0x04
+#define SYS_CMD_FLEET_OTA         0x05
 #define SYS_CMD_WIFI_DISCONNECT   0x06
 #define SYS_CMD_WIFI_WIPE         0x07
+#define SYS_OP_FLEET_PROGRESS     0x08
+
+#ifdef OUISPY_ROLE_MANAGER
+static void fleetOtaNotify(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) {
+    if (!chrSystemControl) return;
+    uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, phase, pct, done, seen, 0 };
+    chrSystemControl->setValue(b, sizeof(b));
+    chrSystemControl->notify();
+}
+
+static void fleetProgressCb(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) {
+    fleetOtaNotify(phase, pct, done, seen);
+}
+void bleGattStartFleetProgress(void) {
+    meshOtaSetProgressCb(fleetProgressCb);
+}
+#endif
 
 class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
@@ -894,6 +912,21 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
 #else
                 Serial.println("[SYS] Node: in-place WiFi OTA, BLE stays up for progress");
                 wifiOtaDispatch(url.c_str());
+#endif
+                break;
+            }
+
+            case SYS_CMD_FLEET_OTA: {
+                if (!magicOk) { Serial.println("[SYS] Fleet OTA rejected"); return; }
+                if (val.length() < 4) return;
+                std::string url(val.data() + 3, val.length() - 3);
+                Serial.printf("[SYS] Fleet OTA: %s\n", url.c_str());
+#ifdef OUISPY_ROLE_MANAGER
+                if (wifiOtaSetFleetPending(url.c_str())) {
+                    Serial.println("[SYS] Reboot to stage node image (full heap), then relay");
+                    delay(300);
+                    esp_restart();
+                }
 #endif
                 break;
             }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -79,6 +80,24 @@ class OtaService {
 
   bool _running = false;
   bool get isRunning => _running;
+
+  /// True while an OTA is mid-flight INCLUDING the device's reboot/reconnect
+  /// window. The UI watches this so a firmware-update BLE drop shows the
+  /// progress stepper ("rebooting → reconnecting") instead of the global
+  /// "no node connected" screen. Auto-clears after a TTL as a safety net.
+  final ValueNotifier<bool> otaActive = ValueNotifier<bool>(false);
+  Timer? _activeTimer;
+
+  void markOtaActive({Duration ttl = const Duration(seconds: 150)}) {
+    _activeTimer?.cancel();
+    otaActive.value = true;
+    _activeTimer = Timer(ttl, () => otaActive.value = false);
+  }
+
+  void clearOtaActive() {
+    _activeTimer?.cancel();
+    otaActive.value = false;
+  }
 
   /// Parse N-part dotted version: "v0.0.3.8.1" → [0,0,3,8,1].
   /// Strips leading "v", accepts any number of components.
@@ -266,6 +285,7 @@ class OtaService {
   Future<bool> performUpdate(OtaRelease release) async {
     if (_running) return false;
     _running = true;
+    markOtaActive(ttl: const Duration(seconds: 120));
     try {
       final image = await _download(release.assetUrl);
       if (image.isEmpty) {
@@ -298,6 +318,7 @@ class OtaService {
   Future<bool> performWifiUpdate(OtaRelease release) async {
     if (_running) return false;
     _running = true;
+    markOtaActive(ttl: const Duration(seconds: 150));
     try {
       _progress.add(const OtaProgress(
         phase: OtaPhase.uploading,
@@ -332,6 +353,7 @@ class OtaService {
   Future<bool> pushLocalImage(Uint8List image) async {
     if (_running) return false;
     _running = true;
+    markOtaActive(ttl: const Duration(seconds: 120));
     try {
       return await _pushImage(image);
     } finally {

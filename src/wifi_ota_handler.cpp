@@ -7,6 +7,7 @@
 #include <HTTPUpdate.h>
 #include <esp_wifi.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_system.h>
 #include <esp_log.h>
 #include <esp_sntp.h>
@@ -21,6 +22,10 @@
 #define K_STA_ENABLED   "sta_en"
 #define K_OTA_URL       "ota_url"
 #define K_OTA_PEND      "ota_pend"
+#define K_OTA_MODE      "ota_mode"
+#define K_RELAY_PEND    "relay_pend"
+#define K_RELAY_SIZE    "relay_sz"
+#define K_RELAY_CRC     "relay_crc"
 #define JOIN_TIMEOUT_MS 20000
 #define SNTP_WAIT_MS    15000
 #define OP_NOTIFY       0x06
@@ -146,7 +151,6 @@ bool runOta(const char* url) {
     notify(WIFI_OTA_CONNECTED, 0);
 
     startSntpOnce();
-    waitForTime(SNTP_WAIT_MS);
 
     Serial.printf("[WIFI-OTA] download %s\n", url);
     notify(WIFI_OTA_DOWNLOADING, 0);
@@ -303,6 +307,88 @@ extern "C" int8_t wifiStaGetRssi(void) {
     return g_staConnected ? (int8_t)WiFi.RSSI() : 0;
 }
 
+extern "C" bool wifiOtaStageToPartition(const char* url, uint32_t* outSize, uint32_t* outCrc) {
+    if (!url || url[0] == '\0') return false;
+    if (!wifiStaIsConnected() && !wifiStaConnect()) {
+        Serial.println("[STAGE] no WiFi"); return false;
+    }
+    const esp_partition_t* part = esp_ota_get_next_update_partition(NULL);
+    if (!part) { Serial.println("[STAGE] no scratch partition"); return false; }
+
+    const size_t SECT = 4096;
+    uint8_t* sect = (uint8_t*)malloc(SECT);
+    if (!sect) { Serial.println("[STAGE] no heap for stage buffer"); return false; }
+
+    bool secure = (strncmp(url, "https", 5) == 0);
+    WiFiClientSecure sclient;
+    WiFiClient pclient;
+    WiFiClient* client;
+    if (secure) { sclient.setInsecure(); sclient.setTimeout(30); client = &sclient; }
+    else { pclient.setTimeout(30); client = &pclient; }
+    HTTPClient https;
+    https.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    bool ok = false;
+    uint32_t written = 0, crc = 0xFFFFFFFF;
+
+    if (!https.begin(*client, url)) { Serial.println("[STAGE] begin fail"); goto cleanup; }
+    {
+        int code = https.GET();
+        if (code != HTTP_CODE_OK) { Serial.printf("[STAGE] HTTP %d\n", code); goto cleanup; }
+        int total = https.getSize();
+        if (total <= 0 || (uint32_t)total > (int)part->size) {
+            Serial.printf("[STAGE] bad size %d\n", total); goto cleanup;
+        }
+        uint32_t eraseLen = ((uint32_t)total + 4095u) & ~4095u;
+        if (esp_partition_erase_range(part, 0, eraseLen) != ESP_OK) {
+            Serial.println("[STAGE] erase fail"); goto cleanup;
+        }
+        WiFiClient* st = https.getStreamPtr();
+        uint32_t sfill = 0, lastLog = 0, t0 = millis();
+        uint8_t rd[512];
+        bool failed = false;
+        while (written + sfill < (uint32_t)total && !failed) {
+            if (millis() - t0 > 60000) { Serial.println("[STAGE] timeout"); failed = true; break; }
+            size_t avail = st->available();
+            if (!avail) { if (!https.connected() && st->available() == 0) break; delay(2); continue; }
+            int n = st->readBytes(rd, avail > sizeof(rd) ? sizeof(rd) : avail);
+            if (n <= 0) continue;
+            t0 = millis();
+            for (int i = 0; i < n; i++) {
+                sect[sfill++] = rd[i];
+                crc ^= rd[i];
+                for (int j = 0; j < 8; j++) crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t)(-(int32_t)(crc & 1)));
+                if (sfill == SECT) {
+                    if (esp_partition_write(part, written, sect, sfill) != ESP_OK) {
+                        Serial.println("[STAGE] write fail"); failed = true; break;
+                    }
+                    written += sfill; sfill = 0;
+                    if (written - lastLog >= 65536) { lastLog = written; Serial.printf("[STAGE] %u/%d\n", (unsigned)written, total); }
+                }
+            }
+        }
+        if (!failed && sfill > 0) {
+            uint32_t wlen = (sfill + 3u) & ~3u;
+            for (uint32_t k = sfill; k < wlen; k++) sect[k] = 0xFF;
+            if (esp_partition_write(part, written, sect, wlen) != ESP_OK) {
+                Serial.println("[STAGE] tail write fail"); failed = true;
+            } else {
+                written += sfill;
+            }
+        }
+        if (!failed && written == (uint32_t)total) ok = true;
+        else if (!failed) Serial.printf("[STAGE] short %u/%d\n", (unsigned)written, total);
+    }
+cleanup:
+    https.end();
+    free(sect);
+    if (ok) {
+        *outSize = written;
+        *outCrc = crc ^ 0xFFFFFFFF;
+        Serial.printf("[STAGE] done %u bytes crc=0x%08X -> %s\n", (unsigned)written, (unsigned)(*outCrc), part->label);
+    }
+    return ok;
+}
+
 extern "C" bool wifiOtaDispatch(const char* url) {
     if (!url || url[0] == '\0') return false;
     ensureOtaTask();
@@ -315,16 +401,20 @@ extern "C" bool wifiOtaDispatch(const char* url) {
     return true;
 }
 
-extern "C" bool wifiOtaSetPending(const char* url) {
+static bool savePending(const char* url, uint8_t mode) {
     if (!url || url[0] == '\0') return false;
     Preferences p;
     if (!p.begin(NS, false)) return false;
     p.putString(K_OTA_URL, url);
     p.putBool(K_OTA_PEND, true);
+    p.putUChar(K_OTA_MODE, mode);
     p.end();
-    Serial.printf("[WIFI-OTA] pending saved: %s\n", url);
+    Serial.printf("[WIFI-OTA] pending saved (mode=%u): %s\n", mode, url);
     return true;
 }
+
+extern "C" bool wifiOtaSetPending(const char* url) { return savePending(url, 0); }
+extern "C" bool wifiOtaSetFleetPending(const char* url) { return savePending(url, 1); }
 
 extern "C" bool wifiOtaHasPending(void) {
     Preferences p;
@@ -334,12 +424,28 @@ extern "C" bool wifiOtaHasPending(void) {
     return pend;
 }
 
+extern "C" bool wifiOtaGetRelayPending(uint32_t* size, uint32_t* crc) {
+    Preferences p;
+    if (!p.begin(NS, false)) return false;
+    bool pend = p.getBool(K_RELAY_PEND, false);
+    uint32_t sz = p.getULong(K_RELAY_SIZE, 0);
+    uint32_t c = p.getULong(K_RELAY_CRC, 0);
+    if (pend) p.putBool(K_RELAY_PEND, false);
+    p.end();
+    if (!pend) return false;
+    if (size) *size = sz;
+    if (crc) *crc = c;
+    return true;
+}
+
 extern "C" bool wifiOtaRunPendingBlocking(void) {
     char url[OTA_URL_MAX] = {0};
+    uint8_t mode = 0;
     {
         Preferences p;
         if (!p.begin(NS, false)) return false;
         String u = p.getString(K_OTA_URL, "");
+        mode = p.getUChar(K_OTA_MODE, 0);
         p.putBool(K_OTA_PEND, false);
         p.remove(K_OTA_URL);
         p.end();
@@ -352,11 +458,30 @@ extern "C" bool wifiOtaRunPendingBlocking(void) {
         Serial.println("[WIFI-OTA] OTA mode: no WiFi creds saved");
         return false;
     }
-    Serial.printf("[WIFI-OTA] OTA mode: joining '%s'\n", ssid);
+    Serial.printf("[WIFI-OTA] OTA mode (mode=%u): joining '%s'\n", mode, ssid);
     if (!joinStation(ssid, pass)) {
         Serial.println("[WIFI-OTA] OTA mode: join failed");
         return false;
     }
+
+    if (mode == 1) {
+        uint32_t sz = 0, crc = 0;
+        if (wifiOtaStageToPartition(url, &sz, &crc)) {
+            Preferences p;
+            if (p.begin(NS, false)) {
+                p.putBool(K_RELAY_PEND, true);
+                p.putULong(K_RELAY_SIZE, sz);
+                p.putULong(K_RELAY_CRC, crc);
+                p.end();
+            }
+            Serial.printf("[WIFI-OTA] fleet staged %u bytes -> reboot to relay\n", (unsigned)sz);
+            delay(300);
+            esp_restart();
+        }
+        Serial.println("[WIFI-OTA] fleet stage failed");
+        return false;
+    }
+
     runOta(url);
     return false;
 }

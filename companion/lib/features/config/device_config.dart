@@ -337,7 +337,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   Widget _buildDisconnectedPlaceholder() {
     final t = AppTheme.of(context);
-    return Center(
+    final ota = ref.read(otaServiceProvider);
+    return ValueListenableBuilder<bool>(
+      valueListenable: ota.otaActive,
+      builder: (context, otaActive, _) {
+        if (otaActive) return _buildOtaReconnecting(t);
+        return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Container(
@@ -374,6 +379,49 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               ),
             ],
           ),
+        ),
+      ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOtaReconnecting(ResolvedTheme t) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.system_update_alt,
+                  size: 30, color: AppTheme.accent),
+            ),
+            const SizedBox(height: 14),
+            Text('UPDATING FIRMWARE',
+                style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2)),
+            const SizedBox(height: 6),
+            Text(
+              'Device is applying the update and rebooting. It reconnects on '
+              'its own — keep it powered.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: t.textDim, fontSize: 11),
+            ),
+            const SizedBox(height: 18),
+            const OtaProgressStepper(
+              model: OtaStepperModel(
+                  activeIndex: 4, detail: 'Rebooting + reconnecting…'),
+            ),
+          ],
         ),
       ),
     );
@@ -3872,6 +3920,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       _busyNode = nodeId;
       _nodeStatus = 'Disconnecting from manager...';
     });
+    ref.read(otaServiceProvider).markOtaActive(ttl: const Duration(minutes: 3));
     try {
       await ble.disconnect();
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -3910,6 +3959,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       setState(() => _nodeStatus = 'Node update error: $e');
       await _restoreManager(managerId);
     } finally {
+      ref.read(otaServiceProvider).clearOtaActive();
       if (mounted) setState(() => _busyNode = null);
     }
   }
@@ -3946,7 +3996,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
               Text(
                   nodeNewer
                       ? 'latest ${_nodeRelease!.tag}'
-                      : 'latest ${_nodeRelease!.tag} · not newer',
+                      : 'latest ${_nodeRelease!.tag} · On latest version',
                   style: TextStyle(
                       color: nodeNewer ? AppTheme.accent : t.textDim,
                       fontSize: 10)),
@@ -3981,9 +4031,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                     child: CircularProgressIndicator(strokeWidth: 2))
               else
                 OutlinedButton(
-                  onPressed: (busy || _busyNode != null || _nodeRelease == null)
+                  onPressed: (busy || _fleetRunning || _nodeRelease == null)
                       ? null
-                      : () => _updateNode(id),
+                      : _updateNodes,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.accent,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -4020,104 +4070,165 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   /// One-tap fleet update: manager (BLE DFU) -> reconnect -> each live node
   /// (direct BLE DFU) -> back to manager. BLE DFU everywhere: reliable, needs
   /// no WiFi creds, live byte-accurate progress per device.
-  Future<void> _updateAll() async {
+  /// Relay the node image to ALL nodes via the manager (ESP-NOW byte-relay).
+  /// Phone stays connected to the manager the whole time. Returns success.
+  Future<bool> _relayNodesViaManager(_FleetItem nodesItem) async {
+    final ble = ref.read(bleManagerProvider);
+    final nodeRelease = _nodeRelease;
+    if (nodeRelease == null) return false;
+    setState(() {
+      nodesItem.status = _FleetStatus.active;
+      nodesItem.detail = 'Manager staging node image…';
+    });
+    final done = Completer<bool>();
+    final sub = ble.fleetOtaUpdates.listen((e) {
+      if (!mounted) return;
+      setState(() {
+        if (e.phase == 1) {
+          nodesItem.detail = 'Manager staging node image…';
+        } else if (e.phase == 2) {
+          nodesItem.detail =
+              'Relaying over mesh ${e.pct}% · ${e.done}/${e.seen} done';
+        } else if (e.phase == 3) {
+          nodesItem.status = _FleetStatus.done;
+          nodesItem.detail = '${e.done}/${e.seen} nodes updated';
+          if (!done.isCompleted) done.complete(true);
+        } else if (e.phase >= 0x80) {
+          nodesItem.status = _FleetStatus.failed;
+          nodesItem.detail = 'Relay failed';
+          if (!done.isCompleted) done.complete(false);
+        }
+      });
+    });
+    try {
+      await ble.triggerFleetOta(nodeRelease.assetUrl);
+      return await done.future.timeout(const Duration(minutes: 5),
+          onTimeout: () {
+        if (mounted) {
+          setState(() {
+            nodesItem.status = _FleetStatus.failed;
+            nodesItem.detail = 'Timed out waiting for nodes';
+          });
+        }
+        return false;
+      });
+    } finally {
+      await sub.cancel();
+    }
+  }
+
+  Future<void> _updateNodes() async {
     final ble = ref.read(bleManagerProvider);
     final ota = ref.read(otaServiceProvider);
-    final mgrRelease = _availableRelease;
     final managerId = ble.connectedDeviceId;
-    if (mgrRelease == null || managerId == null) {
-      setState(() => _checkStatus = 'Check for Update first.');
+    if (_nodeRelease == null) {
+      setState(() => _nodeStatus = 'Tap "Check for Update" first.');
+      return;
+    }
+    if (managerId == null) {
+      setState(() => _nodeStatus = 'Manager not connected.');
       return;
     }
     final appState = ref.read(appStateProvider);
     final nodeIds = appState.liveKnownNodes
         .where((n) => n.isNotEmpty && n != appState.nodeId)
-        .toList()
-      ..sort();
+        .toList();
+    final nodesItem = _FleetItem(
+        id: 'nodes',
+        label: nodeIds.isEmpty ? 'Nodes' : 'Nodes (${nodeIds.length})',
+        isManager: false);
+    setState(() {
+      _fleet = [nodesItem];
+      _fleetRunning = true;
+    });
+    ota.markOtaActive(ttl: const Duration(minutes: 6));
+    try {
+      await _relayNodesViaManager(nodesItem);
+      if (!ble.isManagerConnected) await ble.connectByIdAndReady(managerId);
+    } finally {
+      ota.clearOtaActive();
+      if (mounted) setState(() => _fleetRunning = false);
+    }
+  }
+
+  Future<void> _updateAll() async {
+    final ble = ref.read(bleManagerProvider);
+    final ota = ref.read(otaServiceProvider);
+    final mgrRelease = _availableRelease;
+    final nodeRelease = _nodeRelease;
+    final managerId = ble.connectedDeviceId;
+    if (managerId == null) {
+      setState(() => _checkStatus = 'Manager not connected.');
+      return;
+    }
+    if (mgrRelease == null && nodeRelease == null) {
+      setState(() => _checkStatus = 'Tap "Check for Update" first.');
+      return;
+    }
+    final appState = ref.read(appStateProvider);
+    final nodeIds = appState.liveKnownNodes
+        .where((n) => n.isNotEmpty && n != appState.nodeId)
+        .toList();
+    final hasNodes = nodeRelease != null;
+    final hasMgr = mgrRelease != null;
 
     final fleet = <_FleetItem>[
-      _FleetItem(
-          id: 'manager',
-          label: 'Manager ${appState.labelForNode(appState.nodeId)}',
-          isManager: true),
-      for (final id in nodeIds)
-        _FleetItem(id: id, label: appState.labelForNode(id), isManager: false),
+      if (hasNodes)
+        _FleetItem(
+            id: 'nodes',
+            label: nodeIds.isEmpty ? 'Nodes' : 'Nodes (${nodeIds.length})',
+            isManager: false),
+      if (hasMgr)
+        _FleetItem(
+            id: 'manager',
+            label: 'Manager ${appState.labelForNode(appState.nodeId)}',
+            isManager: true),
     ];
     setState(() {
       _fleet = fleet;
       _fleetRunning = true;
       _mgrReconnecting = false;
     });
+    ota.markOtaActive(ttl: const Duration(minutes: 8));
 
     try {
-      // 1) Manager — BLE DFU, then wait for reboot + reconnect.
-      final mgr = fleet.first;
-      setState(() {
-        mgr.status = _FleetStatus.active;
-        mgr.detail = 'Updating manager…';
-      });
-      final mok = await ota.performUpdate(mgrRelease);
-      if (!mok) {
-        setState(() {
-          mgr.status = _FleetStatus.failed;
-          mgr.detail = 'Manager flash failed';
-        });
-        return;
+      if (hasNodes) {
+        await _relayNodesViaManager(fleet.first);
+        if (!ble.isManagerConnected) await ble.connectByIdAndReady(managerId);
       }
-      setState(() {
-        _mgrReconnecting = true;
-        mgr.detail = 'Rebooting + reconnecting…';
-      });
-      await Future<void>.delayed(const Duration(seconds: 3));
-      final re = await ble.connectByIdAndReady(managerId);
-      setState(() => _mgrReconnecting = false);
-      if (!re) {
-        setState(() {
-          mgr.status = _FleetStatus.failed;
-          mgr.detail = 'Manager did not reconnect — tap CONNECT';
-        });
-        return;
-      }
-      setState(() {
-        mgr.status = _FleetStatus.done;
-        mgr.detail = 'Updated ${mgrRelease.tag}';
-      });
 
-      // 2) Nodes — direct BLE DFU, one at a time, reconnect manager between.
-      final nodeRelease = _nodeRelease;
-      if (nodeRelease == null) return;
-      for (final item in fleet) {
-        if (item.isManager) continue;
+      if (hasMgr) {
+        final mgr = fleet.firstWhere((f) => f.isManager);
         setState(() {
-          item.status = _FleetStatus.active;
-          item.detail = 'Connecting to node…';
+          mgr.status = _FleetStatus.active;
+          mgr.detail = 'Updating manager…';
         });
-        try {
-          await ble.disconnect();
-          await Future<void>.delayed(const Duration(milliseconds: 600));
-          final dev = await ble.scanForDeviceNamed('OUI-SPY-${item.id}');
-          if (dev == null) throw 'not found over BLE (powered + in range?)';
-          final c = await ble.connectAndReady(dev);
-          if (!c) throw 'connect failed';
-          if (ble.role != 'node') throw 'connected device is not a node';
-          setState(() => item.detail = 'Flashing ${nodeRelease.tag}…');
-          final ok = await ota.performUpdate(nodeRelease);
-          if (!ok) throw 'flash failed';
+        final mok = _wifiConfigured
+            ? await ota.performWifiUpdate(mgrRelease)
+            : await ota.performUpdate(mgrRelease);
+        if (!mok) {
           setState(() {
-            item.status = _FleetStatus.done;
-            item.detail = 'Updated ${nodeRelease.tag}';
+            mgr.status = _FleetStatus.failed;
+            mgr.detail = 'Manager update failed';
           });
-        } catch (e) {
-          setState(() {
-            item.status = _FleetStatus.failed;
-            item.detail = '$e';
-          });
-        } finally {
-          await Future<void>.delayed(const Duration(seconds: 2));
-          await ble.connectByIdAndReady(managerId);
+          return;
         }
+        setState(() {
+          _mgrReconnecting = true;
+          mgr.detail = 'Rebooting + reconnecting…';
+        });
+        await Future<void>.delayed(const Duration(seconds: 5));
+        final re = await ble.connectByIdAndReady(managerId);
+        setState(() => _mgrReconnecting = false);
+        setState(() {
+          mgr.status = re ? _FleetStatus.done : _FleetStatus.failed;
+          mgr.detail = re
+              ? 'Updated ${mgrRelease.tag}'
+              : 'Did not reconnect — tap CONNECT';
+        });
       }
     } finally {
+      ota.clearOtaActive();
       if (mounted) setState(() => _fleetRunning = false);
     }
   }
@@ -4333,12 +4444,35 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             ],
           ),
         ));
-        out.add(OtaProgressStepper(
-          model: OtaStepperModel.fromBleProgress(
-            _progress ?? const OtaProgress(phase: OtaPhase.uploading),
-            reconnecting: _mgrReconnecting && f.isManager,
-          ),
-        ));
+        if (f.isManager) {
+          out.add(OtaProgressStepper(
+            model: OtaStepperModel.fromBleProgress(
+              _progress ?? const OtaProgress(phase: OtaPhase.uploading),
+              reconnecting: _mgrReconnecting,
+            ),
+          ));
+        } else {
+          out.add(Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    minHeight: 5,
+                    backgroundColor: t.border,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppTheme.accent),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(f.detail,
+                    style: TextStyle(color: t.textSecondary, fontSize: 11)),
+              ],
+            ),
+          ));
+        }
       } else {
         final Color c;
         final IconData icon;

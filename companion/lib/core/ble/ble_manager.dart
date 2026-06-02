@@ -76,6 +76,12 @@ class BleManager {
   final _wifiOtaStream = StreamController<({int status, int bytesRead})>.broadcast();
   Stream<({int status, int bytesRead})> get wifiOtaUpdates => _wifiOtaStream.stream;
 
+  // Fleet (mesh byte-relay) OTA progress: opcode 0x08, phase[1], pct[1], done[1], seen[1]
+  final _fleetOtaStream =
+      StreamController<({int phase, int pct, int done, int seen})>.broadcast();
+  Stream<({int phase, int pct, int done, int seen})> get fleetOtaUpdates =>
+      _fleetOtaStream.stream;
+
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
   int _mtu = 23;
@@ -284,7 +290,7 @@ class BleManager {
   String get nodeId => _nodeId;
   String get board => _board;
   String get role => _role;
-  String? get connectedDeviceId => _primaryDeviceId;
+  String? get connectedDeviceId => _primaryDeviceId ?? _lastDeviceId;
   bool get isManagerConnected =>
       (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR');
 
@@ -658,6 +664,13 @@ class BleManager {
                 | (data[4] << 16)
                 | (data[5] << 24);
             _wifiOtaStream.add((status: status, bytesRead: bytes));
+          } else if (data[0] == 0x08 && data.length >= 5) {
+            _fleetOtaStream.add((
+              phase: data[1],
+              pct: data[2],
+              done: data[3],
+              seen: data[4],
+            ));
           }
         }),
       );
@@ -838,6 +851,23 @@ class BleManager {
     final urlBytes = url.codeUnits;
     final payload = Uint8List(3 + urlBytes.length);
     payload[0] = 0x04; // SYS_CMD_OTA_VIA_WIFI
+    payload[1] = 0xC0;
+    payload[2] = 0xDE;
+    payload.setRange(3, 3 + urlBytes.length, urlBytes);
+    await _systemControl!.write(payload, withoutResponse: false);
+  }
+
+  /// Tell the manager to fleet-update all nodes: it downloads the node image
+  /// once over WiFi, then byte-relays it to every node over ESP-NOW. The phone
+  /// stays connected to the manager throughout; progress arrives via
+  /// [fleetOtaUpdates].
+  Future<void> triggerFleetOta(String nodeUrl) async {
+    if (_systemControl == null) {
+      throw StateError('System control characteristic not found');
+    }
+    final urlBytes = nodeUrl.codeUnits;
+    final payload = Uint8List(3 + urlBytes.length);
+    payload[0] = 0x05; // SYS_CMD_FLEET_OTA
     payload[1] = 0xC0;
     payload[2] = 0xDE;
     payload.setRange(3, 3 + urlBytes.length, urlBytes);
@@ -1140,6 +1170,7 @@ class BleManager {
     _engineStates.close();
     _meshStatusStream.close();
     _wifiOtaStream.close();
+    _fleetOtaStream.close();
     _pcapStatsStream.close();
     _pcapDataStream.close();
   }
