@@ -311,12 +311,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         const ConfigInfoRow(
           icon: Icons.info_outline,
           label: 'Version',
-          value: '0.4.0',
+          value: '0.4.1',
         ),
         ConfigActionRow(
           icon: Icons.code,
           label: 'Source Code',
-          subtitle: 'github.com/lukeswitz/oui-spy',
+          subtitle: 'github.com/lukeswitz/oui-spy-unified-blue',
           onTap: () => _launchUrl('https://github.com/lukeswitz/oui-spy-unified-blue'),
           trailing: Icon(Icons.open_in_new, size: 14, color: t.textDim),
         ),
@@ -2479,6 +2479,9 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   String? _engineFilter; // null = all, 'flock', 'detector'
   bool _showMap = false;
   bool _pcapExpanded = true;
+  bool _searchOpen = false;
+  final _searchCtrl = TextEditingController();
+  String _search = '';
   final _mapController = MapController();
 
   Future<void> _rescan() async {
@@ -2517,6 +2520,12 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     _loadPcapExpanded();
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadPcapExpanded() async {
     final prefs = await SharedPreferences.getInstance();
     final v = prefs.getBool('pcaps_panel_expanded');
@@ -2540,6 +2549,19 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       }).toList();
     } else if (_engineFilter == 'detector') {
       list = list.where((d) => d['engine'] == 'detector').toList();
+    }
+
+    final q = _search.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      list = list.where((d) {
+        final mac = (d['macAddress'] as String?)?.toLowerCase() ?? '';
+        final name = (d['deviceName'] as String?)?.toLowerCase() ?? '';
+        final ssid = (d['ssid'] as String?)?.toLowerCase() ?? '';
+        final method = (d['detectionMethod'] as String?)?.toLowerCase() ?? '';
+        final engine = (d['engine'] as String?)?.toLowerCase() ?? '';
+        return mac.contains(q) || name.contains(q) || ssid.contains(q) ||
+            method.contains(q) || engine.contains(q);
+      }).toList();
     }
 
     final cmp = switch (_sort) {
@@ -2764,6 +2786,23 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               ),
               const SizedBox(width: 12),
               GestureDetector(
+                onTap: () => setState(() {
+                  _searchOpen = !_searchOpen;
+                  if (!_searchOpen) {
+                    _searchCtrl.clear();
+                    _search = '';
+                  }
+                }),
+                child: Icon(
+                  _searchOpen ? Icons.search_off : Icons.search,
+                  size: 16,
+                  color: (_searchOpen || _search.isNotEmpty)
+                      ? AppTheme.accent
+                      : t.textDim,
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
                 onTap: _rescanning ? null : _rescan,
                 child: _rescanning
                     ? const SizedBox(
@@ -2772,20 +2811,34 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                           strokeWidth: 1.5, color: AppTheme.accent,
                         ),
                       )
-                    : Icon(Icons.youtube_searched_for,
-                        size: 16, color: AppTheme.detector),
-              ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: () {
-                  setState(() => _loading = true);
-                  _load();
-                },
-                child: Icon(Icons.refresh, size: 16, color: t.textDim),
+                    : Icon(Icons.refresh, size: 16, color: AppTheme.detector),
               ),
             ],
           ),
         ),
+        if (_searchOpen)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: SizedBox(
+              height: 32,
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                onChanged: (v) => setState(() => _search = v),
+                style: TextStyle(fontSize: 12, color: t.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'MAC, name, SSID, method…',
+                  prefixIcon: const Icon(Icons.search, size: 16),
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: t.border),
+                  ),
+                ),
+              ),
+            ),
+          ),
         const Divider(height: 1),
         Expanded(
           flex: 3,
