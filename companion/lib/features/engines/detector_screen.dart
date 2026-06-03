@@ -18,7 +18,8 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
   void _toggleEngine(bool enable) {
     final ble = ref.read(bleManagerProvider);
     if (enable) {
-      ble.enableEngine(Engine.detector);
+      final radio = ref.read(appStateProvider).engineRadio[Engine.detector];
+      ble.enableEngine(Engine.detector, radio: radio);
     } else {
       ble.disableEngine(Engine.detector);
     }

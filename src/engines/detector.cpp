@@ -31,6 +31,9 @@ static const unsigned long DWELL_MS = 120;
 
 static DedupRing<32, 3000> dedup;
 
+static void detectorStart(void);
+static void detectorStop(void);
+
 static const TargetFilter* matchFilterBytes(const uint8_t* mac) {
     for (int i = 0; i < filterCount; i++) {
         if (memcmp(mac, filters[i].macBytes, filters[i].prefixLen) == 0) {
@@ -228,8 +231,14 @@ static void detectorConfig(const uint8_t* payload, uint8_t len) {
     if (len < 1) return;
     uint8_t mask = payload[0] & 0x03;
     if (mask == 0) mask = 0x03;
+    uint8_t prev = detectorRadioMask;
     detectorRadioMask = mask;
     Serial.printf("[DETECTOR] Config radio mask=0x%02x\n", detectorRadioMask);
+    if (scanning && mask != prev) {
+        Serial.printf("[DETECTOR] radio 0x%02x->0x%02x while running — restart\n", prev, mask);
+        detectorStop();
+        detectorStart();
+    }
 }
 
 static void detectorStop(void) {

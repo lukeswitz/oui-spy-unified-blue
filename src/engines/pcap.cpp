@@ -432,12 +432,13 @@ static void pcapStop(void) {
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
     } else {
-        if (pPcapScan) {
-            if (pPcapScan->isScanning()) pPcapScan->stop();
+        NimBLEScan* localScan = pPcapScan;
+        pPcapScan = nullptr;
+        if (localScan) {
+            if (localScan->isScanning()) localScan->stop();
             vTaskDelay(pdMS_TO_TICKS(200));
-            pPcapScan->setAdvertisedDeviceCallbacks(nullptr, false);
-            pPcapScan->clearResults();
-            pPcapScan = nullptr;
+            localScan->setAdvertisedDeviceCallbacks(nullptr, false);
+            localScan->clearResults();
         }
     }
 

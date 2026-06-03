@@ -120,7 +120,8 @@ class _EngineCardState extends ConsumerState<EngineCard>
       if (mounted) setState(() => _optimisticValue = null);
     });
     final fut = value
-        ? ble.enableEngine(widget.engine, targetNodeId: targetNode)
+        ? ble.enableEngine(widget.engine, targetNodeId: targetNode,
+            radio: appState.engineRadio[widget.engine])
         : ble.disableEngine(widget.engine, targetNodeId: targetNode);
     fut.catchError((e) {
       DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value FAILED: $e');

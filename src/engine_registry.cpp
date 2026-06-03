@@ -78,14 +78,14 @@ static uint8_t autoPcapTriggerSrc = 0xFF;
 static uint8_t autoPcapTriggerMac[6] = {0,0,0,0,0,0};
 static bool autoPcapUserCancelled = false;
 static esp_timer_handle_t autoPcapDeadlineTimer = nullptr;
+static volatile bool autoPcapDeadlineFired = false;
 
 static void autoPcapDeadlineCb(void* arg) {
-    if (!autoPcapPending) return;
-    Serial.println("[ENGINE] auto-pcap deadline (timer), stopping PCAP");
-    engineDisable(ENGINE_PCAP);
+    autoPcapDeadlineFired = true;
 }
 
 static void autoPcapArmDeadlineTimer(uint32_t ms) {
+    autoPcapDeadlineFired = false;
     if (autoPcapDeadlineTimer == nullptr) {
         const esp_timer_create_args_t args = {
             .callback = &autoPcapDeadlineCb,
@@ -408,7 +408,7 @@ static void autoPcapTick(void) {
 
     bool pcapDown = (states[ENGINE_PCAP] == ESTATE_DISABLED);
     if (!pcapDown) autoPcapObservedActive = true;
-    bool deadlineHit = (long)(millis() - autoPcapDeadline) >= 0;
+    bool deadlineHit = autoPcapDeadlineFired || (long)(millis() - autoPcapDeadline) >= 0;
 
     if (!pcapDown && deadlineHit) {
         Serial.println("[ENGINE] auto-pcap deadline, stopping PCAP");

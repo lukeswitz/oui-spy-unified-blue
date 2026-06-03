@@ -615,6 +615,7 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
     if (len < 1) return;
     uint8_t  prevStart = channelStart, prevEnd = channelEnd;
     uint16_t prevPri = priorityDwellMs, prevNorm = normalDwellMs;
+    uint8_t  prevRadio = wardriveRadio;
 
     uint8_t newRadio = payload[0] & 0x03;
     if (newRadio == 0) newRadio = 0x03;
@@ -637,6 +638,14 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
         uint8_t ce = payload[10];
         if (cs >= 1 && cs <= 14) channelStart = cs;
         if (ce >= channelStart && ce <= 14) channelEnd = ce;
+    }
+
+    if (wardriveActive && newRadio != prevRadio) {
+        Serial.printf("[WARDRIVE] radio change 0x%02X->0x%02X while running — restart\n",
+                      prevRadio, newRadio);
+        wardriveStop();
+        wardriveStart();
+        return;
     }
 
     bool scheduleChanged = (channelStart != prevStart) || (channelEnd != prevEnd) ||
