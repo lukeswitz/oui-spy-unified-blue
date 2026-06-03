@@ -5,15 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GpsProvider {
-  GpsProvider(this._bleManager) {
+  GpsProvider(this._bleManager, this._geofenceFilter) {
     _restoreLastPosition();
   }
 
   final BleManager _bleManager;
+  final GeofenceFilter _geofenceFilter;
 
   /// UI callback to show a message (toast/snackbar). Set by screen layer.
   void Function(String message)? onMessage;
@@ -181,13 +183,15 @@ class GpsProvider {
       heading: pos.heading,
       accuracy: pos.accuracy,
       satelliteCount: pos.satelliteCount > 0 ? pos.satelliteCount : 0,
+      suppressAlerts: _geofenceFilter.isExcluded(pos.latitude, pos.longitude),
     );
   }
 }
 
 final gpsProvider = Provider<GpsProvider>((ref) {
   final ble = ref.watch(bleManagerProvider);
-  final gps = GpsProvider(ble);
+  final geofence = ref.read(geofenceFilterProvider);
+  final gps = GpsProvider(ble, geofence);
   ref.onDispose(gps.dispose);
   return gps;
 });

@@ -118,8 +118,9 @@ class BleProtocol {
     double accuracy = 0,
     int satelliteCount = 0,
     required int timestampMs,
+    bool suppressAlerts = false,
   }) {
-    final bytes = ByteData(41);
+    final bytes = ByteData(42);
     bytes.setFloat64(0, latitude, Endian.little);
     bytes.setFloat64(8, longitude, Endian.little);
     bytes.setFloat32(16, altitude, Endian.little);
@@ -128,6 +129,7 @@ class BleProtocol {
     bytes.setFloat32(28, accuracy, Endian.little);
     bytes.setUint8(32, satelliteCount);
     bytes.setInt64(33, timestampMs, Endian.little);
+    bytes.setUint8(41, suppressAlerts ? 1 : 0);
     return bytes.buffer.asUint8List();
   }
 

@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -19,13 +20,14 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 /// App-wide state that survives navigation. Single source of truth.
 /// All screens read from here instead of creating their own subscriptions.
 class AppState extends ChangeNotifier {
-  AppState(this._ble, this._gps, this._ignoreList, this._notificationService, this._liveActivity) {
+  AppState(this._ble, this._gps, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _init();
   }
 
   final BleManager _ble;
   final GpsProvider _gps;
   final IgnoreListState _ignoreList;
+  final GeofenceFilter _geofenceFilter;
   final NotificationService _notificationService;
   final LiveActivityService _liveActivity;
   final List<StreamSubscription<dynamic>> _subs = [];
@@ -466,8 +468,10 @@ class AppState extends ChangeNotifier {
       (_recentDetectionTimes[det.engine] ??= []).add(DateTime.now());
       _upsertDetection(det);
 
-      // Fire notification only for first-seen MACs per engine
-      if (isNewMac) {
+      // Fire notification only for first-seen MACs per engine, and never
+      // inside an exclusion geofence (no alert route while in the zone).
+      if (isNewMac &&
+          !_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
         _notificationService.onDetection(det);
       }
 
@@ -706,7 +710,8 @@ final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   final ble = ref.watch(bleManagerProvider);
   final gps = ref.watch(gpsProvider);
   final allowlist = ref.watch(ignoreListProvider);
+  final geofence = ref.read(geofenceFilterProvider);
   final notif = ref.watch(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
-  return AppState(ble, gps, allowlist, notif, liveActivity);
+  return AppState(ble, gps, allowlist, geofence, notif, liveActivity);
 });

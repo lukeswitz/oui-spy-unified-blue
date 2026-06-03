@@ -1011,6 +1011,7 @@ class BleManager {
     double heading = 0,
     double accuracy = 0,
     int satelliteCount = 0,
+    bool suppressAlerts = false,
   }) async {
     if (_gpsReceive == null) return;
     updateGps(
@@ -1029,6 +1030,7 @@ class BleManager {
         accuracy: accuracy,
         satelliteCount: satelliteCount,
         timestampMs: DateTime.now().millisecondsSinceEpoch,
+        suppressAlerts: suppressAlerts,
       ),
       withoutResponse: true,
     );
