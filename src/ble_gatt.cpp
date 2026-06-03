@@ -253,6 +253,18 @@ void mgrDebugSetCommanded(uint8_t mask) {
 }
 #endif
 
+#ifdef OUISPY_NETCOUNT
+void bleGattNetcountDrive(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    mgrCommandedMask |= ENGINE_BITMASK(ENGINE_WARDRIVE);
+    mgrCommandedStates[ENGINE_WARDRIVE] = (uint8_t)ESTATE_SCANNING;
+    mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+    delay(120);
+    meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+#endif
+}
+#endif
+
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
     // Advertising watchdog: if no phone is connected, ensure we are advertising.

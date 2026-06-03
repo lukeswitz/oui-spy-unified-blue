@@ -9,6 +9,7 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite);
 void meshDisable(void);
 void meshSendInvite(void);
 void meshBroadcastDetection(const DetectionEvent* evt);
+void meshEnqueueWardriveRecord(const DetectionEvent* evt);
 void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len);
 void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],
                                 uint8_t channel, uint16_t duration_sec,
@@ -53,5 +54,10 @@ bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version);
 bool meshOtaInitiatorRunning(void);
 void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uint8_t* nodesSeen);
 void meshOtaSetProgressCb(void (*cb)(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen));
+
+#ifdef OUISPY_NETCOUNT
+uint32_t ncUniqueCount(void);
+uint32_t ncRxTotalCount(void);
+#endif
 
 #endif // MESH_ESPNOW_H

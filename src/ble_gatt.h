@@ -49,4 +49,8 @@ void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
                                uint16_t seq, const uint8_t* payload, uint8_t len);
 void bleGattStartFleetProgress(void);
 
+#ifdef OUISPY_NETCOUNT
+void bleGattNetcountDrive(void);
+#endif
+
 #endif // BLE_GATT_H

@@ -258,7 +258,10 @@ static void detectionNotifyTask(void* param) {
             }
 
             // Broadcast to mesh peers (only local detections, not relayed ones)
-            meshBroadcastDetection(&evt);
+            if (evt.engine_id == ENGINE_WARDRIVE)
+                meshEnqueueWardriveRecord(&evt);
+            else
+                meshBroadcastDetection(&evt);
 
             // Send BLE notification
             bleGattNotifyDetection(&evt);

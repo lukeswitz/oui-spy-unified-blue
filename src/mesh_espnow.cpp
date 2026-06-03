@@ -158,6 +158,24 @@ static TaskHandle_t  meshTxTaskHandle = NULL;
 static void meshTxTaskFn(void* arg);
 static bool enqueueTx(const uint8_t* data, size_t len);
 
+#ifndef OUISPY_ROLE_MANAGER
+#define MESH_DET_BATCH_MAX_FRAMES 16
+typedef struct {
+    uint8_t mac[6];
+    int8_t  rssi;
+    uint8_t channel;
+    uint8_t method;
+    uint8_t auth;
+    uint8_t namelen;
+    char    name[MESH_DET_REC_NAME_MAX];
+} DetRec;
+static QueueHandle_t detRecQueue = NULL;
+static void flushDetBatches(void);
+#ifdef OUISPY_NETCOUNT
+static void ncInjectTaskFn(void* arg);
+#endif
+#endif
+
 static MeshAutoPcapEventPacket latestAutoPcapEvent = {};
 static uint32_t                latestAutoPcapEventMs = 0;
 static SemaphoreHandle_t       autoPcapEventMutex = NULL;
@@ -605,6 +623,30 @@ void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uin
 }
 #endif
 
+#ifdef OUISPY_NETCOUNT
+#define NC_SET_SLOTS 2048
+static uint32_t ncSet[NC_SET_SLOTS];
+static uint32_t ncSetCount = 0;
+static uint32_t ncRxTotal  = 0;
+static uint32_t ncFnv6(const uint8_t* m) {
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < 6; i++) { h ^= m[i]; h *= 16777619u; }
+    return h ? h : 1;
+}
+static void ncRecordWifiMac(const uint8_t mac[6]) {
+    ncRxTotal++;
+    uint32_t h = ncFnv6(mac);
+    uint32_t i = h & (NC_SET_SLOTS - 1);
+    for (uint32_t n = 0; n < NC_SET_SLOTS; n++) {
+        if (ncSet[i] == 0) { ncSet[i] = h; ncSetCount++; return; }
+        if (ncSet[i] == h) return;
+        i = (i + 1) & (NC_SET_SLOTS - 1);
+    }
+}
+uint32_t ncUniqueCount(void)  { return ncSetCount; }
+uint32_t ncRxTotalCount(void) { return ncRxTotal; }
+#endif
+
 static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int len) {
     if (!meshCurrentConfig.enabled) return;
 
@@ -867,6 +909,56 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
+    if (plainLen >= offsetof(MeshDetectionBatchPacket, data) &&
+        plainBuf[0] == MESH_PKT_DETECTION_BATCH) {
+#ifdef OUISPY_ROLE_MANAGER
+        MeshDetectionBatchPacket b;
+        size_t cp = plainLen <= sizeof(b) ? plainLen : sizeof(b);
+        memcpy(&b, plainBuf, cp);
+        if (memcmp(b.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        size_t dataLen = plainLen - offsetof(MeshDetectionBatchPacket, data);
+        if (dataLen > sizeof(b.data)) dataLen = sizeof(b.data);
+        size_t off = 0; uint32_t got = 0;
+        for (uint8_t i = 0; i < b.count && off + 11 <= dataLen; i++) {
+            const uint8_t* p = b.data + off;
+            uint8_t nl = p[10];
+            if (off + 11 + nl > dataLen) break;
+            DetectionEvent evt = {};
+            memcpy(evt.source_node_id, b.source_node_id, MESH_NODE_ID_LEN);
+            evt.engine_id = ENGINE_WARDRIVE;
+            memcpy(evt.mac, p, 6);
+            evt.rssi    = (int8_t)p[6];
+            evt.channel = p[7];
+            evt.method  = p[8];
+            evt.ext.wardrive.auth_mode = p[9];
+            if (evt.channel == 0) {
+                size_t c = nl < sizeof(evt.ext.wardrive.device_name) - 1
+                             ? nl : sizeof(evt.ext.wardrive.device_name) - 1;
+                memcpy(evt.ext.wardrive.device_name, p + 11, c);
+            } else {
+                size_t c = nl < sizeof(evt.ext.wardrive.ssid) - 1
+                             ? nl : sizeof(evt.ext.wardrive.ssid) - 1;
+                memcpy(evt.ext.wardrive.ssid, p + 11, c);
+            }
+#ifdef OUISPY_NETCOUNT
+            if (evt.channel != 0) ncRecordWifiMac(evt.mac);
+#else
+            pushDetection(&evt);
+#endif
+            off += 11 + nl;
+            got++;
+        }
+        recordLiveSeen(b.source_node_id);
+        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+            s.rx_count += got;
+            memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+            xSemaphoreGive(meshMutex);
+        }
+#endif
+        return;
+    }
+
     if (plainLen < sizeof(MeshDetectionPacket)) return;
 
     MeshDetectionPacket pkt;
@@ -887,6 +979,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
 
     pushDetection(&evt);
     recordLiveSeen(pkt.source_node_id);
+#ifdef OUISPY_NETCOUNT
+    if (evt.engine_id == ENGINE_WARDRIVE && evt.channel != 0) ncRecordWifiMac(evt.mac);
+#endif
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         MeshStatus s;
@@ -1065,12 +1160,19 @@ void meshInit(void) {
     if (!meshRxQueue) {
         Serial.println("[MESH] rx queue create FAIL");
     }
+    detRecQueue = xQueueCreate(128, sizeof(DetRec));
+    if (!detRecQueue) {
+        Serial.println("[MESH] detRec queue create FAIL");
+    }
     xTaskCreate(meshRxWorkerFn, "meshRxWk", 6144, NULL, 4, &meshRxWorkerHandle);
 #endif
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
     xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
 #ifndef OUISPY_ROLE_MANAGER
     xTaskCreate(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle);
+#endif
+#if defined(OUISPY_NETCOUNT) && !defined(OUISPY_ROLE_MANAGER)
+    xTaskCreate(ncInjectTaskFn, "ncInject", 4096, NULL, 1, NULL);
 #endif
 
     Serial.printf("[MESH] Initialized, localNodeId=%s\n", localNodeId);
@@ -1248,6 +1350,109 @@ void meshBroadcastConfig(uint8_t kind, const uint8_t* data, size_t len) {
     enqueueTx(enc, encLen);
 }
 
+void meshEnqueueWardriveRecord(const DetectionEvent* evt) {
+#ifndef OUISPY_ROLE_MANAGER
+    if (!meshCurrentConfig.enabled) return;
+    if (evt->source_node_id[0] != '\0') return;
+    if (!detRecQueue) return;
+    if (txDedupCheck(evt->engine_id, evt->mac, evt->channel)) return;
+
+    DetRec r = {};
+    memcpy(r.mac, evt->mac, 6);
+    r.rssi    = evt->rssi;
+    r.channel = evt->channel;
+    r.method  = evt->method;
+    r.auth    = (evt->engine_id == ENGINE_WARDRIVE) ? evt->ext.wardrive.auth_mode : 0;
+    const char* nm = "";
+    if (evt->engine_id == ENGINE_WARDRIVE)
+        nm = (evt->channel == 0) ? evt->ext.wardrive.device_name : evt->ext.wardrive.ssid;
+    size_t nl = strnlen(nm, MESH_DET_REC_NAME_MAX);
+    r.namelen = (uint8_t)nl;
+    memcpy(r.name, nm, nl);
+
+    if (xQueueSend(detRecQueue, &r, 0) == pdTRUE && meshTxTaskHandle)
+        xTaskNotifyGive(meshTxTaskHandle);
+#else
+    (void)evt;
+#endif
+}
+
+#ifndef OUISPY_ROLE_MANAGER
+static void flushDetBatches(void) {
+    if (!detRecQueue || uxQueueMessagesWaiting(detRecQueue) == 0) return;
+    DetRec r;
+    bool have = (xQueueReceive(detRecQueue, &r, 0) == pdTRUE);
+    int frames = 0;
+    while (have && frames < MESH_DET_BATCH_MAX_FRAMES) {
+        MeshDetectionBatchPacket pkt;
+        pkt.pkt_type = MESH_PKT_DETECTION_BATCH;
+        memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+        pkt.count = 0;
+        size_t off = 0;
+        while (have) {
+            size_t recLen = 11 + r.namelen;
+            if (off + recLen > MESH_DET_BATCH_BUDGET || pkt.count >= 255) break;
+            uint8_t* p = pkt.data + off;
+            memcpy(p, r.mac, 6);
+            p[6]  = (uint8_t)r.rssi;
+            p[7]  = r.channel;
+            p[8]  = r.method;
+            p[9]  = r.auth;
+            p[10] = r.namelen;
+            memcpy(p + 11, r.name, r.namelen);
+            off += recLen;
+            pkt.count++;
+            have = (xQueueReceive(detRecQueue, &r, 0) == pdTRUE);
+        }
+        size_t plainLen = offsetof(MeshDetectionBatchPacket, data) + off;
+        uint8_t enc[256]; size_t encLen = 0;
+        if (encryptPacket((const uint8_t*)&pkt, plainLen, enc, &encLen)) {
+            for (int retry = 0; retry < 3; retry++) {
+                if (esp_now_send(kBroadcastDst, enc, encLen) == ESP_OK) break;
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
+            if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+                MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+                s.tx_count += pkt.count;
+                memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+                xSemaphoreGive(meshMutex);
+            }
+        }
+        frames++;
+    }
+    if (have) xQueueSendToFront(detRecQueue, &r, 0);
+}
+#endif
+
+#if defined(OUISPY_NETCOUNT) && !defined(OUISPY_ROLE_MANAGER)
+static void ncInjectTaskFn(void* arg) {
+    (void)arg;
+    uint32_t counter = 0;
+    uint8_t seed = (uint8_t)localNodeId[3];
+    for (;;) {
+        if (meshCurrentConfig.enabled && millis() > 15000) {
+            for (int i = 0; i < 40; i++) {
+                DetectionEvent evt = {};
+                evt.engine_id = ENGINE_WARDRIVE;
+                evt.channel   = 6;
+                evt.rssi      = -50;
+                evt.method    = 0;
+                evt.mac[0] = 0x02;
+                evt.mac[1] = seed;
+                evt.mac[2] = (uint8_t)(counter >> 24);
+                evt.mac[3] = (uint8_t)(counter >> 16);
+                evt.mac[4] = (uint8_t)(counter >> 8);
+                evt.mac[5] = (uint8_t)(counter);
+                snprintf(evt.ext.wardrive.ssid, sizeof(evt.ext.wardrive.ssid), "NC-%lu", (unsigned long)counter);
+                meshEnqueueWardriveRecord(&evt);
+                counter++;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+#endif
+
 void meshBroadcastDetection(const DetectionEvent* evt) {
     if (!meshCurrentConfig.enabled) return;
     if (evt->source_node_id[0] != '\0') return;
@@ -1341,7 +1546,13 @@ static void meshTxTaskFn(void* arg) {
             while (xQueueReceive(meshTxQueue, &item, 0) == pdTRUE) { }
             continue;
         }
-        if (uxQueueMessagesWaiting(meshTxQueue) == 0) continue;
+        bool haveGeneric = uxQueueMessagesWaiting(meshTxQueue) > 0;
+#ifndef OUISPY_ROLE_MANAGER
+        bool haveRec = (detRecQueue && uxQueueMessagesWaiting(detRecQueue) > 0);
+#else
+        bool haveRec = false;
+#endif
+        if (!haveGeneric && !haveRec) continue;
 
         if (!txMutex || xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) != pdTRUE) continue;
 
@@ -1360,6 +1571,10 @@ static void meshTxTaskFn(void* arg) {
             xSemaphoreGive(txMutex);
             continue;
         }
+#endif
+
+#ifndef OUISPY_ROLE_MANAGER
+        flushDetBatches();
 #endif
 
         int sent = 0;

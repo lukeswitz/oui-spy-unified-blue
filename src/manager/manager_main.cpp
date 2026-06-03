@@ -240,4 +240,29 @@ void loop() {
         g_meshManagerActive = false;
     }
 #endif
+#ifdef OUISPY_NETCOUNT
+    static bool ncOn = false;
+    static uint32_t ncT0 = 0, ncLastDrive = 0, ncLastLog = 0;
+    if (!ncOn && millis() > 10000) {
+        MeshLiveNode ln[8];
+        size_t n = meshGetLiveNodes(ln, 8, 30000);
+        if (n > 0) {
+            ncOn = true; ncT0 = millis(); ncLastDrive = millis();
+            bleGattNetcountDrive();
+            Serial.printf("[NC-MGR] drive wardrive -> %u node(s)\n", (unsigned)n);
+        }
+    }
+    if (ncOn && millis() - ncLastDrive > 7000) {
+        ncLastDrive = millis();
+        bleGattNetcountDrive();
+    }
+    if (ncOn && millis() - ncLastLog > 2000) {
+        ncLastLog = millis();
+        MeshLiveNode ln[8];
+        size_t n = meshGetLiveNodes(ln, 8, 30000);
+        Serial.printf("[NC-MGR] uniq=%u rx=%u live=%u t=%lu heap=%u\n",
+            (unsigned)ncUniqueCount(), (unsigned)ncRxTotalCount(), (unsigned)n,
+            (unsigned long)((millis() - ncT0) / 1000), (unsigned)ESP.getFreeHeap());
+    }
+#endif
 }

@@ -373,7 +373,17 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_OTA_DATA        = 0x0E,
     MESH_PKT_OTA_END         = 0x0F,
     MESH_PKT_OTA_ACK         = 0x10,
+    MESH_PKT_DETECTION_BATCH = 0x11,
 };
+
+#define MESH_DET_REC_NAME_MAX  32
+#define MESH_DET_BATCH_BUDGET  215
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;                          // MESH_PKT_DETECTION_BATCH
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  count;
+    uint8_t  data[MESH_DET_BATCH_BUDGET];
+} MeshDetectionBatchPacket;
 
 #define MESH_IGNORELIST_MAX 220
 typedef struct __attribute__((packed)) {
