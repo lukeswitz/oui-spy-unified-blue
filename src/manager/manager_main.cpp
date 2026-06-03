@@ -27,6 +27,7 @@ volatile bool    hwBuzzerEnabled = false;
 volatile uint8_t hwBuzzerVolume = 0;
 volatile bool    hwLedEnabled = false;
 volatile uint8_t hwNeopixelBrightness = 0;
+volatile bool    hwAlertsSuppressed = false;
 
 static void detectionNotifyTask(void*) {
     DetectionEvent evt;

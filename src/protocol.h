@@ -237,6 +237,7 @@ extern volatile bool    hwBuzzerEnabled;
 extern volatile uint8_t hwBuzzerVolume;      // 0-255 PWM duty cycle
 extern volatile bool    hwLedEnabled;
 extern volatile uint8_t hwNeopixelBrightness;
+extern volatile bool    hwAlertsSuppressed;  // set by phone (inside geofence) / relayed from manager
 
 // ============================================================================
 // GATT UUIDs
@@ -417,6 +418,7 @@ typedef struct __attribute__((packed)) {
     uint32_t free_heap;
     uint8_t  role;
     uint8_t  active_engines_mask;
+    uint8_t  alerts_suppressed;
 } MeshHeartbeatPacket;
 
 typedef struct __attribute__((packed)) {
@@ -427,6 +429,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  channel;
     uint16_t duration_sec;
     uint8_t  paused_mask;
+    uint8_t  mode;
 } MeshAutoPcapEventPacket;
 
 // Raw BLE notification forwarded over mesh. Node fills payload + kind,

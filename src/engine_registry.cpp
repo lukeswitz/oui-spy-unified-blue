@@ -395,7 +395,8 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
     autoPcapArmDeadlineTimer((uint32_t)autoPcapDurationSec * 1000U);
     uint8_t maskSnap = autoPcapPausedMask;
     meshBroadcastAutoPcapEvent((uint8_t)src, autoPcapTriggerMac, chan,
-                               autoPcapDurationSec, maskSnap);
+                               autoPcapDurationSec, maskSnap,
+                               (uint8_t)(isBle ? PCAP_MODE_BLE : PCAP_MODE_WIFI));
     Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
                   engines[src] ? engines[src]->name : "?",
                   chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec, maskSnap);

@@ -45,6 +45,7 @@ volatile bool    hwBuzzerEnabled = true;
 volatile uint8_t hwBuzzerVolume = 100;       // 0-255 PWM duty cycle
 volatile bool    hwLedEnabled = true;
 volatile uint8_t hwNeopixelBrightness = 50;
+volatile bool    hwAlertsSuppressed = false;
 
 // ============================================================================
 // Hardware
@@ -133,6 +134,7 @@ static void chimeTaskFn(void* param) {
 static volatile uint32_t lastChimeMs = 0;
 static void requestChime(void) {
     if (!chimeQueue) return;
+    if (hwAlertsSuppressed) return;
     uint32_t now = millis();
     if (lastChimeMs != 0 && (uint32_t)(now - lastChimeMs) < CHIME_DEDUP_MS) return;
     lastChimeMs = now;

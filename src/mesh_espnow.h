@@ -13,7 +13,7 @@ void meshEnqueueWardriveRecord(const DetectionEvent* evt);
 void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len);
 void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],
                                 uint8_t channel, uint16_t duration_sec,
-                                uint8_t paused_mask);
+                                uint8_t paused_mask, uint8_t mode);
 void meshForwardNotify(uint8_t kind, const uint8_t* data, size_t len);
 void meshForwardPcapRecord(const uint8_t* record, size_t len);
 void meshSendHeartbeat(uint8_t active_engines_mask);

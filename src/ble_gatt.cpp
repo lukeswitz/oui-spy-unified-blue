@@ -352,6 +352,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
     void onDisconnect(NimBLEServer* server) override {
         phoneConnected = false;
+        hwAlertsSuppressed = false;
 #ifdef OUISPY_ROLE_MANAGER
         mgrPhoneGoneMs = millis();
         Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
@@ -502,6 +503,10 @@ class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
         memcpy(&gps, val.data(), sizeof(GpsData));
         memcpy((void*)&currentGps, &gps, sizeof(GpsData));
         gpsValid = true;
+
+        if (val.length() > sizeof(GpsData)) {
+            hwAlertsSuppressed = ((const uint8_t*)val.data())[sizeof(GpsData)] != 0;
+        }
     }
 };
 

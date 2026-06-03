@@ -584,6 +584,7 @@ void pcapGetStats(PcapStats* out) {
             memcpy(out->auto_trigger_mac, ev.trigger_mac, 6);
             out->paused_mask = ev.paused_mask;
             out->current_channel = ev.channel;
+            out->mode = ev.mode;
             uint32_t totalMs = (uint32_t)ev.duration_sec * 1000U;
             out->auto_remaining_ms = (age < totalMs) ? (totalMs - age) : 0u;
             out->auto_duration_sec = ev.duration_sec;

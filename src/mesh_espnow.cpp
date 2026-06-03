@@ -801,6 +801,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         memcpy(&hb, plainBuf, sizeof(hb));
         if (memcmp(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0) {
             recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask);
+            if (hb.role == MESH_ROLE_MANAGER) {
+                hwAlertsSuppressed = hb.alerts_suppressed != 0;
+            }
         }
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
@@ -1785,7 +1788,7 @@ static void retryTaskFn(void* arg) {
 
 void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],
                                 uint8_t channel, uint16_t duration_sec,
-                                uint8_t paused_mask) {
+                                uint8_t paused_mask, uint8_t mode) {
     if (!meshCurrentConfig.enabled) return;
     MeshAutoPcapEventPacket ev = {};
     ev.pkt_type = MESH_PKT_AUTOPCAP_EVENT;
@@ -1795,6 +1798,7 @@ void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],
     ev.channel = channel;
     ev.duration_sec = duration_sec;
     ev.paused_mask = paused_mask;
+    ev.mode = mode;
 
     uint8_t enc[256]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&ev, sizeof(ev), enc, &encLen)) return;
@@ -1883,6 +1887,7 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     hb.role = 0;
 #endif
     hb.active_engines_mask = active_engines_mask;
+    hb.alerts_suppressed = hwAlertsSuppressed ? 1 : 0;
     uint8_t enc[128]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
     enqueueTx(enc, encLen);
