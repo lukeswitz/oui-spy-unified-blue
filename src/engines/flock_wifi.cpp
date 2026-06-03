@@ -17,6 +17,7 @@ static unsigned long lastChannelHop = 0;
 static const unsigned long DWELL_MS = 350;
 
 static volatile bool scanning = false;
+static bool flockWifiRadioGate = true;
 
 // 64-slot dedup ring (bumped from 16: phones flood OUI matches).
 static DedupRingISR<64, 5000> wifiDedup;
@@ -159,6 +160,10 @@ static void flockWifiStart(void) {
         Serial.println("[FLOCK-WIFI] Started (passive — wardrive handles WiFi scan)");
         return;
     }
+    if (!flockWifiRadioGate) {
+        Serial.println("[FLOCK-WIFI] Started (radio-gated off — node is BLE-only)");
+        return;
+    }
     if (!meshIsEnabled()) {
         WiFi.mode(WIFI_STA);
     }
@@ -197,6 +202,7 @@ static void flockWifiStop(void) {
 static void flockWifiLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning) return;
+    if (!flockWifiRadioGate) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (millis() - lastChannelHop >= DWELL_MS) {
         channelIdx = (channelIdx + 1) % 3;
@@ -205,6 +211,18 @@ static void flockWifiLoop(void) {
         sendWildcardProbe();
         if (meshIsEnabled() && channels[channelIdx] == 1) meshNoteOnHome();
     }
+}
+
+static void flockWifiConfig(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    const char* self = meshGetLocalNodeId();
+    if (!cfgTgtStrip(&payload, &len, self)) return;
+    if (len < 1) return;
+    bool gate = (payload[0] & 0x01) != 0;
+    if (gate == flockWifiRadioGate) return;
+    flockWifiRadioGate = gate;
+    Serial.printf("[FLOCK-WIFI] radio gate -> %s\n", gate ? "ON" : "OFF");
+    if (scanning) { flockWifiStop(); flockWifiStart(); }
 }
 
 static void flockWifiApplyPrefs(void) {
@@ -216,7 +234,7 @@ const EngineCallbacks flockWifiCallbacks = {
     .start      = flockWifiStart,
     .stop       = flockWifiStop,
     .loop       = flockWifiLoop,
-    .config     = NULL,
+    .config     = flockWifiConfig,
     .applyPrefs = flockWifiApplyPrefs,
     .name       = "Flock-WiFi"
 };

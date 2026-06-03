@@ -116,13 +116,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     return true;
   }
 
-  /// Popup on wardrive start: assign each live node WiFi / BLE / Both. Only
-  /// shown for targets that use the wardrive engine. Returns false if the user
-  /// cancels (abort start).
   Future<bool> _confirmRadioRoles() async {
     final app = ref.read(appStateProvider);
     final wd = ref.read(wardriveProvider);
-    if (!wd.target.engines(wd.radio).contains(Engine.wardrive)) return true;
     final mgrId = AppState.canonicalNodeId(app.nodeId);
     final nodes = app.liveKnownNodes
         .where((id) => !(app.isManagerConnected && id == mgrId))
@@ -1219,7 +1215,7 @@ class _IdleControls extends StatelessWidget {
                   );
                 }).toList(),
               ),
-              if (t.hasRadioChoice && !isManagerConnected) ...[
+              if (t.hasRadioChoice && (!isManagerConnected || !t.usesPerNodeRadio)) ...[
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1235,14 +1231,15 @@ class _IdleControls extends StatelessWidget {
                         child: GestureDetector(
                           onTap: () {
                             ref.read(wardriveProvider).setRadio(r);
-                            ref.read(appStateProvider).setEngineRadio(
-                              Engine.wardrive,
-                              switch (r) {
-                                WardriveRadio.wifi => 0x01,
-                                WardriveRadio.ble => 0x02,
-                                WardriveRadio.both => 0x03,
-                              },
-                            );
+                            final mask = switch (r) {
+                              WardriveRadio.wifi => 0x01,
+                              WardriveRadio.ble => 0x02,
+                              WardriveRadio.both => 0x03,
+                            };
+                            final maskEngine = t.radioMaskEngine;
+                            if (maskEngine != null) {
+                              ref.read(appStateProvider).setEngineRadio(maskEngine, mask);
+                            }
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 6),

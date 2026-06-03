@@ -172,6 +172,25 @@ static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
     }
 }
 
+static void mgrBroadcastNodeRadioConfig(uint8_t engineId) {
+    if (!meshIsEnabled()) return;
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        uint8_t r = mgrGetNodeRadio(live[i].id);
+        if (r == 0) r = 0x03;
+        uint8_t out[CFG_TGT_OVERHEAD + 1];
+        out[0] = CFG_TGT_PREFIX;
+        memcpy(out + 1, live[i].id, MESH_NODE_ID_LEN - 1);
+        out[5] = 0x00;
+        out[CFG_TGT_OVERHEAD] = r;
+        meshBroadcastCommand(0x10, engineId, out, (uint8_t)(CFG_TGT_OVERHEAD + 1));
+        Serial.printf("[NODE-RADIO] eng=%u node=%.4s radio=0x%02X\n",
+                      engineId, live[i].id, r);
+    }
+}
+
 static void mgrSetNodeRadioList(const uint8_t* data, size_t len) {
     if (len < 1) return;
     uint8_t count = data[0];
@@ -466,6 +485,13 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                 meshBroadcastCommand(cmd.command, cmd.engine_id,
                     cmd.payload_len > 0 ? cmd.payload : nullptr,
                     cmd.payload_len);
+                if (cmd.command == 0x01 &&
+                    (cmd.engine_id == ENGINE_DETECTOR ||
+                     cmd.engine_id == ENGINE_SKYSPY ||
+                     cmd.engine_id == ENGINE_FLOCK_WIFI ||
+                     cmd.engine_id == ENGINE_FLOCK_BLE)) {
+                    mgrBroadcastNodeRadioConfig(cmd.engine_id);
+                }
             }
         }
         bleGattNotifyEngineState();

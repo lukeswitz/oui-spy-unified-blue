@@ -48,6 +48,7 @@ class AppState extends ChangeNotifier {
     Engine.detector: 0x03,
     Engine.foxhunter: 0x03,
     Engine.wardrive: 0x03,
+    Engine.skySpy: 0x03,
   };
 
   void setEngineRadio(Engine engine, int radio) {

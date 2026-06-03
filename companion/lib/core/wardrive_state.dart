@@ -68,7 +68,16 @@ enum WardriveTarget {
     },
   };
 
-  bool get hasRadioChoice => this != drone;
+  bool get hasRadioChoice => true;
+
+  bool get usesPerNodeRadio => this == wigle || this == wigleFlock;
+
+  Engine? get radioMaskEngine => switch (this) {
+    WardriveTarget.wigle || WardriveTarget.wigleFlock => Engine.wardrive,
+    WardriveTarget.detector => Engine.detector,
+    WardriveTarget.drone => Engine.skySpy,
+    WardriveTarget.flock => null,
+  };
 
   /// Whether this target includes flock detection engines.
   bool get includesFlock => this == flock || this == wigleFlock;
@@ -199,6 +208,9 @@ class WardriveController extends ChangeNotifier {
   final Map<String, int> nodeBleCount = {};
 
   List<Engine> get activeEngines => target.engines(radio);
+
+  List<Engine> get _fleetEngines =>
+      _ble.isManagerConnected ? target.engines(WardriveRadio.both) : activeEngines;
 
   /// Local-only WiFi/BLE counts (excludes peer detections).
   int get localWifiCount =>
@@ -359,7 +371,7 @@ class WardriveController extends ChangeNotifier {
       currentPosition = cached;
     }
 
-    await _enableEnginesSequentially(activeEngines);
+    await _enableEnginesSequentially(_fleetEngines);
 
     WakelockPlus.enable();
 

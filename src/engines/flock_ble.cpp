@@ -14,6 +14,7 @@
 
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
+static bool flockBleRadioGate = true;
 static unsigned long lastScanStart = 0;
 static unsigned long scanIntervalMs = 3000;
 static unsigned long scanDurationMs = 2000;
@@ -118,6 +119,10 @@ static void flockBleStart(void) {
         Serial.println("[FLOCK-BLE] Started (passive — wardrive handles BLE scan)");
         return;
     }
+    if (!flockBleRadioGate) {
+        Serial.println("[FLOCK-BLE] Started (radio-gated off — node is WiFi-only)");
+        return;
+    }
 
     scanDurationMs = wardriveGetBleScanDurationMs();
     scanIntervalMs = wardriveGetBleScanIntervalMs();
@@ -148,6 +153,7 @@ static void flockBleStop(void) {
 
 static void flockBleLoop(void) {
     if (!scanning) return;
+    if (!flockBleRadioGate) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (!bleScan) return;
     unsigned long now = millis();
@@ -161,6 +167,18 @@ static void flockBleLoop(void) {
     }
 }
 
+static void flockBleConfig(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    const char* self = meshGetLocalNodeId();
+    if (!cfgTgtStrip(&payload, &len, self)) return;
+    if (len < 1) return;
+    bool gate = (payload[0] & 0x02) != 0;
+    if (gate == flockBleRadioGate) return;
+    flockBleRadioGate = gate;
+    Serial.printf("[FLOCK-BLE] radio gate -> %s\n", gate ? "ON" : "OFF");
+    if (scanning) { flockBleStop(); flockBleStart(); }
+}
+
 static void flockBleApplyPrefs(void) {
     dedup.setCooldownMs(engineGetRediscoverMs());
 }
@@ -170,7 +188,7 @@ const EngineCallbacks flockBleCallbacks = {
     .start      = flockBleStart,
     .stop       = flockBleStop,
     .loop       = flockBleLoop,
-    .config     = NULL,
+    .config     = flockBleConfig,
     .applyPrefs = flockBleApplyPrefs,
     .name       = "Flock-BLE"
 };

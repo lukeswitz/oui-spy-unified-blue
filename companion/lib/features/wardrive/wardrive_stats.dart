@@ -32,60 +32,83 @@ class WardriveStats extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (stats.wifiDetections > 0 || stats.wifiTotal > 0)
-                Expanded(
-                  flex: 3,
-                  child: _HeroCount(
-                    icon: Icons.wifi,
-                    unique: stats.wifiDetections,
-                    total: stats.wifiTotal,
-                    color: AppTheme.accent,
-                    fontSize: 44,
-                  ),
-                ),
-              if (stats.flockCount > 0)
-                Expanded(
-                  flex: stats.wifiDetections == 0 && stats.bleDetections == 0
-                      ? 3 : 2,
-                  child: _HeroCount(
-                    icon: Icons.videocam,
-                    unique: stats.flockCount,
-                    total: null,
-                    color: AppTheme.flockBle,
-                    fontSize: stats.wifiDetections == 0 && stats.bleDetections == 0
-                        ? 44 : 30,
-                  ),
-                ),
-              if (stats.bleDetections > 0 || stats.bleTotal > 0)
-                Expanded(
-                  flex: 2,
-                  child: _HeroCount(
-                    icon: Icons.bluetooth,
-                    unique: stats.bleDetections,
-                    total: stats.bleTotal,
-                    color: t.textSecondary,
-                    fontSize: 30,
-                  ),
-                ),
-            ],
+            children: _heroRow(t),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              _InfoChip(Icons.timer_outlined, _formatDuration(stats.duration), t.textDim, t),
-              _InfoChip(Icons.straighten, UnitFormatter.distance(stats.distanceKm, units), t.textDim, t),
-              _InfoChip(Icons.speed, UnitFormatter.speed(stats.speedKmh, units), t.textDim, t),
-              _InfoChip(null, '${UnitFormatter.detPerDist(stats.detectionsPerKm, units)} ${UnitFormatter.detPerDistLabel(units).toLowerCase()}', t.textDim, t),
-              _GpsChip(accuracy: stats.gpsAccuracy, color: gpsColor, t: t),
-            ],
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _InfoChip(Icons.timer_outlined, _formatDuration(stats.duration), t.textSecondary, t),
+                const SizedBox(width: 6),
+                _InfoChip(Icons.straighten, UnitFormatter.distance(stats.distanceKm, units), t.textSecondary, t),
+                const SizedBox(width: 6),
+                _InfoChip(Icons.speed, UnitFormatter.speed(stats.speedKmh, units), t.textSecondary, t),
+                const SizedBox(width: 6),
+                _InfoChip(null, '${UnitFormatter.detPerDist(stats.detectionsPerKm, units)} ${UnitFormatter.detPerDistLabel(units).toLowerCase()}', t.textSecondary, t),
+                const SizedBox(width: 6),
+                _GpsChip(accuracy: stats.gpsAccuracy, color: gpsColor, t: t),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  List<Widget> _heroRow(ResolvedTheme t) {
+    final hasWifi = stats.wifiDetections > 0 || stats.wifiTotal > 0;
+    final hasBle = stats.bleDetections > 0 || stats.bleTotal > 0;
+    final flockSolo = stats.wifiDetections == 0 && stats.bleDetections == 0;
+    final counts = <Widget>[
+      if (hasWifi)
+        Expanded(
+          flex: 3,
+          child: _HeroCount(
+            icon: Icons.wifi,
+            unique: stats.wifiDetections,
+            total: stats.wifiTotal,
+            color: AppTheme.accent,
+            fontSize: 44,
+          ),
+        ),
+      if (stats.flockCount > 0)
+        Expanded(
+          flex: flockSolo ? 3 : 2,
+          child: _HeroCount(
+            icon: Icons.videocam,
+            unique: stats.flockCount,
+            total: null,
+            color: AppTheme.flockBle,
+            fontSize: flockSolo ? 44 : 30,
+          ),
+        ),
+      if (hasBle)
+        Expanded(
+          flex: 2,
+          child: _HeroCount(
+            icon: Icons.bluetooth,
+            unique: stats.bleDetections,
+            total: stats.bleTotal,
+            color: t.textSecondary,
+            fontSize: 30,
+          ),
+        ),
+    ];
+    final out = <Widget>[];
+    for (var i = 0; i < counts.length; i++) {
+      if (i > 0) {
+        out.add(Container(
+          width: 0.5,
+          height: 40,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          color: t.border,
+        ));
+      }
+      out.add(counts[i]);
+    }
+    return out;
   }
 
   String _formatDuration(Duration d) {
@@ -116,24 +139,25 @@ class _HeroCount extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: fontSize * 0.4, color: color.withValues(alpha: 0.6)),
+        Icon(icon, size: fontSize * 0.4, color: color.withValues(alpha: 0.85)),
         const SizedBox(height: 2),
         Text(
           '$unique',
           style: TextStyle(
             color: color,
             fontSize: fontSize,
-            fontWeight: FontWeight.w300,
+            fontWeight: FontWeight.w400,
             fontFamily: 'monospace',
             height: 1,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           total != null ? '$total total' : 'unique',
           style: TextStyle(
-            color: t.textDim,
-            fontSize: 10,
+            color: t.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
             fontFamily: 'monospace',
           ),
         ),

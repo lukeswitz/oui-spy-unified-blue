@@ -33,6 +33,7 @@ static DroneData drones[MAX_UAVS];
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
 static unsigned long lastScanStart = 0;
+static uint8_t skyspyRadioMask = 0x03;
 
 static DroneData* findOrAllocDrone(uint8_t* mac) {
     for (int i = 0; i < MAX_UAVS; i++) {
@@ -220,23 +221,28 @@ static void skyspyInit(void) {
 }
 
 static void skyspyStart(void) {
-    if (!meshIsEnabled()) {
-        WiFi.mode(WIFI_STA);
+    bool wantWifi = (skyspyRadioMask & 0x01) != 0;
+    bool wantBle  = (skyspyRadioMask & 0x02) != 0;
+    if (wantWifi) {
+        if (!meshIsEnabled()) {
+            WiFi.mode(WIFI_STA);
+        }
+        // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
+        // bury the callback in irrelevant traffic and miss drone beacons.
+        wifi_promiscuous_filter_t filter = {
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
+        };
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        esp_wifi_set_promiscuous_filter(&filter);
+        esp_wifi_set_promiscuous(true);
+        esp_wifi_set_promiscuous_rx_cb(wifiCallback);
+        esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
     }
-    // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
-    // bury the callback in irrelevant traffic and miss drone beacons.
-    wifi_promiscuous_filter_t filter = {
-        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
-    };
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-    esp_wifi_set_promiscuous_filter(&filter);
-    esp_wifi_set_promiscuous(true);
-    esp_wifi_set_promiscuous_rx_cb(wifiCallback);
-    esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
 
     scanning = true;
     lastScanStart = 0;
-    Serial.println("[SKYSPY] Started (BLE + WiFi ch6)");
+    Serial.printf("[SKYSPY] Started (radio=0x%02X %s%s)\n",
+                  skyspyRadioMask, wantBle ? "BLE " : "", wantWifi ? "WiFi" : "");
 }
 
 static void skyspyStop(void) {
@@ -254,7 +260,7 @@ static void skyspyLoop(void) {
     if (!scanning || !bleScan) return;
 
     // BLE scan cycle
-    if (millis() - lastScanStart >= 1500) {
+    if ((skyspyRadioMask & 0x02) && millis() - lastScanStart >= 1500) {
         if (!bleScan->isScanning()) {
             bleScan->start(1, false);
             lastScanStart = millis();
@@ -269,11 +275,28 @@ static void skyspyLoop(void) {
     }
 }
 
+static void skyspyConfig(const uint8_t* payload, uint8_t len) {
+    if (len < 1) return;
+    const char* self = meshGetLocalNodeId();
+    if (!cfgTgtStrip(&payload, &len, self)) return;
+    if (len < 1) return;
+    uint8_t mask = payload[0] & 0x03;
+    if (mask == 0) mask = 0x03;
+    uint8_t prev = skyspyRadioMask;
+    skyspyRadioMask = mask;
+    Serial.printf("[SKYSPY] Config radio mask=0x%02x\n", skyspyRadioMask);
+    if (scanning && mask != prev) {
+        Serial.printf("[SKYSPY] radio 0x%02x->0x%02x while running — restart\n", prev, mask);
+        skyspyStop();
+        skyspyStart();
+    }
+}
+
 const EngineCallbacks skyspyCallbacks = {
     .init   = skyspyInit,
     .start  = skyspyStart,
     .stop   = skyspyStop,
     .loop   = skyspyLoop,
-    .config = NULL,
+    .config = skyspyConfig,
     .name   = "Sky Spy"
 };

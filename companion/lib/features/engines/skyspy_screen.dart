@@ -33,7 +33,8 @@ class SkySpyScreen extends ConsumerWidget {
               onChanged: (enable) {
                 final ble = ref.read(bleManagerProvider);
                 if (enable) {
-                  ble.enableEngine(Engine.skySpy);
+                  ble.enableEngine(Engine.skySpy,
+                      radio: ref.read(appStateProvider).engineRadio[Engine.skySpy]);
                 } else {
                   ble.disableEngine(Engine.skySpy);
                 }

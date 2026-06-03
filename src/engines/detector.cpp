@@ -229,6 +229,9 @@ static void detectorStart(void) {
 
 static void detectorConfig(const uint8_t* payload, uint8_t len) {
     if (len < 1) return;
+    const char* self = meshGetLocalNodeId();
+    if (!cfgTgtStrip(&payload, &len, self)) return;
+    if (len < 1) return;
     uint8_t mask = payload[0] & 0x03;
     if (mask == 0) mask = 0x03;
     uint8_t prev = detectorRadioMask;

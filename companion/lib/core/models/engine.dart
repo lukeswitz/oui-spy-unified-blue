@@ -36,7 +36,10 @@ enum Engine {
 
   /// Engines that scan both WiFi and BLE radios.
   bool get isDualRadio =>
-      this == detector || this == foxhunter || this == wardrive;
+      this == detector ||
+      this == foxhunter ||
+      this == wardrive ||
+      this == skySpy;
 
   IconData get icon {
     return switch (this) {
