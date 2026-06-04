@@ -801,6 +801,8 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         memcpy(&hb, plainBuf, sizeof(hb));
         if (memcmp(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0) {
             recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask);
+            Serial.printf("[HB] rx id=%.4s role=%u eng=0x%02X\n",
+                          hb.source_node_id, hb.role, hb.active_engines_mask);
             if (hb.role == MESH_ROLE_MANAGER) {
                 hwAlertsSuppressed = hb.alerts_suppressed != 0;
             }
@@ -1722,6 +1724,8 @@ static void retryTaskFn(void* arg) {
                 if (onHomeChannel) {
                     lastHeartbeat = nowHb;
                     meshSendHeartbeat(engineGetActiveMask());
+                    Serial.printf("[HB] tx id=%s ch=%u slicing=%d\n",
+                                  localNodeId, hbCh, meshTimeSlicingActive() ? 1 : 0);
                 }
             }
         }

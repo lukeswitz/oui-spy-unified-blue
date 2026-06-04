@@ -70,11 +70,16 @@ static void heartbeatTask(void*) {
         }
         if ((tick % 5) == 0) {
             MeshStatus s = meshGetStatus();
-            Serial.printf("[MGR] mesh enabled=%u rx=%lu tx=%lu err=%lu | heap=%u | ble=%d\n",
+            MeshLiveNode lv[MESH_LIVE_NODES_MAX];
+            size_t lc = meshGetLiveNodes(lv, MESH_LIVE_NODES_MAX, 30000);
+            Serial.printf("[MGR] mesh enabled=%u rx=%lu tx=%lu err=%lu live=%u | heap=%u | ble=%d\n",
                 s.enabled, (unsigned long)s.rx_count, (unsigned long)s.tx_count,
-                (unsigned long)s.rx_errors,
+                (unsigned long)s.rx_errors, (unsigned)lc,
                 (unsigned)ESP.getFreeHeap(),
                 bleGattIsConnected() ? 1 : 0);
+            for (size_t i = 0; i < lc; i++)
+                Serial.printf("[MGR]   live[%u] id=%.4s role=%u\n",
+                              (unsigned)i, lv[i].id, lv[i].role);
         }
     }
 }
