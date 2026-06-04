@@ -61,16 +61,6 @@ class WatchlistState extends ChangeNotifier {
   }
 
   static const _prefsKey = 'watchlist_entries_v1';
-  static const _seededKey = 'watchlist_seeded_v1';
-
-  static final List<WatchlistEntry> _defaults = [
-    WatchlistEntry(identifier: '70:c9:4e', description: 'Flock Safety'),
-    WatchlistEntry(identifier: '3c:91:80', description: 'Flock Safety'),
-    WatchlistEntry(identifier: 'd8:f3:bc', description: 'Flock Safety'),
-    WatchlistEntry(identifier: '58:8e:81', description: 'FS Ext Battery'),
-    WatchlistEntry(identifier: '80:30:49', description: 'Flock Safety'),
-    WatchlistEntry(identifier: '14:5a:fc', description: 'Flock Safety'),
-  ];
 
   final List<WatchlistEntry> entries = [];
   bool _loaded = false;
@@ -114,16 +104,6 @@ class WatchlistState extends ChangeNotifier {
       } catch (_) {
         entries.clear();
       }
-    } else if (!(prefs.getBool(_seededKey) ?? false)) {
-      entries
-        ..clear()
-        ..addAll(_defaults.map((e) => WatchlistEntry(
-              identifier: e.identifier,
-              matchType: e.matchType,
-              description: e.description,
-            )));
-      await prefs.setBool(_seededKey, true);
-      await _writeRaw(prefs);
     }
     _loaded = true;
     notifyListeners();
