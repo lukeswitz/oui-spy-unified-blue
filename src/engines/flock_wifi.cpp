@@ -225,6 +225,13 @@ static void flockWifiConfig(const uint8_t* payload, uint8_t len) {
     if (scanning) { flockWifiStop(); flockWifiStart(); }
 }
 
+void flockWifiSetRadioGate(bool on) {
+    if (on == flockWifiRadioGate) return;
+    flockWifiRadioGate = on;
+    Serial.printf("[FLOCK-WIFI] local radio gate -> %s\n", on ? "ON" : "OFF");
+    if (scanning) { flockWifiStop(); flockWifiStart(); }
+}
+
 static void flockWifiApplyPrefs(void) {
     wifiDedup.setCooldownMs(engineGetRediscoverMs());
 }

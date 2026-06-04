@@ -13,5 +13,6 @@
 #include "engine_registry.h"
 
 extern const EngineCallbacks flockBleCallbacks;
+void flockBleSetRadioGate(bool on);
 
 #endif

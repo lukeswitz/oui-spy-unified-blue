@@ -667,6 +667,16 @@ uint16_t wardriveGetBleScanDurationMs(void) { return bleScanDurationMs; }
 uint16_t wardriveGetBleScanIntervalMs(void) { return bleScanIntervalMs; }
 uint8_t  wardriveGetRadio(void) { return wardriveRadio; }
 
+void wardriveSetRadioMask(uint8_t mask) {
+    uint8_t m = mask & 0x03;
+    if (m == 0) m = 0x03;
+    if (m == wardriveRadio) return;
+    uint8_t prev = wardriveRadio;
+    wardriveRadio = m;
+    Serial.printf("[WARDRIVE] local radio mask 0x%02X->0x%02X\n", prev, m);
+    if (wardriveActive) { wardriveStop(); wardriveStart(); }
+}
+
 static void wardriveApplyPrefs(void) {
     uint32_t relog = engineGetRediscoverMs();
     wardriveDedup.setCooldownMs(relog);

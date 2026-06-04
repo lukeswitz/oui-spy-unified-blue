@@ -179,6 +179,13 @@ static void flockBleConfig(const uint8_t* payload, uint8_t len) {
     if (scanning) { flockBleStop(); flockBleStart(); }
 }
 
+void flockBleSetRadioGate(bool on) {
+    if (on == flockBleRadioGate) return;
+    flockBleRadioGate = on;
+    Serial.printf("[FLOCK-BLE] local radio gate -> %s\n", on ? "ON" : "OFF");
+    if (scanning) { flockBleStop(); flockBleStart(); }
+}
+
 static void flockBleApplyPrefs(void) {
     dedup.setCooldownMs(engineGetRediscoverMs());
 }

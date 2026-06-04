@@ -268,7 +268,8 @@ static void detectionNotifyTask(void* param) {
             // Send BLE notification
             bleGattNotifyDetection(&evt);
 
-            engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel, evt.mac);
+            if (evt.source_node_id[0] == '\0')
+                engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel, evt.mac);
 
             // LED off after notification sent
             if (hwLedEnabled) {

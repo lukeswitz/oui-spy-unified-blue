@@ -119,13 +119,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   Future<bool> _confirmRadioRoles() async {
     final app = ref.read(appStateProvider);
     final wd = ref.read(wardriveProvider);
-    final mgrId = AppState.canonicalNodeId(app.nodeId);
-    final nodes = app.liveKnownNodes
-        .where((id) => !(app.isManagerConnected && id == mgrId))
-        .toList()
-      ..sort();
-    if (nodes.isEmpty) return true;
     if (!app.isManagerConnected) return true;
+    final mgrId = AppState.canonicalNodeId(app.nodeId);
+    final nodes = app.liveKnownNodes.where((id) => id != mgrId).toList()..sort();
+    if (nodes.isEmpty) return true;
     final roles = <String, int>{
       for (final n in nodes) n: app.wardriveRadioForNode(n),
     };
@@ -4998,6 +4995,12 @@ class _RadioRolePopupState extends State<_RadioRolePopup> {
     _ => _bothColor,
   };
 
+  static String _maskLabel(int mask) => switch (mask & 0x03) {
+    0x01 => 'WIFI',
+    0x02 => 'BLE',
+    _ => 'BOTH',
+  };
+
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
@@ -5030,15 +5033,21 @@ class _RadioRolePopupState extends State<_RadioRolePopup> {
             ...widget.nodes.map((id) {
               final mask = _roles[id] ?? 0x03;
               final selColor = _radioColor(mask);
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                decoration: BoxDecoration(
+                  color: t.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: selColor.withValues(alpha: 0.35)),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Container(
-                          width: 8, height: 8,
+                          width: 9, height: 9,
                           margin: const EdgeInsets.only(right: 8),
                           decoration: BoxDecoration(
                             color: selColor,
@@ -5052,41 +5061,56 @@ class _RadioRolePopupState extends State<_RadioRolePopup> {
                             widget.labelFor(id),
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: t.textPrimary, fontWeight: FontWeight.w600),
+                                color: t.textPrimary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14),
                           ),
+                        ),
+                        Text(
+                          _maskLabel(mask),
+                          style: TextStyle(
+                              color: selColor,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    SegmentedButton<int>(
-                      showSelectedIcon: false,
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        backgroundColor: WidgetStateProperty.resolveWith((states) =>
-                            states.contains(WidgetState.selected)
-                                ? selColor.withValues(alpha: 0.22)
-                                : Colors.transparent),
-                        side: WidgetStateProperty.all(
-                            BorderSide(color: selColor.withValues(alpha: 0.45))),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: WidgetStateProperty.all(
+                              const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                          backgroundColor: WidgetStateProperty.resolveWith((states) =>
+                              states.contains(WidgetState.selected)
+                                  ? selColor.withValues(alpha: 0.22)
+                                  : Colors.transparent),
+                          side: WidgetStateProperty.all(
+                              BorderSide(color: selColor.withValues(alpha: 0.45))),
+                        ),
+                        segments: const [
+                          ButtonSegment(
+                              value: 0x01,
+                              icon: Icon(Icons.wifi, size: 15, color: _wifiColor),
+                              label: Text('WiFi')),
+                          ButtonSegment(
+                              value: 0x02,
+                              icon: Icon(Icons.bluetooth, size: 15, color: _bleColor),
+                              label: Text('BLE')),
+                          ButtonSegment(
+                              value: 0x03,
+                              icon: Icon(Icons.sensors, size: 15, color: _bothColor),
+                              label: Text('Both')),
+                        ],
+                        selected: {mask},
+                        onSelectionChanged: (s) =>
+                            setState(() => _roles[id] = s.first),
                       ),
-                      segments: [
-                        ButtonSegment(
-                            value: 0x01,
-                            icon: const Icon(Icons.wifi, size: 16, color: _wifiColor),
-                            tooltip: 'WiFi'),
-                        ButtonSegment(
-                            value: 0x02,
-                            icon: const Icon(Icons.bluetooth, size: 16, color: _bleColor),
-                            tooltip: 'BLE'),
-                        ButtonSegment(
-                            value: 0x03,
-                            icon: const Icon(Icons.sensors, size: 16, color: _bothColor),
-                            tooltip: 'Both'),
-                      ],
-                      selected: {mask},
-                      onSelectionChanged: (s) =>
-                          setState(() => _roles[id] = s.first),
                     ),
                   ],
                 ),

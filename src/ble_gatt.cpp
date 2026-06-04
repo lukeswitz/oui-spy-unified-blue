@@ -16,6 +16,9 @@
 #include "ignore_list.h"
 #include "engines/pcap.h"
 #include "engines/detector.h"
+#include "engines/flock_wifi.h"
+#include "engines/flock_ble.h"
+#include "engines/wardrive.h"
 #include "mesh_espnow.h"
 #include "ota_handler.h"
 #include "wifi_ota_handler.h"
@@ -101,6 +104,14 @@ static uint8_t mgrGetNodeRadio(const char* id) {
         if (memcmp(mgrNodeRadio[i].id, id, MESH_NODE_ID_LEN - 1) == 0)
             return mgrNodeRadio[i].radio;
     return 0x03;
+}
+
+static void mgrApplyLocalRadio(void) {
+    uint8_t r = mgrGetNodeRadio(meshGetLocalNodeId());
+    if (r == 0) r = 0x03;
+    flockWifiSetRadioGate((r & 0x01) != 0);
+    flockBleSetRadioGate((r & 0x02) != 0);
+    wardriveSetRadioMask(r);
 }
 
 static void mgrNodeRadioSave(void) {
@@ -207,6 +218,7 @@ static void mgrSetNodeRadioList(const uint8_t* data, size_t len) {
     }
     mgrNodeRadioSave();
     Serial.printf("[NODE-RADIO] set %u entries\n", mgrNodeRadioCount);
+    mgrApplyLocalRadio();
     if ((mgrCommandedMask & ENGINE_BITMASK(ENGINE_WARDRIVE)) && meshIsEnabled())
         mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
 }
@@ -335,9 +347,13 @@ void bleGattReconcileEngines(void) {
             lastEnable[e] = now;
             meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
             meshMarkNodesEngine((uint8_t)e, true);
+            if (e == ENGINE_FLOCK_WIFI || e == ENGINE_FLOCK_BLE ||
+                e == ENGINE_DETECTOR || e == ENGINE_SKYSPY) {
+                mgrBroadcastNodeRadioConfig((uint8_t)e);
+            }
             Serial.printf("[MGR-RECONCILE] engine %d missing — re-enable\n", e);
         } else if (extraAny & ENGINE_BITMASK(e)) {
-            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 800) continue;
+            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 6000) continue;
             lastDisable[e] = now;
             meshBroadcastCommand(0x00, (uint8_t)e, nullptr, 0);
             meshMarkNodesEngine((uint8_t)e, false);
@@ -429,6 +445,9 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_SCANNING;
             if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = millis();
             if (cmd.engine_id != ENGINE_PCAP) meshMarkNodesEngine(cmd.engine_id, true);
+            if (cmd.engine_id == ENGINE_FLOCK_WIFI || cmd.engine_id == ENGINE_FLOCK_BLE ||
+                cmd.engine_id == ENGINE_WARDRIVE)
+                mgrApplyLocalRadio();
         } else if (cmd.command == 0x00 && cmd.engine_id < ENGINE_COUNT) {
             mgrCommandedMask &= ~(1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_DISABLED;
@@ -629,6 +648,13 @@ void bleGattRebroadcastConfigs(void) {
     if (mgrAlertCfgLen) meshBroadcastConfig(MESH_CFG_KIND_ALERT, mgrAlertCfg, mgrAlertCfgLen);
     if (mgrApCfgLen)    meshBroadcastConfig(MESH_CFG_KIND_AUTOPCAP, mgrApCfg, mgrApCfgLen);
     if (mgrFoxCfgLen)   meshBroadcastConfig(MESH_CFG_KIND_FOXHUNTER, mgrFoxCfg, mgrFoxCfgLen);
+
+    uint8_t m = mgrCommandedMask;
+    if (m & ENGINE_BITMASK(ENGINE_FLOCK_WIFI)) mgrBroadcastNodeRadioConfig(ENGINE_FLOCK_WIFI);
+    if (m & ENGINE_BITMASK(ENGINE_FLOCK_BLE))  mgrBroadcastNodeRadioConfig(ENGINE_FLOCK_BLE);
+    if (m & ENGINE_BITMASK(ENGINE_DETECTOR))   mgrBroadcastNodeRadioConfig(ENGINE_DETECTOR);
+    if (m & ENGINE_BITMASK(ENGINE_SKYSPY))     mgrBroadcastNodeRadioConfig(ENGINE_SKYSPY);
+    mgrApplyLocalRadio();
 }
 
 static void mgrLoadConfigCaches(void) {
@@ -1817,6 +1843,7 @@ void bleGattNotifyPcapStats(void) {
                 st.auto_trigger_src = ev.trigger_src;
                 memcpy(st.auto_trigger_mac, ev.trigger_mac, 6);
                 st.auto_remaining_ms = durMs - ageMs;
+                if (!pcapCommanded) st.mode = ev.mode;
             }
         }
     }
