@@ -961,6 +961,15 @@ class BleManager {
     int pushed = 0;
     for (final e in entries) {
       if (e.isName) continue;
+      if (e.isServiceUuid) {
+        final uuid = _parseUuid16(e.identifier);
+        if (uuid == null) continue;
+        final descBytes = utf8.encode(e.description).take(28).toList();
+        final pkt = <int>[0x02, uuid & 0xFF, (uuid >> 8) & 0xFF, ...descBytes];
+        await _detectorConfig!.write(Uint8List.fromList(pkt), withoutResponse: false);
+        pushed++;
+        continue;
+      }
       final mac = _parseMac(e.identifier);
       if (mac == null) continue;
       final prefixLen = e.isFullMac ? 6 : 3;
@@ -970,6 +979,14 @@ class BleManager {
       pushed++;
     }
     DebugLog.log('BLE: synced $pushed/${entries.length} watchlist entries to detector');
+  }
+
+  static int? _parseUuid16(String s) {
+    final clean = s.trim().replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
+    if (!RegExp(r'^[0-9a-fA-F]{1,4}$').hasMatch(clean)) return null;
+    final v = int.parse(clean, radix: 16);
+    if (v < 0 || v > 0xFFFF) return null;
+    return v;
   }
 
   static Uint8List? _parseMac(String s) {

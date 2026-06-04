@@ -547,6 +547,7 @@ class _WatchlistIndex {
     final descOui = <String, String>{};
     final names = <_NamePattern>[];
     for (final e in entries) {
+      if (e.isServiceUuid) continue;
       if (e.isName) {
         final pat = e.identifier.trim();
         if (pat.isEmpty) continue;

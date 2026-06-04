@@ -7,7 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum WatchlistMatchType {
   oui('OUI'),
   fullMac('MAC'),
-  name('NAME');
+  name('NAME'),
+  serviceUuid('UUID');
 
   const WatchlistMatchType(this.label);
   final String label;
@@ -27,6 +28,7 @@ class WatchlistEntry {
   bool get isFullMac => matchType == WatchlistMatchType.fullMac;
   bool get isName => matchType == WatchlistMatchType.name;
   bool get isOui => matchType == WatchlistMatchType.oui;
+  bool get isServiceUuid => matchType == WatchlistMatchType.serviceUuid;
 
   Map<String, dynamic> toJson() => {
         'identifier': identifier,

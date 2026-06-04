@@ -449,6 +449,7 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         // Dispatch to other active engines that went passive
         if (wdDetectorActive) {
             detectorCheckBleDevice(mac, evt.rssi);
+            detectorCheckBleUuid(dev, mac, evt.rssi);
         }
         if (wdFoxhunterActive) {
             foxhunterCheckBleDevice(mac, evt.rssi);

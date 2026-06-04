@@ -13,8 +13,16 @@ struct TargetFilter {
     char desc[32];
 };
 
+struct UuidFilter {
+    uint16_t uuid;
+    NimBLEUUID nim;
+    char desc[32];
+};
+
 static TargetFilter filters[50];
 static int filterCount = 0;
+static UuidFilter uuidFilters[50];
+static int uuidFilterCount = 0;
 static NimBLEScan* bleScan = nullptr;
 static volatile bool scanning = false;
 static unsigned long lastScanStart = 0;
@@ -43,6 +51,19 @@ static const TargetFilter* matchFilterBytes(const uint8_t* mac) {
     return nullptr;
 }
 
+static const UuidFilter* matchUuidFilter(NimBLEAdvertisedDevice* dev) {
+    if (uuidFilterCount == 0) return nullptr;
+    if (!dev->haveServiceUUID()) return nullptr;
+    int n = dev->getServiceUUIDCount();
+    for (int i = 0; i < n; i++) {
+        NimBLEUUID u = dev->getServiceUUID(i);
+        for (int j = 0; j < uuidFilterCount; j++) {
+            if (u.equals(uuidFilters[j].nim)) return &uuidFilters[j];
+        }
+    }
+    return nullptr;
+}
+
 class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
         g_engRawSeen++;
@@ -51,7 +72,7 @@ class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
         bleAddrToMac(dev->getAddress().getNative(), mac);
 
         const TargetFilter* hit = matchFilterBytes(mac);
-        if (!hit) return;
+        if (!hit) { detectorCheckBleUuid(dev, mac, dev->getRSSI()); return; }
         if (dedup.check(mac)) return;
 
         DetectionEvent evt = {};
@@ -116,6 +137,26 @@ void detectorCheckBleDevice(const uint8_t* mac, int rssi) {
                   rssi, hit->prefixLen == 6 ? "MAC" : "OUI", hit->desc);
 }
 
+void detectorCheckBleUuid(NimBLEAdvertisedDevice* dev, const uint8_t* mac, int rssi) {
+    if (!scanning) return;
+    const UuidFilter* hit = matchUuidFilter(dev);
+    if (!hit) return;
+    if (dedup.check(mac)) return;
+
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, mac, 6);
+    evt.rssi = rssi;
+    evt.timestamp_ms = millis();
+    evt.ext.detector.is_full_mac = 0;
+    strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
+    pushDetection(&evt);
+
+    Serial.printf("[DETECTOR] BLE %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [UUID:%04X] %s\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                  rssi, hit->uuid, hit->desc);
+}
+
 void IRAM_ATTR detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t channel) {
     if (!scanning) return;
     const TargetFilter* hit = matchFilterBytes(mac);
@@ -135,7 +176,19 @@ void IRAM_ATTR detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t 
 
 void detectorClearFilters(void) {
     filterCount = 0;
+    uuidFilterCount = 0;
     Serial.println("[DETECTOR] Filters cleared");
+}
+
+void detectorAddUuidFilter(uint16_t uuid, const char* desc) {
+    if (uuidFilterCount >= 50) return;
+    UuidFilter f = {};
+    f.uuid = uuid;
+    f.nim = NimBLEUUID(uuid);
+    if (desc) strncpy(f.desc, desc, sizeof(f.desc) - 1);
+    uuidFilters[uuidFilterCount++] = f;
+    Serial.printf("[DETECTOR] +uuid filter 0x%04X desc=%s (total=%d)\n",
+                  uuid, f.desc, uuidFilterCount);
 }
 
 void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* desc) {
@@ -165,6 +218,18 @@ size_t detectorSerialize(uint8_t* out, size_t maxLen) {
         cnt++;
     }
     out[0] = cnt;
+
+    if (off + 1 <= maxLen) {
+        size_t ucntPos = off++;
+        uint8_t ucnt = 0;
+        for (int i = 0; i < uuidFilterCount; i++) {
+            if (off + 2 > maxLen) break;
+            out[off++] = uuidFilters[i].uuid & 0xFF;
+            out[off++] = (uuidFilters[i].uuid >> 8) & 0xFF;
+            ucnt++;
+        }
+        out[ucntPos] = ucnt;
+    }
     return off;
 }
 
@@ -179,7 +244,17 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
         detectorAddFilter(data + off + 1, prefixLen, "");
         off += 7;
     }
-    Serial.printf("[CFG] Detector watchlist: %u filters\n", detectorFilterCount());
+    if (off < len) {
+        uint8_t ucnt = data[off++];
+        for (uint8_t i = 0; i < ucnt; i++) {
+            if (off + 2 > len) break;
+            uint16_t uuid = data[off] | (data[off + 1] << 8);
+            detectorAddUuidFilter(uuid, "");
+            off += 2;
+        }
+    }
+    Serial.printf("[CFG] Detector watchlist: %u mac + %u uuid filters\n",
+                  detectorFilterCount(), uuidFilterCount);
 }
 
 static void detectorInit(void) {

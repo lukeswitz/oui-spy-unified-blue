@@ -768,6 +768,18 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
                 detectorAddFilter(mac, prefixLen, desc);
                 break;
             }
+            case 0x02: {
+                if (val.length() < 3) return;
+                uint16_t uuid = data[1] | (data[2] << 8);
+                char desc[32] = {0};
+                if (val.length() > 3) {
+                    size_t dlen = val.length() - 3;
+                    if (dlen > 31) dlen = 31;
+                    memcpy(desc, &data[3], dlen);
+                }
+                detectorAddUuidFilter(uuid, desc);
+                break;
+            }
             default:
                 Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
                 break;
