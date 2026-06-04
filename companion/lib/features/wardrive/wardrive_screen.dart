@@ -791,6 +791,19 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 ),
               ),
 
+            // Scanning indicator (top) for sparse-stat targets: flock / drone / detect
+            if (wd.isActive &&
+                (wd.target == WardriveTarget.flock ||
+                 wd.target == WardriveTarget.drone ||
+                 wd.target == WardriveTarget.detector))
+              Positioned(
+                top: _statsHeight + 8,
+                left: 0, right: 0,
+                child: Center(
+                  child: _ScanningPill(color: wd.target.color, label: wd.target.label),
+                ),
+              ),
+
             // Map style + wardrive theme pickers (top-left)
             Positioned(
               top: wd.isActive
@@ -4861,6 +4874,61 @@ class _CaptureFlashPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _CaptureFlashPainter old) =>
       old.phase != phase || old.color != color;
+}
+
+class _ScanningPill extends StatefulWidget {
+  const _ScanningPill({required this.color, required this.label});
+  final Color color;
+  final String label;
+  @override
+  State<_ScanningPill> createState() => _ScanningPillState();
+}
+
+class _ScanningPillState extends State<_ScanningPill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: t.background.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: widget.color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FadeTransition(
+            opacity: Tween(begin: 0.3, end: 1.0).animate(_c),
+            child: Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(
+                color: widget.color,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(
+                    color: widget.color.withValues(alpha: 0.6), blurRadius: 6)],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text('SCANNING ${widget.label}', style: TextStyle(
+            color: widget.color, fontSize: 11,
+            fontWeight: FontWeight.w700, letterSpacing: 1)),
+        ],
+      ),
+    );
+  }
 }
 
 class _RadioRolePopup extends StatefulWidget {
