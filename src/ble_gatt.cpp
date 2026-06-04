@@ -337,7 +337,7 @@ void bleGattReconcileEngines(void) {
             meshMarkNodesEngine((uint8_t)e, true);
             Serial.printf("[MGR-RECONCILE] engine %d missing — re-enable\n", e);
         } else if (extraAny & ENGINE_BITMASK(e)) {
-            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 6000) continue;
+            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 800) continue;
             lastDisable[e] = now;
             meshBroadcastCommand(0x00, (uint8_t)e, nullptr, 0);
             meshMarkNodesEngine((uint8_t)e, false);
