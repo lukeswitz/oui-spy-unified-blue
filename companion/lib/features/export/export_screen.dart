@@ -1,8 +1,10 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/db/app_database.dart' show AppDatabase, databaseProvider;
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -65,9 +67,122 @@ class ExportScreen extends ConsumerWidget {
               icon: Icons.map,
               onTap: count > 0 ? () => _exportKml(context, state.recentDetections) : null,
             ),
+            const SizedBox(height: 24),
+            Text('DATABASE',
+                style: TextStyle(
+                    color: t.textDim,
+                    fontSize: 11,
+                    letterSpacing: 1.5,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            _ExportButton(
+              label: 'BACKUP DATABASE',
+              description: 'Save full capture DB (.db) to Files / iCloud',
+              icon: Icons.backup,
+              onTap: () => _backupDatabase(context, ref),
+            ),
+            _ExportButton(
+              label: 'RESTORE DATABASE',
+              description: 'Replace ALL data from a .db backup file',
+              icon: Icons.settings_backup_restore,
+              trailingIcon: Icons.folder_open,
+              onTap: () => _restoreDatabase(context, ref),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _backupDatabase(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final db = ref.read(databaseProvider);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : const Rect.fromLTWH(0, 0, 100, 100);
+    try {
+      final file = await db.createBackup();
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/x-sqlite3')],
+        subject: 'OUI-SPY Database Backup',
+        sharePositionOrigin: origin,
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Backup failed: $e')));
+    }
+  }
+
+  Future<void> _restoreDatabase(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    const typeGroup = XTypeGroup(
+      label: 'SQLite DB',
+      extensions: ['db', 'sqlite', 'sqlite3'],
+    );
+    final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file == null || file.path.isEmpty) return;
+
+    final valid = await AppDatabase.validateBackup(file.path);
+    if (!valid) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Not a valid OUI-SPY database backup')));
+      return;
+    }
+    if (!context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final t = AppTheme.of(ctx);
+        return AlertDialog(
+          backgroundColor: t.surface,
+          title: Text('Restore database?',
+              style: TextStyle(color: t.textPrimary)),
+          content: Text(
+            'This REPLACES all current captures, sessions and settings with the backup. Current data will be lost. This cannot be undone.',
+            style: TextStyle(color: t.textDim, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('CANCEL')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('RESTORE',
+                    style: TextStyle(color: AppTheme.accent))),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(databaseProvider).restoreFromFile(file.path);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Restore failed: $e')));
+      return;
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final t = AppTheme.of(ctx);
+        return AlertDialog(
+          backgroundColor: t.surface,
+          title: Text('Restore complete',
+              style: TextStyle(color: t.textPrimary)),
+          content: Text(
+            'Fully close and reopen the app now to load the restored database.',
+            style: TextStyle(color: t.textDim, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK')),
+          ],
+        );
+      },
     );
   }
 
@@ -128,11 +243,12 @@ class ExportScreen extends ConsumerWidget {
 }
 
 class _ExportButton extends StatelessWidget {
-  const _ExportButton({required this.label, required this.description, required this.icon, this.onTap});
+  const _ExportButton({required this.label, required this.description, required this.icon, this.onTap, this.trailingIcon = Icons.ios_share});
   final String label;
   final String description;
   final IconData icon;
   final VoidCallback? onTap;
+  final IconData trailingIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -163,7 +279,7 @@ class _ExportButton extends StatelessWidget {
                 )),
               ],
             )),
-            Icon(Icons.ios_share, size: 16, color: enabled ? t.textDim : t.textDim.withValues(alpha: 0.3)),
+            Icon(trailingIcon, size: 16, color: enabled ? t.textDim : t.textDim.withValues(alpha: 0.3)),
           ],
         ),
       ),

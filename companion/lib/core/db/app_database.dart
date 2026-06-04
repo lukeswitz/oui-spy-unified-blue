@@ -291,6 +291,48 @@ class AppDatabase extends _$AppDatabase {
             ..where((g) => g.enabled.equals(true))
             ..where((g) => g.excludeFromWardrive.equals(true)))
           .get();
+
+  Future<File> createBackup() async {
+    final dir = await getTemporaryDirectory();
+    final stamp =
+        DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    final dest = File(p.join(dir.path, 'oui_spy_backup_$stamp.db'));
+    if (await dest.exists()) await dest.delete();
+    await customStatement('VACUUM INTO ?', [dest.path]);
+    return dest;
+  }
+
+  static Future<bool> validateBackup(String srcPath) async {
+    final test = AppDatabase.forTesting(NativeDatabase(File(srcPath)));
+    try {
+      final integrity =
+          await test.customSelect('PRAGMA integrity_check').get();
+      final ok = integrity.isNotEmpty &&
+          (integrity.first.data.values.first as String?)?.toLowerCase() ==
+              'ok';
+      if (!ok) return false;
+      final tables = await test
+          .customSelect(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name='detections'")
+          .get();
+      return tables.isNotEmpty;
+    } catch (_) {
+      return false;
+    } finally {
+      await test.close();
+    }
+  }
+
+  Future<void> restoreFromFile(String srcPath) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final dbPath = p.join(dir.path, 'oui_spy.db');
+    await close();
+    for (final ext in ['', '-wal', '-shm']) {
+      final f = File('$dbPath$ext');
+      if (await f.exists()) await f.delete();
+    }
+    await File(srcPath).copy(dbPath);
+  }
 }
 
 LazyDatabase _openConnection() {
