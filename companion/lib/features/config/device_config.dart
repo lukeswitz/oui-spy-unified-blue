@@ -308,6 +308,16 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         const _WigleSection(),
 
         const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'DATA & BACKUP'),
+        ConfigActionRow(
+          icon: Icons.import_export,
+          label: 'Export & Database Backup',
+          subtitle: 'WiGLE/JSON/KML export, full DB backup & restore',
+          onTap: () => context.push('/export'),
+          trailing: Icon(Icons.chevron_right, size: 18, color: t.textDim),
+        ),
+
+        const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'ABOUT'),
         const ConfigInfoRow(
           icon: Icons.info_outline,
@@ -2226,11 +2236,13 @@ class _WatchlistTab extends ConsumerWidget {
             WatchlistMatchType.oui => 'AA:BB:CC',
             WatchlistMatchType.fullMac => 'AA:BB:CC:DD:EE:FF',
             WatchlistMatchType.name => 'penguin*',
+            WatchlistMatchType.serviceUuid => '0xFD5F',
           };
           final label = switch (matchType) {
             WatchlistMatchType.oui => 'OUI prefix (3 bytes)',
             WatchlistMatchType.fullMac => 'Full MAC address',
             WatchlistMatchType.name => 'Device name (supports * and ?)',
+            WatchlistMatchType.serviceUuid => 'BLE 16-bit service UUID',
           };
           return AlertDialog(
             backgroundColor: t.surface,
@@ -2261,6 +2273,7 @@ class _WatchlistTab extends ConsumerWidget {
                               WatchlistMatchType.oui => 'OUI',
                               WatchlistMatchType.fullMac => 'FULL MAC',
                               WatchlistMatchType.name => 'NAME',
+                              WatchlistMatchType.serviceUuid => 'UUID',
                             },
                             selected: selected,
                             onTap: () =>
@@ -2294,6 +2307,14 @@ class _WatchlistTab extends ConsumerWidget {
                       style: TextStyle(color: t.textDim, fontSize: 10),
                     ),
                   ],
+                  if (matchType == WatchlistMatchType.serviceUuid) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '16-bit BLE service UUID advertised by the device '
+                      '(e.g. 0xFD5F). Matched on-device by detector nodes.',
+                      style: TextStyle(color: t.textDim, fontSize: 10),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   TextField(
                     controller: descController,
@@ -2318,6 +2339,13 @@ class _WatchlistTab extends ConsumerWidget {
                   String identifier;
                   if (matchType == WatchlistMatchType.name) {
                     identifier = raw;
+                  } else if (matchType == WatchlistMatchType.serviceUuid) {
+                    final hex = raw
+                        .replaceFirst(
+                            RegExp(r'^0x', caseSensitive: false), '')
+                        .replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+                    if (hex.isEmpty || hex.length > 4) return;
+                    identifier = '0x${hex.toUpperCase().padLeft(4, '0')}';
                   } else {
                     final hex = _normalizeHex(raw);
                     if (matchType == WatchlistMatchType.fullMac &&
@@ -2414,6 +2442,7 @@ class _WatchlistEntryTile extends ConsumerWidget {
       WatchlistMatchType.oui => Icons.radar,
       WatchlistMatchType.fullMac => Icons.fingerprint,
       WatchlistMatchType.name => Icons.badge_outlined,
+      WatchlistMatchType.serviceUuid => Icons.bluetooth_searching,
     };
     return Dismissible(
       key: ValueKey('wl:${entry.matchType.name}:${entry.identifier}'),
