@@ -2781,6 +2781,8 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
 
   Future<void> _uploadToWigle(BuildContext context, WidgetRef wRef, String sid) async {
     if (sid.isEmpty) return;
+    if (!await _confirmWigleUpload(context)) return;
+    if (!context.mounted) return;
     final wigle = wRef.read(wigleProvider);
     final result = await wigle.uploadSession(sid, wd);
     if (!context.mounted) return;
@@ -3169,6 +3171,8 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
     final wd = ref.read(wardriveProvider);
 
     if (wigle.isUploading(sid)) return;
+    if (!await _confirmWigleUpload(context)) return;
+    if (!context.mounted) return;
 
     final result = await wigle.uploadSession(sid, wd);
     if (!context.mounted) return;
@@ -3191,6 +3195,39 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
       );
     }
   }
+}
+
+Future<bool> _confirmWigleUpload(BuildContext context) async {
+  final t = AppTheme.of(context);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: t.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text('Upload to WiGLE?',
+          style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w700)),
+      content: Text(
+        'This publishes this session — network MACs, SSIDs and GPS coordinates — '
+        'to the public WiGLE.net database. Once uploaded it cannot be retracted.',
+        style: TextStyle(color: t.textDim, fontSize: 13),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text('CANCEL', style: TextStyle(color: t.textDim)),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppTheme.accent,
+            foregroundColor: AppTheme.background,
+          ),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('UPLOAD'),
+        ),
+      ],
+    ),
+  );
+  return ok ?? false;
 }
 
 class _SessionRow extends ConsumerWidget {
