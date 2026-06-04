@@ -4994,28 +4994,33 @@ class _RadioRolePopupState extends State<_RadioRolePopup> {
               final mask = _roles[id] ?? 0x03;
               final selColor = _radioColor(mask);
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 8, height: 8,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: selColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(
-                            color: selColor.withValues(alpha: 0.6), blurRadius: 6)],
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8, height: 8,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: selColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(
+                                color: selColor.withValues(alpha: 0.6), blurRadius: 6)],
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            widget.labelFor(id),
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: t.textPrimary, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: Text(
-                        widget.labelFor(id),
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: t.textPrimary, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 6),
                     SegmentedButton<int>(
                       showSelectedIcon: false,
                       style: ButtonStyle(
