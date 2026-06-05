@@ -235,6 +235,9 @@ size_t detectorSerialize(uint8_t* out, size_t maxLen) {
 
 void detectorSetFilters(const uint8_t* data, size_t len) {
     if (data == nullptr || len < 1) return;
+    static uint8_t lastFilters[512]; static size_t lastFilterLen = 0; static bool haveFilters = false;
+    if (haveFilters && len == lastFilterLen && len <= sizeof(lastFilters) && memcmp(lastFilters, data, len) == 0) return;
+    if (len <= sizeof(lastFilters)) { memcpy(lastFilters, data, len); lastFilterLen = len; haveFilters = true; }
     detectorClearFilters();
     uint8_t cnt = data[0];
     size_t off = 1;

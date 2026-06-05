@@ -557,6 +557,9 @@ class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
 
 void hardwareConfigApply(const uint8_t* data, size_t len) {
     if (len < 3) return;
+    static uint8_t lastCfg[8]; static size_t lastCfgLen = 0; static bool haveCfg = false;
+    if (haveCfg && len == lastCfgLen && len <= sizeof(lastCfg) && memcmp(lastCfg, data, len) == 0) return;
+    if (len <= sizeof(lastCfg)) { memcpy(lastCfg, data, len); lastCfgLen = len; haveCfg = true; }
     bool buzzer = data[0] != 0;
     bool led = data[1] != 0;
     uint8_t brightness = data[2];
@@ -581,6 +584,9 @@ void hardwareConfigApply(const uint8_t* data, size_t len) {
 
 void alertConfigApply(const uint8_t* data, size_t len) {
     if (len < 8) return;
+    static uint8_t lastCfg[16]; static size_t lastCfgLen = 0; static bool haveCfg = false;
+    if (haveCfg && len == lastCfgLen && len <= sizeof(lastCfg) && memcmp(lastCfg, data, len) == 0) return;
+    if (len <= sizeof(lastCfg)) { memcpy(lastCfg, data, len); lastCfgLen = len; haveCfg = true; }
     uint16_t cooldown   = data[0] | (data[1] << 8);
     uint16_t heartbeat  = data[2] | (data[3] << 8);
     uint16_t rediscover = data[4] | (data[5] << 8);
@@ -602,6 +608,9 @@ void alertConfigApply(const uint8_t* data, size_t len) {
 
 void autoPcapConfigApply(const uint8_t* data, size_t len) {
     if (len < 1) return;
+    static uint8_t lastCfg[8]; static size_t lastCfgLen = 0; static bool haveCfg = false;
+    if (haveCfg && len == lastCfgLen && len <= sizeof(lastCfg) && memcmp(lastCfg, data, len) == 0) return;
+    if (len <= sizeof(lastCfg)) { memcpy(lastCfg, data, len); lastCfgLen = len; haveCfg = true; }
     uint16_t dur  = (len >= 3) ? (uint16_t)(data[1] | (data[2] << 8)) : 0;
     uint16_t cool = (len >= 5) ? (uint16_t)(data[3] | (data[4] << 8)) : 0;
     engineSetAutoPcap(data[0] != 0);
