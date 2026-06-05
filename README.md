@@ -46,7 +46,7 @@ Toggle any combination from the home screen — they all run at once, sharing ra
 
 | # | Engine | Radio | Detects |
 |---|--------|-------|---------|
-| 1 | **Detector** | WiFi + BLE | Your watchlist — MAC, OUI prefix, or name patterns |
+| 1 | **Detector** | WiFi + BLE | Your watchlist — MAC, OUI prefix, name pattern, or BLE service UUID |
 | 2 | **Flock BLE** | BLE | Flock cameras + Raven gunshot detectors |
 | 3 | **Flock WiFi** | WiFi | Flock Safety cameras (promiscuous) |
 | 4 | **Foxhunter** | WiFi + BLE | RSSI proximity tracking of one chosen target |
@@ -73,7 +73,7 @@ Every detection across all engines, in one list.
 - **Tap** a row to foxhunt or map it; **long-press** for the full copy sheet (MAC, vendor, RSSI, channel, manuf data).
 
 ### Wardrive (the map)
-Pick a **target** (WiGLE · Flock · Drone · Detector · WiGLE+Flock) and a **radio** (WiFi · BLE · Both), then **START**. Detections plot live, color-graded by signal density; the route follows you. Sessions save as WiGLE CSV and upload straight to WiGLE with your API key. Draw **geofences** to drop hits inside zones you exclude. Saved sessions replay on the map.
+Pick a **target** (WiGLE · Flock · Drone · Detector · WiGLE+Flock) and a **radio** (WiFi · BLE · Both), then **START**. Detections plot live, color-graded by signal density; the route follows you. Sessions save as WiGLE CSV and upload straight to WiGLE with your API key. Draw **geofences**: inside an excluded zone every hit is muted — no feed entry, no database or WiGLE CSV logging, no beep or notification — and during a wardrive the radios pause entirely. Everything resumes the moment you leave. Saved sessions replay on the map.
 
 ### PCAP
 No SD card — frames stream live over BLE and the app writes the `.pcap` (open in Wireshark).
@@ -85,7 +85,7 @@ No SD card — frames stream live over BLE and the app writes the `.pcap` (open 
 *Settings → Updates → Check for Update.* Install over **WiFi** (fast — give credentials once) or **BLE** (works anywhere, slower). No cables after the first flash. In node mode, each live node updates the same way, one at a time.
 
 ### Settings
-Everything else: appearance, units, scan timing, channel range, the 39k+ OUI vendor database (+ WiGLE CSV import), WiGLE login, buzzer/LED, firmware timing, station-mode WiFi, factory reset, watchlist, and ignore list.
+Everything else: appearance, units, scan timing, channel range, the 39k+ OUI vendor database (+ WiGLE CSV import), WiGLE login, buzzer/LED, firmware timing, station-mode WiFi, factory reset, watchlist, ignore list, and **database import / export** (back up and restore your captures).
 
 ### iOS Dynamic Island
 iPhone 14 Pro+ on iOS 16.2+ — live counts on the Lock Screen and Island during a session.
@@ -125,7 +125,7 @@ Each hit reports which method fired (`addr1` / `addr2` / `addr3` / `wildcard_pro
 **Flock BLE** — matches on OUI, advertised **name** (`FS Ext Battery`, `Penguin`, `Flock`, `Pigvision`, `FlockCam`, `FlockOS`, `FS-`, `FS_`, `flocksafety`), **manufacturer ID `0x09C8`** (XUNTONG, the camera battery vendor), and **Raven** gunshot-detector GATT service UUIDs.
 
 ### Detector
-Your watchlist. Add full MACs, OUI prefixes, or name patterns; matches on BLE adverts and on WiFi promiscuous frames (addr1/addr2/addr3).
+Your watchlist. Add full MACs, OUI prefixes, name patterns, or 16-bit BLE service UUIDs; matches on BLE adverts and on WiFi promiscuous frames (addr1/addr2/addr3).
 
 ### Foxhunter
 Lock one target MAC and track its RSSI live across WiFi + BLE. Buzzer cadence speeds up as you close in.

@@ -37,10 +37,10 @@ extern volatile uint32_t g_engRawSeen;
 
 // Firmware version
 #ifndef FW_VERSION
-#define FW_VERSION     "0.4.2"
+#define FW_VERSION     "0.4.3"
 #endif
 #ifndef FW_VERSION_NUM
-#define FW_VERSION_NUM 0x000402
+#define FW_VERSION_NUM 0x000403
 #endif
 
 #ifndef OUISPY_BOARD
