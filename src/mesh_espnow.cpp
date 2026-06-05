@@ -1050,6 +1050,7 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
 // scanning weaves through ch1 (a priority channel) every sweep, so this rarely
 // fires — that's what recovers v0.3.9-class scan speed (no forced park).
 #define MESH_HOME_MAX_GAP_MS 1500
+#define MESH_MGR_SILENCE_FORCE_MS 6000
 static volatile bool g_meshWindow = false;
 static volatile uint32_t g_lastHomeMs = 0;
 static TaskHandle_t  meshSchedTaskHandle = NULL;
@@ -1078,6 +1079,23 @@ bool meshManagerJoined(void) {
     xSemaphoreGive(liveMutex);
     return joined;
 }
+
+#ifndef OUISPY_ROLE_MANAGER
+static uint32_t meshMgrSilenceMs(void) {
+    if (!liveMutex) return 0;
+    if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return 0;
+    uint32_t now = millis();
+    uint32_t best = 0xFFFFFFFFu;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (liveNodes[i].id[0] == 0) continue;
+        if (liveNodes[i].role != MESH_ROLE_MANAGER) continue;
+        uint32_t age = now - liveNodes[i].last_ms;
+        if (age < best) best = age;
+    }
+    xSemaphoreGive(liveMutex);
+    return best;
+}
+#endif
 
 // True when this node is hopping WiFi channels (promiscuous scan). BLE-only
 // engines (flock_ble, unipwn, wardrive radio=0x02) stay on the mesh channel,
@@ -1115,7 +1133,8 @@ static void meshSchedTaskFn(void* arg) {
         // refreshing g_lastHomeMs without ever pausing the scan. Only force a
         // ch1 park if that hasn't happened recently (e.g. an engine parked on a
         // non-ch1 channel like Sky Spy ch6, or a very long sweep).
-        if ((uint32_t)(millis() - g_lastHomeMs) < MESH_HOME_MAX_GAP_MS) continue;
+        if ((uint32_t)(millis() - g_lastHomeMs) < MESH_HOME_MAX_GAP_MS &&
+            meshMgrSilenceMs() < MESH_MGR_SILENCE_FORCE_MS) continue;
         g_meshWindow = true;
         g_meshRxWin++;
         if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -1128,7 +1147,8 @@ static void meshSchedTaskFn(void* arg) {
             uint32_t el = millis() - t0;
             if (el >= MESH_RX_WINDOW_MS) break;
             if (el >= MESH_RX_MIN_MS && meshTxQueue &&
-                uxQueueMessagesWaiting(meshTxQueue) == 0) break;
+                uxQueueMessagesWaiting(meshTxQueue) == 0 &&
+                meshMgrSilenceMs() < MESH_MGR_SILENCE_FORCE_MS) break;
             vTaskDelay(pdMS_TO_TICKS(20));
         }
         g_lastHomeMs = millis();
@@ -1715,7 +1735,7 @@ static void retryTaskFn(void* arg) {
 
         {
             uint32_t nowHb = millis();
-            if (nowHb - lastHeartbeat >= 5000u) {
+            if (nowHb - lastHeartbeat >= 1500u) {
                 uint8_t hbCh = 0; wifi_second_chan_t hbSec;
                 esp_wifi_get_channel(&hbCh, &hbSec);
                 bool onHomeChannel = !meshTimeSlicingActive() ||

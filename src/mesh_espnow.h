@@ -40,7 +40,7 @@ const char* meshGetLocalNodeId(void);
 MeshStatus meshGetStatus(void);
 
 #define MESH_LIVE_NODES_MAX 16
-#define MESH_MANAGER_TTL_MS 20000
+#define MESH_MANAGER_TTL_MS 45000
 #define MESH_NODE_TIMEOUT_MS 45000
 struct MeshLiveNode {
     char     id[MESH_NODE_ID_LEN];
