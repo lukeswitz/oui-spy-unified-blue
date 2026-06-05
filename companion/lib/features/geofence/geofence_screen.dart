@@ -764,30 +764,52 @@ class _GeofenceRow extends StatelessWidget {
             ),
             // Toggle
             GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: onToggle,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                constraints: const BoxConstraints(minWidth: 56, minHeight: 40),
+                alignment: Alignment.center,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                 decoration: BoxDecoration(
                   color: enabled
-                      ? AppTheme.success.withValues(alpha: 0.1)
-                      : AppTheme.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
+                      ? AppTheme.success.withValues(alpha: 0.14)
+                      : AppTheme.error.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: (enabled ? AppTheme.success : AppTheme.error)
+                        .withValues(alpha: 0.5),
+                  ),
                 ),
                 child: Text(
                   enabled ? 'ON' : 'OFF',
                   style: TextStyle(
                     color: enabled ? AppTheme.success : AppTheme.error,
-                    fontSize: 9, fontWeight: FontWeight.w700,
+                    fontSize: 14, fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             // Delete
             GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: onDelete,
-              child: Icon(Icons.delete_outline, size: 16,
-                  color: AppTheme.error.withValues(alpha: 0.6)),
+              child: Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppTheme.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppTheme.error.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Icon(Icons.delete_outline, size: 22,
+                    color: AppTheme.error.withValues(alpha: 0.9)),
+              ),
             ),
           ],
         ),

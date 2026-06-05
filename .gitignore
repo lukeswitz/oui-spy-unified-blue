@@ -56,3 +56,6 @@ companion/macos/Flutter/flutter_export_environment.sh
 companion/ios/Runner/GeneratedPluginRegistrant.*
 companion/macos/Flutter/GeneratedPluginRegistrant.swift
 .code-journal.md
+
+# personal Claude project rules (not shared)
+CLAUDE.local.md

@@ -36,6 +36,7 @@ class DetectionRow extends ConsumerWidget {
       },
       child: GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTap: () => _showActions(context, ref),
       onLongPress: () {
         HapticFeedback.mediumImpact();
         _showActions(context, ref);
@@ -193,29 +194,49 @@ class DetectionRow extends ConsumerWidget {
     );
   }
 
-  void _zoomOnMap(BuildContext context, WidgetRef ref) {
-    if (detection.latitude == null || detection.longitude == null) return;
-    ref.read(wardriveProvider).requestZoom(
-      detection.latitude!,
-      detection.longitude!,
-    );
-    context.go('/wardrive');
-  }
+  void _zoomOnMap(BuildContext context, WidgetRef ref) =>
+      detectionZoomOnMap(context, ref, detection);
 
-  void _startFoxhunt(BuildContext context, WidgetRef ref) {
-    ref.read(appStateProvider).setFoxhunterTarget(
-      detection.macAddress,
-      channel: detection.channel,
-    );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Foxhunting ${detection.macAddress.toUpperCase().substring(0, 8)}...'),
-        backgroundColor: AppTheme.foxhunter,
-      ),
-    );
-  }
+  void _startFoxhunt(BuildContext context, WidgetRef ref) =>
+      detectionStartFoxhunt(context, ref, detection);
 
-  void _showActions(BuildContext context, WidgetRef ref) {
+  void _showActions(BuildContext context, WidgetRef ref) =>
+      showDetectionDetails(context, ref, detection);
+
+  String _formatTimeDiff(Duration diff) {
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    return '${diff.inHours}h';
+  }
+}
+
+void detectionZoomOnMap(
+    BuildContext context, WidgetRef ref, Detection detection) {
+  if (detection.latitude == null || detection.longitude == null) return;
+  ref.read(wardriveProvider).requestZoom(
+        detection.latitude!,
+        detection.longitude!,
+      );
+  context.go('/wardrive');
+}
+
+void detectionStartFoxhunt(
+    BuildContext context, WidgetRef ref, Detection detection) {
+  ref.read(appStateProvider).setFoxhunterTarget(
+        detection.macAddress,
+        channel: detection.channel,
+      );
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+          'Foxhunting ${detection.macAddress.toUpperCase().substring(0, 8)}...'),
+      backgroundColor: AppTheme.foxhunter,
+    ),
+  );
+}
+
+void showDetectionDetails(
+    BuildContext context, WidgetRef ref, Detection detection) {
     final nodeLabel = detection.sourceNodeId.isEmpty
         ? ''
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
@@ -264,7 +285,7 @@ class DetectionRow extends ConsumerWidget {
                   style: TextStyle(color: t.textDim, fontSize: 11)),
               onTap: () {
                 Navigator.pop(ctx);
-                _startFoxhunt(context, ref);
+                detectionStartFoxhunt(context, ref, detection);
               },
             ),
             if (detection.latitude != null)
@@ -276,7 +297,7 @@ class DetectionRow extends ConsumerWidget {
                     style: TextStyle(color: t.textDim, fontSize: 11)),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _zoomOnMap(context, ref);
+                  detectionZoomOnMap(context, ref, detection);
                 },
               ),
             ListTile(
@@ -314,16 +335,8 @@ class DetectionRow extends ConsumerWidget {
       ),
       ),
     );
-  }
-
-  String _formatTimeDiff(Duration diff) {
-    if (diff.inSeconds < 60) return '${diff.inSeconds}s';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    return '${diff.inHours}h';
-  }
 }
 
-/// Compact info chip with icon + label.
 /// Detail summary shown in bottom sheet.
 class _DetailSummary extends StatelessWidget {
   const _DetailSummary({required this.detection, required this.t, this.manufacturer, this.nodeLabel = ''});

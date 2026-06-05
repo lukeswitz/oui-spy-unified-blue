@@ -573,30 +573,36 @@ class _SummaryStrip extends ConsumerWidget {
           ),
           if (state.isManagerConnected) ...[
             _divider(t),
-            InkWell(
-              onTap: () async {
-                if (state.meshEnabled) {
-                  await state.disableMesh();
-                } else {
-                  await state.enableMesh(encryption: false, peerMacs: const []);
-                }
-              },
-              borderRadius: BorderRadius.circular(6),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: _StatItem(
-                  value: state.meshEnabled
-                      ? '${state.meshTxCount}/${state.meshRxCount}'
-                      : 'OFF',
-                  label: 'MESH TX/RX',
-                  color: state.meshEnabled
-                      ? ((state.meshTxCount + state.meshRxCount) > 0
-                          ? AppTheme.success
-                          : AppTheme.warning)
-                      : t.textDim,
+            Builder(builder: (_) {
+              final selfId = AppState.canonicalNodeId(state.nodeId);
+              final nodeCount =
+                  state.liveKnownNodes.where((id) => id != selfId).length;
+              return InkWell(
+                onTap: () async {
+                  if (state.meshEnabled) {
+                    await state.disableMesh();
+                  } else {
+                    await state.enableMesh(
+                        encryption: false, peerMacs: const []);
+                  }
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: _StatItem(
+                    icon: Icons.hub,
+                    value: state.meshEnabled ? '$nodeCount' : 'OFF',
+                    label: 'NODES',
+                    color: state.meshEnabled
+                        ? (nodeCount > 0
+                            ? AppTheme.success
+                            : AppTheme.warning)
+                        : t.textDim,
+                  ),
                 ),
-              ),
-            ),
+              );
+            }),
           ],
         ],
       ),
@@ -618,10 +624,12 @@ class _StatItem extends StatelessWidget {
     required this.value,
     required this.label,
     required this.color,
+    this.icon,
   });
   final String value;
   final String label;
   final Color color;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -630,15 +638,25 @@ class _StatItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 22,
-            fontWeight: FontWeight.w500,
-            fontFamily: 'monospace',
-            height: 1,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'monospace',
+                height: 1,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 3),
         Text(

@@ -27,6 +27,7 @@ import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
+import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
@@ -1071,15 +1072,19 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         height: h,
         alignment: Alignment.center,
         rotate: true,
-        child: _PriorityPin(
-          color: wt.engineColor(d.engine),
-          icon: isDrone
-              ? Icons.flight
-              : isDetector
-                  ? Icons.radar
-                  : Icons.videocam,
-          headSize: pinHead,
-          leaderLength: leader,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => showDetectionDetails(context, ref, d),
+          child: _PriorityPin(
+            color: wt.engineColor(d.engine),
+            icon: isDrone
+                ? Icons.flight
+                : isDetector
+                    ? Icons.radar
+                    : Icons.videocam,
+            headSize: pinHead,
+            leaderLength: leader,
+          ),
         ),
       ));
     }
@@ -1225,7 +1230,7 @@ class _IdleControls extends StatelessWidget {
                   );
                 }).toList(),
               ),
-              if (t.hasRadioChoice && (!isManagerConnected || !t.usesPerNodeRadio)) ...[
+              if (t.hasRadioChoice && !isManagerConnected) ...[
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -3695,12 +3700,12 @@ class _NodeStatsOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final appState = ref.watch(appStateProvider);
-    final tx = appState.meshTxCount;
-    final rx = appState.meshRxCount;
-    final label = appState.meshEnabled ? 'MESH $tx/$rx' : 'MESH OFF';
-    final color = appState.meshEnabled
-        ? (tx + rx > 0 ? AppTheme.success : AppTheme.warning)
-        : t.textDim;
+    final selfId = AppState.canonicalNodeId(appState.nodeId);
+    final nodeCount =
+        appState.liveKnownNodes.where((id) => id != selfId).length;
+    final label = '$nodeCount NODE${nodeCount == 1 ? '' : 'S'}';
+    final color =
+        nodeCount > 0 ? AppTheme.success : AppTheme.warning;
     final perNode = appState.detectionsPerSourceNode;
     final nodeEntries = perNode.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
