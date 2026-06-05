@@ -463,6 +463,9 @@ class AppState extends ChangeNotifier {
         return;
       }
       if (det.sourceNodeId.isNotEmpty) _recordSeenNode(det.sourceNodeId);
+      if (_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
+        return;
+      }
       final isNewMac = !(_uniqueMacsPerEngine[det.engine]?.contains(det.macAddress) ?? false);
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
