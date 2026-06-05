@@ -18,6 +18,11 @@ Eight detection engines on one ESP32, all driven from a companion app — no reb
 
 </div>
 
+
+> [!NOTE]
+>  Not affiliated with OUI-SPY in any official context. Beta: bugs and odd behavior expected. 
+
+
 ---
 
 ## What it is
@@ -25,8 +30,6 @@ Eight detection engines on one ESP32, all driven from a companion app — no reb
 The original OUI-SPY tools were separate firmwares — you flashed one, picked a mode at boot, and configured it through a WiFi portal. **APEX merges all eight into one image** that runs them together, replaces the portal with a **phone app**, and turns the whole thing into a live **wardriving map** you take on the road.
 
 Flash once. After that, everything — engines, channels, watchlists, captures, updates — lives in the app.
-
-> Beta. File issues — bugs and odd behavior expected.
 
 ---
 
