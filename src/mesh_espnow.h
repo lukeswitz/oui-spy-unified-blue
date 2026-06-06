@@ -9,6 +9,7 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite);
 void meshDisable(void);
 void meshSendInvite(void);
 void meshBroadcastDetection(const DetectionEvent* evt);
+void meshFlushPendingTxAllChannels(void);
 void meshEnqueueWardriveRecord(const DetectionEvent* evt);
 void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len);
 void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],

@@ -1631,6 +1631,28 @@ static void sendOneSweep(const uint8_t* data, size_t len) {
     if (txMutex) xSemaphoreGive(txMutex);
 }
 
+void meshFlushPendingTxAllChannels(void) {
+    if (!meshCurrentConfig.enabled || !meshTxQueue) return;
+    if (uxQueueMessagesWaiting(meshTxQueue) == 0) return;
+    if (!txMutex || xSemaphoreTake(txMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    uint8_t saved_ch = 0; wifi_second_chan_t sec;
+    esp_wifi_get_channel(&saved_ch, &sec);
+    MeshTxItem item;
+    int drained = 0;
+    while (drained < MESH_TX_DRAIN_BURST &&
+           xQueueReceive(meshTxQueue, &item, 0) == pdTRUE) {
+        for (uint8_t ch = 1; ch <= 14; ch++) {
+            esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+            esp_now_send(kBroadcastDst, item.data, item.len);
+            vTaskDelay(pdMS_TO_TICKS(3));
+        }
+        drained++;
+    }
+    esp_wifi_set_channel(saved_ch != 0 ? saved_ch : MESH_RENDEZVOUS_CH,
+                         WIFI_SECOND_CHAN_NONE);
+    xSemaphoreGive(txMutex);
+}
+
 static void sendOnHome(const uint8_t* data, size_t len) {
     if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
     esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);

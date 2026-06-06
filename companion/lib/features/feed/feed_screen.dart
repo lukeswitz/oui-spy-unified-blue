@@ -155,7 +155,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     const Icon(Icons.hub, size: 14, color: AppTheme.warning),
                     const SizedBox(width: 4),
                   ],
-                  Text('${filtered.length}', style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  Text('${state.totalDetections}', style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: AppTheme.accent, fontFamily: 'monospace', fontWeight: FontWeight.w700,
                       )),
                 ],

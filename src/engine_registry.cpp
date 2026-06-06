@@ -400,6 +400,9 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
     Serial.printf("[ENGINE] auto-pcap trigger src=%s ch=%u mode=%s duration=%us paused=0x%02X\n",
                   engines[src] ? engines[src]->name : "?",
                   chan, isBle ? "BLE" : "WIFI", autoPcapDurationSec, maskSnap);
+    if (!isBle && meshIsEnabled()) {
+        meshFlushPendingTxAllChannels();
+    }
     engineEnable(ENGINE_PCAP);
 }
 
