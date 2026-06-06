@@ -223,6 +223,28 @@ extern "C" void wifiOtaSetNotifyCallback(WifiOtaNotifyFn fn) {
     g_notifyFn = fn;
 }
 
+extern "C" void wifiStaConnectAsync(void) {
+    if (!wifiStaIsEnabled()) {
+        Serial.println("[WIFI] STA disabled in settings; not connecting");
+        return;
+    }
+    char ssid[33], pass[65];
+    if (!wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        Serial.println("[WIFI] async begin: no creds stored");
+        return;
+    }
+    if (g_staConnected && strcmp(ssid, g_staSsid) == 0) return;
+    Serial.printf("[WIFI] async begin('%s')\n", ssid);
+    WiFi.onEvent(wifiEvent);
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    WiFi.mode(WIFI_STA);
+    strncpy(g_staSsid, ssid, sizeof(g_staSsid) - 1);
+    g_staSsid[sizeof(g_staSsid) - 1] = '\0';
+    WiFi.begin(ssid, pass);
+}
+
 extern "C" bool wifiOtaSaveCreds(const char* ssid, const char* pass) {
     if (!ssid || ssid[0] == '\0') return false;
     Preferences p;

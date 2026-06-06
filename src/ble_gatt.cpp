@@ -1053,7 +1053,7 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
             if (val.length() < 2) return;
             bool en = data[1] != 0;
             wifiStaSetEnabled(en);
-            if (en) wifiStaConnect();
+            if (en) wifiStaConnectAsync();
             return;
         }
         if (data[0] == 0xF2) {
@@ -1079,8 +1079,7 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
         char pass[65] = {0};
         if (passLen > 0) memcpy(pass, data + 2 + ssidLen, passLen);
         wifiOtaSaveCreds(ssid, pass);
-        wifiStaSetEnabled(true);
-        wifiStaConnect();
+        if (wifiStaIsEnabled()) wifiStaConnectAsync();
     }
 
     void onRead(NimBLECharacteristic* chr) override {

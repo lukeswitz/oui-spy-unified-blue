@@ -31,6 +31,7 @@ bool wifiOtaWipeCreds(void);
 void wifiStaDisconnect(void);
 
 bool wifiStaConnect(void);
+void wifiStaConnectAsync(void);
 bool wifiStaIsConnected(void);
 bool wifiStaIsEnabled(void);
 bool wifiStaSetEnabled(bool enabled);

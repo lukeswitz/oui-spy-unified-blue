@@ -519,6 +519,7 @@ void setup() {
     Serial.println("  OUI-SPY v3.0 — App-Controlled Mode");
     Serial.println("  No boot selector. BLE GATT only.");
     Serial.println("========================================\n");
+    Serial.printf("[VERSION] OUI-SPY FW=%s (0x%06X)\n", FW_VERSION, FW_VERSION_NUM);
 
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);

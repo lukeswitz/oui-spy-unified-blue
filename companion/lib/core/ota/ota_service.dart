@@ -556,6 +556,13 @@ class OtaService {
         ));
       }
       return ok;
+    } catch (e) {
+      DebugLog.log('OTA: DFU transfer failed: $e');
+      _progress.add(OtaProgress(
+        phase: OtaPhase.error,
+        error: 'Transfer interrupted: $e',
+      ));
+      return false;
     } finally {
       await statusSub.cancel();
     }

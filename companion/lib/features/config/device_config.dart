@@ -65,7 +65,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
     _readDeviceConfig();
     final ble = ref.read(bleManagerProvider);
     _connStateSub = ble.connectionState.listen((s) {
@@ -192,7 +192,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                 Tab(text: 'DETECTIONS'),
                 Tab(text: 'HARDWARE'),
                 Tab(text: 'ALERTS'),
-                Tab(text: 'WIFI'),
                 Tab(text: 'MESH'),
                 Tab(text: 'FIRMWARE'),
               ],
@@ -208,7 +207,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   const _DetectionsTab(),
                   _buildHardwareTab(),
                   _buildAlertsTab(),
-                  _buildWifiTab(),
                   _buildMeshTab(),
                   _buildFirmwareTab(),
                 ],
@@ -552,62 +550,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   final _ssidController = TextEditingController();
   final _passController = TextEditingController();
 
-  Widget _buildWifiTab() {
-    final appState = ref.watch(appStateProvider);
-    if (!appState.isConnected) return _buildDisconnectedPlaceholder();
-    final t = AppTheme.of(context);
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      children: [
-        const ConfigSectionHeader(label: 'STATION MODE'),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12, left: 2),
-          child: Text(
-            'Connects node to your network for OTA updates, data upload, and remote node communication.',
-            style: TextStyle(color: t.textDim, fontSize: 11),
-          ),
-        ),
-        _WifiStatusPanel(),
-        const SizedBox(height: 12),
-        _WifiEnableToggle(),
-        const SizedBox(height: 12),
-        ConfigTextField(
-          icon: Icons.wifi,
-          label: 'WiFi SSID',
-          controller: _ssidController,
-        ),
-        ConfigTextField(
-          icon: Icons.lock,
-          label: 'Password',
-          controller: _passController,
-          obscure: true,
-        ),
-        const SizedBox(height: 8),
-        ConfigActionRow(
-          icon: Icons.save,
-          label: 'Save credentials',
-          subtitle: 'Push SSID + password to node and connect',
-          color: AppTheme.success,
-          onTap: _writeWifiConfig,
-          trailing: const Icon(Icons.arrow_forward, size: 16, color: AppTheme.success),
-        ),
-        ConfigActionRow(
-          icon: Icons.link_off,
-          label: 'Disconnect',
-          subtitle: 'Drop STA but keep credentials',
-          onTap: _wifiDisconnect,
-        ),
-        ConfigActionRow(
-          icon: Icons.delete_forever,
-          label: 'Wipe credentials',
-          subtitle: 'Disconnect and erase SSID/password from device',
-          destructive: true,
-          onTap: _confirmWipeWifi,
-        ),
-      ],
-    );
-  }
-
   Future<void> _wifiDisconnect() async {
     try {
       await ref.read(bleManagerProvider).wifiDisconnect();
@@ -949,6 +891,53 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
         ConfigInfoRow(
           icon: Icons.memory, label: 'Free Heap', value: _heapFree,
+        ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'WIFI NETWORK'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12, left: 2),
+          child: Text(
+            'Device joins your network to download firmware over WiFi. Set once — used by the WiFi update below.',
+            style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 11),
+          ),
+        ),
+        _WifiStatusPanel(),
+        const SizedBox(height: 12),
+        _WifiEnableToggle(),
+        const SizedBox(height: 12),
+        ConfigTextField(
+          icon: Icons.wifi,
+          label: 'WiFi SSID',
+          controller: _ssidController,
+        ),
+        ConfigTextField(
+          icon: Icons.lock,
+          label: 'Password',
+          controller: _passController,
+          obscure: true,
+        ),
+        const SizedBox(height: 8),
+        ConfigActionRow(
+          icon: Icons.save,
+          label: 'Save credentials',
+          subtitle: 'Push SSID + password to device and connect',
+          color: AppTheme.success,
+          onTap: _writeWifiConfig,
+          trailing: const Icon(Icons.arrow_forward, size: 16, color: AppTheme.success),
+        ),
+        ConfigActionRow(
+          icon: Icons.link_off,
+          label: 'Disconnect',
+          subtitle: 'Drop STA but keep credentials',
+          onTap: _wifiDisconnect,
+        ),
+        ConfigActionRow(
+          icon: Icons.delete_forever,
+          label: 'Wipe credentials',
+          subtitle: 'Disconnect and erase SSID/password from device',
+          destructive: true,
+          onTap: _confirmWipeWifi,
         ),
 
         const SizedBox(height: 16),
@@ -3859,12 +3848,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   /// before a WiFi OTA so it joins the saved network for the download (and
   /// rejoins after the reboot). No-op without saved credentials.
   Future<void> _ensureWifiForUpdate() async {
-    if (!_autoWifiUpdate || !_wifiConfigured) return;
-    try {
-      await ref.read(bleManagerProvider).setWifiStaEnabled(true);
-    } on Exception catch (e) {
-      DebugLog.log('OTA: auto-enable STA failed: $e');
-    }
+    return;
   }
 
   Future<void> _readWifiState() async {
@@ -4347,7 +4331,8 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    final busy = _progress != null &&
+    final busy = ref.read(otaServiceProvider).isRunning &&
+        _progress != null &&
         _progress!.phase != OtaPhase.idle &&
         _progress!.phase != OtaPhase.upToDate &&
         _progress!.phase != OtaPhase.error &&
@@ -4402,7 +4387,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                     Text(
                       _wifiConfigured
                           ? 'Manager joins saved WiFi to download the update'
-                          : 'Save WiFi credentials in the WIFI tab to use this',
+                          : 'Save WiFi credentials in the WIFI NETWORK section above to use this',
                       style: TextStyle(color: t.textSecondary, fontSize: 11),
                     ),
                   ],
@@ -4439,7 +4424,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                'Tip: configure WiFi in the WIFI tab for ~10x faster updates.',
+                'Tip: set WiFi in the WIFI NETWORK section above for ~10x faster updates.',
                 style: TextStyle(
                   color: AppTheme.of(context).textDim, fontSize: 10,
                 ),
@@ -4664,16 +4649,23 @@ class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
     final IconData icon;
     final String title;
     final String? subtitle;
+    bool connecting = false;
     if (_connected) {
       color = AppTheme.success;
       icon = Icons.wifi;
       title = 'Connected: $_ssid';
       subtitle = '$_ip · ${_rssi}dBm';
+    } else if (_enabled && _hasCreds) {
+      color = AppTheme.accent;
+      icon = Icons.wifi_find;
+      connecting = true;
+      title = 'Connecting to $_ssid…';
+      subtitle = 'Joining network — up to 20s';
     } else if (_hasCreds) {
       color = AppTheme.warning;
       icon = Icons.wifi_off;
-      title = 'Saved: $_ssid (not connected)';
-      subtitle = 'Disconnected or out of range';
+      title = 'Saved: $_ssid (STA off)';
+      subtitle = 'Enable WiFi STA below to connect';
     } else {
       color = t.textDim;
       icon = Icons.signal_wifi_off;
@@ -4689,7 +4681,13 @@ class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 18),
+          connecting
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: color),
+                )
+              : Icon(icon, color: color, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

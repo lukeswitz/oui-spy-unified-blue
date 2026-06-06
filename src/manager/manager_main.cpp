@@ -91,6 +91,7 @@ void setup() {
     Serial.println("========================================");
     Serial.println("  OUI-SPY MANAGER (WROOM) — BLE+mesh");
     Serial.println("========================================");
+    Serial.printf("[VERSION] OUI-SPY FW=%s (0x%06X)\n", FW_VERSION, FW_VERSION_NUM);
 
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);
@@ -115,6 +116,32 @@ void setup() {
     }
 
     meshInit();
+
+    {
+        uint32_t relaySz = 0, relayCrc = 0;
+        if (wifiOtaGetRelayPending(&relaySz, &relayCrc)) {
+            Serial.printf("[BOOT] fleet relay (heap=%u, BLE off, full heap) -> stream to nodes\n",
+                          (unsigned)ESP.getFreeHeap());
+            MeshConfig rcfg = {};
+            rcfg.enabled = 1;
+            rcfg.encryption_enabled = 0;
+            rcfg.peer_count = 0;
+            meshEnable(&rcfg);
+            if (meshOtaInitiatorStart(relaySz, relayCrc, FW_VERSION_NUM)) {
+                uint32_t start = millis();
+                while (meshOtaInitiatorRunning() && (millis() - start) < 180000) {
+                    delay(500);
+                }
+                Serial.println("[BOOT] fleet relay finished -> reboot to normal");
+            } else {
+                Serial.printf("[BOOT] meshOtaInitiatorStart FAILED (heap=%u)\n",
+                              (unsigned)ESP.getFreeHeap());
+            }
+            delay(500);
+            esp_restart();
+        }
+    }
+
     bleGattInit();
     ignoreListInit();
 
@@ -129,19 +156,6 @@ void setup() {
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(heartbeatTask,       "hb",         6144, NULL, 1, NULL, 1);
 
-    {
-        uint32_t relaySz = 0, relayCrc = 0;
-        if (wifiOtaGetRelayPending(&relaySz, &relayCrc)) {
-            Serial.printf("[BOOT] fleet relay pending: %u bytes (free heap=%u) -> stream to nodes\n",
-                          (unsigned)relaySz, (unsigned)ESP.getFreeHeap());
-            if (meshOtaInitiatorStart(relaySz, relayCrc, FW_VERSION_NUM)) {
-                bleGattStartFleetProgress();
-            } else {
-                Serial.println("[BOOT] meshOtaInitiatorStart FAILED");
-            }
-        }
-    }
-
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     Serial.printf("[INIT] MAC %02X:%02X:%02X:%02X:%02X:%02X ch=%d heap=%u\n",
@@ -151,26 +165,6 @@ void setup() {
 
 void loop() {
     delay(50);
-#ifdef OUISPY_FLEET_SELFTEST
-    {
-        static bool checked = false;
-        if (!checked && millis() > 9000) {
-            checked = true;
-            Preferences pf;
-            pf.begin("selftst_mgr1", false);
-            bool done = pf.getBool("done", false);
-            if (!done) {
-                pf.putBool("done", true);
-                pf.end();
-                Serial.println("[SELFTEST] MANAGER self-OTA trigger -> LOCAL 0.4.2 mgr image");
-                wifiOtaSetPending("http://192.168.0.13:8000/oui-spy-mgr-xiao_c3-v0.4.2.bin");
-                delay(300);
-                esp_restart();
-            }
-            pf.end();
-        }
-    }
-#endif
 #ifdef OUISPY_PCAP_SELFTEST
     static bool stEnabled = false;
     static bool stDisabled = false;
