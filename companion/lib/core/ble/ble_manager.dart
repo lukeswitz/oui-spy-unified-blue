@@ -113,7 +113,6 @@ class BleManager {
   Uint8List _pcapRx = Uint8List(0);
   int _pcapRxStart = 0;
   bool _pcapPrevActive = false;
-  String? _lastAutoPcapTriggerKey;
 
   final _pcapBytesStream = StreamController<int>.broadcast();
   final _pcapSavedStream = StreamController<File>.broadcast();
@@ -211,42 +210,6 @@ class BleManager {
       _closePcapFile();
     }
     _pcapPrevActive = active;
-    _maybeSynthesizeAutoPcapDetection(stats);
-  }
-
-  void _maybeSynthesizeAutoPcapDetection(PcapStats stats) {
-    if (!isManagerConnected || !stats.isAutoTriggered) {
-      _lastAutoPcapTriggerKey = null;
-      return;
-    }
-    final src = stats.autoTriggerSrc;
-    if (src < 0 || src >= Engine.values.length) return;
-    final mac = stats.autoTriggerMac
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join(':');
-    final key = '$mac|$src';
-    if (key == _lastAutoPcapTriggerKey) return;
-    _lastAutoPcapTriggerKey = key;
-    final engine = Engine.values[src];
-    _detections.add(Detection(
-      id: '${mac}_autopcap${stats.uptimeMs}',
-      sessionId: _sessionId,
-      nodeId: _nodeId,
-      macAddress: mac,
-      engine: engine,
-      method: '',
-      rssi: -128,
-      channel: stats.currentChannel,
-      deviceTimestampMs: stats.uptimeMs,
-      appTimestamp: DateTime.now(),
-      sourceNodeId: stats.sourceNodeId,
-      latitude: _lastLat,
-      longitude: _lastLon,
-      accuracy: _lastAccuracy,
-      satelliteCount: _lastSatCount,
-    ));
-    DebugLog.log(
-        'BLE: synth auto-pcap detection $mac engine=${engine.name} node=${stats.sourceNodeId}');
   }
 
   void _ingestPcapBytes(Uint8List bytes) {
