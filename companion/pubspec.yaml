@@ -17,6 +17,8 @@ dependencies:
   # Map
   flutter_map: ^7.0.0
   latlong2: ^0.9.0
+  # Vector icons
+  flutter_svg: ^2.0.10
   # Database
   drift: ^2.22.0
   sqlite3_flutter_libs: ^0.5.0
@@ -59,3 +61,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/oui_vendors.tsv.gz
+    - assets/icons/

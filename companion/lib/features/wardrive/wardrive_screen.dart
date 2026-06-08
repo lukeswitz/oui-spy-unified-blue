@@ -28,6 +28,7 @@ import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
+import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
@@ -627,6 +628,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       borderStrokeWidth: 1.0,
                     ),
                   ]),
+                if (detectionLayers.tethers.isNotEmpty)
+                  PolylineLayer(polylines: detectionLayers.tethers),
                 if (_currentZoom < 16.0) ...[
                   if (detectionLayers.pins.isNotEmpty)
                     MarkerLayer(markers: detectionLayers.pins),
@@ -1059,11 +1062,55 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     }
 
     final pins = <Marker>[];
+    final tethers = <Polyline>[];
     for (final d in priority) {
       final isDrone = d.engine == Engine.skySpy;
       final isDetector = d.engine == Engine.detector;
       final pinHead = (24.0 * zoomScale).clamp(18.0, 32.0);
       final leader = (40.0 * zoomScale).clamp(30.0, 56.0);
+
+      if (isDrone) {
+        final dronePt = droneRidPoint(d) ?? LatLng(d.latitude!, d.longitude!);
+        final color = wt.engineColor(d.engine);
+        final box = pinHead + 16;
+        pins.add(Marker(
+          point: dronePt,
+          width: box,
+          height: box,
+          alignment: Alignment.center,
+          rotate: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showDetectionDetails(context, ref, d),
+            child: DronePin(color: color, size: pinHead, fresh: droneIsFresh(d)),
+          ),
+        ));
+        final pilotPt = pilotRidPoint(d);
+        if (pilotPt != null) {
+          final psize = pinHead * 0.8;
+          final pbox = psize + 14;
+          pins.add(Marker(
+            point: pilotPt,
+            width: pbox,
+            height: pbox,
+            alignment: Alignment.center,
+            rotate: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showDetectionDetails(context, ref, d),
+              child: PilotPin(color: color, size: psize),
+            ),
+          ));
+          tethers.add(Polyline(
+            points: [dronePt, pilotPt],
+            color: color.withValues(alpha: 0.65),
+            strokeWidth: 1.6,
+            pattern: StrokePattern.dashed(segments: const [6, 6]),
+          ));
+        }
+        continue;
+      }
+
       final w = pinHead + leader + 12;
       final h = pinHead + leader + 12;
       pins.add(Marker(
@@ -1077,11 +1124,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           onTap: () => showDetectionDetails(context, ref, d),
           child: _PriorityPin(
             color: wt.engineColor(d.engine),
-            icon: isDrone
-                ? Icons.flight
-                : isDetector
-                    ? Icons.radar
-                    : Icons.videocam,
+            icon: isDetector ? Icons.radar : Icons.videocam,
             headSize: pinHead,
             leaderLength: leader,
           ),
@@ -1089,7 +1132,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       ));
     }
 
-    return _DetectionLayers(heat: heat, clusters: clusters, pins: pins);
+    return _DetectionLayers(
+        heat: heat, clusters: clusters, pins: pins, tethers: tethers);
   }
 
   static double _shortAngleDelta(double from, double to) {
@@ -1894,14 +1938,17 @@ class _DetectionLayers {
     required this.heat,
     required this.clusters,
     required this.pins,
+    this.tethers = const [],
   });
   const _DetectionLayers.empty()
       : heat = const [],
         clusters = const [],
-        pins = const [];
+        pins = const [],
+        tethers = const [];
   final List<CircleMarker> heat;
   final List<Marker> clusters;
   final List<Marker> pins;
+  final List<Polyline> tethers;
 }
 
 class _ClusterDot extends StatelessWidget {

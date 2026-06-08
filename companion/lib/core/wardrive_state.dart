@@ -659,6 +659,20 @@ class WardriveController extends ChangeNotifier {
       wardrive: engine == Engine.wardrive
           ? WardriveExtension(ssid: ssid, authMode: authMode, deviceName: deviceName)
           : null,
+      odid: engine == Engine.skySpy
+          ? OdidExtension(
+              uavId: row['uavId'] as String?,
+              operatorId: row['operatorId'] as String?,
+              droneLat: row['droneLat'] as double?,
+              droneLon: row['droneLon'] as double?,
+              altitudeMsl: row['altitudeMsl'] as int?,
+              heightAgl: row['heightAgl'] as int?,
+              droneSpeed: row['droneSpeed'] as int?,
+              droneHeading: row['droneHeading'] as int?,
+              pilotLat: row['pilotLat'] as double?,
+              pilotLon: row['pilotLon'] as double?,
+            )
+          : null,
     );
   }
 
@@ -988,6 +1002,16 @@ class WardriveController extends ChangeNotifier {
       accuracy: drift.Value(detection.accuracy),
       ssid: drift.Value(detection.ssid),
       authMode: drift.Value(detection.wardrive?.authMode ?? 0),
+      uavId: drift.Value(detection.odid?.uavId),
+      operatorId: drift.Value(detection.odid?.operatorId),
+      droneLat: drift.Value(detection.odid?.droneLat),
+      droneLon: drift.Value(detection.odid?.droneLon),
+      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
+      heightAgl: drift.Value(detection.odid?.heightAgl),
+      droneSpeed: drift.Value(detection.odid?.droneSpeed),
+      droneHeading: drift.Value(detection.odid?.droneHeading),
+      pilotLat: drift.Value(detection.odid?.pilotLat),
+      pilotLon: drift.Value(detection.odid?.pilotLon),
     ));
 
     notifyListeners();

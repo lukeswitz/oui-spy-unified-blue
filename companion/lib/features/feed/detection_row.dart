@@ -374,8 +374,38 @@ class _DetailSummary extends StatelessWidget {
     if (detection.flock?.isRaven == true) {
       rows.add(_detailRow(context, 'Type', 'Raven (ext battery)'));
     }
-    if (detection.odid?.uavId != null) {
-      rows.add(_detailRow(context, 'UAV ID', detection.odid!.uavId!));
+    final odid = detection.odid;
+    if (odid != null) {
+      if (odid.uavId != null && odid.uavId!.isNotEmpty) {
+        rows.add(_detailRow(context, 'UAV ID', odid.uavId!));
+      }
+      if (odid.operatorId != null && odid.operatorId!.isNotEmpty) {
+        rows.add(_detailRow(context, 'Operator ID', odid.operatorId!));
+      }
+      if (odid.droneLat != null &&
+          odid.droneLon != null &&
+          !(odid.droneLat == 0 && odid.droneLon == 0)) {
+        rows.add(_detailRow(context, 'Drone Pos',
+            '${odid.droneLat!.toStringAsFixed(5)}, ${odid.droneLon!.toStringAsFixed(5)}'));
+      }
+      if (odid.altitudeMsl != null) {
+        rows.add(_detailRow(context, 'Alt MSL', '${odid.altitudeMsl} m'));
+      }
+      if (odid.heightAgl != null) {
+        rows.add(_detailRow(context, 'Height AGL', '${odid.heightAgl} m'));
+      }
+      if (odid.droneSpeed != null) {
+        rows.add(_detailRow(context, 'Speed', '${odid.droneSpeed} m/s'));
+      }
+      if (odid.droneHeading != null) {
+        rows.add(_detailRow(context, 'Heading', '${odid.droneHeading}°'));
+      }
+      if (odid.pilotLat != null &&
+          odid.pilotLon != null &&
+          !(odid.pilotLat == 0 && odid.pilotLon == 0)) {
+        rows.add(_detailRow(context, 'Pilot Pos',
+            '${odid.pilotLat!.toStringAsFixed(5)}, ${odid.pilotLon!.toStringAsFixed(5)}'));
+      }
     }
     if (detection.latitude != null) {
       rows.add(_detailRow(context, 'Location',

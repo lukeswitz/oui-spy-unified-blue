@@ -4,6 +4,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/features/engines/drone_map_view.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class SkySpyScreen extends ConsumerWidget {
@@ -45,14 +46,29 @@ class SkySpyScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: droneList.isEmpty
-          ? Center(child: Text(
-              isActive ? 'SCANNING FOR DRONES...' : 'ENABLE TO START SCANNING',
-              style: TextStyle(color: t.textDim, letterSpacing: 2, fontSize: 12)))
-          : ListView.builder(
-              itemCount: droneList.length,
-              itemBuilder: (context, index) => _DroneRow(detection: droneList[index]),
-            ),
+      body: Column(
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.4,
+            child: DroneMapView(drones: droneList),
+          ),
+          Expanded(
+            child: droneList.isEmpty
+                ? Center(
+                    child: Text(
+                        isActive
+                            ? 'SCANNING FOR DRONES...'
+                            : 'ENABLE TO START SCANNING',
+                        style: TextStyle(
+                            color: t.textDim, letterSpacing: 2, fontSize: 12)))
+                : ListView.builder(
+                    itemCount: droneList.length,
+                    itemBuilder: (context, index) =>
+                        _DroneRow(detection: droneList[index]),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

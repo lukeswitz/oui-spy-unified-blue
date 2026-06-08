@@ -148,6 +148,16 @@ class AppDatabase extends _$AppDatabase {
               'heading': r.heading,
               'accuracy': r.accuracy,
               'satelliteCount': r.satelliteCount,
+              'uavId': r.uavId,
+              'operatorId': r.operatorId,
+              'droneLat': r.droneLat,
+              'droneLon': r.droneLon,
+              'altitudeMsl': r.altitudeMsl,
+              'heightAgl': r.heightAgl,
+              'droneSpeed': r.droneSpeed,
+              'droneHeading': r.droneHeading,
+              'pilotLat': r.pilotLat,
+              'pilotLon': r.pilotLon,
             })
         .toList();
   }
