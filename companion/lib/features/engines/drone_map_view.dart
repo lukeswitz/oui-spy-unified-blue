@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
@@ -67,11 +68,26 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
   Widget build(BuildContext context) {
     final mapStyle = ref.watch(mapStyleProvider);
     final here = ref.watch(gpsProvider).lastPosition;
-    const color = AppTheme.skySpy;
+    final appState = ref.watch(appStateProvider);
 
     final markers = <Marker>[];
     final tethers = <Polyline>[];
+    final trails = <Polyline>[];
     for (final d in widget.drones) {
+      final color = droneColorForMac(d.macAddress);
+      final droneTrack = appState.droneTrack(d.macAddress);
+      if (droneTrack != null && droneTrack.length >= 2) {
+        trails.add(Polyline(points: droneTrack, color: color, strokeWidth: 2.2));
+      }
+      final pilotTrack = appState.pilotTrack(d.macAddress);
+      if (pilotTrack != null && pilotTrack.length >= 2) {
+        trails.add(Polyline(
+          points: pilotTrack,
+          color: color.withValues(alpha: 0.8),
+          strokeWidth: 1.8,
+          pattern: StrokePattern.dashed(segments: const [5, 5]),
+        ));
+      }
       final dp = droneRidPoint(d);
       if (dp != null) {
         markers.add(Marker(
@@ -96,7 +112,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => showDetectionDetails(context, ref, d),
-            child: const PilotPin(color: color, size: 22),
+            child: PilotPin(color: color, size: 22),
           ),
         ));
         if (dp != null) {
@@ -139,6 +155,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
           userAgentPackageName: 'tech.colonelpanic.ouispy',
           maxZoom: 19,
         ),
+        if (trails.isNotEmpty) PolylineLayer(polylines: trails),
         if (tethers.isNotEmpty) PolylineLayer(polylines: tethers),
         if (here != null)
           MarkerLayer(markers: [

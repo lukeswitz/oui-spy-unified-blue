@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -91,6 +92,12 @@ class AppState extends ChangeNotifier {
 
   // Recent detections ring buffer (feed), deduped by MAC+engine
   final List<Detection> recentDetections = [];
+
+  static const int _maxTrackPoints = 500;
+  final Map<String, List<LatLng>> _droneTracks = {};
+  final Map<String, List<LatLng>> _pilotTracks = {};
+  List<LatLng>? droneTrack(String mac) => _droneTracks[mac];
+  List<LatLng>? pilotTrack(String mac) => _pilotTracks[mac];
   final Map<String, int> _dedupeIndex = {}; // "mac|engine" → index in list
   static const int maxRecentDetections = 500;
 
@@ -471,6 +478,7 @@ class AppState extends ChangeNotifier {
       lastDetectionTime[det.engine] = DateTime.now();
       (_recentDetectionTimes[det.engine] ??= []).add(DateTime.now());
       _upsertDetection(det);
+      _recordDroneTrack(det);
 
       // Fire notification only for first-seen MACs per engine, and never
       // inside an exclusion geofence (no alert route while in the zone).
@@ -698,7 +706,37 @@ class AppState extends ChangeNotifier {
     _uniqueMacsPerEngine.clear();
     recentDetections.clear();
     _dedupeIndex.clear();
+    _droneTracks.clear();
+    _pilotTracks.clear();
     notifyListeners();
+  }
+
+  void _recordDroneTrack(Detection det) {
+    if (det.engine != Engine.skySpy) return;
+    final o = det.odid;
+    if (o == null) return;
+    _appendTrack(_droneTracks, det.macAddress, o.droneLat, o.droneLon);
+    _appendTrack(_pilotTracks, det.macAddress, o.pilotLat, o.pilotLon);
+  }
+
+  void _appendTrack(
+      Map<String, List<LatLng>> tracks, String mac, double? lat, double? lon) {
+    if (lat == null || lon == null) return;
+    if (lat == 0 && lon == 0) return;
+    if (lat.isNaN || lon.isNaN) return;
+    if (lat.abs() > 90 || lon.abs() > 180) return;
+    final track = tracks.putIfAbsent(mac, () => <LatLng>[]);
+    if (track.isNotEmpty) {
+      final last = track.last;
+      if ((last.latitude - lat).abs() < 1e-6 &&
+          (last.longitude - lon).abs() < 1e-6) {
+        return;
+      }
+    }
+    track.add(LatLng(lat, lon));
+    if (track.length > _maxTrackPoints) {
+      track.removeRange(0, track.length - _maxTrackPoints);
+    }
   }
 
   @override

@@ -628,6 +628,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       borderStrokeWidth: 1.0,
                     ),
                   ]),
+                if (detectionLayers.trails.isNotEmpty)
+                  PolylineLayer(polylines: detectionLayers.trails),
                 if (detectionLayers.tethers.isNotEmpty)
                   PolylineLayer(polylines: detectionLayers.tethers),
                 if (_currentZoom < 16.0) ...[
@@ -1061,8 +1063,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       ));
     }
 
+    final appState = ref.read(appStateProvider);
     final pins = <Marker>[];
     final tethers = <Polyline>[];
+    final trails = <Polyline>[];
     for (final d in priority) {
       final isDrone = d.engine == Engine.skySpy;
       final isDetector = d.engine == Engine.detector;
@@ -1071,7 +1075,24 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
       if (isDrone) {
         final dronePt = droneRidPoint(d) ?? LatLng(d.latitude!, d.longitude!);
-        final color = wt.engineColor(d.engine);
+        final color = droneColorForMac(d.macAddress);
+        final droneTrack = appState.droneTrack(d.macAddress);
+        if (droneTrack != null && droneTrack.length >= 2) {
+          trails.add(Polyline(
+            points: droneTrack,
+            color: color,
+            strokeWidth: 2.2,
+          ));
+        }
+        final pilotTrack = appState.pilotTrack(d.macAddress);
+        if (pilotTrack != null && pilotTrack.length >= 2) {
+          trails.add(Polyline(
+            points: pilotTrack,
+            color: color.withValues(alpha: 0.8),
+            strokeWidth: 1.8,
+            pattern: StrokePattern.dashed(segments: const [5, 5]),
+          ));
+        }
         final box = pinHead + 16;
         pins.add(Marker(
           point: dronePt,
@@ -1133,7 +1154,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     }
 
     return _DetectionLayers(
-        heat: heat, clusters: clusters, pins: pins, tethers: tethers);
+        heat: heat,
+        clusters: clusters,
+        pins: pins,
+        tethers: tethers,
+        trails: trails);
   }
 
   static double _shortAngleDelta(double from, double to) {
@@ -1939,16 +1964,19 @@ class _DetectionLayers {
     required this.clusters,
     required this.pins,
     this.tethers = const [],
+    this.trails = const [],
   });
   const _DetectionLayers.empty()
       : heat = const [],
         clusters = const [],
         pins = const [],
-        tethers = const [];
+        tethers = const [],
+        trails = const [];
   final List<CircleMarker> heat;
   final List<Marker> clusters;
   final List<Marker> pins;
   final List<Polyline> tethers;
+  final List<Polyline> trails;
 }
 
 class _ClusterDot extends StatelessWidget {

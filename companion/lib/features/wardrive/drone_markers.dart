@@ -32,6 +32,15 @@ bool droneIsFresh(Detection d,
   return DateTime.now().difference(d.appTimestamp) <= window;
 }
 
+Color droneColorForMac(String mac) {
+  var hash = 0;
+  for (var i = 0; i < mac.length; i++) {
+    hash = mac.codeUnitAt(i) + ((hash << 5) - hash);
+  }
+  final hue = (hash.abs() % 360).toDouble();
+  return HSLColor.fromAHSL(1.0, hue, 0.75, 0.6).toColor();
+}
+
 class DronePin extends StatelessWidget {
   const DronePin({
     super.key,
