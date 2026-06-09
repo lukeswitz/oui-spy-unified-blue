@@ -1,6 +1,7 @@
 #include "wardrive.h"
 #include "../protocol.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 
 #define MESH_RENDEZVOUS_CH 1
 #include "flock_match.h"
@@ -510,19 +511,14 @@ static void wardriveStart(void) {
         };
         esp_wifi_set_country(&country);
 
-        wifi_promiscuous_filter_t filter = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
-                           WIFI_PROMIS_FILTER_MASK_DATA
-        };
         wifi_promiscuous_filter_t ctrl_filter = {
             .filter_mask = 0
         };
-        esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous_ctrl_filter(&ctrl_filter);
 
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-        esp_wifi_set_promiscuous(true);
-        esp_wifi_set_promiscuous_rx_cb(wardriveWifiCb);
+        wifiCoexRegister(wardriveWifiCb,
+                         WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
 
         sendWildcardProbe();
@@ -557,8 +553,7 @@ static void wardriveStop(void) {
         pWardriveScan = nullptr;
     }
 
-    esp_wifi_set_promiscuous_rx_cb(NULL);
-    esp_wifi_set_promiscuous(false);
+    wifiCoexUnregister(wardriveWifiCb);
     vTaskDelay(pdMS_TO_TICKS(100));
     if (meshIsEnabled()) {
         WiFi.disconnect(false, false);

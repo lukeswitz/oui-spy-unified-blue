@@ -1,0 +1,84 @@
+#include "radio_coex.h"
+#include <Arduino.h>
+
+#define WIFI_COEX_MAX 8
+
+static WifiRxParser g_parsers[WIFI_COEX_MAX];
+static uint32_t g_filters[WIFI_COEX_MAX];
+static volatile int g_count = 0;
+static portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static void IRAM_ATTR wifiCoexDispatch(void* buf, wifi_promiscuous_pkt_type_t type) {
+    int n = g_count;
+    for (int i = 0; i < n; i++) {
+        WifiRxParser p = g_parsers[i];
+        if (p) p(buf, type);
+    }
+}
+
+static void wifiCoexApplyFilter(void) {
+    uint32_t mask = 0;
+    portENTER_CRITICAL(&g_mux);
+    for (int i = 0; i < g_count; i++) mask |= g_filters[i];
+    portEXIT_CRITICAL(&g_mux);
+    if (mask == 0) mask = WIFI_PROMIS_FILTER_MASK_MGMT;
+    wifi_promiscuous_filter_t f = {};
+    f.filter_mask = mask;
+    esp_wifi_set_promiscuous_filter(&f);
+}
+
+void wifiCoexRegister(WifiRxParser parser, uint32_t filterMask) {
+    if (!parser) return;
+    bool first = false;
+    portENTER_CRITICAL(&g_mux);
+    bool found = false;
+    for (int i = 0; i < g_count; i++) {
+        if (g_parsers[i] == parser) { g_filters[i] = filterMask; found = true; break; }
+    }
+    if (!found && g_count < WIFI_COEX_MAX) {
+        g_parsers[g_count] = parser;
+        g_filters[g_count] = filterMask;
+        g_count++;
+    }
+    first = (g_count == 1);
+    portEXIT_CRITICAL(&g_mux);
+
+    wifiCoexApplyFilter();
+    if (first) {
+        esp_wifi_set_promiscuous(true);
+        esp_wifi_set_promiscuous_rx_cb(wifiCoexDispatch);
+        Serial.println("[COEX] wifi promiscuous ON (shared)");
+    }
+}
+
+void wifiCoexUnregister(WifiRxParser parser) {
+    if (!parser) return;
+    bool empty = false;
+    portENTER_CRITICAL(&g_mux);
+    for (int i = 0; i < g_count; i++) {
+        if (g_parsers[i] == parser) {
+            for (int j = i; j < g_count - 1; j++) {
+                g_parsers[j] = g_parsers[j + 1];
+                g_filters[j] = g_filters[j + 1];
+            }
+            g_count--;
+            g_parsers[g_count] = nullptr;
+            g_filters[g_count] = 0;
+            break;
+        }
+    }
+    empty = (g_count == 0);
+    portEXIT_CRITICAL(&g_mux);
+
+    if (empty) {
+        esp_wifi_set_promiscuous_rx_cb(NULL);
+        esp_wifi_set_promiscuous(false);
+        Serial.println("[COEX] wifi promiscuous OFF (shared)");
+    } else {
+        wifiCoexApplyFilter();
+    }
+}
+
+bool wifiCoexActive(void) {
+    return g_count > 0;
+}

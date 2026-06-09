@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "ble_gatt.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -244,14 +245,9 @@ static void foxhunterStart(void) {
         // MGMT+DATA only. CTRL frames (ACK/CTS/RTS/BlockAck) outnumber legit
         // target frames 10-100x on busy networks; including them overloads
         // the ISR and drops the very frames foxhunter needs to track RSSI on.
-        wifi_promiscuous_filter_t filter = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
-                           WIFI_PROMIS_FILTER_MASK_DATA
-        };
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-        esp_wifi_set_promiscuous_filter(&filter);
-        esp_wifi_set_promiscuous(true);
-        esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
+        wifiCoexRegister(wifiSnifferCb,
+                         WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         uint8_t startCh = (hintChannel > 0) ? hintChannel : 1;
         currentChannel = startCh;
         esp_wifi_set_channel(startCh, WIFI_SECOND_CHAN_NONE);
@@ -269,8 +265,7 @@ static void foxhunterStop(void) {
 
     if (wifiActive) {
         wifiActive = false;
-        esp_wifi_set_promiscuous_rx_cb(NULL);
-        esp_wifi_set_promiscuous(false);
+        wifiCoexUnregister(wifiSnifferCb);
         if (meshIsEnabled()) {
             WiFi.disconnect(false, false);
             esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);

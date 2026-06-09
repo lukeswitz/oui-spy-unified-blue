@@ -6,6 +6,7 @@
 #include "skyspy.h"
 #include "protocol.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -67,6 +68,10 @@ static void pushDroneDetection(DroneData* d, uint8_t method) {
     evt.ext.odid.heading = d->heading;
     evt.ext.odid.pilot_lat = d->pilotLat;
     evt.ext.odid.pilot_lon = d->pilotLon;
+
+    Serial.printf("[SKYSPY] RID %02X%02X%02X%02X%02X%02X rssi=%d m=%u id=%.20s lat=%.5f lon=%.5f\n",
+                  d->mac[0], d->mac[1], d->mac[2], d->mac[3], d->mac[4], d->mac[5],
+                  d->rssi, method, d->uavId, d->lat, d->lon);
 
     pushDetection(&evt);
 }
@@ -230,13 +235,8 @@ static void skyspyStart(void) {
         }
         // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
         // bury the callback in irrelevant traffic and miss drone beacons.
-        wifi_promiscuous_filter_t filter = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
-        };
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-        esp_wifi_set_promiscuous_filter(&filter);
-        esp_wifi_set_promiscuous(true);
-        esp_wifi_set_promiscuous_rx_cb(wifiCallback);
+        wifiCoexRegister(wifiCallback, WIFI_PROMIS_FILTER_MASK_MGMT);
         esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
     }
 
@@ -248,7 +248,7 @@ static void skyspyStart(void) {
 
 static void skyspyStop(void) {
     if (bleScan && bleScan->isScanning()) bleScan->stop();
-    esp_wifi_set_promiscuous(false);
+    wifiCoexUnregister(wifiCallback);
     if (meshIsEnabled()) {
         esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
     }
@@ -261,9 +261,16 @@ static void skyspyLoop(void) {
     if (!scanning || !bleScan) return;
 
     if ((skyspyRadioMask & 0x01) && meshIsEnabled()) {
-        uint8_t pch; wifi_second_chan_t sch;
-        if (esp_wifi_get_channel(&pch, &sch) == ESP_OK && pch != SKYSPY_WIFI_CH) {
-            esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
+        const uint8_t otherWifi = ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
+                                | ENGINE_BITMASK(ENGINE_WARDRIVE)
+                                | ENGINE_BITMASK(ENGINE_DETECTOR)
+                                | ENGINE_BITMASK(ENGINE_FOXHUNTER)
+                                | ENGINE_BITMASK(ENGINE_PCAP);
+        if ((engineGetActiveMask() & otherWifi) == 0) {
+            uint8_t pch; wifi_second_chan_t sch;
+            if (esp_wifi_get_channel(&pch, &sch) == ESP_OK && pch != SKYSPY_WIFI_CH) {
+                esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
+            }
         }
     }
 

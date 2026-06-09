@@ -567,8 +567,9 @@ class _SummaryStrip extends ConsumerWidget {
             _divider(t),
             Builder(builder: (_) {
               final selfId = AppState.canonicalNodeId(state.nodeId);
-              final nodeCount =
-                  state.liveKnownNodes.where((id) => id != selfId).length;
+              final nodeCount = state.liveKnownNodes
+                  .where((id) => id != selfId && !state.isManagerNode(id))
+                  .length;
               return InkWell(
                 onTap: () async {
                   if (state.meshEnabled) {

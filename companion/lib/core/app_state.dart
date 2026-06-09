@@ -220,6 +220,9 @@ class AppState extends ChangeNotifier {
   final Set<String> _seenNodes = {};
   final Map<String, int> _nodeLastSeenMs = {};
   final Set<String> _meshLiveNodeIds = {};
+  final Set<String> _meshManagerNodeIds = {};
+  bool isManagerNode(String id) =>
+      _meshManagerNodeIds.contains(canonicalNodeId(id));
   static const int _seenNodeTtlMs = 7 * 24 * 60 * 60 * 1000;
   static const int _liveNodeTtlMs = 30 * 1000;
   final Map<String, int> _nodeWardriveRadio = {};
@@ -522,15 +525,20 @@ class AppState extends ChangeNotifier {
       meshTxCount = data.txCount;
       final now = DateTime.now().millisecondsSinceEpoch;
       final live = <String>{};
+      final managers = <String>{};
       for (final entry in data.liveNodes) {
         final canon = canonicalNodeId(entry.id);
         if (canon.isEmpty) continue;
         live.add(canon);
+        if (entry.role == 1) managers.add(canon);
         _nodeLastSeenMs[canon] = now;
       }
       _meshLiveNodeIds
         ..clear()
         ..addAll(live);
+      _meshManagerNodeIds
+        ..clear()
+        ..addAll(managers);
       notifyListeners();
     }));
 

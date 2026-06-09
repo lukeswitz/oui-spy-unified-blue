@@ -1285,6 +1285,7 @@ class _IdleControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final th = AppTheme.of(context);
     final t = wd.target;
+    final app = ref.watch(appStateProvider);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1302,6 +1303,10 @@ class _IdleControls extends StatelessWidget {
               Row(
                 children: WardriveController.selectableTargets.map((m) {
                   final sel = wd.isTargetSelected(m);
+                  final live = m
+                      .engines(WardriveRadio.both)
+                      .any((e) => app.isEngineActive(e));
+                  final lit = sel || live;
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => ref.read(wardriveProvider).toggleTarget(m),
@@ -1310,9 +1315,9 @@ class _IdleControls extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         margin: const EdgeInsets.all(2),
                         decoration: BoxDecoration(
-                          color: sel ? m.color.withValues(alpha: 0.15) : Colors.transparent,
+                          color: lit ? m.color.withValues(alpha: 0.15) : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
-                          border: sel ? Border.all(color: m.color.withValues(alpha: 0.4)) : null,
+                          border: lit ? Border.all(color: m.color.withValues(alpha: 0.4)) : null,
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -1320,8 +1325,27 @@ class _IdleControls extends StatelessWidget {
                             Stack(
                               clipBehavior: Clip.none,
                               children: [
-                                Icon(m.icon, size: 16, color: sel ? m.color : th.textDim),
-                                if (sel)
+                                Icon(m.icon, size: 16, color: lit ? m.color : th.textDim),
+                                if (live)
+                                  Positioned(
+                                    right: -6, top: -5,
+                                    child: Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: m.color,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: m.color.withValues(alpha: 0.8),
+                                            blurRadius: 5,
+                                            spreadRadius: 1,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                else if (sel)
                                   Positioned(
                                     right: -6, top: -5,
                                     child: Icon(Icons.check_circle, size: 9, color: m.color),
@@ -1338,7 +1362,7 @@ class _IdleControls extends StatelessWidget {
                                   textAlign: TextAlign.center,
                                   maxLines: 1,
                                   style: TextStyle(
-                                    color: sel ? m.color : th.textDim,
+                                    color: lit ? m.color : th.textDim,
                                     fontSize: 8, fontWeight: FontWeight.w700,
                                     letterSpacing: 0.5,
                                   ),
@@ -3837,7 +3861,9 @@ class _NodeStatsOverlay extends ConsumerWidget {
     final wd = ref.watch(wardriveProvider);
     final selfId = AppState.canonicalNodeId(appState.nodeId);
     final nodeCount =
-        appState.liveKnownNodes.where((id) => id != selfId).length;
+        appState.liveKnownNodes
+            .where((id) => id != selfId && !appState.isManagerNode(id))
+            .length;
     final label = '$nodeCount NODE${nodeCount == 1 ? '' : 'S'}';
     final color =
         nodeCount > 0 ? AppTheme.success : AppTheme.warning;

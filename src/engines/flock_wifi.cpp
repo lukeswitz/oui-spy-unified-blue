@@ -1,6 +1,7 @@
 #include "flock_wifi.h"
 #include "protocol.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 #include "flock_oui.h"
 #include "flock_auth_cache.h"
 #include "dedup_ring.h"
@@ -167,14 +168,9 @@ static void flockWifiStart(void) {
     if (!meshIsEnabled()) {
         WiFi.mode(WIFI_STA);
     }
-    wifi_promiscuous_filter_t filter = {
-        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
-                       WIFI_PROMIS_FILTER_MASK_DATA
-    };
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-    esp_wifi_set_promiscuous_filter(&filter);
-    esp_wifi_set_promiscuous(true);
-    esp_wifi_set_promiscuous_rx_cb(wifiSnifferCb);
+    wifiCoexRegister(wifiSnifferCb,
+                     WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
     esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
     lastChannelHop = millis();
     sendWildcardProbe();
@@ -187,8 +183,7 @@ static void flockWifiStop(void) {
         Serial.println("[FLOCK-WIFI] Stopped (was passive)");
         return;
     }
-    esp_wifi_set_promiscuous_rx_cb(NULL);
-    esp_wifi_set_promiscuous(false);
+    wifiCoexUnregister(wifiSnifferCb);
     if (meshIsEnabled()) {
         WiFi.disconnect(false, false);
         esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);

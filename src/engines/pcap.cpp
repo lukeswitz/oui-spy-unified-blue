@@ -3,6 +3,7 @@
 #include "../ble_gatt.h"
 #include "../engine_registry.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -393,15 +394,10 @@ static void pcapStart(void) {
         wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
                                     .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&country);
-        wifi_promiscuous_filter_t f = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT |
-                           WIFI_PROMIS_FILTER_MASK_DATA |
-                           WIFI_PROMIS_FILTER_MASK_CTRL
-        };
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-        esp_wifi_set_promiscuous_filter(&f);
-        esp_wifi_set_promiscuous(true);
-        esp_wifi_set_promiscuous_rx_cb(pcapWifiCb);
+        wifiCoexRegister(pcapWifiCb,
+                         WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA |
+                         WIFI_PROMIS_FILTER_MASK_CTRL);
         esp_wifi_set_channel(pcapCurChan, WIFI_SECOND_CHAN_NONE);
         Serial.printf("[PCAP] WiFi promisc on, ch=%u, mesh=%d\n",
                       pcapCurChan, meshOn ? 1 : 0);
@@ -429,8 +425,7 @@ static void pcapStop(void) {
     pcapActive = false;
 
     if (pcapMode == PCAP_MODE_WIFI) {
-        esp_wifi_set_promiscuous_rx_cb(NULL);
-        esp_wifi_set_promiscuous(false);
+        wifiCoexUnregister(pcapWifiCb);
     } else {
         NimBLEScan* localScan = pPcapScan;
         pPcapScan = nullptr;
