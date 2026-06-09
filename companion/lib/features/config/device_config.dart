@@ -25,6 +25,7 @@ import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/config/ota_progress_stepper.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
@@ -317,11 +318,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'ABOUT'),
-        const ConfigInfoRow(
-          icon: Icons.info_outline,
-          label: 'Version',
-          value: '0.4.2',
-        ),
+        const _VersionRow(),
         ConfigActionRow(
           icon: Icons.code,
           label: 'Source Code',
@@ -5288,6 +5285,35 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _VersionRow extends StatefulWidget {
+  const _VersionRow();
+
+  @override
+  State<_VersionRow> createState() => _VersionRowState();
+}
+
+class _VersionRowState extends State<_VersionRow> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (!mounted) return;
+      setState(() => _version = info.version);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConfigInfoRow(
+      icon: Icons.info_outline,
+      label: 'Version',
+      value: _version.isEmpty ? '…' : _version,
     );
   }
 }
