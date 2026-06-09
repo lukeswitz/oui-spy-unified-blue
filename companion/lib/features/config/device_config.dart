@@ -25,7 +25,6 @@ import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/features/config/ota_progress_stepper.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
@@ -5289,31 +5288,17 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
   }
 }
 
-class _VersionRow extends StatefulWidget {
+class _VersionRow extends StatelessWidget {
   const _VersionRow();
 
-  @override
-  State<_VersionRow> createState() => _VersionRowState();
-}
-
-class _VersionRowState extends State<_VersionRow> {
-  String _version = '';
-
-  @override
-  void initState() {
-    super.initState();
-    PackageInfo.fromPlatform().then((info) {
-      if (!mounted) return;
-      setState(() => _version = info.version);
-    });
-  }
+  static const String appVersion = '0.4.5';
 
   @override
   Widget build(BuildContext context) {
     return ConfigInfoRow(
       icon: Icons.info_outline,
       label: 'Version',
-      value: _version.isEmpty ? '…' : _version,
+      value: appVersion,
     );
   }
 }
