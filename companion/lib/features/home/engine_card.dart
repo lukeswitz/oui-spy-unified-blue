@@ -190,7 +190,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
     if (widget.engine == Engine.wardrive) {
       final wd = ref.read(wardriveProvider);
       if (wd.isActive) {
-        return '${wd.target.label} \u2022 ${wd.radio.label}';
+        return '${wd.activeLabel} \u2022 ${wd.radio.label}';
       }
     }
     if (widget.engine == Engine.foxhunter) {

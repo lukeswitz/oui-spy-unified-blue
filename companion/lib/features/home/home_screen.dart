@@ -471,7 +471,7 @@ class _ConnectedView extends ConsumerWidget {
       if (engine == Engine.wardrive) return true;
       final activeEngines = wd.activeEngines;
       if (activeEngines.contains(engine)) return true;
-      if (wd.target == WardriveTarget.wigleFlock) {
+      if (wd.includesFlock) {
         if (engine == Engine.flockBle || engine == Engine.flockWifi) return true;
       }
     }

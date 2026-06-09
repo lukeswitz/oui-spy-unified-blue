@@ -50,7 +50,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     List<Detection> feedDetections,
     WardriveController wd,
   ) {
-    if (!wd.isActive || !wd.target.includesFlock) return feedDetections;
+    if (!wd.isActive || !wd.includesFlock) return feedDetections;
 
     final flockDets = wd.flockDetections;
     if (flockDets.isEmpty) return feedDetections;

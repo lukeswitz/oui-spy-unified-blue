@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
@@ -45,4 +47,16 @@ extension DetectionRadio on Detection {
   bool get isBleDetection =>
       isBleDetectionRaw(method: method, engine: engine, channel: channel);
   bool get isWifiDetection => !isBleDetection;
+}
+
+double rssiToMeters(int rssi, {required bool isBle}) {
+  final refPower = isBle ? -59.0 : -45.0;
+  final n = isBle ? 2.5 : 3.0;
+  final m = pow(10, (refPower - rssi) / (10 * n)).toDouble();
+  return m.clamp(1.0, 2000.0);
+}
+
+String rssiRangeLabel(int rssi, {required bool isBle}) {
+  final m = rssiToMeters(rssi, isBle: isBle);
+  return m >= 1000 ? '≈${(m / 1000).toStringAsFixed(1)}km' : '≈${m.round()}m';
 }

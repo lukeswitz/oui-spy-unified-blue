@@ -156,7 +156,26 @@ class WardriveController extends ChangeNotifier {
   bool isImperial = false;
 
   WardriveState state = WardriveState.idle;
-  WardriveTarget target = WardriveTarget.wigle;
+  final Set<WardriveTarget> selectedTargets = {WardriveTarget.wigle};
+  static const List<WardriveTarget> selectableTargets = [
+    WardriveTarget.flock,
+    WardriveTarget.drone,
+    WardriveTarget.wigle,
+    WardriveTarget.detector,
+  ];
+  bool isTargetSelected(WardriveTarget t) => selectedTargets.contains(t);
+  WardriveTarget get primaryTarget {
+    for (final t in selectableTargets) {
+      if (selectedTargets.contains(t)) return t;
+    }
+    return WardriveTarget.wigle;
+  }
+  WardriveTarget get target => primaryTarget;
+  bool get includesFlock => selectedTargets.any((t) => t.includesFlock);
+  String get activeLabel => selectableTargets
+      .where(selectedTargets.contains)
+      .map((t) => t.label)
+      .join(' + ');
   WardriveRadio radio = WardriveRadio.both;
   bool flockFilter = false;
   bool detectorFilter = false;
@@ -207,10 +226,22 @@ class WardriveController extends ChangeNotifier {
   final Map<String, int> nodeWifiCounts = {};
   final Map<String, int> nodeBleCount = {};
 
-  List<Engine> get activeEngines => target.engines(radio);
+  List<Engine> get activeEngines {
+    final set = <Engine>{};
+    for (final t in selectedTargets) {
+      set.addAll(t.engines(radio));
+    }
+    return set.toList();
+  }
 
-  List<Engine> get _fleetEngines =>
-      _ble.isManagerConnected ? target.engines(WardriveRadio.both) : activeEngines;
+  List<Engine> get _fleetEngines {
+    if (!_ble.isManagerConnected) return activeEngines;
+    final set = <Engine>{};
+    for (final t in selectedTargets) {
+      set.addAll(t.engines(WardriveRadio.both));
+    }
+    return set.toList();
+  }
 
   /// Local-only WiFi/BLE counts (excludes peer detections).
   int get localWifiCount =>
@@ -307,10 +338,21 @@ class WardriveController extends ChangeNotifier {
     return list;
   }
 
+  void toggleTarget(WardriveTarget t) {
+    if (isActive) return;
+    if (selectedTargets.contains(t)) {
+      if (selectedTargets.length > 1) selectedTargets.remove(t);
+    } else {
+      selectedTargets.add(t);
+    }
+    notifyListeners();
+  }
+
   void setTarget(WardriveTarget t) {
     if (isActive) return;
-    target = t;
-    if (!t.hasRadioChoice) radio = WardriveRadio.both;
+    selectedTargets
+      ..clear()
+      ..add(t);
     notifyListeners();
   }
 
@@ -379,7 +421,7 @@ class WardriveController extends ChangeNotifier {
     _updateLiveActivity();
 
     notifyListeners();
-    DebugLog.log('WARDRIVE: started $sessionId target=${target.label} radio=${radio.label}');
+    DebugLog.log('WARDRIVE: started $sessionId targets=$activeLabel radio=${radio.label}');
   }
 
   Future<void> stopSession() async {
@@ -893,7 +935,7 @@ class WardriveController extends ChangeNotifier {
       wifiTotal: rawWifiCount,
       bleDetections: _dedupedByMac.values.where((d) => d.isBleDetection).length,
       bleTotal: rawBleCount,
-      flockCount: target.includesFlock ? _flockMacs.length : 0,
+      flockCount: includesFlock ? _flockMacs.length : 0,
       droneCount: droneCount,
       detectionsPerKm: distanceKm > 0 && distanceKm.isFinite 
           ? rawDetectionCount / distanceKm 

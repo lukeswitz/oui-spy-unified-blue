@@ -4,6 +4,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/engines/drone_map_view.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -120,7 +121,10 @@ class _DroneRow extends StatelessWidget {
             const SizedBox(height: 4),
             Row(children: [
               if (odid.droneLat != null && odid.droneLat != 0)
-                _Chip('POS', '${odid.droneLat!.toStringAsFixed(4)}, ${odid.droneLon!.toStringAsFixed(4)}'),
+                _Chip('POS', '${odid.droneLat!.toStringAsFixed(4)}, ${odid.droneLon!.toStringAsFixed(4)}')
+              else
+                _Chip('RANGE',
+                    '${rssiRangeLabel(detection.rssi, isBle: isBleMethod(detection.method))} RSSI'),
               if (odid.operatorId != null && odid.operatorId!.isNotEmpty)
                 _Chip('OP', odid.operatorId!),
             ]),
