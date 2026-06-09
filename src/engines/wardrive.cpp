@@ -2,12 +2,15 @@
 #include "../protocol.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
+#include "../ble_coex.h"
 
 #define MESH_RENDEZVOUS_CH 1
 #include "flock_match.h"
 #include "flock_auth_cache.h"
 #include "dedup_ring.h"
 #include "detector.h"
+#include "flock_wifi.h"
+#include "flock_ble.h"
 #include "foxhunter.h"
 #include <Arduino.h>
 #include <WiFi.h>
@@ -527,13 +530,16 @@ static void wardriveStart(void) {
     // BLE scanner
     if (wardriveRadio & 0x02) {
         pWardriveScan = NimBLEDevice::getScan();
-        pWardriveScan->setAdvertisedDeviceCallbacks(&wardriveBleCallbacks, true);
+        bleCoexRegister(&wardriveBleCallbacks, true);
         pWardriveScan->setActiveScan(true);
         pWardriveScan->setInterval(100);
         pWardriveScan->setWindow(99);
     }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_SCANNING);
+    flockWifiHostSuspend(true);
+    flockBleHostSuspend(true);
+    detectorHostSuspend(true);
     Serial.printf("[WARDRIVE] Started (radio=0x%02X ch=%d-%d pri=%dms norm=%dms ble=%d/%d)\n",
         wardriveRadio, channelStart, channelEnd,
         priorityDwellMs, normalDwellMs,
@@ -546,9 +552,9 @@ static void wardriveStop(void) {
     vTaskDelay(pdMS_TO_TICKS(50));
 
     if (pWardriveScan != nullptr) {
+        bleCoexUnregister(&wardriveBleCallbacks);
         if (pWardriveScan->isScanning()) pWardriveScan->stop();
         vTaskDelay(pdMS_TO_TICKS(200));
-        pWardriveScan->setAdvertisedDeviceCallbacks(nullptr, false);
         pWardriveScan->clearResults();
         pWardriveScan = nullptr;
     }
@@ -563,6 +569,9 @@ static void wardriveStop(void) {
     }
 
     engineSetState(ENGINE_WARDRIVE, ESTATE_DISABLED);
+    flockWifiHostSuspend(false);
+    flockBleHostSuspend(false);
+    detectorHostSuspend(false);
     Serial.println("[WARDRIVE] Stopped");
 }
 

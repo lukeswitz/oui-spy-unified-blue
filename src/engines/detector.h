@@ -20,5 +20,6 @@ void detectorAddUuidFilter(uint16_t uuid, const char* desc);
 int detectorFilterCount(void);
 size_t detectorSerialize(uint8_t* out, size_t maxLen);
 void detectorSetFilters(const uint8_t* data, size_t len);
+void detectorHostSuspend(bool suspend);
 
 #endif

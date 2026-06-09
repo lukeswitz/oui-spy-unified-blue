@@ -1,6 +1,7 @@
 #include "unipwn.h"
 #include "protocol.h"
 #include "dedup_ring.h"
+#include "../ble_coex.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -58,7 +59,6 @@ static UnipwnCallback scanCb;
 
 static void unipwnInit(void) {
     bleScan = NimBLEDevice::getScan();
-    bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
     bleScan->setActiveScan(true);
     bleScan->setInterval(100);
     bleScan->setWindow(99);
@@ -70,10 +70,12 @@ static void unipwnStart(void) {
     scanning = true;
     dedup.setCooldownMs(engineGetRediscoverMs());
     lastScanStart = 0;
+    bleCoexRegister(&scanCb, true);
     Serial.println("[UNIPWN] Started — scanning for Unitree robots");
 }
 
 static void unipwnStop(void) {
+    bleCoexUnregister(&scanCb);
     if (bleScan && bleScan->isScanning()) bleScan->stop();
     scanning = false;
     Serial.println("[UNIPWN] Stopped");

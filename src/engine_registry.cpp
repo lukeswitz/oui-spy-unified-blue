@@ -30,8 +30,11 @@ static bool isBleScanEngine(EngineId id) {
 // Wardrive coexists with Flock-WiFi/Flock-BLE via passive mode (those engines
 // detect on wardrive's sniffer callback instead of owning the radio).
 static bool wifiCoexCompatible(EngineId a, EngineId b) {
-    return (a == ENGINE_WARDRIVE && b == ENGINE_FLOCK_WIFI) ||
-           (a == ENGINE_FLOCK_WIFI && b == ENGINE_WARDRIVE);
+    auto inGroup = [](EngineId e) {
+        return e == ENGINE_WARDRIVE || e == ENGINE_FLOCK_WIFI ||
+               e == ENGINE_SKYSPY || e == ENGINE_PCAP;
+    };
+    return inGroup(a) && inGroup(b);
 }
 
 static void autoPcapLoad(void);

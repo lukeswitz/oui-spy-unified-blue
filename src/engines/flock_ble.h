@@ -14,5 +14,6 @@
 
 extern const EngineCallbacks flockBleCallbacks;
 void flockBleSetRadioGate(bool on);
+void flockBleHostSuspend(bool suspend);
 
 #endif

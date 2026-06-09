@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
+#include "../ble_coex.h"
 #include "dedup_ring.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -275,7 +276,7 @@ static void detectorStart(void) {
 
     if (!wardriveOwns && wantBle) {
         bleScan = NimBLEDevice::getScan();
-        bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
+        bleCoexRegister(&scanCb, true);
         bleScan->setActiveScan(true);
         bleScan->setInterval(100);
         bleScan->setWindow(99);
@@ -333,13 +334,28 @@ static void detectorStop(void) {
         }
     }
 
-    if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
-        if (bleScan && bleScan->isScanning()) bleScan->stop();
-        if (bleScan) bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
-    }
+    bleCoexUnregister(&scanCb);
     bleScan = nullptr;
 
     Serial.println("[DETECTOR] Stopped");
+}
+
+void detectorHostSuspend(bool suspend) {
+    if (suspend) {
+        wifiCoexUnregister(wifiSnifferCb);
+        bleCoexUnregister(&scanCb);
+    } else if (scanning) {
+        if (detectorRadioMask & 0x02) {
+            bleScan = NimBLEDevice::getScan();
+            bleCoexRegister(&scanCb, true);
+        }
+        if (detectorRadioMask & 0x01) {
+            if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
+            esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+            wifiCoexRegister(wifiSnifferCb,
+                             WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
+        }
+    }
 }
 
 static void detectorLoop(void) {
@@ -347,7 +363,8 @@ static void detectorLoop(void) {
     if (!scanning) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
 
-    if (wifiActive && millis() - lastChannelHop >= DWELL_MS) {
+    if (wifiActive && wifiCoexShouldHop(ENGINE_DETECTOR) &&
+        millis() - lastChannelHop >= DWELL_MS) {
         channelIdx = (channelIdx + 1) % channelCount;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();

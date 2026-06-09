@@ -3,6 +3,7 @@
 #include "ble_gatt.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
+#include "../ble_coex.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -230,7 +231,7 @@ static void foxhunterStart(void) {
 
     if (!wardriveOwns) {
         bleScan = NimBLEDevice::getScan();
-        bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
+        bleCoexRegister(&scanCb, true);
         bleScan->setActiveScan(true);
         bleScan->setInterval(100);
         bleScan->setWindow(99);
@@ -275,10 +276,7 @@ static void foxhunterStop(void) {
         }
     }
 
-    if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
-        if (bleScan && bleScan->isScanning()) bleScan->stop();
-        if (bleScan) bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
-    }
+    bleCoexUnregister(&scanCb);
     bleScan = nullptr;
 
     Serial.println("[FOXHUNTER] Stopped");

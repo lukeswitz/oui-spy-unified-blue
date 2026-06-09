@@ -5,6 +5,7 @@
 #include "wardrive.h"
 #include "../engine_registry.h"
 #include "../mesh_espnow.h"
+#include "../ble_coex.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -131,7 +132,9 @@ static void flockBleStart(void) {
     bool wifiCoex = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED);
 
     bleScan = NimBLEDevice::getScan();
-    bleScan->setAdvertisedDeviceCallbacks(&scanCb, true);
+    if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
+        bleCoexRegister(&scanCb, true);
+    }
     bleScan->setActiveScan(true);
     bleScan->setInterval(bleScanInterval);
     bleScan->setWindow(bleScanWindow);
@@ -143,12 +146,18 @@ static void flockBleStart(void) {
 
 static void flockBleStop(void) {
     scanning = false;
-    if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
-        if (bleScan && bleScan->isScanning()) bleScan->stop();
-        if (bleScan) bleScan->setAdvertisedDeviceCallbacks(nullptr, false);
-    }
+    bleCoexUnregister(&scanCb);
     bleScan = nullptr;
     Serial.println("[FLOCK-BLE] Stopped");
+}
+
+void flockBleHostSuspend(bool suspend) {
+    if (suspend) {
+        bleCoexUnregister(&scanCb);
+    } else if (scanning) {
+        bleScan = NimBLEDevice::getScan();
+        bleCoexRegister(&scanCb, true);
+    }
 }
 
 static void flockBleLoop(void) {

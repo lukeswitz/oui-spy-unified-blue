@@ -3,4 +3,5 @@
 #include "engine_registry.h"
 extern const EngineCallbacks flockWifiCallbacks;
 void flockWifiSetRadioGate(bool on);
+void flockWifiHostSuspend(bool suspend);
 #endif

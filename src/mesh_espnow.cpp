@@ -1051,6 +1051,7 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
 // fires — that's what recovers v0.3.9-class scan speed (no forced park).
 #define MESH_HOME_MAX_GAP_MS 1500
 #define MESH_MGR_SILENCE_FORCE_MS 6000
+#define MESH_REACQUIRE_MS 3000
 static volatile bool g_meshWindow = false;
 static volatile uint32_t g_lastHomeMs = 0;
 static TaskHandle_t  meshSchedTaskHandle = NULL;
@@ -1112,6 +1113,17 @@ static bool meshNodeHopsWifi(void) {
     return false;
 }
 
+static bool meshSkyspyOwnsChannel(void) {
+    uint8_t m = engineGetActiveMask();
+    if (!(m & ENGINE_BITMASK(ENGINE_SKYSPY))) return false;
+    const uint8_t hoppers = ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
+                          | ENGINE_BITMASK(ENGINE_DETECTOR)
+                          | ENGINE_BITMASK(ENGINE_FOXHUNTER)
+                          | ENGINE_BITMASK(ENGINE_PCAP)
+                          | ENGINE_BITMASK(ENGINE_WARDRIVE);
+    return (m & hoppers) == 0;
+}
+
 bool meshTimeSlicingActive(void) {
     return meshCurrentConfig.enabled && meshManagerJoined() && meshNodeHopsWifi();
 }
@@ -1127,14 +1139,20 @@ static void meshSchedTaskFn(void* arg) {
     (void)arg;
     for (;;) {
         g_meshWindow = false;
+        if (meshSkyspyOwnsChannel() && txMutex &&
+            xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+            xSemaphoreGive(txMutex);
+        }
         vTaskDelay(pdMS_TO_TICKS(150));
-        if (!meshTimeSlicingActive()) { g_lastHomeMs = millis(); continue; }
-        // Engines weave through ch1 each sweep and call meshNoteOnHome there,
-        // refreshing g_lastHomeMs without ever pausing the scan. Only force a
-        // ch1 park if that hasn't happened recently (e.g. an engine parked on a
-        // non-ch1 channel like Sky Spy ch6, or a very long sweep).
-        if ((uint32_t)(millis() - g_lastHomeMs) < MESH_HOME_MAX_GAP_MS &&
+        bool sliceOn = meshTimeSlicingActive();
+        bool reacquire =
+            !sliceOn && meshCurrentConfig.enabled && meshNodeHopsWifi();
+        if (!sliceOn && !reacquire) { g_lastHomeMs = millis(); continue; }
+        uint32_t gap = (uint32_t)(millis() - g_lastHomeMs);
+        if (sliceOn && gap < MESH_HOME_MAX_GAP_MS &&
             meshMgrSilenceMs() < MESH_MGR_SILENCE_FORCE_MS) continue;
+        if (reacquire && gap < MESH_REACQUIRE_MS) continue;
         g_meshWindow = true;
         g_meshRxWin++;
         if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -1194,7 +1212,7 @@ void meshInit(void) {
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
     xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
 #ifndef OUISPY_ROLE_MANAGER
-    xTaskCreate(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle);
+    xTaskCreatePinnedToCore(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle, 0);
 #endif
 #if defined(OUISPY_NETCOUNT) && !defined(OUISPY_ROLE_MANAGER)
     xTaskCreate(ncInjectTaskFn, "ncInject", 4096, NULL, 1, NULL);

@@ -4,6 +4,7 @@
 #include "../engine_registry.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
+#include "../ble_coex.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -403,7 +404,7 @@ static void pcapStart(void) {
                       pcapCurChan, meshOn ? 1 : 0);
     } else {
         pPcapScan = NimBLEDevice::getScan();
-        pPcapScan->setAdvertisedDeviceCallbacks(&pcapBleCallbacks, true);
+        bleCoexRegister(&pcapBleCallbacks, true);
         pPcapScan->setActiveScan(true);
         pPcapScan->setInterval(160);
         pPcapScan->setWindow(159);
@@ -427,12 +428,12 @@ static void pcapStop(void) {
     if (pcapMode == PCAP_MODE_WIFI) {
         wifiCoexUnregister(pcapWifiCb);
     } else {
+        bleCoexUnregister(&pcapBleCallbacks);
         NimBLEScan* localScan = pPcapScan;
         pPcapScan = nullptr;
         if (localScan) {
             if (localScan->isScanning()) localScan->stop();
             vTaskDelay(pdMS_TO_TICKS(200));
-            localScan->setAdvertisedDeviceCallbacks(nullptr, false);
             localScan->clearResults();
         }
     }
@@ -474,7 +475,7 @@ static void pcapLoop(void) {
     }
 #endif
     if (pcapMode == PCAP_MODE_WIFI) {
-        if (now - pcapLastHop >= pcapDwellMs) {
+        if (wifiCoexShouldHop(ENGINE_PCAP) && now - pcapLastHop >= pcapDwellMs) {
             uint8_t span = (pcapChanEnd - pcapChanStart + 1);
             if (span < 1) span = 1;
             const bool meshOn = meshIsEnabled();

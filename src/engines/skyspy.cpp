@@ -7,6 +7,7 @@
 #include "protocol.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
+#include "../ble_coex.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -219,7 +220,6 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
 static void skyspyInit(void) {
     memset(drones, 0, sizeof(drones));
     bleScan = NimBLEDevice::getScan();
-    bleScan->setAdvertisedDeviceCallbacks(&bleCb, true);
     bleScan->setActiveScan(true);
     bleScan->setInterval(100);
     bleScan->setWindow(99);
@@ -239,6 +239,9 @@ static void skyspyStart(void) {
         wifiCoexRegister(wifiCallback, WIFI_PROMIS_FILTER_MASK_MGMT);
         esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
     }
+    if (wantBle) {
+        bleCoexRegister(&bleCb, true);
+    }
 
     scanning = true;
     lastScanStart = 0;
@@ -247,6 +250,7 @@ static void skyspyStart(void) {
 }
 
 static void skyspyStop(void) {
+    bleCoexUnregister(&bleCb);
     if (bleScan && bleScan->isScanning()) bleScan->stop();
     wifiCoexUnregister(wifiCallback);
     if (meshIsEnabled()) {
@@ -259,20 +263,6 @@ static void skyspyStop(void) {
 static void skyspyLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning || !bleScan) return;
-
-    if ((skyspyRadioMask & 0x01) && meshIsEnabled()) {
-        const uint8_t otherWifi = ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
-                                | ENGINE_BITMASK(ENGINE_WARDRIVE)
-                                | ENGINE_BITMASK(ENGINE_DETECTOR)
-                                | ENGINE_BITMASK(ENGINE_FOXHUNTER)
-                                | ENGINE_BITMASK(ENGINE_PCAP);
-        if ((engineGetActiveMask() & otherWifi) == 0) {
-            uint8_t pch; wifi_second_chan_t sch;
-            if (esp_wifi_get_channel(&pch, &sch) == ESP_OK && pch != SKYSPY_WIFI_CH) {
-                esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
-            }
-        }
-    }
 
     // BLE scan cycle
     if ((skyspyRadioMask & 0x02) && millis() - lastScanStart >= 1500) {

@@ -512,6 +512,128 @@ static void watchdogSelftestTask(void* arg) {
 }
 #endif
 
+#ifdef OUISPY_COEX_STRESS
+static void coexEn(EngineId id) {
+    EngineCommand ec = {};
+    ec.command = 0x01; ec.engine_id = id; ec.payload_len = 0;
+    xQueueSend(engineCmdQueue, &ec, portMAX_DELAY);
+}
+static void coexDis(EngineId id) {
+    EngineCommand ec = {};
+    ec.command = 0x00; ec.engine_id = id; ec.payload_len = 0;
+    xQueueSend(engineCmdQueue, &ec, portMAX_DELAY);
+}
+static void coexStressTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    Serial.println("[STRESS] ===== A: 5 BLE engines concurrent (no wardrive) =====");
+    coexEn(ENGINE_FLOCK_BLE); coexEn(ENGINE_SKYSPY); coexEn(ENGINE_UNIPWN);
+    coexEn(ENGINE_DETECTOR); coexEn(ENGINE_FOXHUNTER);
+    uint32_t b = g_engRawSeen;
+    for (int i = 0; i < 15; i++) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        Serial.printf("[STRESS] A t=%ds mask=0x%02X seen=%lu heap=%lu\n",
+            i + 1, engineGetActiveMask(), (unsigned long)(g_engRawSeen - b),
+            (unsigned long)esp_get_free_heap_size());
+    }
+    coexDis(ENGINE_FLOCK_BLE); coexDis(ENGINE_SKYSPY); coexDis(ENGINE_UNIPWN);
+    coexDis(ENGINE_DETECTOR); coexDis(ENGINE_FOXHUNTER);
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    Serial.printf("[STRESS] A done mask=0x%02X heap=%lu\n",
+        engineGetActiveMask(), (unsigned long)esp_get_free_heap_size());
+
+    Serial.println("[STRESS] ===== B: wardrive host + flock + detector + skyspy =====");
+    coexEn(ENGINE_WARDRIVE); coexEn(ENGINE_FLOCK_WIFI); coexEn(ENGINE_FLOCK_BLE);
+    coexEn(ENGINE_DETECTOR); coexEn(ENGINE_SKYSPY);
+    b = g_engRawSeen;
+    for (int i = 0; i < 12; i++) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        Serial.printf("[STRESS] B t=%ds mask=0x%02X seen=%lu heap=%lu\n",
+            i + 1, engineGetActiveMask(), (unsigned long)(g_engRawSeen - b),
+            (unsigned long)esp_get_free_heap_size());
+    }
+    coexDis(ENGINE_WARDRIVE); coexDis(ENGINE_FLOCK_WIFI); coexDis(ENGINE_FLOCK_BLE);
+    coexDis(ENGINE_DETECTOR); coexDis(ENGINE_SKYSPY);
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    Serial.printf("[STRESS] B done mask=0x%02X heap=%lu\n",
+        engineGetActiveMask(), (unsigned long)esp_get_free_heap_size());
+
+    Serial.println("[STRESS] ===== C: rapid enable/disable churn x25 =====");
+    for (int i = 0; i < 25; i++) {
+        coexEn(ENGINE_SKYSPY); coexEn(ENGINE_FLOCK_BLE); coexEn(ENGINE_DETECTOR);
+        coexEn(ENGINE_FLOCK_WIFI);
+        vTaskDelay(pdMS_TO_TICKS(120));
+        coexDis(ENGINE_SKYSPY); coexDis(ENGINE_FLOCK_BLE); coexDis(ENGINE_DETECTOR);
+        coexDis(ENGINE_FLOCK_WIFI);
+        vTaskDelay(pdMS_TO_TICKS(120));
+    }
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    Serial.printf("[STRESS] C done mask=0x%02X heap=%lu\n",
+        engineGetActiveMask(), (unsigned long)esp_get_free_heap_size());
+
+    Serial.println("[STRESS] ===== D: reverse order (flockWifi then wardrive) — no double =====");
+    coexEn(ENGINE_FLOCK_WIFI);
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    Serial.println("[STRESS] D flockWifi up; now starting wardrive (must suspend flock)");
+    coexEn(ENGINE_WARDRIVE);
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    Serial.printf("[STRESS] D mask=0x%02X (wardrive must host; flock cb suspended)\n",
+        engineGetActiveMask());
+    coexEn(ENGINE_SKYSPY);
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    Serial.printf("[STRESS] D +skyspy mask=0x%02X heap=%lu\n",
+        engineGetActiveMask(), (unsigned long)esp_get_free_heap_size());
+    coexDis(ENGINE_WARDRIVE);
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    Serial.printf("[STRESS] D wardrive off — flock must resume; mask=0x%02X\n",
+        engineGetActiveMask());
+    coexDis(ENGINE_FLOCK_WIFI); coexDis(ENGINE_SKYSPY);
+    vTaskDelay(pdMS_TO_TICKS(2500));
+
+    Serial.println("[STRESS] ===== E: flockWifi + detector (no wardrive) channel arbiter =====");
+    coexEn(ENGINE_FLOCK_WIFI); coexEn(ENGINE_DETECTOR);
+    uint32_t e0 = g_engRawSeen;
+    for (int i = 0; i < 10; i++) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        Serial.printf("[STRESS] E t=%ds mask=0x%02X seen=%lu heap=%lu\n",
+            i + 1, engineGetActiveMask(), (unsigned long)(g_engRawSeen - e0),
+            (unsigned long)esp_get_free_heap_size());
+    }
+    coexDis(ENGINE_FLOCK_WIFI); coexDis(ENGINE_DETECTOR);
+    vTaskDelay(pdMS_TO_TICKS(2500));
+    Serial.printf("[STRESS] E done mask=0x%02X heap=%lu\n",
+        engineGetActiveMask(), (unsigned long)esp_get_free_heap_size());
+
+    Serial.println("[STRESS] ===== ALL DONE — no crash =====");
+    vTaskDelete(NULL);
+}
+#endif
+
+#ifdef OUISPY_SKYSPY_MESH_TEST
+static void skyspyMeshTestTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(10000));
+    {
+        EngineCommand ec = {};
+        ec.command = 0x01; ec.engine_id = ENGINE_SKYSPY; ec.payload_len = 0;
+        xQueueSend(engineCmdQueue, &ec, portMAX_DELAY);
+    }
+    Serial.println("[SKYTEST] skyspy enabled — watching join+channel+RID under REAL manager");
+    uint32_t base = g_engRawSeen;
+    for (int i = 0; i < 30; i++) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint8_t ch = 0; wifi_second_chan_t sc;
+        esp_wifi_get_channel(&ch, &sc);
+        Serial.printf("[SKYTEST] t=%ds ch=%u slicing=%d mgrJoined=%d mask=0x%02X ridSeen=%lu\n",
+                      i + 1, ch, meshTimeSlicingActive() ? 1 : 0,
+                      meshManagerJoined() ? 1 : 0, engineGetActiveMask(),
+                      (unsigned long)(g_engRawSeen - base));
+    }
+    Serial.println("[SKYTEST] DONE");
+    vTaskDelete(NULL);
+}
+#endif
+
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -596,6 +718,7 @@ void setup() {
     }
 
 #ifndef OUISPY_ENGINE_SELFTEST
+#ifndef OUISPY_COEX_STRESS
     {
         MeshConfig cfg = {};
         cfg.enabled = 1;
@@ -604,6 +727,7 @@ void setup() {
         meshEnable(&cfg);
         Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
     }
+#endif
 #ifdef OUISPY_AUTOPCAP_SELFTEST
     xTaskCreatePinnedToCore(autoPcapSelftestTask, "aptest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] AUTO-PCAP SELFTEST armed");
@@ -611,6 +735,14 @@ void setup() {
 #ifdef OUISPY_WATCHDOG_SELFTEST
     xTaskCreatePinnedToCore(watchdogSelftestTask, "wdtest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] WATCHDOG SELFTEST armed");
+#endif
+#ifdef OUISPY_COEX_STRESS
+    xTaskCreatePinnedToCore(coexStressTask, "coexstress", 6144, NULL, 1, NULL, 1);
+    Serial.println("[INIT] COEX STRESS armed");
+#endif
+#ifdef OUISPY_SKYSPY_MESH_TEST
+    xTaskCreatePinnedToCore(skyspyMeshTestTask, "skytest", 4096, NULL, 1, NULL, 1);
+    Serial.println("[INIT] SKYSPY MESH TEST armed (real manager)");
 #endif
 #else
     xTaskCreatePinnedToCore(engineSelftestTask, "selftest", 8192, NULL, 1, NULL, 1);

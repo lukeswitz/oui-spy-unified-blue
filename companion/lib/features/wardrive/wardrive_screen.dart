@@ -472,6 +472,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final mapStyle = ref.watch(mapStyleProvider);
     final wt = ref.watch(wardriveThemeDataProvider);
     final wd = ref.watch(wardriveProvider);
+    final activeMask = ref.watch(appStateProvider.select((s) => s.activeEngines));
     final gpsPos = ref.watch(gpsProvider).lastPosition;
     final center = wd.currentPosition != null
         ? LatLng(wd.currentPosition!.latitude, wd.currentPosition!.longitude)
@@ -796,24 +797,28 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 ),
               ),
 
-            // Scanning indicator (top) for sparse-stat targets: flock / drone / detect
-            if (wd.isActive)
-              Positioned(
-                top: _statsHeight + 8,
-                left: 0, right: 0,
-                child: Center(
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      for (final m in WardriveController.selectableTargets)
-                        if (wd.isTargetSelected(m) && m != WardriveTarget.wigle)
-                          _ScanningPill(color: m.color, label: m.label),
-                    ],
-                  ),
+            Positioned(
+              top: (wd.isActive
+                      ? _statsHeight
+                      : (wd.hasSessionData ? _completedBarHeight : 0)) +
+                  8,
+              left: 0, right: 0,
+              child: Center(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final m in WardriveController.selectableTargets)
+                      if (m != WardriveTarget.wigle &&
+                          m
+                              .engines(WardriveRadio.both)
+                              .any((e) => (activeMask & e.bitmask) != 0))
+                        _ScanningPill(color: m.color, label: m.label),
+                  ],
                 ),
               ),
+            ),
 
             // Map style + wardrive theme pickers (top-left)
             Positioned(
@@ -1285,7 +1290,6 @@ class _IdleControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final th = AppTheme.of(context);
     final t = wd.target;
-    final app = ref.watch(appStateProvider);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1303,10 +1307,6 @@ class _IdleControls extends StatelessWidget {
               Row(
                 children: WardriveController.selectableTargets.map((m) {
                   final sel = wd.isTargetSelected(m);
-                  final live = m
-                      .engines(WardriveRadio.both)
-                      .any((e) => app.isEngineActive(e));
-                  final lit = sel || live;
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => ref.read(wardriveProvider).toggleTarget(m),
@@ -1315,9 +1315,9 @@ class _IdleControls extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         margin: const EdgeInsets.all(2),
                         decoration: BoxDecoration(
-                          color: lit ? m.color.withValues(alpha: 0.15) : Colors.transparent,
+                          color: sel ? m.color.withValues(alpha: 0.15) : Colors.transparent,
                           borderRadius: BorderRadius.circular(6),
-                          border: lit ? Border.all(color: m.color.withValues(alpha: 0.4)) : null,
+                          border: sel ? Border.all(color: m.color.withValues(alpha: 0.4)) : null,
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -1325,27 +1325,8 @@ class _IdleControls extends StatelessWidget {
                             Stack(
                               clipBehavior: Clip.none,
                               children: [
-                                Icon(m.icon, size: 16, color: lit ? m.color : th.textDim),
-                                if (live)
-                                  Positioned(
-                                    right: -6, top: -5,
-                                    child: Container(
-                                      width: 7,
-                                      height: 7,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: m.color,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: m.color.withValues(alpha: 0.8),
-                                            blurRadius: 5,
-                                            spreadRadius: 1,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                else if (sel)
+                                Icon(m.icon, size: 16, color: sel ? m.color : th.textDim),
+                                if (sel)
                                   Positioned(
                                     right: -6, top: -5,
                                     child: Icon(Icons.check_circle, size: 9, color: m.color),
@@ -1362,7 +1343,7 @@ class _IdleControls extends StatelessWidget {
                                   textAlign: TextAlign.center,
                                   maxLines: 1,
                                   style: TextStyle(
-                                    color: lit ? m.color : th.textDim,
+                                    color: sel ? m.color : th.textDim,
                                     fontSize: 8, fontWeight: FontWeight.w700,
                                     letterSpacing: 0.5,
                                   ),

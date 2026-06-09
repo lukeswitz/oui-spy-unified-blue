@@ -199,6 +199,7 @@ static void flockWifiLoop(void) {
     if (!scanning) return;
     if (!flockWifiRadioGate) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
+    if (!wifiCoexShouldHop(ENGINE_FLOCK_WIFI)) return;
     if (millis() - lastChannelHop >= DWELL_MS) {
         channelIdx = (channelIdx + 1) % 3;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
@@ -225,6 +226,18 @@ void flockWifiSetRadioGate(bool on) {
     flockWifiRadioGate = on;
     Serial.printf("[FLOCK-WIFI] local radio gate -> %s\n", on ? "ON" : "OFF");
     if (scanning) { flockWifiStop(); flockWifiStart(); }
+}
+
+void flockWifiHostSuspend(bool suspend) {
+    if (suspend) {
+        wifiCoexUnregister(wifiSnifferCb);
+    } else if (scanning && flockWifiRadioGate) {
+        if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        wifiCoexRegister(wifiSnifferCb,
+                         WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
+        esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
+    }
 }
 
 static void flockWifiApplyPrefs(void) {

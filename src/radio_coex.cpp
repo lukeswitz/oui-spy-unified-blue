@@ -1,4 +1,6 @@
 #include "radio_coex.h"
+#include "engine_registry.h"
+#include "protocol.h"
 #include <Arduino.h>
 
 #define WIFI_COEX_MAX 8
@@ -47,8 +49,8 @@ void wifiCoexRegister(WifiRxParser parser, uint32_t filterMask) {
     if (first) {
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiCoexDispatch);
-        Serial.println("[COEX] wifi promiscuous ON (shared)");
     }
+    Serial.printf("[COEX] wifi register (count=%d)\n", g_count);
 }
 
 void wifiCoexUnregister(WifiRxParser parser) {
@@ -73,12 +75,24 @@ void wifiCoexUnregister(WifiRxParser parser) {
     if (empty) {
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
-        Serial.println("[COEX] wifi promiscuous OFF (shared)");
     } else {
         wifiCoexApplyFilter();
     }
+    Serial.printf("[COEX] wifi unregister (count=%d)\n", g_count);
 }
 
 bool wifiCoexActive(void) {
     return g_count > 0;
+}
+
+bool wifiCoexShouldHop(int engineId) {
+    uint8_t mask = engineGetActiveMask();
+    static const int prio[] = {
+        ENGINE_FOXHUNTER, ENGINE_WARDRIVE, ENGINE_PCAP,
+        ENGINE_DETECTOR, ENGINE_FLOCK_WIFI
+    };
+    for (unsigned i = 0; i < sizeof(prio) / sizeof(prio[0]); i++) {
+        if (mask & ENGINE_BITMASK(prio[i])) return prio[i] == engineId;
+    }
+    return true;
 }
