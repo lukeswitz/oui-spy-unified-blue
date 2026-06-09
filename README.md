@@ -76,7 +76,7 @@ Every detection across all engines, in one list.
 - **Tap** a row to foxhunt or map it; **long-press** for the full copy sheet (MAC, vendor, RSSI, channel, manuf data).
 
 ### Wardrive (the map)
-Pick a **target** (WiGLE · Flock · Drone · Detector · WiGLE+Flock) and a **radio** (WiFi · BLE · Both), then **START**. Detections plot live, color-graded by signal density; the route follows you. Sessions save as WiGLE CSV and upload straight to WiGLE with your API key. Draw **geofences**: inside an excluded zone every hit is muted — no feed entry, no database or WiGLE CSV logging, no beep or notification — and during a wardrive the radios pause entirely. Everything resumes the moment you leave. Saved sessions replay on the map.
+**Check any mix** of targets (WiGLE · Flock · Drone · Detector) plus a **radio** (WiFi · BLE · Both), then **START** — the selected engines run together and share radio time. Detections plot live, color-graded by signal density, and the route follows you. **Drones** plot at their broadcast Remote-ID position (an RSSI range ring around you when they report 0/0), with drone/pilot trails; stacked flock/drone/detector pins fan out on leader lines so each stays readable; the top bar tallies each engine's hits. Sessions save as WiGLE CSV and upload straight to WiGLE with your API key. Draw **geofences**: inside an excluded zone every hit is muted — no feed entry, no database or WiGLE CSV logging, no beep or notification — and the radios pause entirely. Everything resumes the moment you leave. Saved sessions replay on the map.
 
 ### PCAP
 No SD card — frames stream live over BLE and the app writes the `.pcap` (open in Wireshark).
