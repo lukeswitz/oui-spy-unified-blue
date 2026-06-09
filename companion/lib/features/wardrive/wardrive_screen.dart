@@ -628,6 +628,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       borderStrokeWidth: 1.0,
                     ),
                   ]),
+                if (detectionLayers.rings.isNotEmpty)
+                  CircleLayer(circles: detectionLayers.rings),
                 if (detectionLayers.trails.isNotEmpty)
                   PolylineLayer(polylines: detectionLayers.trails),
                 if (detectionLayers.tethers.isNotEmpty)
@@ -795,15 +797,21 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               ),
 
             // Scanning indicator (top) for sparse-stat targets: flock / drone / detect
-            if (wd.isActive &&
-                (wd.target == WardriveTarget.flock ||
-                 wd.target == WardriveTarget.drone ||
-                 wd.target == WardriveTarget.detector))
+            if (wd.isActive)
               Positioned(
                 top: _statsHeight + 8,
                 left: 0, right: 0,
                 child: Center(
-                  child: _ScanningPill(color: wd.target.color, label: wd.target.label),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (final m in WardriveController.selectableTargets)
+                        if (wd.isTargetSelected(m) && m != WardriveTarget.wigle)
+                          _ScanningPill(color: m.color, label: m.label),
+                    ],
+                  ),
                 ),
               ),
 
@@ -880,7 +888,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                         },
                       ),
                     ],
-                    if (wd.target.includesFlock) ...[
+                    if (wd.includesFlock) ...[
                       const SizedBox(height: 6),
                       FlockPanel(
                         detections: wd.flockDetections,
@@ -1067,6 +1075,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final pins = <Marker>[];
     final tethers = <Polyline>[];
     final trails = <Polyline>[];
+    final rings = <CircleMarker>[];
     for (final d in priority) {
       final isDrone = d.engine == Engine.skySpy;
       final isDetector = d.engine == Engine.detector;
@@ -1074,8 +1083,41 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final leader = (40.0 * zoomScale).clamp(30.0, 56.0);
 
       if (isDrone) {
-        final dronePt = droneRidPoint(d) ?? LatLng(d.latitude!, d.longitude!);
         final color = droneColorForMac(d.macAddress);
+        final ridPt = droneRidPoint(d);
+
+        if (ridPt == null) {
+          final isBle = isBleMethod(d.method);
+          final rangeM = rssiToMeters(d.rssi, isBle: isBle);
+          final obs = LatLng(d.latitude!, d.longitude!);
+          rings.add(CircleMarker(
+            point: obs,
+            radius: rangeM,
+            useRadiusInMeter: true,
+            color: color.withValues(alpha: 0.06),
+            borderColor: color.withValues(alpha: 0.85),
+            borderStrokeWidth: 1.6,
+          ));
+          pins.add(Marker(
+            point: obs,
+            width: 64,
+            height: 64,
+            alignment: Alignment.center,
+            rotate: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showDetectionDetails(context, ref, d),
+              child: DroneRangePin(
+                color: color,
+                label: rssiRangeLabel(d.rssi, isBle: isBle),
+                fresh: droneIsFresh(d),
+              ),
+            ),
+          ));
+          continue;
+        }
+
+        final dronePt = ridPt;
         final droneTrack = appState.droneTrack(d.macAddress);
         if (droneTrack != null && droneTrack.length >= 2) {
           trails.add(Polyline(
@@ -1158,7 +1200,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         clusters: clusters,
         pins: pins,
         tethers: tethers,
-        trails: trails);
+        trails: trails,
+        rings: rings);
   }
 
   static double _shortAngleDelta(double from, double to) {
@@ -1257,11 +1300,11 @@ class _IdleControls extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
-                children: WardriveTarget.values.map((m) {
-                  final sel = m == t;
+                children: WardriveController.selectableTargets.map((m) {
+                  final sel = wd.isTargetSelected(m);
                   return Expanded(
                     child: GestureDetector(
-                      onTap: () => ref.read(wardriveProvider).setTarget(m),
+                      onTap: () => ref.read(wardriveProvider).toggleTarget(m),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1274,7 +1317,17 @@ class _IdleControls extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(m.icon, size: 16, color: sel ? m.color : th.textDim),
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Icon(m.icon, size: 16, color: sel ? m.color : th.textDim),
+                                if (sel)
+                                  Positioned(
+                                    right: -6, top: -5,
+                                    child: Icon(Icons.check_circle, size: 9, color: m.color),
+                                  ),
+                              ],
+                            ),
                             const SizedBox(height: 2),
                             FittedBox(
                               fit: BoxFit.scaleDown,
@@ -1299,7 +1352,7 @@ class _IdleControls extends StatelessWidget {
                   );
                 }).toList(),
               ),
-              if (t.hasRadioChoice && !isManagerConnected) ...[
+              if (!isManagerConnected) ...[
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1320,9 +1373,12 @@ class _IdleControls extends StatelessWidget {
                               WardriveRadio.ble => 0x02,
                               WardriveRadio.both => 0x03,
                             };
-                            final maskEngine = t.radioMaskEngine;
-                            if (maskEngine != null) {
-                              ref.read(appStateProvider).setEngineRadio(maskEngine, mask);
+                            final app = ref.read(appStateProvider);
+                            for (final tt in wd.selectedTargets) {
+                              final maskEngine = tt.radioMaskEngine;
+                              if (maskEngine != null) {
+                                app.setEngineRadio(maskEngine, mask);
+                              }
                             }
                           },
                           child: Container(
@@ -1965,18 +2021,21 @@ class _DetectionLayers {
     required this.pins,
     this.tethers = const [],
     this.trails = const [],
+    this.rings = const [],
   });
   const _DetectionLayers.empty()
       : heat = const [],
         clusters = const [],
         pins = const [],
         tethers = const [],
-        trails = const [];
+        trails = const [],
+        rings = const [];
   final List<CircleMarker> heat;
   final List<Marker> clusters;
   final List<Marker> pins;
   final List<Polyline> tethers;
   final List<Polyline> trails;
+  final List<CircleMarker> rings;
 }
 
 class _ClusterDot extends StatelessWidget {

@@ -382,11 +382,16 @@ class _DetailSummary extends StatelessWidget {
       if (odid.operatorId != null && odid.operatorId!.isNotEmpty) {
         rows.add(_detailRow(context, 'Operator ID', odid.operatorId!));
       }
-      if (odid.droneLat != null &&
+      final hasDronePos = odid.droneLat != null &&
           odid.droneLon != null &&
-          !(odid.droneLat == 0 && odid.droneLon == 0)) {
+          !(odid.droneLat == 0 && odid.droneLon == 0);
+      if (hasDronePos) {
         rows.add(_detailRow(context, 'Drone Pos',
             '${odid.droneLat!.toStringAsFixed(5)}, ${odid.droneLon!.toStringAsFixed(5)}'));
+      } else {
+        rows.add(_detailRow(context, 'Drone Pos', 'No GPS fix'));
+        rows.add(_detailRow(context, 'Est. Range',
+            '${rssiRangeLabel(detection.rssi, isBle: detection.isBleDetection)} (RSSI)'));
       }
       if (odid.altitudeMsl != null) {
         rows.add(_detailRow(context, 'Alt MSL', '${odid.altitudeMsl} m'));

@@ -111,6 +111,71 @@ class DronePin extends StatelessWidget {
   }
 }
 
+class DroneRangePin extends StatelessWidget {
+  const DroneRangePin({
+    super.key,
+    required this.color,
+    required this.label,
+    this.fresh = false,
+  });
+  final Color color;
+  final String label;
+  final bool fresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.25),
+              border: Border.all(
+                color: fresh ? kDroneFreshRing : color,
+                width: 1.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.5),
+                  blurRadius: 8,
+                  spreadRadius: 0.5,
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: SvgPicture.asset(
+              kDroneSvgAsset,
+              width: 16,
+              height: 16,
+              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: const Color(0xCC000000),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 8,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class PilotPin extends StatelessWidget {
   const PilotPin({
     super.key,

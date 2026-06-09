@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -73,6 +74,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
     final markers = <Marker>[];
     final tethers = <Polyline>[];
     final trails = <Polyline>[];
+    final rings = <CircleMarker>[];
     for (final d in widget.drones) {
       final color = droneColorForMac(d.macAddress);
       final droneTrack = appState.droneTrack(d.macAddress);
@@ -99,6 +101,32 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
             behavior: HitTestBehavior.opaque,
             onTap: () => showDetectionDetails(context, ref, d),
             child: DronePin(color: color, size: 26, fresh: droneIsFresh(d)),
+          ),
+        ));
+      } else if (here != null) {
+        final isBle = isBleMethod(d.method);
+        final obs = LatLng(here.latitude, here.longitude);
+        rings.add(CircleMarker(
+          point: obs,
+          radius: rssiToMeters(d.rssi, isBle: isBle),
+          useRadiusInMeter: true,
+          color: color.withValues(alpha: 0.06),
+          borderColor: color.withValues(alpha: 0.85),
+          borderStrokeWidth: 1.6,
+        ));
+        markers.add(Marker(
+          point: obs,
+          width: 64,
+          height: 64,
+          alignment: Alignment.center,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showDetectionDetails(context, ref, d),
+            child: DroneRangePin(
+              color: color,
+              label: rssiRangeLabel(d.rssi, isBle: isBle),
+              fresh: droneIsFresh(d),
+            ),
           ),
         ));
       }
@@ -155,6 +183,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
           userAgentPackageName: 'tech.colonelpanic.ouispy',
           maxZoom: 19,
         ),
+        if (rings.isNotEmpty) CircleLayer(circles: rings),
         if (trails.isNotEmpty) PolylineLayer(polylines: trails),
         if (tethers.isNotEmpty) PolylineLayer(polylines: tethers),
         if (here != null)
