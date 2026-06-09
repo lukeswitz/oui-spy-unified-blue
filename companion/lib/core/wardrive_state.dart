@@ -348,6 +348,19 @@ class WardriveController extends ChangeNotifier {
     return list;
   }
 
+  bool get includesDrone =>
+      selectedTargets.any((t) => t.engines(radio).contains(Engine.skySpy));
+
+  bool get includesDetector =>
+      selectedTargets.any((t) => t.engines(radio).contains(Engine.detector));
+
+  List<Detection> get droneDetections {
+    final list =
+        _dedupedOrdered.where((d) => d.engine == Engine.skySpy).toList();
+    list.sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
+    return list;
+  }
+
   void toggleTarget(WardriveTarget t) {
     if (isActive) return;
     if (selectedTargets.contains(t)) {
@@ -948,6 +961,7 @@ class WardriveController extends ChangeNotifier {
       bleTotal: rawBleCount,
       flockCount: includesFlock ? _flockMacs.length : 0,
       droneCount: droneCount,
+      detectorCount: includesDetector ? detectorCount : 0,
       detectionsPerKm: distanceKm > 0 && distanceKm.isFinite 
           ? rawDetectionCount / distanceKm 
           : 0,

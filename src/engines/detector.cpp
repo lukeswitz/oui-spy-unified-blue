@@ -359,7 +359,7 @@ void detectorHostSuspend(bool suspend) {
 }
 
 static void detectorLoop(void) {
-    if (meshIsEnabled() && meshInMeshWindow()) return;
+    if (meshIsEnabled() && (meshInMeshWindow() || meshInRidWindow())) return;
     if (!scanning) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
 

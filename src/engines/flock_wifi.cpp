@@ -195,7 +195,7 @@ static void flockWifiStop(void) {
 }
 
 static void flockWifiLoop(void) {
-    if (meshIsEnabled() && meshInMeshWindow()) return;
+    if (meshIsEnabled() && (meshInMeshWindow() || meshInRidWindow())) return;
     if (!scanning) return;
     if (!flockWifiRadioGate) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;

@@ -1052,10 +1052,14 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
 #define MESH_HOME_MAX_GAP_MS 1500
 #define MESH_MGR_SILENCE_FORCE_MS 6000
 #define MESH_REACQUIRE_MS 3000
+#define MESH_RID_WINDOW_MS 250
+#define MESH_RID_SCAN_MS 500
 static volatile bool g_meshWindow = false;
+static volatile bool g_ridWindow = false;
 static volatile uint32_t g_lastHomeMs = 0;
 static TaskHandle_t  meshSchedTaskHandle = NULL;
 bool meshInMeshWindow(void) { return g_meshWindow; }
+bool meshInRidWindow(void) { return g_ridWindow; }
 
 // Called by a scanning engine when it dwells on the mesh channel (ch1). The
 // radio is already there, so drain queued mesh TX now; ESP-NOW RX is active on
@@ -1124,6 +1128,10 @@ static bool meshSkyspyOwnsChannel(void) {
     return (m & hoppers) == 0;
 }
 
+static bool meshSkyspyActive(void) {
+    return (engineGetActiveMask() & ENGINE_BITMASK(ENGINE_SKYSPY)) != 0;
+}
+
 bool meshTimeSlicingActive(void) {
     return meshCurrentConfig.enabled && meshManagerJoined() && meshNodeHopsWifi();
 }
@@ -1139,12 +1147,22 @@ static void meshSchedTaskFn(void* arg) {
     (void)arg;
     for (;;) {
         g_meshWindow = false;
+        g_ridWindow = false;
+        bool ridScan = false;
         if (meshSkyspyOwnsChannel() && txMutex &&
             xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
             xSemaphoreGive(txMutex);
+        } else if (meshSkyspyActive() && txMutex &&
+            xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            g_ridWindow = true;
+            esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+            xSemaphoreGive(txMutex);
+            vTaskDelay(pdMS_TO_TICKS(MESH_RID_WINDOW_MS));
+            g_ridWindow = false;
+            ridScan = true;
         }
-        vTaskDelay(pdMS_TO_TICKS(150));
+        vTaskDelay(pdMS_TO_TICKS(ridScan ? MESH_RID_SCAN_MS : 150));
         bool sliceOn = meshTimeSlicingActive();
         bool reacquire =
             !sliceOn && meshCurrentConfig.enabled && meshNodeHopsWifi();

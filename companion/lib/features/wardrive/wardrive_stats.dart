@@ -60,44 +60,52 @@ class WardriveStats extends ConsumerWidget {
   List<Widget> _heroRow(ResolvedTheme t) {
     final hasWifi = stats.wifiDetections > 0 || stats.wifiTotal > 0;
     final hasBle = stats.bleDetections > 0 || stats.bleTotal > 0;
-    final flockSolo = stats.wifiDetections == 0 && stats.bleDetections == 0;
-    final counts = <Widget>[
+    final items = <({IconData icon, int unique, int? total, Color color})>[
       if (hasWifi)
-        Expanded(
-          flex: 3,
-          child: _HeroCount(
-            icon: Icons.wifi,
-            unique: stats.wifiDetections,
-            total: stats.wifiTotal,
-            color: AppTheme.accent,
-            fontSize: 44,
-          ),
+        (
+          icon: Icons.wifi,
+          unique: stats.wifiDetections,
+          total: stats.wifiTotal,
+          color: AppTheme.accent
         ),
       if (stats.flockCount > 0)
-        Expanded(
-          flex: flockSolo ? 3 : 2,
-          child: _HeroCount(
-            icon: Icons.videocam,
-            unique: stats.flockCount,
-            total: null,
-            color: AppTheme.flockBle,
-            fontSize: flockSolo ? 44 : 30,
-          ),
+        (
+          icon: Icons.videocam,
+          unique: stats.flockCount,
+          total: null,
+          color: AppTheme.flockBle
+        ),
+      if (stats.droneCount > 0)
+        (
+          icon: Icons.flight,
+          unique: stats.droneCount,
+          total: null,
+          color: const Color(0xFF4AFFEA)
+        ),
+      if (stats.detectorCount > 0)
+        (
+          icon: Icons.radar,
+          unique: stats.detectorCount,
+          total: null,
+          color: AppTheme.detector
         ),
       if (hasBle)
-        Expanded(
-          flex: 2,
-          child: _HeroCount(
-            icon: Icons.bluetooth,
-            unique: stats.bleDetections,
-            total: stats.bleTotal,
-            color: t.textSecondary,
-            fontSize: 30,
-          ),
+        (
+          icon: Icons.bluetooth,
+          unique: stats.bleDetections,
+          total: stats.bleTotal,
+          color: t.textSecondary
         ),
     ];
+    final fontSize = items.length <= 2
+        ? 42.0
+        : items.length == 3
+            ? 36.0
+            : items.length == 4
+                ? 30.0
+                : 25.0;
     final out = <Widget>[];
-    for (var i = 0; i < counts.length; i++) {
+    for (var i = 0; i < items.length; i++) {
       if (i > 0) {
         out.add(Container(
           width: 0.5,
@@ -106,7 +114,16 @@ class WardriveStats extends ConsumerWidget {
           color: t.border,
         ));
       }
-      out.add(counts[i]);
+      final it = items[i];
+      out.add(Expanded(
+        child: _HeroCount(
+          icon: it.icon,
+          unique: it.unique,
+          total: it.total,
+          color: it.color,
+          fontSize: fontSize,
+        ),
+      ));
     }
     return out;
   }
@@ -139,7 +156,7 @@ class _HeroCount extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: fontSize * 0.4, color: color.withValues(alpha: 0.85)),
+        Icon(icon, size: fontSize * 0.62, color: color.withValues(alpha: 0.9)),
         const SizedBox(height: 2),
         Text(
           '$unique',

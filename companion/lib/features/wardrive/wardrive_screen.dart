@@ -900,6 +900,24 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                         onDetectionTap: (d) => _zoomToDetection(d),
                       ),
                     ],
+                    if (wd.includesDrone) ...[
+                      const SizedBox(height: 6),
+                      FlockPanel(
+                        detections: wd.droneDetections,
+                        icon: Icons.flight,
+                        accent: const Color(0xFF4AFFEA),
+                        onDetectionTap: (d) => _zoomToDetection(d),
+                      ),
+                    ],
+                    if (wd.includesDetector) ...[
+                      const SizedBox(height: 6),
+                      FlockPanel(
+                        detections: wd.detectorDetections,
+                        icon: Icons.radar,
+                        accent: const Color(0xFF4A9EFF),
+                        onDetectionTap: (d) => _zoomToDetection(d),
+                      ),
+                    ],
                     if (wd.foxhuntTarget != null) ...[
                       const SizedBox(height: 6),
                       _FoxhuntBadge(mac: wd.foxhuntTarget!),
@@ -1081,11 +1099,20 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final tethers = <Polyline>[];
     final trails = <Polyline>[];
     final rings = <CircleMarker>[];
+    final grpCount = <String, int>{};
+    for (final d in priority) {
+      final k = plotKey(d);
+      if (k.isNotEmpty) grpCount[k] = (grpCount[k] ?? 0) + 1;
+    }
+    final grpSeen = <String, int>{};
     for (final d in priority) {
       final isDrone = d.engine == Engine.skySpy;
       final isDetector = d.engine == Engine.detector;
       final pinHead = (24.0 * zoomScale).clamp(18.0, 32.0);
-      final leader = (40.0 * zoomScale).clamp(30.0, 56.0);
+      final pk = plotKey(d);
+      final gi = grpSeen[pk] ?? 0;
+      grpSeen[pk] = gi + 1;
+      final fan = fanGeometry(gi, grpCount[pk] ?? 1);
 
       if (isDrone) {
         final color = droneColorForMac(d.macAddress);
@@ -1099,23 +1126,29 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             point: obs,
             radius: rangeM,
             useRadiusInMeter: true,
-            color: color.withValues(alpha: 0.06),
-            borderColor: color.withValues(alpha: 0.85),
-            borderStrokeWidth: 1.6,
+            color: Colors.transparent,
+            borderColor: color.withValues(alpha: 0.9),
+            borderStrokeWidth: 2.0,
           ));
+          final droneBox = (fan.length + 44) * 2;
           pins.add(Marker(
             point: obs,
-            width: 64,
-            height: 64,
+            width: droneBox,
+            height: droneBox,
             alignment: Alignment.center,
             rotate: true,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => showDetectionDetails(context, ref, d),
-              child: DroneRangePin(
-                color: color,
-                label: rssiRangeLabel(d.rssi, isBle: isBle),
-                fresh: droneIsFresh(d),
+            child: FannedPin(
+              geo: fan,
+              lineColor: color,
+              headExtent: 44,
+              head: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => showDetectionDetails(context, ref, d),
+                child: DroneRangePin(
+                  color: color,
+                  label: rssiRangeLabel(d.rssi, isBle: isBle),
+                  fresh: droneIsFresh(d),
+                ),
               ),
             ),
           ));
@@ -1179,22 +1212,42 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         continue;
       }
 
-      final w = pinHead + leader + 12;
-      final h = pinHead + leader + 12;
+      final pinColor = wt.engineColor(d.engine);
+      final box = (fan.length + pinHead + 10) * 2;
       pins.add(Marker(
         point: LatLng(d.latitude!, d.longitude!),
-        width: w,
-        height: h,
+        width: box,
+        height: box,
         alignment: Alignment.center,
         rotate: true,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => showDetectionDetails(context, ref, d),
-          child: _PriorityPin(
-            color: wt.engineColor(d.engine),
-            icon: isDetector ? Icons.radar : Icons.videocam,
-            headSize: pinHead,
-            leaderLength: leader,
+        child: FannedPin(
+          geo: fan,
+          lineColor: pinColor,
+          headExtent: pinHead + 10,
+          head: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showDetectionDetails(context, ref, d),
+            child: Container(
+              width: pinHead,
+              height: pinHead,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: pinColor,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0xAA000000),
+                      blurRadius: 4,
+                      spreadRadius: 0.5),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                isDetector ? Icons.radar : Icons.videocam,
+                size: pinHead * 0.58,
+                color: Colors.white,
+              ),
+            ),
           ),
         ),
       ));
@@ -2503,6 +2556,41 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                 ),
               ),
               const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: wd.droneCount > 0
+                      ? const Color(0xFF4AFFEA).withValues(alpha: 0.10)
+                      : t.surface.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: wd.droneCount > 0
+                        ? const Color(0xFF4AFFEA).withValues(alpha: 0.35)
+                        : t.border,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.flight, size: 12,
+                        color: wd.droneCount > 0
+                            ? const Color(0xFF4AFFEA)
+                            : t.textDim),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${wd.droneCount}',
+                      style: TextStyle(
+                        color: wd.droneCount > 0
+                            ? const Color(0xFF4AFFEA)
+                            : t.textDim,
+                        fontSize: 10,
+                        fontFamily: 'monospace', fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: wd.detectorCount > 0
@@ -3084,6 +3172,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                           session: sessions[i],
                           flockCountFuture: db.flockMacCount(sid),
                           detectorCountFuture: db.detectorMacCount(sid),
+                          droneCountFuture: db.droneMacCount(sid),
                           wifiBleFuture: db.wifiBleUniqueCounts(sid),
                           selectable: _selectMode,
                           selected: isSelected,
@@ -3386,6 +3475,7 @@ class _SessionRow extends ConsumerWidget {
     this.wigleUploading = false,
     this.flockCountFuture,
     this.detectorCountFuture,
+    this.droneCountFuture,
     this.wifiBleFuture,
   });
   final Session session;
@@ -3400,6 +3490,7 @@ class _SessionRow extends ConsumerWidget {
   final bool wigleUploading;
   final Future<int>? flockCountFuture;
   final Future<int>? detectorCountFuture;
+  final Future<int>? droneCountFuture;
   final Future<({int wifi, int ble})>? wifiBleFuture;
 
   @override
@@ -3567,6 +3658,33 @@ class _SessionRow extends ConsumerWidget {
                       },
                     ),
             );
+            final droneStat = SizedBox(
+              width: 32,
+              child: droneCountFuture == null
+                  ? const SizedBox.shrink()
+                  : FutureBuilder<int>(
+                      future: droneCountFuture,
+                      builder: (_, snap) {
+                        final dc = snap.data ?? 0;
+                        if (dc == 0) return const SizedBox.shrink();
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.flight,
+                                size: 11, color: Color(0xFF4AFFEA)),
+                            const SizedBox(width: 2),
+                            Text(
+                              '$dc',
+                              style: const TextStyle(
+                                color: Color(0xFF4AFFEA), fontSize: 10,
+                                fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            );
             final csvBtn = _SessionIconBtn(
               icon: Icons.file_download_outlined,
               label: 'CSV',
@@ -3626,6 +3744,7 @@ class _SessionRow extends ConsumerWidget {
                       bleStat,
                       distText,
                       flockStat,
+                      droneStat,
                       detectorStat,
                       const Spacer(),
                     ],
@@ -3648,6 +3767,7 @@ class _SessionRow extends ConsumerWidget {
                       bleStat,
                       distText,
                       flockStat,
+                      droneStat,
                       detectorStat,
                       const Spacer(),
                       ...actionButtons,

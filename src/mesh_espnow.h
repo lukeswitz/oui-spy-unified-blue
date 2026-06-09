@@ -21,6 +21,7 @@ void meshSendHeartbeat(uint8_t active_engines_mask);
 bool meshGetLatestAutoPcapEvent(uint32_t max_age_ms, MeshAutoPcapEventPacket* out, uint32_t* age_ms_out);
 bool meshIsEnabled(void);
 bool meshInMeshWindow(void);
+bool meshInRidWindow(void);
 bool meshTimeSlicingActive(void);
 void meshNoteOnHome(void);
 void meshMarkNodesEngine(uint8_t engine, bool on);

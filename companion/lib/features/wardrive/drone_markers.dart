@@ -1,7 +1,103 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/models/engine.dart';
+
+class FanGeometry {
+  const FanGeometry(this.angle, this.length);
+  final double angle;
+  final double length;
+}
+
+/// Rounded key identifying co-located markers (same plotted point).
+String plotKey(Detection d) {
+  final rid = d.engine == Engine.skySpy ? droneRidPoint(d) : null;
+  final lat = rid?.latitude ?? d.latitude;
+  final lon = rid?.longitude ?? d.longitude;
+  if (lat == null || lon == null) return '';
+  return '${(lat * 1e5).round()},${(lon * 1e5).round()}';
+}
+
+/// Even spiderfy: [count] markers sharing a point get evenly spaced leaders
+/// around a circle (12 o'clock first), all the same length — clean radial
+/// spread, not random crossing lines. A lone marker gets no leader (length 0)
+/// so it sits right on the anchor.
+FanGeometry fanGeometry(int index, int count) {
+  if (count <= 1) return const FanGeometry(0, 0);
+  final angle = (index / count) * 2 * pi - pi / 2;
+  final length = count <= 4 ? 38.0 : 32.0 + count * 2.0;
+  return FanGeometry(angle, length);
+}
+
+/// Anchors at the true point (box centre); paints a leader line of [geo.length]
+/// at [geo.angle] and floats [head] at the far end. The detection's real
+/// location is the line's origin — nothing is plotted off-position.
+class FannedPin extends StatelessWidget {
+  const FannedPin({
+    super.key,
+    required this.geo,
+    required this.head,
+    required this.lineColor,
+    this.headExtent = 40.0,
+  });
+  final FanGeometry geo;
+  final Widget head;
+  final Color lineColor;
+  final double headExtent;
+
+  @override
+  Widget build(BuildContext context) {
+    final box = (geo.length + headExtent) * 2;
+    final dx = geo.length * cos(geo.angle);
+    final dy = geo.length * sin(geo.angle);
+    return SizedBox(
+      width: box,
+      height: box,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          CustomPaint(
+            size: Size(box, box),
+            painter: _LeaderPainter(dx: dx, dy: dy, color: lineColor),
+          ),
+          Transform.translate(offset: Offset(dx, dy), child: head),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeaderPainter extends CustomPainter {
+  _LeaderPainter({required this.dx, required this.dy, required this.color});
+  final double dx;
+  final double dy;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final line = Paint()
+      ..color = color.withValues(alpha: 0.85)
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(c, c + Offset(dx, dy), line);
+    canvas.drawCircle(c, 3.0, Paint()..color = color);
+    canvas.drawCircle(
+        c,
+        3.0,
+        Paint()
+          ..color = Colors.white
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke);
+  }
+
+  @override
+  bool shouldRepaint(_LeaderPainter old) =>
+      old.dx != dx || old.dy != dy || old.color != color;
+}
 
 const String kDroneSvgAsset = 'assets/icons/drone.svg';
 const String kPilotSvgAsset = 'assets/icons/pilot.svg';
@@ -129,19 +225,19 @@ class DroneRangePin extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 26,
-            height: 26,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.25),
+              color: color.withValues(alpha: 0.95),
               border: Border.all(
-                color: fresh ? kDroneFreshRing : color,
-                width: 1.8,
+                color: fresh ? kDroneFreshRing : Colors.white,
+                width: 2.4,
               ),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
-                  color: color.withValues(alpha: 0.5),
-                  blurRadius: 8,
+                  color: Color(0xCC000000),
+                  blurRadius: 5,
                   spreadRadius: 0.5,
                 ),
               ],
@@ -149,24 +245,25 @@ class DroneRangePin extends StatelessWidget {
             alignment: Alignment.center,
             child: SvgPicture.asset(
               kDroneSvgAsset,
-              width: 16,
-              height: 16,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+              width: 20,
+              height: 20,
+              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0xCC000000),
-              borderRadius: BorderRadius.circular(3),
+              color: const Color(0xE6000000),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: color, width: 1),
             ),
             child: Text(
               label,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),

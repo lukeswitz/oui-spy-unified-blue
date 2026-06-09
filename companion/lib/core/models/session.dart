@@ -38,6 +38,7 @@ class SessionStats {
     required this.bleTotal,
     required this.flockCount,
     required this.droneCount,
+    required this.detectorCount,
     required this.detectionsPerKm,
     required this.gpsAccuracy,
     required this.satelliteCount,
@@ -55,6 +56,7 @@ class SessionStats {
   final int bleTotal;
   final int flockCount;
   final int droneCount;
+  final int detectorCount;
   final double detectionsPerKm;
   final double gpsAccuracy;
   final int satelliteCount;

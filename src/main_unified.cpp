@@ -610,24 +610,27 @@ static void coexStressTask(void* arg) {
 #endif
 
 #ifdef OUISPY_SKYSPY_MESH_TEST
+static void skyspyMeshTestEnable(uint8_t eng) {
+    EngineCommand ec = {};
+    ec.command = 0x01; ec.engine_id = eng; ec.payload_len = 0;
+    xQueueSend(engineCmdQueue, &ec, portMAX_DELAY);
+}
 static void skyspyMeshTestTask(void* arg) {
     (void)arg;
-    vTaskDelay(pdMS_TO_TICKS(10000));
-    {
-        EngineCommand ec = {};
-        ec.command = 0x01; ec.engine_id = ENGINE_SKYSPY; ec.payload_len = 0;
-        xQueueSend(engineCmdQueue, &ec, portMAX_DELAY);
-    }
-    Serial.println("[SKYTEST] skyspy enabled — watching join+channel+RID under REAL manager");
+    vTaskDelay(pdMS_TO_TICKS(8000));
+    skyspyMeshTestEnable(ENGINE_WARDRIVE);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    skyspyMeshTestEnable(ENGINE_SKYSPY);
+    Serial.println("[SKYTEST] wardrive+skyspy enabled — ch6 RID-window test");
     uint32_t base = g_engRawSeen;
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 90; i++) {
         vTaskDelay(pdMS_TO_TICKS(1000));
+        if (i % 5 == 4) { skyspyMeshTestEnable(ENGINE_WARDRIVE); skyspyMeshTestEnable(ENGINE_SKYSPY); }
         uint8_t ch = 0; wifi_second_chan_t sc;
         esp_wifi_get_channel(&ch, &sc);
-        Serial.printf("[SKYTEST] t=%ds ch=%u slicing=%d mgrJoined=%d mask=0x%02X ridSeen=%lu\n",
-                      i + 1, ch, meshTimeSlicingActive() ? 1 : 0,
-                      meshManagerJoined() ? 1 : 0, engineGetActiveMask(),
-                      (unsigned long)(g_engRawSeen - base));
+        Serial.printf("[SKYTEST] t=%ds ch=%u mask=0x%02X ridWin=%d ridSeen=%lu\n",
+                      i + 1, ch, engineGetActiveMask(),
+                      meshInRidWindow() ? 1 : 0, (unsigned long)(g_engRawSeen - base));
     }
     Serial.println("[SKYTEST] DONE");
     vTaskDelete(NULL);

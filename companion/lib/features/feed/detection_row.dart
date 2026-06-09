@@ -658,7 +658,9 @@ class _DetailLine extends StatelessWidget {
       tokens.add(_pipe());
     }
     tokens.add(Icon(
-      detection.isWifiDetection ? Icons.wifi : Icons.bluetooth,
+      engine == Engine.skySpy
+          ? Icons.flight
+          : (detection.isWifiDetection ? Icons.wifi : Icons.bluetooth),
       size: 13,
       color: engine.color,
     ));

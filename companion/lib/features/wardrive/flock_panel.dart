@@ -6,9 +6,16 @@ import 'package:oui_spy/theme/app_theme.dart';
 /// Compact flock count badge. Tap to expand detail list.
 /// Receives pre-deduped flock detections (unique per MAC).
 class FlockPanel extends StatefulWidget {
-  const FlockPanel({super.key, required this.detections, this.onDetectionTap});
+  const FlockPanel(
+      {super.key,
+      required this.detections,
+      this.onDetectionTap,
+      this.icon = Icons.videocam,
+      this.accent});
   final List<Detection> detections;
   final void Function(Detection)? onDetectionTap;
+  final IconData icon;
+  final Color? accent;
 
   @override
   State<FlockPanel> createState() => _FlockPanelState();
@@ -21,6 +28,7 @@ class _FlockPanelState extends State<FlockPanel> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final count = widget.detections.length;
+    final accent = widget.accent ?? AppTheme.flockBle;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -32,25 +40,25 @@ class _FlockPanelState extends State<FlockPanel> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: count > 0
-                  ? AppTheme.flockBle.withValues(alpha: 0.2)
+                  ? accent.withValues(alpha: 0.2)
                   : t.surface.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: count > 0
-                    ? AppTheme.flockBle.withValues(alpha: 0.5)
+                    ? accent.withValues(alpha: 0.5)
                     : t.border,
               ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.videocam, size: 11,
-                    color: count > 0 ? AppTheme.flockBle : t.textDim),
+                Icon(widget.icon, size: 15,
+                    color: count > 0 ? accent : t.textDim),
                 const SizedBox(width: 4),
                 Text(
                   '$count',
                   style: TextStyle(
-                    color: count > 0 ? AppTheme.flockBle : t.textDim,
+                    color: count > 0 ? accent : t.textDim,
                     fontSize: 11, fontWeight: FontWeight.w700,
                     fontFamily: 'monospace',
                   ),
@@ -59,7 +67,7 @@ class _FlockPanelState extends State<FlockPanel> {
                   const SizedBox(width: 2),
                   Icon(
                     _expanded ? Icons.expand_more : Icons.chevron_right,
-                    size: 11, color: AppTheme.flockBle,
+                    size: 11, color: accent,
                   ),
                 ],
               ],
@@ -73,7 +81,7 @@ class _FlockPanelState extends State<FlockPanel> {
             decoration: BoxDecoration(
               color: t.background.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: AppTheme.flockBle.withValues(alpha: 0.3)),
+              border: Border.all(color: accent.withValues(alpha: 0.3)),
             ),
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 2),
