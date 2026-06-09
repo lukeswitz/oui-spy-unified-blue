@@ -248,6 +248,15 @@ class WardriveController extends ChangeNotifier {
       rawWifiCount - nodeWifiCounts.values.fold(0, (a, b) => a + b);
   int get localBleCount =>
       rawBleCount - nodeBleCount.values.fold(0, (a, b) => a + b);
+
+  Map<String, int> get detectionsPerNode {
+    final m = <String, int>{};
+    for (final k in {...nodeWifiCounts.keys, ...nodeBleCount.keys}) {
+      m[k] = (nodeWifiCounts[k] ?? 0) + (nodeBleCount[k] ?? 0);
+    }
+    return m;
+  }
+
   String? foxhuntTarget;
   String sessionId = '';
 
@@ -274,6 +283,7 @@ class WardriveController extends ChangeNotifier {
   List<Detection> get detections => _dedupedOrdered;
   int rawDetectionCount = 0;
   final Set<String> uniqueMacs = {};
+  final Set<String> _wifiNetworkMacs = {};
   final Set<String> _flockMacs = {};
   final Map<String, Detection> _flockByMac = {};
   List<Detection>? _cachedFlockDetections;
@@ -378,6 +388,7 @@ class WardriveController extends ChangeNotifier {
     nodeWifiCounts.clear();
     nodeBleCount.clear();
     uniqueMacs.clear();
+    _wifiNetworkMacs.clear();
     _flockMacs.clear();
     _flockByMac.clear();
     _cachedFlockDetections = null;
@@ -975,7 +986,10 @@ class WardriveController extends ChangeNotifier {
       }
     }
     uniqueMacs.add(detection.macAddress);
-    _notificationService.onWardriveUpdate(uniqueCount: uniqueMacs.length);
+    if (detection.engine == Engine.wardrive) {
+      _wifiNetworkMacs.add(detection.macAddress);
+    }
+    _notificationService.onWardriveUpdate(uniqueCount: _wifiNetworkMacs.length);
     _updateLiveActivity();
     final isFlock = detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi;
     if (isFlock) {

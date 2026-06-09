@@ -34,6 +34,7 @@ static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
 static unsigned long lastScanStart = 0;
 static uint8_t skyspyRadioMask = 0x03;
+static const uint8_t SKYSPY_WIFI_CH = 6;
 
 static DroneData* findOrAllocDrone(uint8_t* mac) {
     for (int i = 0; i < MAX_UAVS; i++) {
@@ -236,7 +237,7 @@ static void skyspyStart(void) {
         esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiCallback);
-        esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
     }
 
     scanning = true;
@@ -258,6 +259,13 @@ static void skyspyStop(void) {
 static void skyspyLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning || !bleScan) return;
+
+    if ((skyspyRadioMask & 0x01) && meshIsEnabled()) {
+        uint8_t pch; wifi_second_chan_t sch;
+        if (esp_wifi_get_channel(&pch, &sch) == ESP_OK && pch != SKYSPY_WIFI_CH) {
+            esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
+        }
+    }
 
     // BLE scan cycle
     if ((skyspyRadioMask & 0x02) && millis() - lastScanStart >= 1500) {

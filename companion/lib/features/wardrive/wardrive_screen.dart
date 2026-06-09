@@ -3834,13 +3834,19 @@ class _NodeStatsOverlay extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final appState = ref.watch(appStateProvider);
+    final wd = ref.watch(wardriveProvider);
     final selfId = AppState.canonicalNodeId(appState.nodeId);
     final nodeCount =
         appState.liveKnownNodes.where((id) => id != selfId).length;
     final label = '$nodeCount NODE${nodeCount == 1 ? '' : 'S'}';
     final color =
         nodeCount > 0 ? AppTheme.success : AppTheme.warning;
-    final perNode = appState.detectionsPerSourceNode;
+    final perNode = <String, int>{...wd.detectionsPerNode};
+    final selfRaw = wd.localWifiCount + wd.localBleCount;
+    if (selfRaw > 0) {
+      final selfBucket = appState.nodeId.isNotEmpty ? appState.nodeId : 'LOCAL';
+      perNode[selfBucket] = (perNode[selfBucket] ?? 0) + selfRaw;
+    }
     final nodeEntries = perNode.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 

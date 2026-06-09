@@ -326,7 +326,7 @@ static void statusHeartbeatTask(void* param) {
             bleGattNotifyPcapStats();
         }
 
-        // Serial heartbeat
+#ifdef OUISPY_STATUS_LOG
         Serial.printf("[STATUS] engines=0x%02X heap=%d gps=%s id=%s cmdRx=%lu rxWin=%lu slice=%d\n",
                       engineGetActiveMask(),
                       esp_get_free_heap_size(),
@@ -335,6 +335,7 @@ static void statusHeartbeatTask(void* param) {
                       (unsigned long)g_meshCmdRx,
                       (unsigned long)g_meshRxWin,
                       meshTimeSlicingActive() ? 1 : 0);
+#endif
 
         static bool wasManaged = false;
         if (meshIsEnabled()) {
