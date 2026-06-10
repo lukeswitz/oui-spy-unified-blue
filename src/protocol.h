@@ -28,12 +28,22 @@ extern volatile uint32_t g_engRawSeen;
 #define MESH_TAG_LEN         16
 #define MESH_NODE_ID_LEN     5
 
-// Hardware pins (XIAO ESP32-S3)
+// Hardware pins (XIAO ESP32-S3 defaults; per-board override via -DPIN_*)
+#ifndef PIN_BUZZER
 #define PIN_BUZZER     3
+#endif
+#ifndef PIN_LED
 #define PIN_LED        21    // Onboard LED, active LOW
+#endif
+#ifndef PIN_NEOPIXEL
 #define PIN_NEOPIXEL   4     // WS2812B data
+#endif
+#ifndef PIN_GPS_RX
 #define PIN_GPS_RX     44    // Optional hardware GPS
+#endif
+#ifndef PIN_GPS_TX
 #define PIN_GPS_TX     43
+#endif
 
 // Firmware version
 #ifndef FW_VERSION

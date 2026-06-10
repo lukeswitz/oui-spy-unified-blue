@@ -3806,6 +3806,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   bool _mgrReconnecting = false;
   bool _autoWifiUpdate = true;
   static const String _autoWifiPrefKey = 'ota_auto_wifi_update';
+  String _nodeBoard = 'xiao_s3';
+  static const String _nodeBoardPrefKey = 'ota_node_board';
+  static const List<String> _nodeBoards = ['xiao_s3', 's3_devkitc'];
 
   @override
   void initState() {
@@ -3824,6 +3827,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     });
     _readWifiState();
     _loadAutoWifi();
+    _loadNodeBoard();
     // Poll WiFi status every 3s so user sees connection state change
     _wifiPoll = Timer.periodic(const Duration(seconds: 3), (_) => _readWifiState());
   }
@@ -3838,6 +3842,20 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     setState(() => _autoWifiUpdate = v);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoWifiPrefKey, v);
+  }
+
+  Future<void> _loadNodeBoard() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString(_nodeBoardPrefKey);
+    if (v != null && _nodeBoards.contains(v) && mounted) {
+      setState(() => _nodeBoard = v);
+    }
+  }
+
+  Future<void> _setNodeBoard(String v) async {
+    setState(() => _nodeBoard = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nodeBoardPrefKey, v);
   }
 
   /// When the user has opted into auto-connect, enable WiFi STA on the manager
@@ -3881,6 +3899,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
         board: ble.board,
         role: ble.role,
         includeNode: ble.isManagerConnected,
+        nodeBoard: _nodeBoard,
       );
       if (!mounted) return;
       final primary = pair.primary;
@@ -3989,10 +4008,21 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
         return;
       }
 
-      setState(() => _nodeStatus = 'Flashing node $nodeId — ${release.tag}...');
-      final flashed = await ref.read(otaServiceProvider).performUpdate(release);
+      var nodeRelease = release;
+      final nodeBoard = ble.board;
+      if (nodeBoard.isNotEmpty &&
+          !nodeRelease.assetUrl.toLowerCase().contains(nodeBoard.toLowerCase())) {
+        setState(() => _nodeStatus = 'Resolving $nodeBoard firmware for node $nodeId...');
+        final boardRelease = await ref
+            .read(otaServiceProvider)
+            .fetchLatestRelease(board: nodeBoard, role: 'node');
+        if (boardRelease != null) nodeRelease = boardRelease;
+      }
+
+      setState(() => _nodeStatus = 'Flashing node $nodeId — ${nodeRelease.tag}...');
+      final flashed = await ref.read(otaServiceProvider).performUpdate(nodeRelease);
       setState(() => _nodeStatus = flashed
-          ? 'Node $nodeId flashed ${release.tag}. Reconnecting manager...'
+          ? 'Node $nodeId flashed ${nodeRelease.tag}. Reconnecting manager...'
           : 'Node $nodeId flash failed.');
       await Future<void>.delayed(const Duration(seconds: 2));
       await _restoreManager(managerId);
@@ -4041,6 +4071,34 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                   style: TextStyle(
                       color: nodeNewer ? AppTheme.accent : t.textDim,
                       fontSize: 10)),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        child: Row(
+          children: [
+            Text('Node board',
+                style: TextStyle(color: t.textSecondary, fontSize: 11)),
+            const SizedBox(width: 10),
+            DropdownButton<String>(
+              value: _nodeBoard,
+              isDense: true,
+              dropdownColor: t.surface,
+              style: TextStyle(color: t.textPrimary, fontSize: 12),
+              underline: const SizedBox.shrink(),
+              items: [
+                for (final b in _nodeBoards)
+                  DropdownMenuItem(value: b, child: Text(b)),
+              ],
+              onChanged: (busy || _fleetRunning)
+                  ? null
+                  : (v) {
+                      if (v == null || v == _nodeBoard) return;
+                      _setNodeBoard(v);
+                      _check();
+                    },
+            ),
           ],
         ),
       ),

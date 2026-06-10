@@ -243,6 +243,7 @@ class OtaService {
     String board = '',
     String role = '',
     bool includeNode = false,
+    String nodeBoard = 'xiao_s3',
   }) async {
     _progress.add(const OtaProgress(
       phase: OtaPhase.checking,
@@ -273,7 +274,7 @@ class OtaService {
     }
     final primary = _releaseFromJson(data, board, role);
     final node =
-        includeNode ? _releaseFromJson(data, 'xiao_s3', 'node', emitError: false) : null;
+        includeNode ? _releaseFromJson(data, nodeBoard, 'node', emitError: false) : null;
     return (primary: primary, node: node, error: null);
   }
 

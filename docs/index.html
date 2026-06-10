@@ -436,6 +436,7 @@
         <select id="targetSelect" onchange="setTarget(this.value)"
                 style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface-light);color:var(--text-primary);border:1px solid var(--border);font-family:inherit;font-size:13px;">
           <option value="node-xiao_s3">XIAO ESP32-S3 (node)</option>
+          <option value="node-s3_devkitc">ESP32-S3 N16R8 DevKitC (node)</option>
           <option value="mgr-wroom">ESP32 WROOM (manager)</option>
           <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager)</option>
         </select>
@@ -502,6 +503,11 @@
         label: 'XIAO ESP32-S3 (node)',
         path: 'node-xiao_s3/',
         flashSize: '8MB', flashMode: 'qio', flashFreq: '80m',
+      },
+      'node-s3_devkitc': {
+        label: 'ESP32-S3 N16R8 DevKitC (node)',
+        path: 'node-s3_devkitc/',
+        flashSize: '16MB', flashMode: 'qio', flashFreq: '80m',
       },
       'mgr-wroom': {
         label: 'ESP32 WROOM (manager)',

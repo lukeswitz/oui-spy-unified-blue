@@ -32,6 +32,16 @@
 #include "engines/wardrive.h"
 #include "engines/pcap.h"
 
+#ifdef OUISPY_RGB_DARK
+  #define OUISPY_LED_INIT()  neopixelWrite(PIN_NEOPIXEL, 0, 0, 0)
+  #define OUISPY_LED_ON()    ((void)0)
+  #define OUISPY_LED_OFF()   neopixelWrite(PIN_NEOPIXEL, 0, 0, 0)
+#else
+  #define OUISPY_LED_INIT()  do { pinMode(PIN_LED, OUTPUT); digitalWrite(PIN_LED, HIGH); } while (0)
+  #define OUISPY_LED_ON()    digitalWrite(PIN_LED, LOW)
+  #define OUISPY_LED_OFF()   digitalWrite(PIN_LED, HIGH)
+#endif
+
 // ============================================================================
 // Global queues and GPS state
 // ============================================================================
@@ -53,8 +63,7 @@ volatile bool    hwAlertsSuppressed = false;
 static void initHardware(void) {
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, LOW);
-    pinMode(PIN_LED, OUTPUT);
-    digitalWrite(PIN_LED, HIGH);
+    OUISPY_LED_INIT();
 
     Serial.println("[HW] Pins initialized");
 }
@@ -255,7 +264,7 @@ static void detectionNotifyTask(void* param) {
                 Serial.printf("[CHIME] engine=%d\n", evt.engine_id);
                 requestChime();
                 if (hwLedEnabled) {
-                    digitalWrite(PIN_LED, LOW);
+                    OUISPY_LED_ON();
                 }
             }
 
@@ -273,7 +282,7 @@ static void detectionNotifyTask(void* param) {
 
             // LED off after notification sent
             if (hwLedEnabled) {
-                digitalWrite(PIN_LED, HIGH);
+                OUISPY_LED_OFF();
             }
 
             // Also print to serial (for debugging / Flask compatibility)
@@ -714,9 +723,9 @@ void setup() {
 
     // LED blink to confirm boot
     for (int i = 0; i < 3; i++) {
-        digitalWrite(PIN_LED, LOW);
+        OUISPY_LED_ON();
         delay(100);
-        digitalWrite(PIN_LED, HIGH);
+        OUISPY_LED_OFF();
         delay(100);
     }
 

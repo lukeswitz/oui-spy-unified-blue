@@ -21,6 +21,10 @@ jobs:
             role: node
             board: xiao_s3
             chip: esp32s3
+          - env: v3_app_controlled_s3_devkitc
+            role: node
+            board: s3_devkitc
+            chip: esp32s3
           - env: v3_node_manager_wroom
             role: mgr
             board: wroom
@@ -104,6 +108,7 @@ jobs:
             | Target | Role | OTA asset | First flash (USB) |
             |--------|------|-----------|-------------------|
             | XIAO ESP32-S3 | node | `oui-spy-node-xiao_s3-${{ github.ref_name }}.bin` | `oui-spy-node-xiao_s3-${{ github.ref_name }}-usb.tar.gz` |
+            | ESP32-S3 N16R8 DevKitC | node | `oui-spy-node-s3_devkitc-${{ github.ref_name }}.bin` | `oui-spy-node-s3_devkitc-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32 WROOM   | mgr  | `oui-spy-mgr-wroom-${{ github.ref_name }}.bin`   | `oui-spy-mgr-wroom-${{ github.ref_name }}-usb.tar.gz` |
             | XIAO ESP32-C3 | mgr  | `oui-spy-mgr-xiao_c3-${{ github.ref_name }}.bin` | `oui-spy-mgr-xiao_c3-${{ github.ref_name }}-usb.tar.gz` |
 
@@ -120,7 +125,7 @@ jobs:
             | **iOS** | [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) | Join beta via TestFlight. |
 
             ### Requirements
-            - Boards: XIAO ESP32-S3 (node), ESP32 WROOM or XIAO ESP32-C3 (manager)
+            - Boards: XIAO ESP32-S3 or ESP32-S3 N16R8 DevKitC (node), ESP32 WROOM or XIAO ESP32-C3 (manager)
             - BLE-capable phone/computer
             - GPS/Location for wardriving
 
