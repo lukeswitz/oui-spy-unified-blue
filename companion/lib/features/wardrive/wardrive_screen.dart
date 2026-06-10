@@ -5228,7 +5228,7 @@ class _ScanningPillState extends State<_ScanningPill>
             ),
           ),
           const SizedBox(width: 8),
-          Text('SCANNING ${widget.label}', style: TextStyle(
+          Text(widget.label, style: TextStyle(
             color: widget.color, fontSize: 11,
             fontWeight: FontWeight.w700, letterSpacing: 1)),
         ],
