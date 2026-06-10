@@ -438,7 +438,7 @@
           <option value="node-xiao_s3">XIAO ESP32-S3 (node)</option>
           <option value="node-s3_devkitc">ESP32-S3 N16R8 DevKitC (node)</option>
           <option value="mgr-wroom">ESP32 WROOM (manager)</option>
-          <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager)</option>
+          <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager) — recommended</option>
         </select>
         <button class="flash-btn" id="flashBtn" onclick="startFlash()">
           CONNECT &amp; FLASH
@@ -513,9 +513,10 @@
         label: 'ESP32 WROOM (manager)',
         path: 'mgr-wroom/',
         flashSize: '4MB', flashMode: 'dio', flashFreq: '40m',
+        bootloaderOffset: 0x1000,
       },
       'mgr-xiao_c3': {
-        label: 'XIAO ESP32-C3 (manager)',
+        label: 'XIAO ESP32-C3 (manager) — recommended',
         path: 'mgr-xiao_c3/',
         flashSize: '4MB', flashMode: 'dio', flashFreq: '80m',
       },
@@ -656,7 +657,10 @@
         for (let i = 0; i < FLASH_CONFIG.length; i++) {
           const cfg = FLASH_CONFIG[i];
           const data = await fetchFirmware(cfg.name);
-          flashFiles.push({ data: binaryToStr(data), address: cfg.offset });
+          const addr = (cfg.name === 'bootloader.bin' && TARGETS[currentTarget].bootloaderOffset != null)
+            ? TARGETS[currentTarget].bootloaderOffset
+            : cfg.offset;
+          flashFiles.push({ data: binaryToStr(data), address: addr });
           log(`  ${cfg.name} (${(data.length / 1024).toFixed(1)} KB)`);
           setProgress(((i + 1) / FLASH_CONFIG.length) * 20, `DOWNLOADED ${cfg.name}`);
         }
