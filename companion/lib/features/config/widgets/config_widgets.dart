@@ -318,7 +318,7 @@ class ConfigTextField extends StatelessWidget {
   }
 }
 
-class ConfigNumberField extends StatelessWidget {
+class ConfigNumberField extends StatefulWidget {
   const ConfigNumberField({
     super.key,
     required this.icon,
@@ -334,6 +334,51 @@ class ConfigNumberField extends StatelessWidget {
   final String? suffix;
 
   @override
+  State<ConfigNumberField> createState() => _ConfigNumberFieldState();
+}
+
+class _ConfigNumberFieldState extends State<ConfigNumberField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.value}');
+    _focusNode = FocusNode();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) _commit();
+  }
+
+  void _commit() {
+    final parsed = int.tryParse(_controller.text);
+    if (parsed != null) {
+      if (parsed != widget.value) widget.onChanged(parsed);
+    } else {
+      _controller.text = '${widget.value}';
+    }
+  }
+
+  @override
+  void didUpdateWidget(ConfigNumberField old) {
+    super.didUpdateWidget(old);
+    if (widget.value != old.value && !_focusNode.hasFocus) {
+      _controller.text = '${widget.value}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     return Container(
@@ -346,18 +391,20 @@ class ConfigNumberField extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: t.textDim),
+          Icon(widget.icon, size: 16, color: t.textDim),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(label, style: TextStyle(
+            child: Text(widget.label, style: TextStyle(
               color: t.textPrimary, fontSize: 12, fontWeight: FontWeight.w500,
             )),
           ),
           SizedBox(
             width: 90,
             child: TextFormField(
-              initialValue: '$value',
+              controller: _controller,
+              focusNode: _focusNode,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
               style: const TextStyle(
                 color: AppTheme.accent,
                 fontFamily: 'monospace',
@@ -368,15 +415,16 @@ class ConfigNumberField extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                suffixText: suffix,
+                suffixText: widget.suffix,
                 suffixStyle: TextStyle(
                   color: t.textDim, fontSize: 11, fontFamily: 'monospace',
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 4),
               ),
-              onFieldSubmitted: (v) {
-                final parsed = int.tryParse(v);
-                if (parsed != null) onChanged(parsed);
+              onTapOutside: (_) => _focusNode.unfocus(),
+              onFieldSubmitted: (_) {
+                _commit();
+                _focusNode.unfocus();
               },
             ),
           ),

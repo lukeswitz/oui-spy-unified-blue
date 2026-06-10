@@ -150,7 +150,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final t = AppTheme.of(context);
     return Scaffold(
       backgroundColor: t.background,
-      body: SafeArea(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: SafeArea(
         child: Column(
           children: [
             Padding(
@@ -213,6 +216,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
               ),
             ),
           ],
+        ),
         ),
       ),
     );
