@@ -143,8 +143,8 @@ enum MapStyle {
   cartoVoyager('Voyager', 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'),
   osm('OpenStreetMap', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
   openTopo('Topo', 'https://tile.opentopomap.org/{z}/{x}/{y}.png'),
-  stamenToner('Toner', 'https://tiles.stadiamaps.com/tiles/stamen_toner/{z}/{x}/{y}@2x.png'),
-  stamenTerrain('Terrain', 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}@2x.png'),
+  stamenToner('Toner', 'https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png'),
+  stamenTerrain('Terrain', 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'),
   ;
 
   const MapStyle(this.label, this.urlTemplate);
