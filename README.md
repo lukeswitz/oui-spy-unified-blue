@@ -49,7 +49,7 @@ Flash the board once. After that, every engine, channel, watchlist, capture, and
 3. **Connect** — open the app, tap **CONNECT**, pick your board from the **SCAN FOR OUI-SPY** list.
 
 > [!IMPORTANT]
-> Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is closed. 
+> Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked. 
 
 - When a manager board is seen in pairing the nodes will be hidden- you can turn off the manager board to connect to nodes directly.
 
