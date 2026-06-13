@@ -56,6 +56,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   double _currentRotation = 0;
   double _povHeading = double.nan;
   List<Geofence> _exclusionZones = [];
+  bool _priming = false;
 
   @override
   void initState() {
@@ -87,35 +88,47 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
   Future<bool> _primeLocationPermission() async {
-    if (!mounted) return false;
-    var status = await Geolocator.checkPermission();
-    if (status == LocationPermission.denied) {
-      status = await Geolocator.requestPermission();
-    }
-    if (!mounted) return false;
-    if (status == LocationPermission.denied ||
-        status == LocationPermission.deniedForever) {
-      _showPermissionGateDialog();
-      return false;
-    }
-    final servicesOn = await Geolocator.isLocationServiceEnabled();
-    if (!mounted) return false;
-    if (!servicesOn) {
-      _showServicesOffDialog();
-      return false;
-    }
+    if (_priming || !mounted) return false;
+    _priming = true;
+    try {
+      var status = await Geolocator.checkPermission();
+      if (status == LocationPermission.denied) {
+        status = await Geolocator.requestPermission();
+      }
+      if (!mounted) return false;
+      if (status == LocationPermission.denied ||
+          status == LocationPermission.deniedForever) {
+        _showPermissionGateDialog();
+        return false;
+      }
+      final servicesOn = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return false;
+      if (!servicesOn) {
+        _showServicesOffDialog();
+        return false;
+      }
 
-    if (Platform.isIOS) {
-      if (status == LocationPermission.whileInUse) {
-        await _showIosAlwaysUpgradeDialog();
+      if (Platform.isIOS) {
+        if (status == LocationPermission.whileInUse) {
+          await _showIosAlwaysUpgradeDialog();
+        }
+      } else if (Platform.isAndroid) {
+        final always = await ph.Permission.locationAlways.status;
+        if (!always.isGranted && mounted) {
+          await _showAndroidAlwaysUpgradeDialog();
+        }
       }
-    } else if (Platform.isAndroid) {
-      var alwaysStatus = await ph.Permission.locationAlways.status;
-      if (!alwaysStatus.isGranted) {
-        await _showAndroidAlwaysUpgradeDialog();
-      }
+      return true;
+    } finally {
+      _priming = false;
     }
-    return true;
+  }
+
+  Future<void> _requestAlwaysLocation() async {
+    final always = await ph.Permission.locationAlways.request();
+    if (!always.isGranted) {
+      await ph.openAppSettings();
+    }
   }
 
   Future<bool> _confirmRadioRoles() async {
@@ -220,9 +233,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           TextButton(
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await ph.openAppSettings();
+              await _requestAlwaysLocation();
             },
-            child: const Text('OPEN SETTINGS', style: TextStyle(color: AppTheme.accent)),
+            child: const Text('ALLOW ALL THE TIME', style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),

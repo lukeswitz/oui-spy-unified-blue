@@ -116,6 +116,13 @@ class GpsProvider {
         accuracy: LocationAccuracy.best,
         distanceFilter: 1,
         intervalDuration: const Duration(seconds: 1),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'OUI-SPY Wardriving',
+          notificationText: 'Tracking location for detections',
+          notificationChannelName: 'Wardrive Location',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       );
     }
 

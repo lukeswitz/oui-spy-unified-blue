@@ -5,6 +5,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:uuid/uuid.dart';
@@ -52,6 +53,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   Future<void> _startScan() async {
     if (_scanning) return;
+
+    final perm = await BlePermissions.ensureForScan();
+    if (!mounted) return;
+    if (perm != BlePermResult.ready) {
+      _showPermDialog(perm);
+      return;
+    }
+
     _results.clear();
     _error = null;
     setState(() => _scanning = true);
@@ -106,7 +115,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     try {
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 15),
-        androidUsesFineLocation: true,
+        androidUsesFineLocation: false,
       );
     } on FlutterBluePlusException catch (e) {
       DebugLog.log('SCAN: startScan failed: ${e.description}');
@@ -162,6 +171,62 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         });
       }
     }
+  }
+
+  void _showPermDialog(BlePermResult result) {
+    final t = AppTheme.of(context);
+    final bool servicesOff = result == BlePermResult.locationServicesOff;
+    final bool permanently =
+        result == BlePermResult.permissionPermanentlyDenied;
+
+    final String title = servicesOff
+        ? 'Location Services Off'
+        : 'Bluetooth Permission Required';
+    final String body = servicesOff
+        ? 'Android requires Location Services to be ON to scan for Bluetooth '
+            'devices. Enable it, then tap SCAN again.'
+        : permanently
+            ? 'Bluetooth scanning permission was denied. Open Settings and '
+                'allow Nearby devices / Location for OUI-SPY, then tap SCAN again.'
+            : 'OUI-SPY needs Bluetooth scanning permission to find your node. '
+                'Tap SCAN again and allow it.';
+    final String actionLabel =
+        servicesOff ? 'ENABLE LOCATION' : 'OPEN SETTINGS';
+    final bool showAction = servicesOff || permanently;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Text(title,
+            style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600)),
+        content: Text(body,
+            style: TextStyle(color: t.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('LATER', style: TextStyle(color: t.textDim)),
+          ),
+          if (showAction)
+            TextButton(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                if (servicesOff) {
+                  await BlePermissions.openLocationSettings();
+                } else {
+                  await BlePermissions.openAppSettings();
+                }
+              },
+              child: Text(actionLabel,
+                  style: const TextStyle(color: AppTheme.accent)),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
