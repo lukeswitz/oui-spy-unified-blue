@@ -48,7 +48,12 @@ Flash the board once. After that, every engine, channel, watchlist, capture, and
 2. **Install the app** — [Android APK](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) · [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2) · [macOS signed build](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest).
 3. **Connect** — open the app, tap **CONNECT**, pick your board from the **SCAN FOR OUI-SPY** list.
 
-APEX never auto-connects unless you opt in (*Settings → App → Connection*). On launch it drops stale links and waits for you to choose a device. Reconnecting later is one tap.
+> [!IMPORTANT]
+> Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked. 
+
+- When a manager board is seen in pairing the nodes will be hidden- you can turn off the manager board to connect to nodes directly.
+
+- APEX doesn't auto-connect unless you opt in (*Settings → App → Connection*). On launch it drops stale links and waits for you to choose a device. 
 
 ---
 
