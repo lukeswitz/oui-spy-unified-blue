@@ -576,10 +576,15 @@ void hardwareConfigApply(const uint8_t* data, size_t len) {
     p.putUChar("bz_vol", buzzerVol);
     p.putBool("led", led);
     p.putUChar("neo_brt", brightness);
+    if (len >= 5) {
+        bool flockExt = data[4] != 0;
+        p.putBool("flock_ext", flockExt);
+        flockSetExtendedOui(flockExt);
+    }
     p.end();
 
-    Serial.printf("[CFG] Hardware: buzzer=%d vol=%d led=%d brightness=%d\n",
-                  buzzer, buzzerVol, led, brightness);
+    Serial.printf("[CFG] Hardware: buzzer=%d vol=%d led=%d brightness=%d flock_ext=%d\n",
+                  buzzer, buzzerVol, led, brightness, (int)flockGetExtendedOui());
 }
 
 void alertConfigApply(const uint8_t* data, size_t len) {
@@ -711,13 +716,14 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* chr) override {
         Preferences p;
         p.begin("ouispy-hw", true);
-        uint8_t buf[4];
+        uint8_t buf[5];
         buf[0] = p.getBool("buzzer", true) ? 1 : 0;
         buf[1] = p.getBool("led", true) ? 1 : 0;
         buf[2] = p.getUChar("neo_brt", 50);
         buf[3] = p.getUChar("bz_vol", 100);
+        buf[4] = p.getBool("flock_ext", false) ? 1 : 0;
         p.end();
-        chr->setValue(buf, 4);
+        chr->setValue(buf, 5);
     }
 };
 
@@ -1079,7 +1085,8 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
         char pass[65] = {0};
         if (passLen > 0) memcpy(pass, data + 2 + ssidLen, passLen);
         wifiOtaSaveCreds(ssid, pass);
-        if (wifiStaIsEnabled()) wifiStaConnectAsync();
+        wifiStaSetEnabled(true);
+        wifiStaConnectAsync();
     }
 
     void onRead(NimBLECharacteristic* chr) override {
@@ -1449,6 +1456,30 @@ class PcapControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override { }
 };
 
+class DeviceInfoCallbacks : public NimBLECharacteristicCallbacks {
+    void onRead(NimBLECharacteristic* chr) override {
+        char info[96];
+        int len = snprintf(info, sizeof(info), "%s", FW_VERSION);
+        len++;
+        uint8_t mac[6];
+        esp_read_mac(mac, ESP_MAC_BT);
+        len += snprintf(info + len, sizeof(info) - len, "OUISPY-%02X%02X",
+                        mac[4], mac[5]);
+        len++;
+        len += snprintf(info + len, sizeof(info) - len, "%s", OUISPY_BOARD);
+        len++;
+#ifdef OUISPY_ROLE_MANAGER
+        len += snprintf(info + len, sizeof(info) - len, "mgr");
+#else
+        len += snprintf(info + len, sizeof(info) - len, "node");
+#endif
+        len++;
+        len += snprintf(info + len, sizeof(info) - len, "%u",
+                        (unsigned)ESP.getFreeHeap());
+        chr->setValue((uint8_t*)info, len + 1);
+    }
+};
+
 // ============================================================================
 // Static callback instances
 // ============================================================================
@@ -1465,6 +1496,7 @@ static DfuDataCallbacks dfuDataCb;
 static SystemControlCallbacks systemControlCb;
 static WifiConfigCallbacks wifiConfigCb;
 static PcapControlCallbacks pcapControlCb;
+static DeviceInfoCallbacks deviceInfoCb;
 
 static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
     if (chrSystemControl == nullptr) return;
@@ -1531,6 +1563,7 @@ void bleGattInit(void) {
 #endif
         chrDeviceInfo->setValue((uint8_t*)info, len + 1);
     }
+    chrDeviceInfo->setCallbacks(&deviceInfoCb);
 
     // -- Engine Control (READ, WRITE, NOTIFY) --
     chrEngineControl = svc->createCharacteristic(

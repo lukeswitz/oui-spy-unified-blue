@@ -1060,6 +1060,7 @@ class BleManager {
     required bool led,
     required int neopixelBrightness,
     required int buzzerVolume,
+    bool extendedOui = false,
   }) async {
     if (_hardwareConfig == null) return;
     await _hardwareConfig!.write(
@@ -1068,6 +1069,7 @@ class BleManager {
         led: led,
         neopixelBrightness: neopixelBrightness,
         buzzerVolume: buzzerVolume,
+        extendedOui: extendedOui,
       ),
     );
   }

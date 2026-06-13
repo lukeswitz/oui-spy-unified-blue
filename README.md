@@ -145,7 +145,7 @@ Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio) push t
 802.11 frames carry three MAC fields: **addr1** (receiver), **addr2** (transmitter), **addr3** (BSSID). Several engines check all three so a target is caught regardless of which role it plays in a frame.
 
 ### Flock — cameras + Raven gunshot detectors
-Both Flock engines share a **66-prefix OUI table** (`flock_oui.h`) covering Flock-direct OUIs plus the cellular/WiFi/control chip vendors their hardware uses (Cradlepoint, Sierra Wireless, Liteon, Murata, Espressif).
+Both Flock engines share an OUI table (`flock_oui.h`) split into two sets. The **core set** is the upstream colonelpanichacks field-tested Flock prefixes and is always on. An **extended set** — broad cellular/WiFi/control-chip vendor OUIs merged from other repos (Cradlepoint, Sierra Wireless, Liteon, Murata, Espressif) — is **off by default** because those prefixes appear on countless non-Flock devices (every ESP32 BLE radio, etc.) and cause false positives. Enable it under *Settings → Config → Hardware → Flock Detection → Extended OUI set* when you want maximum coverage and will triage the noise. The setting persists on the device and, in node mode, propagates from the manager to every node.
 
 **Flock WiFi** runs 802.11 promiscuous, hopping channels **1 / 6 / 11** and firing a wildcard probe on each hop to pull responses faster than waiting for beacons (dwell and channel range are configurable in *Settings → Scan Timing*). It matches the OUI table against:
 - **addr2 (transmitter)** — the device sending the frame.
@@ -155,7 +155,7 @@ Both Flock engines share a **66-prefix OUI table** (`flock_oui.h`) covering Floc
 
 Each hit reports which method fired (`addr1` / `addr2` / `addr3` / `wildcard_probe`) and decodes the AP's auth mode. Flock OUIs resolve in-app to both a surveillance label and the underlying chip vendor.
 
-**Flock BLE** matches on OUI, advertised **name** (`FS Ext Battery`, `Penguin`, `Flock`, `Pigvision`, `FlockCam`, `FlockOS`, `FS-`, `FS_`, `flocksafety`), **manufacturer ID `0x09C8`** (XUNTONG, the camera battery vendor), and **Raven** gunshot-detector GATT service UUIDs.
+**Flock BLE** matches on OUI (core set by default, extended set when enabled — see above), advertised **name** (`FS Ext Battery`, `Penguin`, `Flock`, `Pigvision`, `FlockCam`, `FlockOS`, `FS-`, `FS_`, `flocksafety`), **manufacturer ID `0x09C8`** (XUNTONG, the camera battery vendor), and **Raven** gunshot-detector GATT service UUIDs. Name / manufacturer-ID / Raven-UUID matches are unaffected by the OUI toggle — only OUI matching narrows to the core set.
 
 ### Detector
 Your watchlist. Add full MACs, OUI prefixes, name patterns, or 16-bit BLE service UUIDs. Matches on BLE adverts and on WiFi promiscuous frames (addr1/addr2/addr3).

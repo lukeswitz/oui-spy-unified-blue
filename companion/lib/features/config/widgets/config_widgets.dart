@@ -267,6 +267,64 @@ class ConfigActionRow extends StatelessWidget {
   }
 }
 
+class ConfigCompactButton extends StatelessWidget {
+  const ConfigCompactButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+    this.destructive = false,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final Color? color;
+  final bool destructive;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final c = destructive ? AppTheme.error : (color ?? AppTheme.accent);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          decoration: BoxDecoration(
+            color: t.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: destructive ? AppTheme.error.withValues(alpha: 0.4) : t.border,
+              width: 0.5,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: c),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: destructive ? AppTheme.error : t.textPrimary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ConfigTextField extends StatelessWidget {
   const ConfigTextField({
     super.key,

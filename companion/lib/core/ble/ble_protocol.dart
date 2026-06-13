@@ -195,12 +195,14 @@ class BleProtocol {
     required bool led,
     required int neopixelBrightness,
     required int buzzerVolume,
+    bool extendedOui = false,
   }) {
     return Uint8List.fromList([
       buzzer ? 1 : 0,
       led ? 1 : 0,
       neopixelBrightness.clamp(0, 255),
       buzzerVolume.clamp(0, 255),
+      extendedOui ? 1 : 0,
     ]);
   }
 

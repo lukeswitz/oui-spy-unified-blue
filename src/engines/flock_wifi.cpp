@@ -11,6 +11,11 @@
 #include <esp_wifi.h>
 #include <string.h>
 
+volatile bool g_flockExtendedOui = false;
+
+void flockSetExtendedOui(bool en) { g_flockExtendedOui = en; }
+bool flockGetExtendedOui(void) { return g_flockExtendedOui; }
+
 // Flock Wi-Fi cams known to operate on standard ISM channels only.
 static const uint8_t channels[] = {1, 6, 11};
 static int channelIdx = 0;

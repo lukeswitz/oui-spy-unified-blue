@@ -78,10 +78,12 @@ static void loadHardwareConfig(void) {
     hwBuzzerVolume = p.getUChar("bz_vol", 100);
     hwLedEnabled = p.getBool("led", true);
     hwNeopixelBrightness = p.getUChar("neo_brt", 50);
+    bool flockExt = p.getBool("flock_ext", false);
     p.end();
-    Serial.printf("[HW] Config: buzzer=%d vol=%d led=%d neo=%d\n",
+    flockSetExtendedOui(flockExt);
+    Serial.printf("[HW] Config: buzzer=%d vol=%d led=%d neo=%d flock_ext=%d\n",
                   (int)hwBuzzerEnabled, (int)hwBuzzerVolume,
-                  (int)hwLedEnabled, (int)hwNeopixelBrightness);
+                  (int)hwLedEnabled, (int)hwNeopixelBrightness, (int)flockExt);
 }
 
 // ============================================================================
@@ -668,6 +670,8 @@ void setup() {
         wifiOtaRunPendingBlocking();
         Serial.println("[BOOT] WiFi OTA did not complete -> continuing normal boot");
     }
+
+    wifiStaSetEnabled(false);
 
     initHardware();
 

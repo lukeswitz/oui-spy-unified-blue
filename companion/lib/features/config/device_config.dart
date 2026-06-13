@@ -45,6 +45,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  bool _flockExtendedOui = false;
   bool _buzzerEnabled = true;
   int _buzzerVolume = 100;
   bool _ledEnabled = true;
@@ -101,6 +102,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _ledEnabled = hw[1] != 0;
             _neopixelBrightness = hw[2];
             _buzzerVolume = hw.length >= 4 ? hw[3] : 100;
+            _flockExtendedOui = hw.length >= 5 && hw[4] != 0;
           });
           DebugLog.log('CONFIG: hw read: buzzer=$_buzzerEnabled vol=$_buzzerVolume led=$_ledEnabled neo=$_neopixelBrightness');
         }
@@ -135,7 +137,17 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _nodeId = String.fromCharCodes(
                 nullIdx2 >= 0 ? rest.sublist(0, nullIdx2) : rest.take(16).toList());
           }
-          DebugLog.log('CONFIG: fw=$_fwVersion node=$_nodeId');
+          final segs = <List<int>>[];
+          int segStart = 0;
+          for (int i = 0; i < info.length; i++) {
+            if (info[i] == 0) { segs.add(info.sublist(segStart, i)); segStart = i + 1; }
+          }
+          if (segStart < info.length) segs.add(info.sublist(segStart));
+          if (segs.length >= 5) {
+            final bytes = int.tryParse(String.fromCharCodes(segs[4]).trim());
+            if (bytes != null) _heapFree = '${(bytes / 1024).round()} KB';
+          }
+          DebugLog.log('CONFIG: fw=$_fwVersion node=$_nodeId heap=$_heapFree');
         }
       }
     } catch (e) {
@@ -494,6 +506,20 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           color: const Color(0xFFB44AFF),
           onChanged: (v) {
             setState(() => _neopixelBrightness = v.round());
+            _writeHardwareConfig();
+          },
+        ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'FLOCK DETECTION'),
+        ConfigToggleRow(
+          icon: Icons.lan,
+          label: 'Extended Repo OUI set',
+          subtitle: 'Double the OUIs, expect false postives.',
+          color: const Color(0xFFFF6B6B),
+          value: _flockExtendedOui,
+          onChanged: (v) {
+            setState(() => _flockExtendedOui = v);
             _writeHardwareConfig();
           },
         ),
@@ -918,26 +944,34 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           obscure: true,
         ),
         const SizedBox(height: 8),
-        ConfigActionRow(
-          icon: Icons.save,
-          label: 'Save credentials',
-          subtitle: 'Push SSID + password to device and connect',
-          color: AppTheme.success,
-          onTap: _writeWifiConfig,
-          trailing: const Icon(Icons.arrow_forward, size: 16, color: AppTheme.success),
-        ),
-        ConfigActionRow(
-          icon: Icons.link_off,
-          label: 'Disconnect',
-          subtitle: 'Drop STA but keep credentials',
-          onTap: _wifiDisconnect,
-        ),
-        ConfigActionRow(
-          icon: Icons.delete_forever,
-          label: 'Wipe credentials',
-          subtitle: 'Disconnect and erase SSID/password from device',
-          destructive: true,
-          onTap: _confirmWipeWifi,
+        Row(
+          children: [
+            Expanded(
+              child: ConfigCompactButton(
+                icon: Icons.save,
+                label: 'Save',
+                color: AppTheme.success,
+                onTap: _writeWifiConfig,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ConfigCompactButton(
+                icon: Icons.link_off,
+                label: 'Disconnect',
+                onTap: _wifiDisconnect,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ConfigCompactButton(
+                icon: Icons.delete_forever,
+                label: 'Wipe',
+                destructive: true,
+                onTap: _confirmWipeWifi,
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 16),
@@ -1017,6 +1051,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           led: _ledEnabled,
           neopixelBrightness: _neopixelBrightness,
           buzzerVolume: _buzzerVolume,
+          extendedOui: _flockExtendedOui,
         );
   }
 
@@ -5353,7 +5388,7 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
 class _VersionRow extends StatelessWidget {
   const _VersionRow();
 
-  static const String appVersion = '0.4.5';
+  static const String appVersion = '0.4.6';
 
   @override
   Widget build(BuildContext context) {

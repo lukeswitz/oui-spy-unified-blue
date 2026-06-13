@@ -107,6 +107,8 @@ void setup() {
         Serial.println("[BOOT] WiFi OTA did not complete -> continuing normal boot");
     }
 
+    wifiStaSetEnabled(false);
+
     detectionQueue  = xQueueCreate(64, sizeof(DetectionEvent));
     engineCmdQueue  = xQueueCreate(8,  sizeof(EngineCommand));
     peerStatusQueue = xQueueCreate(MESH_PEER_STATUS_QUEUE_DEPTH, sizeof(MeshStatusPacket));
