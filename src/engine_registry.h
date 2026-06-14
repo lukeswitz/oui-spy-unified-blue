@@ -46,6 +46,8 @@ void engineLoopAll(void);
 // Process engine command from BLE queue
 void engineProcessCommand(const EngineCommand* cmd);
 
+void engineSetDenyMask(uint8_t mask);
+
 // ---- Auto-PCAP-on-detect ---------------------------------------------------
 // When enabled, a detection from any engine other than Foxhunter triggers a
 // timed PCAP capture on that detection's radio + channel. After the capture

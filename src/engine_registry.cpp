@@ -10,6 +10,7 @@
 #include <esp_timer.h>
 
 volatile uint32_t g_engRawSeen = 0;
+static uint8_t g_engineDenyMask = 0;
 
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
@@ -455,11 +456,26 @@ void engineLoopAll(void) {
     }
 }
 
+void engineSetDenyMask(uint8_t mask) {
+    if (mask == g_engineDenyMask) return;
+    g_engineDenyMask = mask;
+    for (int i = 0; i < ENGINE_COUNT; i++) {
+        if ((mask & ENGINE_BITMASK(i)) && states[i] != ESTATE_DISABLED) {
+            Serial.printf("[ENGINE] fan-out deny -> stopping engine %d\n", i);
+            engineDisable((EngineId)i);
+        }
+    }
+}
+
 void engineProcessCommand(const EngineCommand* cmd) {
     if (cmd->engine_id >= ENGINE_COUNT) return;
 
     switch (cmd->command) {
         case 0x01: // Enable
+            if (g_engineDenyMask & ENGINE_BITMASK(cmd->engine_id)) {
+                Serial.printf("[ENGINE] enable engine %d denied (fan-out)\n", cmd->engine_id);
+                break;
+            }
             if (autoPcapPausedMask & ENGINE_BITMASK(cmd->engine_id)) {
                 autoPcapPausedMask &= ~ENGINE_BITMASK(cmd->engine_id);
             }

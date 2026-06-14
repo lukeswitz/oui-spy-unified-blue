@@ -254,7 +254,7 @@ void loop() {
             Serial.printf("[NC-MGR] drive wardrive -> %u node(s)\n", (unsigned)n);
         }
     }
-    if (ncOn && millis() - ncLastDrive > 7000) {
+    if (ncOn && millis() - ncLastDrive > 30000) {
         ncLastDrive = millis();
         bleGattNetcountDrive();
     }

@@ -133,6 +133,66 @@ static void mgrNodeRadioLoad(void) {
     p.end();
 }
 
+static const uint8_t kHopperMask = ENGINE_BITMASK(ENGINE_WARDRIVE) | ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
+                                 | ENGINE_BITMASK(ENGINE_DETECTOR) | ENGINE_BITMASK(ENGINE_FOXHUNTER);
+
+static bool mgrFanoutSkyspyNode(char* outId) {
+    if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_SKYSPY))) return false;
+    if (!(mgrCommandedMask & kHopperMask)) return false;
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    char ids[MESH_LIVE_NODES_MAX][MESH_NODE_ID_LEN];
+    uint8_t nn = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        memcpy(ids[nn++], live[i].id, MESH_NODE_ID_LEN);
+    }
+    if (nn < 2) return false;
+    int lo = 0;
+    for (int i = 1; i < nn; i++)
+        if (memcmp(ids[i], ids[lo], MESH_NODE_ID_LEN - 1) < 0) lo = i;
+    memcpy(outId, ids[lo], MESH_NODE_ID_LEN);
+    return true;
+}
+
+static uint8_t mgrNodeDenyMask(const char* id) {
+    char skyId[MESH_NODE_ID_LEN];
+    if (!mgrFanoutSkyspyNode(skyId)) return 0;
+    return (memcmp(id, skyId, MESH_NODE_ID_LEN - 1) == 0)
+             ? kHopperMask : ENGINE_BITMASK(ENGINE_SKYSPY);
+}
+
+static uint32_t mgrLastDenyHash = 0xFFFFFFFFu;
+static void mgrPushEngineDeny(void) {
+    if (!meshIsEnabled()) return;
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        uint8_t deny = mgrNodeDenyMask(live[i].id);
+        for (int j = 0; j < MESH_NODE_ID_LEN; j++) { h ^= (uint8_t)live[i].id[j]; h *= 16777619u; }
+        h ^= deny; h *= 16777619u;
+    }
+    bool changed = (h != mgrLastDenyHash);
+    mgrLastDenyHash = h;
+    const uint8_t pcapBit = ENGINE_BITMASK(ENGINE_PCAP);
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        uint8_t deny = mgrNodeDenyMask(live[i].id);
+        bool nonCompliant = (live[i].active_engines & deny & ~pcapBit) != 0;
+        if (!changed && !nonCompliant) continue;
+        uint8_t out[CFG_TGT_OVERHEAD + 1];
+        out[0] = CFG_TGT_PREFIX;
+        memcpy(out + 1, live[i].id, MESH_NODE_ID_LEN - 1);
+        out[5] = 0x00;
+        out[CFG_TGT_OVERHEAD] = deny;
+        meshBroadcastCommand(0x12, 0, out, (uint8_t)(CFG_TGT_OVERHEAD + 1));
+        Serial.printf("[MGR-FANOUT] node=%.4s deny=0x%02x%s\n",
+                      live[i].id, deny, nonCompliant ? " (re-push)" : "");
+    }
+}
+
 static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
     if (len < 11) { meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, len); return; }
 
@@ -154,19 +214,26 @@ static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
     if (ce < cs || ce > 14) ce = 11;
     uint16_t span = (uint16_t)(ce - cs + 1);
 
+    char skyId[MESH_NODE_ID_LEN];
+    bool fanout = mgrFanoutSkyspyNode(skyId);
+
     uint8_t wifiCount = 0;
-    for (size_t i = 0; i < nn; i++) if (radios[i] & 0x01) wifiCount++;
+    for (size_t i = 0; i < nn; i++) {
+        if (fanout && memcmp(nodes[i].id, skyId, MESH_NODE_ID_LEN - 1) == 0) continue;
+        if (radios[i] & 0x01) wifiCount++;
+    }
 
     uint8_t wifiIdx = 0;
     for (size_t i = 0; i < nn; i++) {
         uint8_t r = radios[i];
+        bool isSky = fanout && memcmp(nodes[i].id, skyId, MESH_NODE_ID_LEN - 1) == 0;
         uint8_t sStart = cs, sEnd = ce;
-        if ((r & 0x01) && wifiCount > 1) {
+        if (!isSky && (r & 0x01) && wifiCount > 1) {
             sStart = (uint8_t)(cs + (span * wifiIdx) / wifiCount);
             sEnd   = (uint8_t)(cs + (span * (wifiIdx + 1)) / wifiCount - 1);
             if (sEnd < sStart) sEnd = sStart;
         }
-        if (r & 0x01) wifiIdx++;
+        if (!isSky && (r & 0x01)) wifiIdx++;
 
         uint8_t clen = len > 64 ? 64 : len;
         uint8_t out[CFG_TGT_OVERHEAD + 64];
@@ -292,6 +359,15 @@ void bleGattNetcountDrive(void) {
     mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
     delay(120);
     meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+#ifdef OUISPY_NC_ALLENGINES
+    const uint8_t ncExtra[] = { ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_SKYSPY };
+    for (uint8_t i = 0; i < sizeof(ncExtra); i++) {
+        mgrCommandedMask |= ENGINE_BITMASK(ncExtra[i]);
+        mgrCommandedStates[ncExtra[i]] = (uint8_t)ESTATE_SCANNING;
+        delay(120);
+        meshBroadcastCommand(0x01, ncExtra[i], nullptr, 0);
+    }
+#endif
 #endif
 }
 #endif
@@ -321,6 +397,7 @@ void bleGattReconcileEngines(void) {
         Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL + manager demoted (nodes will self-idle)");
     }
     if (!meshIsEnabled()) return;
+    mgrPushEngineDeny();
     const uint8_t pcapBit = ENGINE_BITMASK(ENGINE_PCAP);
     uint8_t desired = (uint8_t)(mgrCommandedMask & ~pcapBit);
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
@@ -332,8 +409,9 @@ void bleGattReconcileEngines(void) {
         if (live[i].role == MESH_ROLE_MANAGER) continue;
         nodeCount++;
         if (live[i].active_engines & pcapBit) continue;
+        uint8_t nodeDesired = (uint8_t)(desired & ~mgrNodeDenyMask(live[i].id));
         uint8_t have = (uint8_t)(live[i].active_engines & ~pcapBit);
-        missingAny |= (uint8_t)(desired & ~have);
+        missingAny |= (uint8_t)(nodeDesired & ~have);
         extraAny   |= (uint8_t)(have & ~desired);
     }
     if (nodeCount == 0) return;

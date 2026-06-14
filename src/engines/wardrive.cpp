@@ -40,6 +40,10 @@ static uint8_t  hopScheduleLen = 1;
 static uint8_t  hopIdx = 0;
 static uint8_t  currentChannel = 1;
 
+static const uint16_t kAdaptiveMinDwellMs = 80;
+static const uint16_t kAdaptiveQuietMs    = 40;
+static volatile uint32_t wifiLastNetMs = 0;
+
 #define MESH_RENDEZVOUS_DWELL_MS 40
 
 static bool isPriorityChannel(uint8_t ch) {
@@ -343,6 +347,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
 
     {
         if (wifiDedup.check(addr3)) return;
+        wifiLastNetMs = millis();
 
         int tagOffset = 36;
         char ssid[33] = {0};
@@ -586,13 +591,31 @@ static void wardriveLoop(void) {
     wdDetectorActive   = (engineGetState(ENGINE_DETECTOR)   != ESTATE_DISABLED) ? 1 : 0;
 
     if (wardriveRadio & 0x01) {
-        uint16_t dwell = currentSlotDwellMs();
-        if (now - lastChannelHop >= dwell) {
+        uint16_t maxDwell = currentSlotDwellMs();
+        uint16_t minDwell = maxDwell < kAdaptiveMinDwellMs ? maxDwell : kAdaptiveMinDwellMs;
+        uint32_t elapsed = now - lastChannelHop;
+#ifdef OUISPY_FIXED_DWELL
+        (void)minDwell;
+        bool due = (elapsed >= maxDwell);
+#else
+        bool due = (elapsed >= maxDwell) ||
+                   (elapsed >= minDwell && (uint32_t)(now - wifiLastNetMs) >= kAdaptiveQuietMs);
+#endif
+        if (due) {
             hopIdx++;
             if (hopIdx >= hopScheduleLen) hopIdx = 0;
+#ifdef OUISPY_SWEEPLOG
+            if (hopIdx == 0) {
+                static uint32_t g_lastSweepMs = 0;
+                Serial.printf("[SWEEP] ms=%lu len=%u\n",
+                              (unsigned long)(now - g_lastSweepMs), hopScheduleLen);
+                g_lastSweepMs = now;
+            }
+#endif
             currentChannel = hopSchedule[hopIdx];
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
             lastChannelHop = now;
+            wifiLastNetMs = now;
             sendWildcardProbe();
             if (meshIsEnabled() && currentChannel == MESH_RENDEZVOUS_CH) meshNoteOnHome();
         }

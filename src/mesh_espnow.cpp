@@ -624,7 +624,7 @@ void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uin
 #endif
 
 #ifdef OUISPY_NETCOUNT
-#define NC_SET_SLOTS 2048
+#define NC_SET_SLOTS 512
 static uint32_t ncSet[NC_SET_SLOTS];
 static uint32_t ncSetCount = 0;
 static uint32_t ncRxTotal  = 0;
@@ -764,6 +764,16 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         esp_wifi_get_channel(&rxch, &rxsec);
         Serial.printf("[MESH-CMD] seq=%u cmd=0x%02x engine=%u plen=%u from=%.5s rxch=%u\n",
             cmd.seq, cmd.command, cmd.engine_id, cmd.payload_len, cmd.source_node_id, rxch);
+        if (cmd.command == 0x12) {
+            const uint8_t* dp = cmd.payload;
+            uint8_t dl = cmd.payload_len;
+            if (cfgTgtStrip(&dp, &dl, localNodeId) && dl >= 1) {
+                engineSetDenyMask(dp[0]);
+                Serial.printf("[MESH-CMD] fan-out deny mask=0x%02x\n", dp[0]);
+            }
+            sendAckPacket(&cmd);
+            return;
+        }
         bool targetMatch = true;
         bool targetableEngine = (cmd.engine_id < ENGINE_COUNT)
                                  && kEngineTargetable[cmd.engine_id];
