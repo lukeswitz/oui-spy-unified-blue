@@ -147,6 +147,19 @@ bool engineEnable(EngineId id) {
     // Already active?
     if (states[id] != ESTATE_DISABLED) return true;
 
+    if (id != ENGINE_PCAP &&
+        (states[ENGINE_PCAP] == ESTATE_SCANNING || autoPcapPending)) {
+        uint8_t pm = pcapActiveMode();
+        bool blocked = (pm == PCAP_MODE_BLE)
+                           ? isBleScanEngine(id)
+                           : (isWifiEngine(id) || isBleScanEngine(id));
+        if (blocked) {
+            Serial.printf("[ENGINE] enable %s refused — PCAP owns radio\n",
+                          engines[id]->name);
+            return false;
+        }
+    }
+
     // WiFi exclusivity — force-stop conflicting WiFi engines, except
     // wardrive+flock_wifi which run together via passive mode.
     if (isWifiEngine(id)) {
@@ -382,7 +395,7 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
         if (i == ENGINE_PCAP) continue;
         if (states[i] == ESTATE_DISABLED) continue;
         bool conflict = isBle ? isBleScanEngine((EngineId)i)
-                              : isWifiEngine((EngineId)i);
+                              : (isWifiEngine((EngineId)i) || isBleScanEngine((EngineId)i));
         if (!conflict) continue;
         autoPcapPausedMask |= ENGINE_BITMASK(i);
         engineDisable((EngineId)i);

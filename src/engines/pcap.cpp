@@ -389,9 +389,11 @@ static void pcapStart(void) {
 
     if (pcapMode == PCAP_MODE_WIFI) {
         bool meshOn = meshIsEnabled();
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect(false, false);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        if (!meshOn) {
+            WiFi.mode(WIFI_STA);
+            WiFi.disconnect(false, false);
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
         wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
                                     .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&country);
@@ -436,6 +438,10 @@ static void pcapStop(void) {
             vTaskDelay(pdMS_TO_TICKS(200));
             localScan->clearResults();
         }
+    }
+
+    if (meshIsEnabled()) {
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
     }
 
     if (pcapSenderHandle) xTaskNotifyGive(pcapSenderHandle);
@@ -538,6 +544,10 @@ static void pcapConfig(const uint8_t* payload, uint8_t len) {
             break;
         default: break;
     }
+}
+
+uint8_t pcapActiveMode(void) {
+    return pcapActive ? pcapMode : 0xFF;
 }
 
 void pcapGetStats(PcapStats* out) {

@@ -496,6 +496,7 @@ static void autoPcapSelftestTask(void* arg) {
 }
 #endif
 
+
 #ifdef OUISPY_WATCHDOG_SELFTEST
 static void watchdogSelftestTask(void* arg) {
     (void)arg;
