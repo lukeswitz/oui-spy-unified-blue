@@ -175,6 +175,29 @@ typedef struct __attribute__((packed)) {
             int16_t heading;
             double  pilot_lat;
             double  pilot_lon;
+            char     self_id[24];
+            int16_t  altitude_baro;
+            int16_t  vert_speed;
+            int16_t  operator_alt;
+            uint16_t area_count;
+            uint16_t area_radius;
+            int16_t  area_ceiling;
+            int16_t  area_floor;
+            uint16_t loc_timestamp;
+            uint8_t  ua_type;
+            uint8_t  id_type;
+            uint8_t  op_id_type;
+            uint8_t  op_location_type;
+            uint8_t  classification;
+            uint8_t  category_eu;
+            uint8_t  class_eu;
+            uint8_t  height_type;
+            uint8_t  status;
+            uint8_t  horiz_acc;
+            uint8_t  vert_acc;
+            uint8_t  baro_acc;
+            uint8_t  speed_acc;
+            uint8_t  self_id_type;
         } odid;
 
         // UniPwn

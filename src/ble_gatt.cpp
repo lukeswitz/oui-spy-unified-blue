@@ -1799,7 +1799,7 @@ void bleGattInit(void) {
 void bleGattNotifyDetection(const DetectionEvent* evt) {
     if (!phoneConnected || chrDetectionEvents == nullptr) return;
 
-    uint8_t buf[160];
+    uint8_t buf[200];
     size_t len = 19;
 
     // Common header: engine_id[1] mac[6] rssi[1] channel[1] ts_ms[4] method[1] source_node_id[5]
@@ -1832,7 +1832,30 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
             memcpy(buf + 83, &evt->ext.odid.heading, 2);
             memcpy(buf + 85, &evt->ext.odid.pilot_lat, 8);
             memcpy(buf + 93, &evt->ext.odid.pilot_lon, 8);
-            len = 101;
+            memcpy(buf + 101, evt->ext.odid.self_id, 24);
+            memcpy(buf + 125, &evt->ext.odid.altitude_baro, 2);
+            memcpy(buf + 127, &evt->ext.odid.vert_speed, 2);
+            memcpy(buf + 129, &evt->ext.odid.operator_alt, 2);
+            memcpy(buf + 131, &evt->ext.odid.area_count, 2);
+            memcpy(buf + 133, &evt->ext.odid.area_radius, 2);
+            memcpy(buf + 135, &evt->ext.odid.area_ceiling, 2);
+            memcpy(buf + 137, &evt->ext.odid.area_floor, 2);
+            memcpy(buf + 139, &evt->ext.odid.loc_timestamp, 2);
+            buf[141] = evt->ext.odid.ua_type;
+            buf[142] = evt->ext.odid.id_type;
+            buf[143] = evt->ext.odid.op_id_type;
+            buf[144] = evt->ext.odid.op_location_type;
+            buf[145] = evt->ext.odid.classification;
+            buf[146] = evt->ext.odid.category_eu;
+            buf[147] = evt->ext.odid.class_eu;
+            buf[148] = evt->ext.odid.height_type;
+            buf[149] = evt->ext.odid.status;
+            buf[150] = evt->ext.odid.horiz_acc;
+            buf[151] = evt->ext.odid.vert_acc;
+            buf[152] = evt->ext.odid.baro_acc;
+            buf[153] = evt->ext.odid.speed_acc;
+            buf[154] = evt->ext.odid.self_id_type;
+            len = 155;
             break;
 
         case ENGINE_UNIPWN:

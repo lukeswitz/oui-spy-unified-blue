@@ -109,7 +109,7 @@ void setup() {
 
     wifiStaSetEnabled(false);
 
-    detectionQueue  = xQueueCreate(64, sizeof(DetectionEvent));
+    detectionQueue  = xQueueCreate(16, sizeof(DetectionEvent));
     engineCmdQueue  = xQueueCreate(8,  sizeof(EngineCommand));
     peerStatusQueue = xQueueCreate(MESH_PEER_STATUS_QUEUE_DEPTH, sizeof(MeshStatusPacket));
     if (!detectionQueue || !engineCmdQueue || !peerStatusQueue) {

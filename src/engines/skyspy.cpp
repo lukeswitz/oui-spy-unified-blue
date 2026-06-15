@@ -25,9 +25,15 @@ struct DroneData {
     uint32_t lastSeen;
     char     uavId[ODID_ID_SIZE + 1];
     char     opId[ODID_ID_SIZE + 1];
+    char     selfId[ODID_STR_SIZE + 1];
     double   lat, lon;
     double   pilotLat, pilotLon;
     int16_t  altMsl, heightAgl, speed, heading;
+    int16_t  altBaro, vertSpeed, operatorAlt, areaCeiling, areaFloor;
+    uint16_t areaCount, areaRadius, locTimestamp;
+    uint8_t  uaType, idType, opIdType, opLocType, classification;
+    uint8_t  categoryEu, classEu, heightType, status;
+    uint8_t  horizAcc, vertAcc, baroAcc, speedAcc, selfIdType;
     bool     active;
 };
 
@@ -69,6 +75,29 @@ static void pushDroneDetection(DroneData* d, uint8_t method) {
     evt.ext.odid.heading = d->heading;
     evt.ext.odid.pilot_lat = d->pilotLat;
     evt.ext.odid.pilot_lon = d->pilotLon;
+    strncpy(evt.ext.odid.self_id, d->selfId, ODID_STR_SIZE);
+    evt.ext.odid.altitude_baro = d->altBaro;
+    evt.ext.odid.vert_speed = d->vertSpeed;
+    evt.ext.odid.operator_alt = d->operatorAlt;
+    evt.ext.odid.area_count = d->areaCount;
+    evt.ext.odid.area_radius = d->areaRadius;
+    evt.ext.odid.area_ceiling = d->areaCeiling;
+    evt.ext.odid.area_floor = d->areaFloor;
+    evt.ext.odid.loc_timestamp = d->locTimestamp;
+    evt.ext.odid.ua_type = d->uaType;
+    evt.ext.odid.id_type = d->idType;
+    evt.ext.odid.op_id_type = d->opIdType;
+    evt.ext.odid.op_location_type = d->opLocType;
+    evt.ext.odid.classification = d->classification;
+    evt.ext.odid.category_eu = d->categoryEu;
+    evt.ext.odid.class_eu = d->classEu;
+    evt.ext.odid.height_type = d->heightType;
+    evt.ext.odid.status = d->status;
+    evt.ext.odid.horiz_acc = d->horizAcc;
+    evt.ext.odid.vert_acc = d->vertAcc;
+    evt.ext.odid.baro_acc = d->baroAcc;
+    evt.ext.odid.speed_acc = d->speedAcc;
+    evt.ext.odid.self_id_type = d->selfIdType;
 
     Serial.printf("[SKYSPY] RID %02X%02X%02X%02X%02X%02X rssi=%d m=%u id=%.20s lat=%.5f lon=%.5f\n",
                   d->mac[0], d->mac[1], d->mac[2], d->mac[3], d->mac[4], d->mac[5],
@@ -78,22 +107,49 @@ static void pushDroneDetection(DroneData* d, uint8_t method) {
 }
 
 static void applyOdidData(DroneData* d) {
-    if (UAS_data.BasicIDValid[0])
+    if (UAS_data.BasicIDValid[0]) {
         strncpy(d->uavId, (char*)UAS_data.BasicID[0].UASID, ODID_ID_SIZE);
+        d->uaType = (uint8_t)UAS_data.BasicID[0].UAType;
+        d->idType = (uint8_t)UAS_data.BasicID[0].IDType;
+    }
     if (UAS_data.LocationValid) {
         d->lat = UAS_data.Location.Latitude;
         d->lon = UAS_data.Location.Longitude;
         d->altMsl = (int16_t)UAS_data.Location.AltitudeGeo;
+        d->altBaro = (int16_t)UAS_data.Location.AltitudeBaro;
         d->heightAgl = (int16_t)UAS_data.Location.Height;
         d->speed = (int16_t)UAS_data.Location.SpeedHorizontal;
+        d->vertSpeed = (int16_t)UAS_data.Location.SpeedVertical;
         d->heading = (int16_t)UAS_data.Location.Direction;
+        d->heightType = (uint8_t)UAS_data.Location.HeightType;
+        d->status = (uint8_t)UAS_data.Location.Status;
+        d->horizAcc = (uint8_t)UAS_data.Location.HorizAccuracy;
+        d->vertAcc = (uint8_t)UAS_data.Location.VertAccuracy;
+        d->baroAcc = (uint8_t)UAS_data.Location.BaroAccuracy;
+        d->speedAcc = (uint8_t)UAS_data.Location.SpeedAccuracy;
+        d->locTimestamp = (uint16_t)(UAS_data.Location.TimeStamp * 10.0f);
+    }
+    if (UAS_data.SelfIDValid) {
+        strncpy(d->selfId, (char*)UAS_data.SelfID.Desc, ODID_STR_SIZE);
+        d->selfIdType = (uint8_t)UAS_data.SelfID.DescType;
     }
     if (UAS_data.SystemValid) {
         d->pilotLat = UAS_data.System.OperatorLatitude;
         d->pilotLon = UAS_data.System.OperatorLongitude;
+        d->operatorAlt = (int16_t)UAS_data.System.OperatorAltitudeGeo;
+        d->areaCount = UAS_data.System.AreaCount;
+        d->areaRadius = UAS_data.System.AreaRadius;
+        d->areaCeiling = (int16_t)UAS_data.System.AreaCeiling;
+        d->areaFloor = (int16_t)UAS_data.System.AreaFloor;
+        d->opLocType = (uint8_t)UAS_data.System.OperatorLocationType;
+        d->classification = (uint8_t)UAS_data.System.ClassificationType;
+        d->categoryEu = (uint8_t)UAS_data.System.CategoryEU;
+        d->classEu = (uint8_t)UAS_data.System.ClassEU;
     }
-    if (UAS_data.OperatorIDValid)
+    if (UAS_data.OperatorIDValid) {
         strncpy(d->opId, (char*)UAS_data.OperatorID.OperatorId, ODID_ID_SIZE);
+        d->opIdType = (uint8_t)UAS_data.OperatorID.OperatorIdType;
+    }
 }
 
 static bool odidIsPlausible(const ODID_UAS_Data* u) {
