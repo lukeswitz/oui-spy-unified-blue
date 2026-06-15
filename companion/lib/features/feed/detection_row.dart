@@ -448,6 +448,73 @@ class _DetailSummary extends StatelessWidget {
         rows.add(_detailRow(context, 'Pilot Pos',
             '${odid.pilotLat!.toStringAsFixed(5)}, ${odid.pilotLon!.toStringAsFixed(5)}'));
       }
+      if (odid.uaType != null && odid.uaType! > 0) {
+        rows.add(_detailRow(context, 'UA Type', _odidUaType(odid.uaType!)));
+      }
+      if (odid.idType != null && odid.idType! > 0) {
+        rows.add(_detailRow(context, 'ID Type', _odidIdType(odid.idType!)));
+      }
+      if (odid.selfId != null && odid.selfId!.isNotEmpty) {
+        final selfIdLabel = (odid.selfIdType != null && odid.selfIdType! > 0)
+            ? 'Self-ID (${odid.selfIdType})'
+            : 'Self-ID';
+        rows.add(_detailRow(context, selfIdLabel, odid.selfId!));
+      }
+      if (odid.vertSpeed != null) {
+        rows.add(_detailRow(context, 'Vert Speed', '${odid.vertSpeed} m/s'));
+      }
+      if (odid.altitudeBaro != null) {
+        rows.add(_detailRow(context, 'Alt Baro', '${odid.altitudeBaro} m'));
+      }
+      if (odid.operatorAlt != null) {
+        rows.add(_detailRow(context, 'Operator Alt', '${odid.operatorAlt} m'));
+      }
+      if (odid.opLocationType != null) {
+        rows.add(_detailRow(context, 'Op Location', _odidOpLocationType(odid.opLocationType!)));
+      }
+      if (odid.heightType != null) {
+        rows.add(_detailRow(context, 'Height Ref', _odidHeightType(odid.heightType!)));
+      }
+      if (odid.status != null && odid.status! > 0) {
+        rows.add(_detailRow(context, 'UA Status', _odidStatus(odid.status!)));
+      }
+      if (odid.classification != null || odid.categoryEu != null || odid.classEu != null) {
+        final cls = odid.classification;
+        final isEu = cls == 1;
+        if (!isEu && cls != null) {
+          rows.add(_detailRow(context, 'Classification', 'Undeclared'));
+        }
+        if (isEu) {
+          if (odid.categoryEu != null) {
+            rows.add(_detailRow(context, 'EU Category', _odidCategoryEu(odid.categoryEu!)));
+          }
+          if (odid.classEu != null) {
+            rows.add(_detailRow(context, 'EU Class', _odidClassEu(odid.classEu!)));
+          }
+        }
+      }
+      if (odid.horizAcc != null || odid.vertAcc != null || odid.baroAcc != null || odid.speedAcc != null) {
+        final parts = <String>[];
+        if (odid.horizAcc != null && odid.horizAcc! > 0) parts.add('H:${odid.horizAcc}');
+        if (odid.vertAcc != null && odid.vertAcc! > 0) parts.add('V:${odid.vertAcc}');
+        if (odid.baroAcc != null && odid.baroAcc! > 0) parts.add('B:${odid.baroAcc}');
+        if (odid.speedAcc != null && odid.speedAcc! > 0) parts.add('S:${odid.speedAcc}');
+        if (parts.isNotEmpty) {
+          rows.add(_detailRow(context, 'Accuracy', parts.join('  ')));
+        }
+      }
+      if (odid.areaCount != null && odid.areaCount! > 0) {
+        final area = 'count:${odid.areaCount}'
+            '  r:${odid.areaRadius ?? 0}m'
+            '  ceil:${odid.areaCeiling ?? 0}m'
+            '  floor:${odid.areaFloor ?? 0}m';
+        rows.add(_detailRow(context, 'Op Area', area));
+      }
+      if (odid.locTimestamp != null && odid.locTimestamp! > 0) {
+        final secs = odid.locTimestamp! ~/ 10;
+        final tenths = odid.locTimestamp! % 10;
+        rows.add(_detailRow(context, 'Loc Timestamp', '${secs}s.$tenths after hour'));
+      }
     }
     if (detection.latitude != null) {
       rows.add(_detailRow(context, 'Location',
@@ -548,6 +615,41 @@ class _DetailSummary extends StatelessWidget {
       6 => 'WPA3-SAE',
       _ => 'WPA2-PSK',
     };
+  }
+
+  static String _odidUaType(int v) => const {
+        0: 'None', 1: 'Aeroplane', 2: 'Multirotor', 3: 'Gyroplane',
+        4: 'Hybrid Lift', 5: 'Ornithopter', 6: 'Glider', 7: 'Kite',
+        8: 'Free Balloon', 9: 'Captive Balloon', 10: 'Airship',
+        11: 'Free Fall/Parachute', 12: 'Rocket', 13: 'Tethered Powered',
+        14: 'Ground Obstacle', 15: 'Other',
+      }[v] ?? 'Unknown ($v)';
+
+  static String _odidIdType(int v) => const {
+        0: 'None', 1: 'Serial Number', 2: 'CAA Registration',
+        3: 'UTM (UUID)', 4: 'Specific Session ID',
+      }[v] ?? 'Unknown ($v)';
+
+  static String _odidOpLocationType(int v) => const {
+        0: 'Takeoff', 1: 'Live GNSS', 2: 'Fixed',
+      }[v] ?? 'Unknown ($v)';
+
+  static String _odidHeightType(int v) =>
+      v == 0 ? 'Above Takeoff' : v == 1 ? 'AGL' : 'Unknown ($v)';
+
+  static String _odidStatus(int v) => const {
+        0: 'Undeclared', 1: 'Ground', 2: 'Airborne',
+        3: 'Emergency', 4: 'Remote ID System Failure',
+      }[v] ?? 'Unknown ($v)';
+
+  static String _odidCategoryEu(int v) => const {
+        0: 'Undeclared', 1: 'Open', 2: 'Specific', 3: 'Certified',
+      }[v] ?? 'Unknown ($v)';
+
+  static String _odidClassEu(int v) {
+    if (v == 0) return 'Undeclared';
+    if (v >= 1 && v <= 6) return 'EU C${v - 1}';
+    return 'Unknown ($v)';
   }
 }
 

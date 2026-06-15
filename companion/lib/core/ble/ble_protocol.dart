@@ -34,7 +34,7 @@ class BleProtocol {
     final timestampMs = view.getUint32(9, Endian.little);
     final method = bytes[13];
 
-    const v31Sizes = {31: false, 36: true, 37: true, 96: false, 101: true, 23: false, 28: true, 47: false, 52: true, 74: true};
+    const v31Sizes = {31: false, 36: true, 37: true, 96: false, 101: true, 23: false, 28: true, 47: false, 52: true, 74: true, 155: true};
     final isV31 = v31Sizes[bytes.length] ?? (bytes.length >= 19 && engine == Engine.wardrive);
 
     final headerLen = isV31 ? 19 : 14;
@@ -420,6 +420,29 @@ class BleProtocol {
       droneHeading: view.getInt16(64, Endian.little),
       pilotLat: view.getFloat64(66, Endian.little),
       pilotLon: view.getFloat64(74, Endian.little),
+      selfId: ext.length >= 106 ? _extractString(ext, 82, 24) : null,
+      altitudeBaro: ext.length >= 108 ? view.getInt16(106, Endian.little) : null,
+      vertSpeed: ext.length >= 110 ? view.getInt16(108, Endian.little) : null,
+      operatorAlt: ext.length >= 112 ? view.getInt16(110, Endian.little) : null,
+      areaCount: ext.length >= 114 ? view.getUint16(112, Endian.little) : null,
+      areaRadius: ext.length >= 116 ? view.getUint16(114, Endian.little) : null,
+      areaCeiling: ext.length >= 118 ? view.getInt16(116, Endian.little) : null,
+      areaFloor: ext.length >= 120 ? view.getInt16(118, Endian.little) : null,
+      locTimestamp: ext.length >= 122 ? view.getUint16(120, Endian.little) : null,
+      uaType: ext.length >= 123 ? ext[122] : null,
+      idType: ext.length >= 124 ? ext[123] : null,
+      opIdType: ext.length >= 125 ? ext[124] : null,
+      opLocationType: ext.length >= 126 ? ext[125] : null,
+      classification: ext.length >= 127 ? ext[126] : null,
+      categoryEu: ext.length >= 128 ? ext[127] : null,
+      classEu: ext.length >= 129 ? ext[128] : null,
+      heightType: ext.length >= 130 ? ext[129] : null,
+      status: ext.length >= 131 ? ext[130] : null,
+      horizAcc: ext.length >= 132 ? ext[131] : null,
+      vertAcc: ext.length >= 133 ? ext[132] : null,
+      baroAcc: ext.length >= 134 ? ext[133] : null,
+      speedAcc: ext.length >= 135 ? ext[134] : null,
+      selfIdType: ext.length >= 136 ? ext[135] : null,
     );
   }
 

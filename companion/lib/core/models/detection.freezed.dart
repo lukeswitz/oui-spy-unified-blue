@@ -997,6 +997,29 @@ mixin _$OdidExtension {
   int? get droneHeading => throw _privateConstructorUsedError;
   double? get pilotLat => throw _privateConstructorUsedError;
   double? get pilotLon => throw _privateConstructorUsedError;
+  String? get selfId => throw _privateConstructorUsedError;
+  int? get altitudeBaro => throw _privateConstructorUsedError;
+  int? get vertSpeed => throw _privateConstructorUsedError;
+  int? get operatorAlt => throw _privateConstructorUsedError;
+  int? get areaCount => throw _privateConstructorUsedError;
+  int? get areaRadius => throw _privateConstructorUsedError;
+  int? get areaCeiling => throw _privateConstructorUsedError;
+  int? get areaFloor => throw _privateConstructorUsedError;
+  int? get locTimestamp => throw _privateConstructorUsedError;
+  int? get uaType => throw _privateConstructorUsedError;
+  int? get idType => throw _privateConstructorUsedError;
+  int? get opIdType => throw _privateConstructorUsedError;
+  int? get opLocationType => throw _privateConstructorUsedError;
+  int? get classification => throw _privateConstructorUsedError;
+  int? get categoryEu => throw _privateConstructorUsedError;
+  int? get classEu => throw _privateConstructorUsedError;
+  int? get heightType => throw _privateConstructorUsedError;
+  int? get status => throw _privateConstructorUsedError;
+  int? get horizAcc => throw _privateConstructorUsedError;
+  int? get vertAcc => throw _privateConstructorUsedError;
+  int? get baroAcc => throw _privateConstructorUsedError;
+  int? get speedAcc => throw _privateConstructorUsedError;
+  int? get selfIdType => throw _privateConstructorUsedError;
 
   /// Serializes this OdidExtension to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -1026,6 +1049,29 @@ abstract class $OdidExtensionCopyWith<$Res> {
     int? droneHeading,
     double? pilotLat,
     double? pilotLon,
+    String? selfId,
+    int? altitudeBaro,
+    int? vertSpeed,
+    int? operatorAlt,
+    int? areaCount,
+    int? areaRadius,
+    int? areaCeiling,
+    int? areaFloor,
+    int? locTimestamp,
+    int? uaType,
+    int? idType,
+    int? opIdType,
+    int? opLocationType,
+    int? classification,
+    int? categoryEu,
+    int? classEu,
+    int? heightType,
+    int? status,
+    int? horizAcc,
+    int? vertAcc,
+    int? baroAcc,
+    int? speedAcc,
+    int? selfIdType,
   });
 }
 
@@ -1054,6 +1100,29 @@ class _$OdidExtensionCopyWithImpl<$Res, $Val extends OdidExtension>
     Object? droneHeading = freezed,
     Object? pilotLat = freezed,
     Object? pilotLon = freezed,
+    Object? selfId = freezed,
+    Object? altitudeBaro = freezed,
+    Object? vertSpeed = freezed,
+    Object? operatorAlt = freezed,
+    Object? areaCount = freezed,
+    Object? areaRadius = freezed,
+    Object? areaCeiling = freezed,
+    Object? areaFloor = freezed,
+    Object? locTimestamp = freezed,
+    Object? uaType = freezed,
+    Object? idType = freezed,
+    Object? opIdType = freezed,
+    Object? opLocationType = freezed,
+    Object? classification = freezed,
+    Object? categoryEu = freezed,
+    Object? classEu = freezed,
+    Object? heightType = freezed,
+    Object? status = freezed,
+    Object? horizAcc = freezed,
+    Object? vertAcc = freezed,
+    Object? baroAcc = freezed,
+    Object? speedAcc = freezed,
+    Object? selfIdType = freezed,
   }) {
     return _then(
       _value.copyWith(
@@ -1097,6 +1166,98 @@ class _$OdidExtensionCopyWithImpl<$Res, $Val extends OdidExtension>
                 ? _value.pilotLon
                 : pilotLon // ignore: cast_nullable_to_non_nullable
                       as double?,
+            selfId: freezed == selfId
+                ? _value.selfId
+                : selfId // ignore: cast_nullable_to_non_nullable
+                      as String?,
+            altitudeBaro: freezed == altitudeBaro
+                ? _value.altitudeBaro
+                : altitudeBaro // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            vertSpeed: freezed == vertSpeed
+                ? _value.vertSpeed
+                : vertSpeed // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            operatorAlt: freezed == operatorAlt
+                ? _value.operatorAlt
+                : operatorAlt // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            areaCount: freezed == areaCount
+                ? _value.areaCount
+                : areaCount // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            areaRadius: freezed == areaRadius
+                ? _value.areaRadius
+                : areaRadius // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            areaCeiling: freezed == areaCeiling
+                ? _value.areaCeiling
+                : areaCeiling // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            areaFloor: freezed == areaFloor
+                ? _value.areaFloor
+                : areaFloor // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            locTimestamp: freezed == locTimestamp
+                ? _value.locTimestamp
+                : locTimestamp // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            uaType: freezed == uaType
+                ? _value.uaType
+                : uaType // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            idType: freezed == idType
+                ? _value.idType
+                : idType // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            opIdType: freezed == opIdType
+                ? _value.opIdType
+                : opIdType // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            opLocationType: freezed == opLocationType
+                ? _value.opLocationType
+                : opLocationType // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            classification: freezed == classification
+                ? _value.classification
+                : classification // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            categoryEu: freezed == categoryEu
+                ? _value.categoryEu
+                : categoryEu // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            classEu: freezed == classEu
+                ? _value.classEu
+                : classEu // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            heightType: freezed == heightType
+                ? _value.heightType
+                : heightType // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            status: freezed == status
+                ? _value.status
+                : status // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            horizAcc: freezed == horizAcc
+                ? _value.horizAcc
+                : horizAcc // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            vertAcc: freezed == vertAcc
+                ? _value.vertAcc
+                : vertAcc // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            baroAcc: freezed == baroAcc
+                ? _value.baroAcc
+                : baroAcc // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            speedAcc: freezed == speedAcc
+                ? _value.speedAcc
+                : speedAcc // ignore: cast_nullable_to_non_nullable
+                      as int?,
+            selfIdType: freezed == selfIdType
+                ? _value.selfIdType
+                : selfIdType // ignore: cast_nullable_to_non_nullable
+                      as int?,
           )
           as $Val,
     );
@@ -1123,6 +1284,29 @@ abstract class _$$OdidExtensionImplCopyWith<$Res>
     int? droneHeading,
     double? pilotLat,
     double? pilotLon,
+    String? selfId,
+    int? altitudeBaro,
+    int? vertSpeed,
+    int? operatorAlt,
+    int? areaCount,
+    int? areaRadius,
+    int? areaCeiling,
+    int? areaFloor,
+    int? locTimestamp,
+    int? uaType,
+    int? idType,
+    int? opIdType,
+    int? opLocationType,
+    int? classification,
+    int? categoryEu,
+    int? classEu,
+    int? heightType,
+    int? status,
+    int? horizAcc,
+    int? vertAcc,
+    int? baroAcc,
+    int? speedAcc,
+    int? selfIdType,
   });
 }
 
@@ -1150,6 +1334,29 @@ class __$$OdidExtensionImplCopyWithImpl<$Res>
     Object? droneHeading = freezed,
     Object? pilotLat = freezed,
     Object? pilotLon = freezed,
+    Object? selfId = freezed,
+    Object? altitudeBaro = freezed,
+    Object? vertSpeed = freezed,
+    Object? operatorAlt = freezed,
+    Object? areaCount = freezed,
+    Object? areaRadius = freezed,
+    Object? areaCeiling = freezed,
+    Object? areaFloor = freezed,
+    Object? locTimestamp = freezed,
+    Object? uaType = freezed,
+    Object? idType = freezed,
+    Object? opIdType = freezed,
+    Object? opLocationType = freezed,
+    Object? classification = freezed,
+    Object? categoryEu = freezed,
+    Object? classEu = freezed,
+    Object? heightType = freezed,
+    Object? status = freezed,
+    Object? horizAcc = freezed,
+    Object? vertAcc = freezed,
+    Object? baroAcc = freezed,
+    Object? speedAcc = freezed,
+    Object? selfIdType = freezed,
   }) {
     return _then(
       _$OdidExtensionImpl(
@@ -1193,6 +1400,98 @@ class __$$OdidExtensionImplCopyWithImpl<$Res>
             ? _value.pilotLon
             : pilotLon // ignore: cast_nullable_to_non_nullable
                   as double?,
+        selfId: freezed == selfId
+            ? _value.selfId
+            : selfId // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        altitudeBaro: freezed == altitudeBaro
+            ? _value.altitudeBaro
+            : altitudeBaro // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        vertSpeed: freezed == vertSpeed
+            ? _value.vertSpeed
+            : vertSpeed // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        operatorAlt: freezed == operatorAlt
+            ? _value.operatorAlt
+            : operatorAlt // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        areaCount: freezed == areaCount
+            ? _value.areaCount
+            : areaCount // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        areaRadius: freezed == areaRadius
+            ? _value.areaRadius
+            : areaRadius // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        areaCeiling: freezed == areaCeiling
+            ? _value.areaCeiling
+            : areaCeiling // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        areaFloor: freezed == areaFloor
+            ? _value.areaFloor
+            : areaFloor // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        locTimestamp: freezed == locTimestamp
+            ? _value.locTimestamp
+            : locTimestamp // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        uaType: freezed == uaType
+            ? _value.uaType
+            : uaType // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        idType: freezed == idType
+            ? _value.idType
+            : idType // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        opIdType: freezed == opIdType
+            ? _value.opIdType
+            : opIdType // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        opLocationType: freezed == opLocationType
+            ? _value.opLocationType
+            : opLocationType // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        classification: freezed == classification
+            ? _value.classification
+            : classification // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        categoryEu: freezed == categoryEu
+            ? _value.categoryEu
+            : categoryEu // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        classEu: freezed == classEu
+            ? _value.classEu
+            : classEu // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        heightType: freezed == heightType
+            ? _value.heightType
+            : heightType // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        status: freezed == status
+            ? _value.status
+            : status // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        horizAcc: freezed == horizAcc
+            ? _value.horizAcc
+            : horizAcc // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        vertAcc: freezed == vertAcc
+            ? _value.vertAcc
+            : vertAcc // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        baroAcc: freezed == baroAcc
+            ? _value.baroAcc
+            : baroAcc // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        speedAcc: freezed == speedAcc
+            ? _value.speedAcc
+            : speedAcc // ignore: cast_nullable_to_non_nullable
+                  as int?,
+        selfIdType: freezed == selfIdType
+            ? _value.selfIdType
+            : selfIdType // ignore: cast_nullable_to_non_nullable
+                  as int?,
       ),
     );
   }
@@ -1212,6 +1511,29 @@ class _$OdidExtensionImpl implements _OdidExtension {
     this.droneHeading,
     this.pilotLat,
     this.pilotLon,
+    this.selfId,
+    this.altitudeBaro,
+    this.vertSpeed,
+    this.operatorAlt,
+    this.areaCount,
+    this.areaRadius,
+    this.areaCeiling,
+    this.areaFloor,
+    this.locTimestamp,
+    this.uaType,
+    this.idType,
+    this.opIdType,
+    this.opLocationType,
+    this.classification,
+    this.categoryEu,
+    this.classEu,
+    this.heightType,
+    this.status,
+    this.horizAcc,
+    this.vertAcc,
+    this.baroAcc,
+    this.speedAcc,
+    this.selfIdType,
   });
 
   factory _$OdidExtensionImpl.fromJson(Map<String, dynamic> json) =>
@@ -1237,10 +1559,56 @@ class _$OdidExtensionImpl implements _OdidExtension {
   final double? pilotLat;
   @override
   final double? pilotLon;
+  @override
+  final String? selfId;
+  @override
+  final int? altitudeBaro;
+  @override
+  final int? vertSpeed;
+  @override
+  final int? operatorAlt;
+  @override
+  final int? areaCount;
+  @override
+  final int? areaRadius;
+  @override
+  final int? areaCeiling;
+  @override
+  final int? areaFloor;
+  @override
+  final int? locTimestamp;
+  @override
+  final int? uaType;
+  @override
+  final int? idType;
+  @override
+  final int? opIdType;
+  @override
+  final int? opLocationType;
+  @override
+  final int? classification;
+  @override
+  final int? categoryEu;
+  @override
+  final int? classEu;
+  @override
+  final int? heightType;
+  @override
+  final int? status;
+  @override
+  final int? horizAcc;
+  @override
+  final int? vertAcc;
+  @override
+  final int? baroAcc;
+  @override
+  final int? speedAcc;
+  @override
+  final int? selfIdType;
 
   @override
   String toString() {
-    return 'OdidExtension(uavId: $uavId, operatorId: $operatorId, droneLat: $droneLat, droneLon: $droneLon, altitudeMsl: $altitudeMsl, heightAgl: $heightAgl, droneSpeed: $droneSpeed, droneHeading: $droneHeading, pilotLat: $pilotLat, pilotLon: $pilotLon)';
+    return 'OdidExtension(uavId: $uavId, operatorId: $operatorId, droneLat: $droneLat, droneLon: $droneLon, altitudeMsl: $altitudeMsl, heightAgl: $heightAgl, droneSpeed: $droneSpeed, droneHeading: $droneHeading, pilotLat: $pilotLat, pilotLon: $pilotLon, selfId: $selfId, altitudeBaro: $altitudeBaro, vertSpeed: $vertSpeed, operatorAlt: $operatorAlt, areaCount: $areaCount, areaRadius: $areaRadius, areaCeiling: $areaCeiling, areaFloor: $areaFloor, locTimestamp: $locTimestamp, uaType: $uaType, idType: $idType, opIdType: $opIdType, opLocationType: $opLocationType, classification: $classification, categoryEu: $categoryEu, classEu: $classEu, heightType: $heightType, status: $status, horizAcc: $horizAcc, vertAcc: $vertAcc, baroAcc: $baroAcc, speedAcc: $speedAcc, selfIdType: $selfIdType)';
   }
 
   @override
@@ -1266,12 +1634,51 @@ class _$OdidExtensionImpl implements _OdidExtension {
             (identical(other.pilotLat, pilotLat) ||
                 other.pilotLat == pilotLat) &&
             (identical(other.pilotLon, pilotLon) ||
-                other.pilotLon == pilotLon));
+                other.pilotLon == pilotLon) &&
+            (identical(other.selfId, selfId) || other.selfId == selfId) &&
+            (identical(other.altitudeBaro, altitudeBaro) ||
+                other.altitudeBaro == altitudeBaro) &&
+            (identical(other.vertSpeed, vertSpeed) ||
+                other.vertSpeed == vertSpeed) &&
+            (identical(other.operatorAlt, operatorAlt) ||
+                other.operatorAlt == operatorAlt) &&
+            (identical(other.areaCount, areaCount) ||
+                other.areaCount == areaCount) &&
+            (identical(other.areaRadius, areaRadius) ||
+                other.areaRadius == areaRadius) &&
+            (identical(other.areaCeiling, areaCeiling) ||
+                other.areaCeiling == areaCeiling) &&
+            (identical(other.areaFloor, areaFloor) ||
+                other.areaFloor == areaFloor) &&
+            (identical(other.locTimestamp, locTimestamp) ||
+                other.locTimestamp == locTimestamp) &&
+            (identical(other.uaType, uaType) || other.uaType == uaType) &&
+            (identical(other.idType, idType) || other.idType == idType) &&
+            (identical(other.opIdType, opIdType) ||
+                other.opIdType == opIdType) &&
+            (identical(other.opLocationType, opLocationType) ||
+                other.opLocationType == opLocationType) &&
+            (identical(other.classification, classification) ||
+                other.classification == classification) &&
+            (identical(other.categoryEu, categoryEu) ||
+                other.categoryEu == categoryEu) &&
+            (identical(other.classEu, classEu) || other.classEu == classEu) &&
+            (identical(other.heightType, heightType) ||
+                other.heightType == heightType) &&
+            (identical(other.status, status) || other.status == status) &&
+            (identical(other.horizAcc, horizAcc) ||
+                other.horizAcc == horizAcc) &&
+            (identical(other.vertAcc, vertAcc) || other.vertAcc == vertAcc) &&
+            (identical(other.baroAcc, baroAcc) || other.baroAcc == baroAcc) &&
+            (identical(other.speedAcc, speedAcc) ||
+                other.speedAcc == speedAcc) &&
+            (identical(other.selfIdType, selfIdType) ||
+                other.selfIdType == selfIdType));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     runtimeType,
     uavId,
     operatorId,
@@ -1283,7 +1690,30 @@ class _$OdidExtensionImpl implements _OdidExtension {
     droneHeading,
     pilotLat,
     pilotLon,
-  );
+    selfId,
+    altitudeBaro,
+    vertSpeed,
+    operatorAlt,
+    areaCount,
+    areaRadius,
+    areaCeiling,
+    areaFloor,
+    locTimestamp,
+    uaType,
+    idType,
+    opIdType,
+    opLocationType,
+    classification,
+    categoryEu,
+    classEu,
+    heightType,
+    status,
+    horizAcc,
+    vertAcc,
+    baroAcc,
+    speedAcc,
+    selfIdType,
+  ]);
 
   /// Create a copy of OdidExtension
   /// with the given fields replaced by the non-null parameter values.
@@ -1311,6 +1741,29 @@ abstract class _OdidExtension implements OdidExtension {
     final int? droneHeading,
     final double? pilotLat,
     final double? pilotLon,
+    final String? selfId,
+    final int? altitudeBaro,
+    final int? vertSpeed,
+    final int? operatorAlt,
+    final int? areaCount,
+    final int? areaRadius,
+    final int? areaCeiling,
+    final int? areaFloor,
+    final int? locTimestamp,
+    final int? uaType,
+    final int? idType,
+    final int? opIdType,
+    final int? opLocationType,
+    final int? classification,
+    final int? categoryEu,
+    final int? classEu,
+    final int? heightType,
+    final int? status,
+    final int? horizAcc,
+    final int? vertAcc,
+    final int? baroAcc,
+    final int? speedAcc,
+    final int? selfIdType,
   }) = _$OdidExtensionImpl;
 
   factory _OdidExtension.fromJson(Map<String, dynamic> json) =
@@ -1336,6 +1789,52 @@ abstract class _OdidExtension implements OdidExtension {
   double? get pilotLat;
   @override
   double? get pilotLon;
+  @override
+  String? get selfId;
+  @override
+  int? get altitudeBaro;
+  @override
+  int? get vertSpeed;
+  @override
+  int? get operatorAlt;
+  @override
+  int? get areaCount;
+  @override
+  int? get areaRadius;
+  @override
+  int? get areaCeiling;
+  @override
+  int? get areaFloor;
+  @override
+  int? get locTimestamp;
+  @override
+  int? get uaType;
+  @override
+  int? get idType;
+  @override
+  int? get opIdType;
+  @override
+  int? get opLocationType;
+  @override
+  int? get classification;
+  @override
+  int? get categoryEu;
+  @override
+  int? get classEu;
+  @override
+  int? get heightType;
+  @override
+  int? get status;
+  @override
+  int? get horizAcc;
+  @override
+  int? get vertAcc;
+  @override
+  int? get baroAcc;
+  @override
+  int? get speedAcc;
+  @override
+  int? get selfIdType;
 
   /// Create a copy of OdidExtension
   /// with the given fields replaced by the non-null parameter values.
