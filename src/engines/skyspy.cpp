@@ -276,10 +276,18 @@ static void skyspyStop(void) {
 
 static void skyspyLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
-    if (!scanning || !bleScan) return;
+    if (!scanning) return;
+
+    if ((skyspyRadioMask & 0x01) && wifiCoexShouldHop(ENGINE_SKYSPY)) {
+        uint8_t pri = 0;
+        wifi_second_chan_t sec = WIFI_SECOND_CHAN_NONE;
+        if (esp_wifi_get_channel(&pri, &sec) == ESP_OK && pri != SKYSPY_WIFI_CH) {
+            esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
+        }
+    }
 
     // BLE scan cycle
-    if ((skyspyRadioMask & 0x02) && millis() - lastScanStart >= 1500) {
+    if (bleScan && (skyspyRadioMask & 0x02) && millis() - lastScanStart >= 1500) {
         if (!bleScan->isScanning()) {
             bleScan->start(1, false);
             lastScanStart = millis();
