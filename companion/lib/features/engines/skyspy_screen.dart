@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
-import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/engines/drone_map_view.dart';
@@ -16,12 +16,8 @@ class SkySpyScreen extends ConsumerWidget {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final isActive = state.isEngineActive(Engine.skySpy);
-    final drones = <String, Detection>{};
-    for (final d in state.recentDetections) {
-      if (d.engine == Engine.skySpy) drones[d.macAddress] = d;
-    }
-    final droneList = drones.values.toList()
-      ..sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
+    final groups = groupDronesByUavId(state.recentDetections);
+    final droneList = groups.map((g) => g.representative).toList();
 
     return Scaffold(
       backgroundColor: t.background,
@@ -63,9 +59,9 @@ class SkySpyScreen extends ConsumerWidget {
                         style: TextStyle(
                             color: t.textDim, letterSpacing: 2, fontSize: 12)))
                 : ListView.builder(
-                    itemCount: droneList.length,
+                    itemCount: groups.length,
                     itemBuilder: (context, index) =>
-                        _DroneRow(detection: droneList[index]),
+                        _DroneRow(group: groups[index]),
                   ),
           ),
         ],
@@ -75,12 +71,26 @@ class SkySpyScreen extends ConsumerWidget {
 }
 
 class _DroneRow extends StatelessWidget {
-  const _DroneRow({required this.detection});
-  final Detection detection;
+  const _DroneRow({required this.group});
+  final DroneGroup group;
+
+  static String _transport(String method) {
+    switch (method) {
+      case 'odid_nan':
+        return 'WiFi NAN';
+      case 'odid_beacon':
+        return 'WiFi Beacon';
+      case 'odid_ble':
+        return 'BLE';
+      default:
+        return method.toUpperCase();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
+    final detection = group.representative;
     final odid = detection.odid;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
 
@@ -100,7 +110,7 @@ class _DroneRow extends StatelessWidget {
               const Icon(Icons.flight, color: AppTheme.skySpy, size: 16),
               const SizedBox(width: 8),
               Expanded(child: Text(
-                odid?.uavId ?? detection.macAddress.toUpperCase(),
+                group.uavId,
                 style: const TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'monospace'),
               )),
               Text('${detection.rssi} dBm',
@@ -128,14 +138,34 @@ class _DroneRow extends StatelessWidget {
               if (odid.operatorId != null && odid.operatorId!.isNotEmpty)
                 _Chip('OP', odid.operatorId!),
             ]),
+            if (odid.selfId != null && odid.selfId!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _Chip('DESC', odid.selfId!),
+            ],
             if (odid.pilotLat != null && odid.pilotLat != 0) ...[
               const SizedBox(height: 4),
               _Chip('PILOT', '${odid.pilotLat!.toStringAsFixed(4)}, ${odid.pilotLon!.toStringAsFixed(4)}'),
             ],
           ],
-          const SizedBox(height: 4),
-          Text(detection.macAddress.toUpperCase(),
-              style: TextStyle(color: t.textDim, fontSize: 10, fontFamily: 'monospace')),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (var i = 0; i < group.macs.length; i++)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.skySpy.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${group.macs[i].toUpperCase()} · ${_transport(group.methods[i])}',
+                    style: TextStyle(color: t.textDim, fontSize: 9, fontFamily: 'monospace'),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );

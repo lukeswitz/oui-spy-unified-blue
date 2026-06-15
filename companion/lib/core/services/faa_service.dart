@@ -118,8 +118,8 @@ class FaaService extends ChangeNotifier {
   FaaService() {
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 12),
       headers: {
         'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:137.0) Gecko/20100101 Firefox/137.0',
@@ -145,12 +145,11 @@ class FaaService extends ChangeNotifier {
     final cached = await _fromCache(uasId);
     if (cached != null) return cached;
 
+    await _refreshCookie();
+
     for (var attempt = 0; attempt < _maxRetries; attempt++) {
       try {
-        await _refreshCookie();
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-
-        final resp = await _dio.get<Map<String, dynamic>>(
+        final resp = await _dio.get<dynamic>(
           _apiPath,
           queryParameters: {
             'itemsPerPage': '8',
@@ -162,22 +161,37 @@ class FaaService extends ChangeNotifier {
           },
         );
 
-        final body = resp.data;
-        if (body == null) return null;
+        final map = _asMap(resp.data);
+        if (map == null) return null;
 
-        final reg = _parseResponse(body);
+        final reg = _parseResponse(map);
         if (reg != null) await _toCache(uasId, reg);
         return reg;
       } on DioException catch (e) {
         final code = e.response?.statusCode ?? 0;
         if (code == 502 && attempt < _maxRetries - 1) {
           DebugLog.log('FAA: 502, retry ${attempt + 1}/$_maxRetries');
-          await Future<void>.delayed(
-              Duration(seconds: (attempt + 1) * 2));
+          await Future<void>.delayed(Duration(seconds: attempt + 1));
           continue;
         }
-        throw FaaLookupException(
-            e.response?.statusMessage ?? e.message ?? 'Network error');
+        throw FaaLookupException(e.response?.statusMessage ??
+            e.message ??
+            (code == 0 ? 'Timeout / no connection' : 'HTTP $code'));
+      } on FormatException catch (e) {
+        throw FaaLookupException('Bad response: ${e.message}');
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _asMap(dynamic body) {
+    if (body is Map<String, dynamic>) return body;
+    if (body is String && body.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map<String, dynamic>) return decoded;
+      } on FormatException catch (e) {
+        DebugLog.log('FAA: body not JSON: ${e.message}');
       }
     }
     return null;

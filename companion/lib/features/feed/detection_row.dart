@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
@@ -12,19 +13,6 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
-
-class DroneGroup {
-  const DroneGroup({
-    required this.uavId,
-    required this.representative,
-    required this.macs,
-    required this.methods,
-  });
-  final String uavId;
-  final Detection representative;
-  final List<String> macs;
-  final List<String> methods;
-}
 
 class DetectionRow extends ConsumerWidget {
   const DetectionRow({super.key, required this.detection});
@@ -988,7 +976,6 @@ class _FaaLookupTileState extends ConsumerState<_FaaLookupTile> {
       final svc = ref.read(faaServiceProvider);
       final reg = await svc.lookup(widget.uasId);
       if (!mounted) return;
-      setState(() => _loading = false);
       if (reg == null) {
         setState(() => _error = 'Not found in FAA database');
         return;
@@ -996,10 +983,12 @@ class _FaaLookupTileState extends ConsumerState<_FaaLookupTile> {
       widget.onResult(reg);
     } on FaaLookupException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.message;
-      });
+      setState(() => _error = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Lookup failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/export/detections_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -97,35 +98,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }).toList();
   }
 
-  List<DroneGroup> _groupDrones(List<Detection> detections) {
-    final byId = <String, List<Detection>>{};
-    for (final d in detections) {
-      if (d.engine != Engine.skySpy) continue;
-      final id = d.odid?.uavId ?? '';
-      if (id.isEmpty) continue;
-      byId.putIfAbsent(id, () => []).add(d);
-    }
-    return byId.entries.map((e) {
-      final sorted = e.value..sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
-      final macs = <String>[];
-      final methods = <String>[];
-      final seen = <String>{};
-      for (final d in sorted) {
-        if (seen.add(d.macAddress)) {
-          macs.add(d.macAddress);
-          methods.add(d.method);
-        }
-      }
-      return DroneGroup(
-        uavId: e.key,
-        representative: sorted.first,
-        macs: macs,
-        methods: methods,
-      );
-    }).toList()
-      ..sort((a, b) => b.representative.appTimestamp.compareTo(a.representative.appTimestamp));
-  }
-
   List<Detection> _sorted(List<Detection> detections) {
     final sorted = List<Detection>.from(detections);
     final asc = _sortAscending;
@@ -154,7 +126,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final filtered = _sorted(_filter(merged));
     final sourceNodes = state.isManagerConnected ? state.meshSourceNodes : const <String>{};
 
-    final droneGroups = _groupDrones(filtered);
+    final droneGroups = groupDronesByUavId(filtered);
     final droneUavIds = droneGroups.map((g) => g.uavId).toSet();
     final nonDroneRows = filtered.where((d) {
       if (d.engine != Engine.skySpy) return true;
