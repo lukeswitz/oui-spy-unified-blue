@@ -16,6 +16,7 @@ import 'package:oui_spy/theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+
 enum FeedMetric {
   time('TIME'),
   rssi('RSSI'),
@@ -96,6 +97,35 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }).toList();
   }
 
+  List<DroneGroup> _groupDrones(List<Detection> detections) {
+    final byId = <String, List<Detection>>{};
+    for (final d in detections) {
+      if (d.engine != Engine.skySpy) continue;
+      final id = d.odid?.uavId ?? '';
+      if (id.isEmpty) continue;
+      byId.putIfAbsent(id, () => []).add(d);
+    }
+    return byId.entries.map((e) {
+      final sorted = e.value..sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
+      final macs = <String>[];
+      final methods = <String>[];
+      final seen = <String>{};
+      for (final d in sorted) {
+        if (seen.add(d.macAddress)) {
+          macs.add(d.macAddress);
+          methods.add(d.method);
+        }
+      }
+      return DroneGroup(
+        uavId: e.key,
+        representative: sorted.first,
+        macs: macs,
+        methods: methods,
+      );
+    }).toList()
+      ..sort((a, b) => b.representative.appTimestamp.compareTo(a.representative.appTimestamp));
+  }
+
   List<Detection> _sorted(List<Detection> detections) {
     final sorted = List<Detection>.from(detections);
     final asc = _sortAscending;
@@ -123,6 +153,30 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     final merged = _mergeFlockFromWardrive(state.recentDetections, wd);
     final filtered = _sorted(_filter(merged));
     final sourceNodes = state.isManagerConnected ? state.meshSourceNodes : const <String>{};
+
+    final droneGroups = _groupDrones(filtered);
+    final droneUavIds = droneGroups.map((g) => g.uavId).toSet();
+    final nonDroneRows = filtered.where((d) {
+      if (d.engine != Engine.skySpy) return true;
+      final id = d.odid?.uavId ?? '';
+      return id.isEmpty || !droneUavIds.contains(id);
+    }).toList();
+
+    final feedItems = <Object>[...nonDroneRows, ...droneGroups];
+    feedItems.sort((a, b) {
+      DateTime ts(Object o) => o is Detection
+          ? o.appTimestamp
+          : (o as DroneGroup).representative.appTimestamp;
+      final byTime = _sortAscending
+          ? ts(a).compareTo(ts(b))
+          : ts(b).compareTo(ts(a));
+      if (a is Detection && b is Detection) {
+        final ia = nonDroneRows.indexOf(a);
+        final ib = nonDroneRows.indexOf(b);
+        return ia.compareTo(ib);
+      }
+      return byTime;
+    });
 
     return Scaffold(
       backgroundColor: t.background,
@@ -189,14 +243,20 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             if (_showStats && filtered.length >= 2)
               FeedStatsHeader(detections: filtered),
             Expanded(
-              child: filtered.isEmpty
+              child: feedItems.isEmpty
                   ? Center(child: Text(
                       state.isConnected ? 'NO DETECTIONS' : 'NOT CONNECTED',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(letterSpacing: 2),
                     ))
                   : ListView.builder(
-                      itemCount: filtered.length,
-                      itemBuilder: (context, index) => DetectionRow(detection: filtered[index]),
+                      itemCount: feedItems.length,
+                      itemBuilder: (context, index) {
+                        final item = feedItems[index];
+                        if (item is DroneGroup) {
+                          return DroneDetectionRow(group: item);
+                        }
+                        return DetectionRow(detection: item as Detection);
+                      },
                     ),
             ),
           ],

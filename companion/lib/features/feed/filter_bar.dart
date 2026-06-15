@@ -10,6 +10,7 @@ enum FilterPreset {
   ble('BLE', _bleEngines, RadioFilter.ble),
   wifi('WIFI', _wifiEngines, RadioFilter.wifi),
   flock('FLOCK', _flockEngines, null),
+  drones('DRONES', _droneEngines, null),
   alerts('ALERTS', _alertEngines, null);
 
   const FilterPreset(this.label, this.engines, this.radio);
@@ -32,6 +33,7 @@ enum FilterPreset {
     Engine.wardrive,
   };
   static const _flockEngines = {Engine.flockBle, Engine.flockWifi};
+  static const _droneEngines = {Engine.skySpy};
   static const _alertEngines = {Engine.detector};
 
   Set<Engine> resolve() => engines ?? Engine.values.toSet();

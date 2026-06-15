@@ -11,6 +11,19 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
+class DroneGroup {
+  const DroneGroup({
+    required this.uavId,
+    required this.representative,
+    required this.macs,
+    required this.methods,
+  });
+  final String uavId;
+  final Detection representative;
+  final List<String> macs;
+  final List<String> methods;
+}
+
 class DetectionRow extends ConsumerWidget {
   const DetectionRow({super.key, required this.detection});
   final Detection detection;
@@ -818,6 +831,224 @@ class _AuthPill extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+String _odidTransportLabel(String method) => switch (method) {
+  'odid_ble' => 'BLE',
+  'odid_nan' => 'WiFi NAN',
+  'odid_beacon' => 'WiFi Beacon',
+  _ => method.toUpperCase(),
+};
+
+class _TransportBadge extends StatelessWidget {
+  const _TransportBadge({required this.method});
+  final String method;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _odidTransportLabel(method);
+    final color = switch (method) {
+      'odid_ble' => const Color(0xFF4FA8FF),
+      'odid_nan' => Engine.skySpy.color,
+      'odid_beacon' => Engine.skySpy.color.withValues(alpha: 0.7),
+      _ => Engine.skySpy.color,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 0.7),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontFamily: 'monospace',
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+class DroneDetectionRow extends ConsumerWidget {
+  const DroneDetectionRow({super.key, required this.group});
+  final DroneGroup group;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final d = group.representative;
+    final timeDiff = DateTime.now().difference(d.appTimestamp);
+    final timeStr = _formatTimeDiffDrone(timeDiff);
+    final nodeLabel = d.sourceNodeId.isEmpty
+        ? ''
+        : ref.watch(appStateProvider).labelForNode(d.sourceNodeId);
+    final hasGps = d.odid?.droneLat != null && d.odid!.droneLat != 0;
+
+    final methodsUnique = <String>[];
+    final seenMethods = <String>{};
+    for (final m in group.methods) {
+      if (seenMethods.add(m)) methodsUnique.add(m);
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showDroneDetails(context, ref),
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        _showDroneDetails(context, ref);
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
+        ),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: Engine.skySpy.color, width: 3),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Icon(Icons.flight, size: 14, color: Engine.skySpy.color),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      group.uavId,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Engine.skySpy.color,
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+                  if (d.sourceNodeId.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warning.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.hub, size: 11, color: AppTheme.warning),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              nodeLabel.isNotEmpty ? nodeLabel : d.sourceNodeId,
+                              overflow: TextOverflow.ellipsis,
+                              softWrap: false,
+                              style: const TextStyle(
+                                color: AppTheme.warning,
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  _RssiBlock(rssi: d.rssi),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (int i = 0; i < group.macs.length; i++)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          group.macs[i].toUpperCase(),
+                          style: TextStyle(
+                            color: t.textSecondary,
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        _TransportBadge(method: group.methods[i]),
+                      ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Wrap(
+                    spacing: 4,
+                    children: methodsUnique.map((m) => _TransportBadge(method: m)).toList(),
+                  ),
+                  if (d.odid?.altitudeMsl != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${d.odid!.altitudeMsl}m MSL',
+                      style: TextStyle(
+                        color: t.textDim,
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  Text(timeStr,
+                      style: TextStyle(
+                        color: t.textDim,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.w700,
+                      )),
+                  const SizedBox(width: 4),
+                  _ActionIcon(
+                    icon: Icons.location_on,
+                    color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
+                    tooltip: hasGps ? 'Show on map' : 'No GPS fix',
+                    onTap: hasGps ? () => detectionZoomOnMap(context, ref, d) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDroneDetails(BuildContext context, WidgetRef ref) {
+    showDetectionDetails(context, ref, group.representative);
+  }
+
+  String _formatTimeDiffDrone(Duration diff) {
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    return '${diff.inHours}h';
   }
 }
 
