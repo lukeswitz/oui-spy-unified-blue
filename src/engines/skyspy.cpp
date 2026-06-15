@@ -55,6 +55,14 @@ static DroneData* findOrAllocDrone(uint8_t* mac) {
     return &drones[0]; // Overwrite oldest
 }
 
+static DroneData* findActiveDroneByMac(const uint8_t* mac) {
+    for (int i = 0; i < MAX_UAVS; i++) {
+        if (drones[i].active && memcmp(drones[i].mac, mac, 6) == 0)
+            return &drones[i];
+    }
+    return nullptr;
+}
+
 static void pushDroneDetection(DroneData* d, uint8_t method) {
     DetectionEvent evt;
     memset(&evt, 0, sizeof(evt));
@@ -191,18 +199,21 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
             decodeOpenDroneID(&UAS_data, odid);
         }
 
-        if (!odidIsPlausible(&UAS_data)) return;
-
         const uint8_t* native = dev->getAddress().getNative();
         if (!native) return;
         uint8_t mac[6];
         bleAddrToMac(native, mac);
 
-        DroneData* d = findOrAllocDrone(mac);
-        if (!d->active) {
-            memset(d, 0, sizeof(*d));
-            memcpy(d->mac, mac, 6);
-            d->active = true;
+        bool plausible = odidIsPlausible(&UAS_data);
+        DroneData* d = findActiveDroneByMac(mac);
+        if (!plausible && d == nullptr) return;
+        if (d == nullptr) {
+            d = findOrAllocDrone(mac);
+            if (!d->active) {
+                memset(d, 0, sizeof(*d));
+                memcpy(d->mac, mac, 6);
+                d->active = true;
+            }
         }
         d->lastSeen = millis();
         d->rssi = dev->getRSSI();
