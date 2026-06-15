@@ -96,6 +96,20 @@ static void applyOdidData(DroneData* d) {
         strncpy(d->opId, (char*)UAS_data.OperatorID.OperatorId, ODID_ID_SIZE);
 }
 
+static bool odidIsPlausible(const ODID_UAS_Data* u) {
+    for (int i = 0; i < ODID_BASIC_ID_MAX_MESSAGES; i++) {
+        if (!u->BasicIDValid[i]) continue;
+        const ODID_BasicID_data* b = &u->BasicID[i];
+        if (b->UAType == ODID_UATYPE_NONE) continue;
+        if (b->IDType == ODID_IDTYPE_NONE) continue;
+        for (int j = 0; j < ODID_ID_SIZE; j++) {
+            uint8_t c = (uint8_t)b->UASID[j];
+            if (c >= 0x20 && c <= 0x7E) return true;
+        }
+    }
+    return false;
+}
+
 // ============================================================================
 // BLE Callback — ODID advertisements
 // ============================================================================
@@ -121,9 +135,7 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
             decodeOpenDroneID(&UAS_data, odid);
         }
 
-        bool useful = UAS_data.BasicIDValid[0] || UAS_data.LocationValid ||
-                      UAS_data.SystemValid || UAS_data.OperatorIDValid;
-        if (!useful) return;
+        if (!odidIsPlausible(&UAS_data)) return;
 
         const uint8_t* native = dev->getAddress().getNative();
         if (!native) return;
@@ -166,6 +178,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
     if (memcmp(nanDest, &payload[4], 6) == 0) {
         char nanMac[6] = {0};
         if (odid_wifi_receive_message_pack_nan_action_frame(&UAS_data, nanMac, payload, length) == 0) {
+            if (!odidIsPlausible(&UAS_data)) return;
             DroneData* d = findOrAllocDrone(&payload[10]);
             if (!d->active) {
                 memset(d, 0, sizeof(*d));
@@ -193,6 +206,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
                 if (j < length) {
                     memset(&UAS_data, 0, sizeof(UAS_data));
                     odid_message_process_pack(&UAS_data, &payload[j], length - j);
+                    if (!odidIsPlausible(&UAS_data)) return;
 
                     DroneData* d = findOrAllocDrone(&payload[10]);
                     if (!d->active) {
