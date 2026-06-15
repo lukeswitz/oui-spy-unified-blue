@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -342,6 +344,28 @@ void showDetectionDetails(
                 ref.read(appStateProvider).removeDetection(detection.id);
               },
             ),
+            if (detection.odid?.uavId != null &&
+                detection.odid!.uavId!.isNotEmpty)
+              _FaaLookupTile(
+                uasId: detection.odid!.uavId!,
+                t: t,
+                onResult: (reg) {
+                  Navigator.pop(ctx);
+                  showModalBottomSheet<void>(
+                    context: context,
+                    backgroundColor: t.surface,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                    ),
+                    isScrollControlled: true,
+                    builder: (_) => _FaaResultSheet(
+                      reg: reg,
+                      uasId: detection.odid!.uavId!,
+                      t: t,
+                    ),
+                  );
+                },
+              ),
           ],
         ),
         ),
@@ -832,6 +856,249 @@ class _AuthPill extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FaaLookupTile extends ConsumerStatefulWidget {
+  const _FaaLookupTile({
+    required this.uasId,
+    required this.t,
+    required this.onResult,
+  });
+
+  final String uasId;
+  final ResolvedTheme t;
+  final void Function(FaaRegistration) onResult;
+
+  @override
+  ConsumerState<_FaaLookupTile> createState() => _FaaLookupTileState();
+}
+
+class _FaaLookupTileState extends ConsumerState<_FaaLookupTile> {
+  bool _loading = false;
+  String? _error;
+
+  Future<void> _lookup() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final svc = ref.read(faaServiceProvider);
+      final reg = await svc.lookup(widget.uasId);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (reg == null) {
+        setState(() => _error = 'Not found in FAA database');
+        return;
+      }
+      widget.onResult(reg);
+    } on FaaLookupException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          leading: _loading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.skySpy,
+                  ),
+                )
+              : const Icon(Icons.policy_outlined, color: AppTheme.skySpy),
+          title: Text(
+            'FAA RemoteID Lookup',
+            style: TextStyle(color: widget.t.textPrimary),
+          ),
+          subtitle: _error != null
+              ? Text(_error!,
+                  style: const TextStyle(color: AppTheme.error, fontSize: 11))
+              : Text('Query ${widget.uasId}',
+                  style: TextStyle(color: widget.t.textDim, fontSize: 11,
+                      fontFamily: 'monospace'),
+                  overflow: TextOverflow.ellipsis),
+          onTap: _loading ? null : _lookup,
+        ),
+      ],
+    );
+  }
+}
+
+class _FaaResultSheet extends StatelessWidget {
+  const _FaaResultSheet({
+    required this.reg,
+    required this.uasId,
+    required this.t,
+  });
+
+  final FaaRegistration reg;
+  final String uasId;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    final cacheAge = DateTime.now().difference(reg.cachedAt);
+    final cacheLabel = cacheAge.inSeconds < 5
+        ? 'live'
+        : 'cached ${_formatAge(cacheAge)} ago';
+
+    final rows = <_FaaRow>[];
+    if (reg.status.isNotEmpty) rows.add(_FaaRow('Status', reg.status));
+    if (reg.displayName.isNotEmpty) rows.add(_FaaRow('Aircraft', reg.displayName));
+    if (reg.brand.isNotEmpty && reg.makeName.isNotEmpty && reg.brand != reg.makeName) {
+      rows.add(_FaaRow('Make', reg.makeName));
+    }
+    if (reg.series.isNotEmpty) rows.add(_FaaRow('Series', reg.series));
+    if (reg.manufacturerCode.isNotEmpty) rows.add(_FaaRow('Mfr Code', reg.manufacturerCode));
+    if (reg.productType.isNotEmpty) rows.add(_FaaRow('Type', reg.productType));
+    if (reg.operationRules.isNotEmpty) rows.add(_FaaRow('Rules', reg.operationRules));
+    if (reg.complianceCategories.isNotEmpty) rows.add(_FaaRow('Compliance', reg.complianceCategories));
+    if (reg.trackingNumber.isNotEmpty) rows.add(_FaaRow('Tracking #', reg.trackingNumber));
+    if (reg.updatedAt.isNotEmpty) rows.add(_FaaRow('Updated', _formatDate(reg.updatedAt)));
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.75,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.policy_outlined, color: AppTheme.skySpy, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'FAA REGISTRATION',
+                      style: TextStyle(
+                        color: AppTheme.skySpy,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                  Text(cacheLabel,
+                      style: TextStyle(
+                          color: t.textDim, fontSize: 10, fontStyle: FontStyle.italic)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                uasId,
+                style: TextStyle(
+                    color: t.textSecondary,
+                    fontSize: 11,
+                    fontFamily: 'monospace'),
+              ),
+              const SizedBox(height: 12),
+              if (rows.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      'No registration data found',
+                      style: TextStyle(color: t.textDim, fontSize: 13),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: t.surfaceLight,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: t.border, width: 0.5),
+                  ),
+                  child: Column(
+                    children: rows
+                        .map((r) => _buildRow(context, r))
+                        .toList(),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(BuildContext context, _FaaRow r) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: r.value));
+          HapticFeedback.lightImpact();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${r.label} copied',
+                style: const TextStyle(color: Colors.white)),
+            backgroundColor: t.surfaceLight,
+            duration: const Duration(seconds: 1),
+          ));
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 90,
+                child: Text(r.label,
+                    style: TextStyle(
+                        color: t.textDim,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+              ),
+              Expanded(
+                child: Text(r.value,
+                    style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 11,
+                        fontFamily: 'monospace')),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatAge(Duration d) {
+    if (d.inSeconds < 60) return '${d.inSeconds}s';
+    if (d.inMinutes < 60) return '${d.inMinutes}m';
+    return '${d.inHours}h';
+  }
+
+  String _formatDate(String iso) {
+    try {
+      return DateFormat('yyyy-MM-dd').format(DateTime.parse(iso));
+    } on FormatException {
+      return iso;
+    }
+  }
+}
+
+class _FaaRow {
+  const _FaaRow(this.label, this.value);
+  final String label;
+  final String value;
 }
 
 String _odidTransportLabel(String method) => switch (method) {
