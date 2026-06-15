@@ -49,6 +49,23 @@ class FannedPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (geo.length == 0) {
+      final ringSize = headExtent * 2 + 20;
+      return SizedBox(
+        width: ringSize,
+        height: ringSize,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            CustomPaint(
+              size: Size(ringSize, ringSize),
+              painter: _RingPainter(color: lineColor, radius: headExtent * 0.72),
+            ),
+            head,
+          ],
+        ),
+      );
+    }
     final box = (geo.length + headExtent) * 2;
     final dx = geo.length * cos(geo.angle);
     final dy = geo.length * sin(geo.angle);
@@ -97,6 +114,37 @@ class _LeaderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LeaderPainter old) =>
       old.dx != dx || old.dy != dy || old.color != color;
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({required this.color, required this.radius});
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    canvas.drawCircle(
+      c,
+      radius,
+      Paint()
+        ..color = color.withValues(alpha: 0.75)
+        ..strokeWidth = 2.0
+        ..style = PaintingStyle.stroke,
+    );
+    canvas.drawCircle(
+      c,
+      radius,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.22)
+        ..strokeWidth = 0.8
+        ..style = PaintingStyle.stroke,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.color != color || old.radius != radius;
 }
 
 const String kDroneSvgAsset = 'assets/icons/drone.svg';
