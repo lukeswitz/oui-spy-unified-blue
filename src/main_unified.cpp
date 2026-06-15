@@ -231,6 +231,42 @@ static bool isNotifyDedupCooldown(const uint8_t* mac, uint8_t engine_id) {
     return false;
 }
 
+#define DRONE_DEDUP_SIZE 16
+static struct {
+    char uavId[21];
+    uint8_t method;
+    unsigned long ts;
+} droneDedup[DRONE_DEDUP_SIZE];
+static int droneDedupHead = 0;
+static int droneDedupCount = 0;
+
+static bool isDroneDedupCooldown(const char* uavId, uint8_t method) {
+    if (uavId == nullptr || uavId[0] == '\0') return false;
+    unsigned long now = millis();
+    unsigned long cooldown = (unsigned long)engineGetNotifyCooldownMs();
+    if (cooldown == 0) cooldown = NOTIFY_DEDUP_COOLDOWN_MS_DEFAULT;
+    for (int i = 0; i < droneDedupCount; i++) {
+        if (droneDedup[i].method == method &&
+            strncmp(droneDedup[i].uavId, uavId, 20) == 0) {
+            if (now - droneDedup[i].ts < cooldown) return true;
+            droneDedup[i].ts = now;
+            return false;
+        }
+    }
+    int idx;
+    if (droneDedupCount < DRONE_DEDUP_SIZE) {
+        idx = droneDedupCount++;
+    } else {
+        idx = droneDedupHead;
+        droneDedupHead = (droneDedupHead + 1) % DRONE_DEDUP_SIZE;
+    }
+    strncpy(droneDedup[idx].uavId, uavId, 20);
+    droneDedup[idx].uavId[20] = '\0';
+    droneDedup[idx].method = method;
+    droneDedup[idx].ts = now;
+    return false;
+}
+
 static void detectionNotifyTask(void* param) {
     DetectionEvent evt;
     Serial.println("[TASK] Detection notify task started");
@@ -258,8 +294,12 @@ static void detectionNotifyTask(void* param) {
                 continue;
             }
 
-            if (evt.engine_id != ENGINE_WARDRIVE &&
-                isNotifyDedupCooldown(evt.mac, evt.engine_id)) continue;
+            if (evt.engine_id == ENGINE_SKYSPY) {
+                if (isDroneDedupCooldown(evt.ext.odid.uav_id, evt.method)) continue;
+            } else if (evt.engine_id != ENGINE_WARDRIVE &&
+                       isNotifyDedupCooldown(evt.mac, evt.engine_id)) {
+                continue;
+            }
 
             // Audible + visual feedback only for target engines
             if (isAlertableEngine(evt.engine_id)) {

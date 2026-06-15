@@ -384,7 +384,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  channel;
     uint32_t timestamp_ms;
     uint8_t  method;
-    uint8_t  ext_data[96];
+    uint8_t  ext_data[152];
     uint8_t  ext_len;
 } MeshDetectionPacket;
 
