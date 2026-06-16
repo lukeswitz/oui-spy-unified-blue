@@ -11,9 +11,7 @@
 
 <img width="320" alt="OUI-SPY APEX" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
 
-**A wardriver that hunts surveillance gear. Seven detectors, one ESP32, one phone app.**
-
-Drive around. APEX listens on WiFi and BLE at the same time, flags anything on your watchlist or its surveillance-hardware tables, and plots every hit on a live map you can push straight to WiGLE.
+**A distributed detection / wardriver that hunts surveillance gear.** Seven detectors, one ESP32, one phone app. Deploy a fleet: range of ~200m with ESP-NOW node integration
 
 [**Quick Start**](#quick-start) · [**The Eight Engines**](#the-eight-engines) · [**The App**](#the-app) · [**Detection Internals**](#detection-internals) · [**Flash & Hardware**](#flash--hardware)
 
@@ -28,18 +26,6 @@ Drive around. APEX listens on WiFi and BLE at the same time, flags anything on y
 
 OUI-SPY APEX is a fork of the OUI-SPY unified firmware, rebuilt around two ideas: **run every detector simultaneously**, and **control it all from your phone instead of a captive portal**.
 
-| | Original OUI-SPY | APEX |
-|---|---|---|
-| Modes | One active per boot | All eight run at once, sharing radio time |
-| Switching | Reboot into a new mode from a WiFi boot selector | Toggle engines live in the app — no reboot |
-| Config | Captive portal at `192.168.4.1` | Phone app over BLE |
-| Output | Per-mode buzzer/LED | Live feed + map, WiGLE CSV export & upload |
-| Updates | Reflash over USB | OTA over WiFi or BLE after the first flash |
-
-Flash the board once. After that, every engine, channel, watchlist, capture, and firmware update lives in the app.
-
-<img width="610" alt="APEX overview" src="https://github.com/user-attachments/assets/0a798936-51f3-41d2-b103-cdec0e7d9134" />
-
 ---
 
 ## Quick Start
@@ -50,8 +36,6 @@ Flash the board once. After that, every engine, channel, watchlist, capture, and
 
 > [!IMPORTANT]
 > Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked. 
-
-- When a manager board is seen in pairing the nodes will be hidden- you can turn off the manager board to connect to nodes directly.
 
 - APEX doesn't auto-connect unless you opt in (*Settings → App → Connection*). On launch it drops stale links and waits for you to choose a device. 
 
@@ -80,7 +64,9 @@ Detailed mechanics for each are in [Detection Internals](#detection-internals).
 
 Flutter app for iOS, macOS, and Android, talking to the board over BLE.
 
-<img width="709" alt="App home" src="https://github.com/user-attachments/assets/62470061-c382-4724-8d86-72cb4dd4c1df" />
+
+<img width="610" alt="APEX overview" src="https://github.com/user-attachments/assets/0a798936-51f3-41d2-b103-cdec0e7d9134" />
+
 
 ### Home
 One card per engine. Tap a card to toggle the engine or open its settings. The status bar shows connection state, GPS fix, and node count.
@@ -95,8 +81,8 @@ Every detection from every engine, in one stream.
 ### Wardrive Map
 The headline feature.
 
-<img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
 
+<img width="709" alt="App home" src="https://github.com/user-attachments/assets/62470061-c382-4724-8d86-72cb4dd4c1df" />
 Pick any mix of targets — **WiGLE, Flock, Drone, Detector** — plus a radio (**WiFi, BLE, or Both**), then hit **START**. The chosen engines run together and plot hits live, color-graded by signal density, with your route trailing behind you.
 
 - **Drones** plot at their broadcast Remote ID position. When a drone reports no fix (0/0), it draws an RSSI range ring around you instead. Drone and pilot trails are tracked separately.
@@ -104,6 +90,8 @@ Pick any mix of targets — **WiGLE, Flock, Drone, Detector** — plus a radio (
 - The top bar tallies hits per engine in real time.
 - **Geofences** — draw an excluded zone and everything inside it goes silent: no feed entry, no logging, no CSV, no beep, and the radios pause entirely. Scanning resumes the moment you leave the zone.
 - Sessions save as WiGLE CSV and upload directly to WiGLE with your API key. Saved sessions replay on the map.
+
+<img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
 
 ### PCAP
 Packet capture with no SD card — frames stream over BLE and the app writes a `.pcap` you open in Wireshark.
