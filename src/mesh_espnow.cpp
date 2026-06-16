@@ -974,7 +974,17 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
-    if (plainLen < sizeof(MeshDetectionPacket)) return;
+    if (plainLen < sizeof(MeshDetectionPacket)) {
+        static unsigned long lastMismatchLog = 0;
+        if (plainLen >= MESH_NODE_ID_LEN && millis() - lastMismatchLog > 3000) {
+            lastMismatchLog = millis();
+            char id[MESH_NODE_ID_LEN + 1] = {0};
+            memcpy(id, plainBuf, MESH_NODE_ID_LEN);
+            Serial.printf("[MGR] det DROP from %s: %u < %u bytes — node firmware mismatch?\n",
+                          id, (unsigned)plainLen, (unsigned)sizeof(MeshDetectionPacket));
+        }
+        return;
+    }
 
     MeshDetectionPacket pkt;
     memcpy(&pkt, plainBuf, sizeof(MeshDetectionPacket));
