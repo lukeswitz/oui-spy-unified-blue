@@ -36,7 +36,7 @@ void foxhunterConfigApply(const uint8_t* data, size_t len);
 
 // Manager: periodically re-broadcast cached device-wide config to all nodes
 void bleGattRebroadcastConfigs(void);
-#ifdef OUISPY_STOP_SELFTEST
+#if defined(OUISPY_STOP_SELFTEST) || defined(OUISPY_ENGSTRESS)
 void mgrDebugSetCommanded(uint8_t mask);
 #endif
 

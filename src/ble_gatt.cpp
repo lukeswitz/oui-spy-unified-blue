@@ -343,7 +343,7 @@ void bleGattMaybeResliceWardrive(void) {
 #endif
 }
 
-#ifdef OUISPY_STOP_SELFTEST
+#if defined(OUISPY_STOP_SELFTEST) || defined(OUISPY_ENGSTRESS)
 void mgrDebugSetCommanded(uint8_t mask) {
     mgrCommandedMask = mask;
     for (int i = 0; i < ENGINE_COUNT; i++)

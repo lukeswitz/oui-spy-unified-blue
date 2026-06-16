@@ -19,6 +19,7 @@
 
 #include "protocol.h"
 #include "engine_registry.h"
+#include "radio_coex.h"
 #include "ignore_list.h"
 #include "ble_gatt.h"
 #include "mesh_espnow.h"
@@ -536,6 +537,26 @@ static void autoPcapSelftestTask(void* arg) {
 }
 #endif
 
+#ifdef OUISPY_RADIOWATCH
+static void radioWatchTask(void* arg) {
+    (void)arg;
+    uint32_t prev = 0;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint32_t now = g_engRawSeen;
+        uint32_t d = now - prev;
+        prev = now;
+        uint8_t m = engineGetActiveMask();
+        bool scan = false;
+        NimBLEScan* s = NimBLEDevice::getScan();
+        if (s) scan = s->isScanning();
+        Serial.printf("[RW] mask=0x%02X raw+=%lu wifiCoex=%d bleScan=%d heap=%lu\n",
+                      m, (unsigned long)d, wifiCoexActive() ? 1 : 0,
+                      scan ? 1 : 0, (unsigned long)esp_get_free_heap_size());
+    }
+}
+#endif
+
 #ifdef OUISPY_WATCHDOG_SELFTEST
 static void watchdogSelftestTask(void* arg) {
     (void)arg;
@@ -787,6 +808,10 @@ void setup() {
 #ifdef OUISPY_AUTOPCAP_SELFTEST
     xTaskCreatePinnedToCore(autoPcapSelftestTask, "aptest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] AUTO-PCAP SELFTEST armed");
+#endif
+#ifdef OUISPY_RADIOWATCH
+    xTaskCreatePinnedToCore(radioWatchTask, "radiowatch", 4096, NULL, 1, NULL, 1);
+    Serial.println("[INIT] RADIO WATCH armed");
 #endif
 #ifdef OUISPY_WATCHDOG_SELFTEST
     xTaskCreatePinnedToCore(watchdogSelftestTask, "wdtest", 4096, NULL, 1, NULL, 1);

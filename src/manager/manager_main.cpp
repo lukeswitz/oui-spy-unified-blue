@@ -267,4 +267,49 @@ void loop() {
             (unsigned long)((millis() - ncT0) / 1000), (unsigned)ESP.getFreeHeap());
     }
 #endif
+#ifdef OUISPY_ENGSTRESS
+    static bool esInit = false;
+    static uint32_t esT = 0;
+    static int esCycle = 0;
+    static bool esOn = false;
+    const uint8_t ES_MASK = (1u << ENGINE_WARDRIVE) | (1u << ENGINE_FLOCK_BLE) |
+                            (1u << ENGINE_FLOCK_WIFI) | (1u << ENGINE_SKYSPY) |
+                            (1u << ENGINE_DETECTOR);
+    auto esEnableAll = []() {
+        uint8_t cfg[11] = {0}; cfg[9] = 1; cfg[10] = 11;
+        meshBroadcastCommand(0x10, ENGINE_WARDRIVE, cfg, sizeof(cfg));
+        meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+        meshBroadcastCommand(0x01, ENGINE_FLOCK_BLE, nullptr, 0);
+        meshBroadcastCommand(0x01, ENGINE_FLOCK_WIFI, nullptr, 0);
+        meshBroadcastCommand(0x01, ENGINE_SKYSPY, nullptr, 0);
+        meshBroadcastCommand(0x01, ENGINE_DETECTOR, nullptr, 0);
+    };
+    if (!esInit && millis() > 8000) {
+        MeshLiveNode ln[8];
+        if (meshGetLiveNodes(ln, 8, 30000) > 0) {
+            esInit = true; esT = millis(); esOn = true;
+            mgrDebugSetCommanded(ES_MASK);
+            esEnableAll();
+            Serial.println("[ESTRESS] cycle 0 ON (all-4)");
+        }
+    }
+    if (esInit && esCycle < 10) {
+        uint32_t onHold = (esCycle < 4) ? 5000 : 2500;
+        uint32_t offHold = (esCycle < 4) ? (uint32_t)(3000 - esCycle * 600) : 400;
+        if (millis() - esT >= (esOn ? onHold : offHold)) {
+            esT = millis(); esOn = !esOn;
+            if (esOn) {
+                mgrDebugSetCommanded(ES_MASK);
+                esEnableAll();
+                Serial.printf("[ESTRESS] cycle %d ON\n", esCycle);
+            } else {
+                mgrDebugSetCommanded(0);
+                meshBroadcastCommand(0x0F, 0, nullptr, 0);
+                esCycle++;
+                Serial.printf("[ESTRESS] cycle %d OFF (DISABLE_ALL, next off=%lums)\n",
+                              esCycle, (unsigned long)((esCycle < 4) ? (3000 - esCycle * 600) : 400));
+            }
+        }
+    }
+#endif
 }
