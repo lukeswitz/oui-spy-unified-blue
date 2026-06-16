@@ -239,7 +239,8 @@ void detectionStartFoxhunt(
 }
 
 void showDetectionDetails(
-    BuildContext context, WidgetRef ref, Detection detection) {
+    BuildContext context, WidgetRef ref, Detection detection,
+    {bool showMapAction = true}) {
     final nodeLabel = detection.sourceNodeId.isEmpty
         ? ''
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
@@ -254,12 +255,11 @@ void showDetectionDetails(
       isScrollControlled: true,
       builder: (ctx) => ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.75,
+          maxHeight: MediaQuery.of(ctx).size.height * 0.88,
         ),
         child: Padding(
         padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -277,8 +277,11 @@ void showDetectionDetails(
               Text(detection.deviceName,
                   style: TextStyle(color: t.textSecondary, fontSize: 12)),
             const SizedBox(height: 8),
-            // Detail summary in bottom sheet
-            _DetailSummary(detection: detection, t: t, manufacturer: vendor, nodeLabel: nodeLabel),
+            Flexible(
+              child: SingleChildScrollView(
+                child: _DetailSummary(detection: detection, t: t, manufacturer: vendor, nodeLabel: nodeLabel),
+              ),
+            ),
             const SizedBox(height: 12),
             ListTile(
               leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
@@ -291,7 +294,7 @@ void showDetectionDetails(
                 detectionStartFoxhunt(context, ref, detection);
               },
             ),
-            if (detection.latitude != null)
+            if (showMapAction && detection.latitude != null)
               ListTile(
                 leading: const Icon(Icons.map, color: AppTheme.gpsGood),
                 title: const Text('Show on Map',
@@ -325,11 +328,12 @@ void showDetectionDetails(
               leading: const Icon(Icons.delete_outline, color: AppTheme.error),
               title: const Text('Delete Detection',
                   style: TextStyle(color: AppTheme.error)),
-              subtitle: Text('Remove from feed',
+              subtitle: Text('Remove all MACs of this device',
                   style: TextStyle(color: t.textDim, fontSize: 11)),
               onTap: () {
                 Navigator.pop(ctx);
-                ref.read(appStateProvider).removeDetection(detection.id);
+                ref.read(appStateProvider).removeDetectionGroup(detection);
+                ref.read(wardriveProvider).removeDetectionGroup(detection);
               },
             ),
             if (detection.odid?.uavId != null &&
@@ -357,7 +361,6 @@ void showDetectionDetails(
           ],
         ),
         ),
-      ),
       ),
     );
 }

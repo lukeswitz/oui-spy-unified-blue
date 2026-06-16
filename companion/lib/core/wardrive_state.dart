@@ -397,6 +397,93 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Stop a single engine that the active wardrive session owns (e.g. user
+  /// toggled its card off on the home screen). Drops the owning target(s) and
+  /// disables the engine(s) that only those targets needed; if nothing is left
+  /// to scan, tears down the whole session. Keeps [selectedTargets] intact for
+  /// the next run when the session is stopped.
+  Future<void> stopOwnedEngine(Engine e) async {
+    if (!isActive) return;
+    if (e == Engine.wardrive) {
+      await stopSession();
+      return;
+    }
+    final removed = selectedTargets.where((t) => t.engines(radio).contains(e)).toSet();
+    if (removed.isEmpty) {
+      try {
+        await _ble.disableEngine(e);
+      } catch (err) {
+        DebugLog.log('WARDRIVE: stopOwnedEngine $e error: $err');
+      }
+      return;
+    }
+    final remaining = selectedTargets.where((t) => !removed.contains(t)).toSet();
+    if (remaining.isEmpty) {
+      await stopSession();
+      return;
+    }
+    final keep = <Engine>{};
+    for (final t in remaining) {
+      keep.addAll(t.engines(radio));
+    }
+    final toStop = <Engine>{};
+    for (final t in removed) {
+      toStop.addAll(t.engines(radio));
+    }
+    toStop.removeAll(keep);
+    selectedTargets
+      ..clear()
+      ..addAll(remaining);
+    for (final eng in toStop) {
+      try {
+        await _ble.disableEngine(eng);
+      } catch (err) {
+        DebugLog.log('WARDRIVE: stopOwnedEngine $eng error: $err');
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Remove every map/session member of the same logical detection as [d]
+  /// (by UAS-ID for Remote-ID drones, else by MAC) from the in-memory overlay
+  /// and from the database, so a deleted drone/device does not reappear.
+  Future<void> removeDetectionGroup(Detection d) async {
+    final uav = d.odid?.uavId;
+    final byUav = uav != null && uav.isNotEmpty;
+    final macs = <String>{};
+    final keys = <String>[];
+    _dedupedByMac.forEach((k, det) {
+      final match =
+          byUav ? (det.odid?.uavId == uav) : (det.macAddress == d.macAddress);
+      if (match) {
+        keys.add(k);
+        macs.add(det.macAddress);
+      }
+    });
+    for (final k in keys) {
+      final det = _dedupedByMac.remove(k);
+      if (det != null) _dedupedOrdered.remove(det);
+    }
+    for (final m in macs) {
+      _flockByMac.remove(m);
+      _detectorByMac.remove(m);
+      _flockMacs.remove(m);
+      _detectorMacs.remove(m);
+      uniqueMacs.remove(m);
+    }
+    _cachedFlockDetections = null;
+    _cachedDetectorDetections = null;
+    final sid = sessionId.isNotEmpty ? sessionId : (_lastCompletedSessionId ?? '');
+    if (sid.isNotEmpty && macs.isNotEmpty) {
+      try {
+        await _db.deleteDetectionsByMacs(sid, macs.toList());
+      } catch (e) {
+        DebugLog.log('WARDRIVE: deleteDetectionsByMacs failed: $e');
+      }
+    }
+    notifyListeners();
+  }
+
   Future<void> startSession() async {
     final gpsOk = await _gps.start();
     if (!gpsOk) {
@@ -1101,8 +1188,8 @@ class WardriveController extends ChangeNotifier {
       for (final e in _pausedByExclusion) {
         _ble.disableEngine(e);
       }
-      _autoPcapPausedByExclusion = true;
-      _ble.setAutoPcap(false);
+      _autoPcapPausedByExclusion = _ble.latestPcapStats.autoEnabled;
+      if (_autoPcapPausedByExclusion) _ble.setAutoPcap(false);
     } else {
       DebugLog.log('WARDRIVE: exited exclusion zone — restoring radios');
       _enableEnginesSequentially(_pausedByExclusion.toList());

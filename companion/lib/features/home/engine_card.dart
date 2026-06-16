@@ -96,6 +96,23 @@ class _EngineCardState extends ConsumerState<EngineCard>
       return;
     }
 
+    final wd = ref.read(wardriveProvider);
+    final ownedByWardrive = wd.isActive &&
+        (wd.activeEngines.contains(widget.engine) ||
+            (wd.includesFlock &&
+                (widget.engine == Engine.flockBle ||
+                    widget.engine == Engine.flockWifi)));
+    if (!value && ownedByWardrive) {
+      setState(() => _optimisticValue = false);
+      _optimisticTimer?.cancel();
+      _optimisticTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) setState(() => _optimisticValue = null);
+      });
+      wd.stopOwnedEngine(widget.engine);
+      DebugLog.log('ENGINE: home stop ${widget.engine.name} via wardrive session');
+      return;
+    }
+
     final appState = ref.read(appStateProvider);
     if (widget.engine == Engine.foxhunter && value) {
       if (appState.foxhunterTarget == null ||

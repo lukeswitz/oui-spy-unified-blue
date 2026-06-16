@@ -271,6 +271,15 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteDetectionById(int id) =>
       (delete(detections)..where((d) => d.id.equals(id))).go();
 
+  /// Delete all detections in [sessionId] whose MAC is in [macs]. Used to drop
+  /// a whole logical detection (all MACs of one drone/device) at once.
+  Future<void> deleteDetectionsByMacs(String sessionId, List<String> macs) {
+    if (macs.isEmpty) return Future.value();
+    return (delete(detections)
+          ..where((d) => d.sessionId.equals(sessionId) & d.macAddress.isIn(macs)))
+        .go();
+  }
+
   // -- WiGLE upload operations --
 
   Future<void> insertWigleUpload(WigleUploadsCompanion upload) =>

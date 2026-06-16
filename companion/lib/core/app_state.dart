@@ -649,6 +649,43 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove every feed entry belonging to the same logical detection as [d].
+  /// Drones broadcast on multiple MACs under one UAS-ID, so deleting a single
+  /// row left the group intact; this removes all members (by UAS-ID for
+  /// Remote-ID, else by MAC) plus their tracks and unique-count membership.
+  void removeDetectionGroup(Detection d) {
+    final uav = d.odid?.uavId;
+    final byUav = uav != null && uav.isNotEmpty;
+    final macs = <String>{};
+    recentDetections.removeWhere((x) {
+      final match =
+          byUav ? (x.odid?.uavId == uav) : (x.macAddress == d.macAddress);
+      if (match) macs.add(x.macAddress);
+      return match;
+    });
+    if (byUav) {
+      _droneTracks.remove(uav);
+      _pilotTracks.remove(uav);
+    }
+    for (final m in macs) {
+      _droneTracks.remove(m);
+      _pilotTracks.remove(m);
+      for (final s in _uniqueMacsPerEngine.values) {
+        s.remove(m);
+      }
+    }
+    _rebuildDedupeIndex();
+    notifyListeners();
+  }
+
+  void _rebuildDedupeIndex() {
+    _dedupeIndex.clear();
+    for (var i = 0; i < recentDetections.length; i++) {
+      final dd = recentDetections[i];
+      _dedupeIndex['${dd.macAddress}|${dd.engine.name}'] = i;
+    }
+  }
+
   Future<void> enableMesh({
     required bool encryption,
     required List<Uint8List> peerMacs,
@@ -719,12 +756,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Stable key for a drone's flight track. Remote-ID drones rotate their MAC
+  /// per advert, so keying tracks by MAC yields one point per key (no path).
+  /// Key by UAS-ID when present so successive positions accumulate.
+  static String droneTrackKey(Detection d) {
+    final id = d.odid?.uavId;
+    return (id != null && id.isNotEmpty) ? id : d.macAddress;
+  }
+
   void _recordDroneTrack(Detection det) {
     if (det.engine != Engine.skySpy) return;
     final o = det.odid;
     if (o == null) return;
-    _appendTrack(_droneTracks, det.macAddress, o.droneLat, o.droneLon);
-    _appendTrack(_pilotTracks, det.macAddress, o.pilotLat, o.pilotLon);
+    final key = droneTrackKey(det);
+    _appendTrack(_droneTracks, key, o.droneLat, o.droneLon);
+    _appendTrack(_pilotTracks, key, o.pilotLat, o.pilotLon);
   }
 
   void _appendTrack(

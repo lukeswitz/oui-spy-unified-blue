@@ -278,9 +278,15 @@ class PilotPin extends StatelessWidget {
     super.key,
     required this.color,
     required this.size,
+    this.isTakeoff = false,
   });
   final Color color;
   final double size;
+
+  /// When the operator location is the take-off point (ODID
+  /// OperatorLocationType == Takeoff), show a launch icon instead of the
+  /// live-operator icon.
+  final bool isTakeoff;
 
   @override
   Widget build(BuildContext context) {
@@ -313,13 +319,19 @@ class PilotPin extends StatelessWidget {
               ],
             ),
             alignment: Alignment.center,
-            child: SvgPicture.asset(
-              kPilotSvgAsset,
-              width: size * 0.6,
-              height: size * 0.6,
-              colorFilter:
-                  const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-            ),
+            child: isTakeoff
+                ? Icon(
+                    Icons.flight_takeoff,
+                    size: size * 0.62,
+                    color: Colors.white,
+                  )
+                : SvgPicture.asset(
+                    kPilotSvgAsset,
+                    width: size * 0.6,
+                    height: size * 0.6,
+                    colorFilter:
+                        const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                  ),
           ),
         ),
       ),

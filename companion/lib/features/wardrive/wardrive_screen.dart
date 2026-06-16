@@ -1190,7 +1190,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         }
 
         final dronePt = ridPt;
-        final droneTrack = appState.droneTrack(d.macAddress);
+        final trackKey = AppState.droneTrackKey(d);
+        final droneTrack = appState.droneTrack(trackKey);
         if (droneTrack != null && droneTrack.length >= 2) {
           trails.add(Polyline(
             points: droneTrack,
@@ -1198,7 +1199,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             strokeWidth: 2.2,
           ));
         }
-        final pilotTrack = appState.pilotTrack(d.macAddress);
+        final pilotTrack = appState.pilotTrack(trackKey);
         if (pilotTrack != null && pilotTrack.length >= 2) {
           trails.add(Polyline(
             points: pilotTrack,
@@ -1233,7 +1234,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => showDetectionDetails(context, ref, d),
-              child: PilotPin(color: color, size: psize),
+              child: PilotPin(
+                color: color,
+                size: psize,
+                isTakeoff: (d.odid?.opLocationType ?? -1) == 0,
+              ),
             ),
           ));
           tethers.add(Polyline(

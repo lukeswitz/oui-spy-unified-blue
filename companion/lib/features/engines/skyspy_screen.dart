@@ -65,8 +65,9 @@ class SkySpyScreen extends ConsumerWidget {
                       final g = groups[index];
                       return GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: () =>
-                            showDetectionDetails(context, ref, g.representative),
+                        onTap: () => showDetectionDetails(
+                            context, ref, g.representative,
+                            showMapAction: false),
                         child: _DroneRow(group: g),
                       );
                     },

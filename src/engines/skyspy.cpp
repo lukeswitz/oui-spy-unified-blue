@@ -38,6 +38,7 @@ struct DroneData {
 };
 
 static DroneData drones[MAX_UAVS];
+static DroneData* g_lastBleDrone = nullptr;
 static NimBLEScan* bleScan = nullptr;
 static bool scanning = false;
 static unsigned long lastScanStart = 0;
@@ -58,6 +59,15 @@ static DroneData* findOrAllocDrone(uint8_t* mac) {
 static DroneData* findActiveDroneByMac(const uint8_t* mac) {
     for (int i = 0; i < MAX_UAVS; i++) {
         if (drones[i].active && memcmp(drones[i].mac, mac, 6) == 0)
+            return &drones[i];
+    }
+    return nullptr;
+}
+
+static DroneData* findActiveDroneByUavId(const char* uid) {
+    if (!uid || uid[0] == '\0') return nullptr;
+    for (int i = 0; i < MAX_UAVS; i++) {
+        if (drones[i].active && strncmp(drones[i].uavId, uid, ODID_ID_SIZE) == 0)
             return &drones[i];
     }
     return nullptr;
@@ -205,16 +215,29 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         bleAddrToMac(native, mac);
 
         bool plausible = odidIsPlausible(&UAS_data);
-        DroneData* d = findActiveDroneByMac(mac);
-        if (!plausible && d == nullptr) return;
-        if (d == nullptr) {
-            d = findOrAllocDrone(mac);
-            if (!d->active) {
-                memset(d, 0, sizeof(*d));
+        DroneData* d = nullptr;
+        if (plausible) {
+            char uid[ODID_ID_SIZE + 1] = {0};
+            strncpy(uid, (char*)UAS_data.BasicID[0].UASID, ODID_ID_SIZE);
+            d = findActiveDroneByUavId(uid);
+            if (d != nullptr) {
                 memcpy(d->mac, mac, 6);
-                d->active = true;
+            } else {
+                d = findOrAllocDrone(mac);
+                if (!d->active) {
+                    memset(d, 0, sizeof(*d));
+                    memcpy(d->mac, mac, 6);
+                    d->active = true;
+                }
+            }
+            g_lastBleDrone = d;
+        } else {
+            d = findActiveDroneByMac(mac);
+            if (d == nullptr && g_lastBleDrone != nullptr && g_lastBleDrone->active) {
+                d = g_lastBleDrone;
             }
         }
+        if (d == nullptr) return;
         d->lastSeen = millis();
         d->rssi = dev->getRSSI();
         applyOdidData(d);
@@ -300,10 +323,13 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
 
 static void skyspyInit(void) {
     memset(drones, 0, sizeof(drones));
+    g_lastBleDrone = nullptr;
     bleScan = NimBLEDevice::getScan();
     bleScan->setActiveScan(true);
     bleScan->setInterval(100);
     bleScan->setWindow(99);
+    bleScan->setDuplicateFilter(false);
+    bleScan->setMaxResults(0);
     Serial.println("[SKYSPY] Initialized");
 }
 
@@ -365,6 +391,7 @@ static void skyspyLoop(void) {
     for (int i = 0; i < MAX_UAVS; i++) {
         if (drones[i].active && millis() - drones[i].lastSeen > 30000) {
             drones[i].active = false;
+            if (&drones[i] == g_lastBleDrone) g_lastBleDrone = nullptr;
         }
     }
 }
