@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection, Session;
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
@@ -299,7 +300,7 @@ class WardriveController extends ChangeNotifier {
   double _sessionOutlierKm = 200.0;
   GpsPosition? lastGpsForDistance;
   GpsPosition? currentPosition;
-  int droneCount = 0;
+  int get droneCount => droneDetections.length;
 
   List<WatchlistEntry> Function()? _watchlistGetter;
   void setWatchlistGetter(List<WatchlistEntry> Function() g) {
@@ -355,8 +356,19 @@ class WardriveController extends ChangeNotifier {
       selectedTargets.any((t) => t.engines(radio).contains(Engine.detector));
 
   List<Detection> get droneDetections {
-    final list =
-        _dedupedOrdered.where((d) => d.engine == Engine.skySpy).toList();
+    final byKey = <String, Detection>{};
+    for (final d in _dedupedOrdered) {
+      if (d.engine != Engine.skySpy) continue;
+      final id = (d.odid?.uavId?.isNotEmpty ?? false)
+          ? d.odid!.uavId!
+          : d.macAddress;
+      final ex = byKey[id];
+      if (ex == null ||
+          odidCompleteness(d.odid) > odidCompleteness(ex.odid)) {
+        byKey[id] = d;
+      }
+    }
+    final list = byKey.values.toList();
     list.sort((a, b) => b.appTimestamp.compareTo(a.appTimestamp));
     return list;
   }
@@ -409,9 +421,7 @@ class WardriveController extends ChangeNotifier {
     _detectorByMac.clear();
     _cachedDetectorDetections = null;
     routePoints.clear();
-    distanceKm = 0;
-    droneCount = 0;
-    lastGpsForDistance = null;
+    distanceKm = 0;    lastGpsForDistance = null;
     foxhuntTarget = null;
 
     // Reload geofence exclusion zones at session start
@@ -555,9 +565,7 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
-    distanceKm = 0;
-    droneCount = 0;
-    flockFilter = false;
+    distanceKm = 0;    flockFilter = false;
     detectorFilter = false;
     _lastCompletedSessionId = null;
     sessionCenter = null;
@@ -593,9 +601,7 @@ class WardriveController extends ChangeNotifier {
     uniqueMacs.clear();
     _flockMacs.clear();
     routePoints.clear();
-    distanceKm = 0;
-    droneCount = 0;
-    lastGpsForDistance = null;
+    distanceKm = 0;    lastGpsForDistance = null;
     foxhuntTarget = null;
 
     final lats = <double>[];
@@ -614,7 +620,6 @@ class WardriveController extends ChangeNotifier {
         _detectorMacs.add(det.macAddress);
         _detectorByMac[det.macAddress] = det;
       }
-      if (det.engine == Engine.skySpy) droneCount++;
 
       final key = '${det.macAddress}|${det.engine.name}';
       final existing = _dedupedByMac[key];
@@ -1016,7 +1021,6 @@ class WardriveController extends ChangeNotifier {
       _detectorByMac[detection.macAddress] = detection;
       _cachedDetectorDetections = null;
     }
-    if (detection.engine == Engine.skySpy) droneCount++;
 
     final key = '${detection.macAddress}|${detection.engine.name}';
     final existing = _dedupedByMac[key];

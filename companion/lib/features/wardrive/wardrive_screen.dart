@@ -25,6 +25,7 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
@@ -1004,6 +1005,26 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         clusterable.add(d);
       }
     }
+
+    final droneById = <String, Detection>{};
+    final priorityDeduped = <Detection>[];
+    for (final d in priority) {
+      if (d.engine != Engine.skySpy) {
+        priorityDeduped.add(d);
+        continue;
+      }
+      final id = (d.odid?.uavId?.isNotEmpty ?? false)
+          ? d.odid!.uavId!
+          : d.macAddress;
+      final ex = droneById[id];
+      if (ex == null || odidCompleteness(d.odid) > odidCompleteness(ex.odid)) {
+        droneById[id] = d;
+      }
+    }
+    priorityDeduped.addAll(droneById.values);
+    priority
+      ..clear()
+      ..addAll(priorityDeduped);
 
     final meanLat = clusterable.isNotEmpty
         ? clusterable.first.latitude!

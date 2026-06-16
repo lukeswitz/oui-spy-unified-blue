@@ -22,10 +22,10 @@ String plotKey(Detection d) {
 
 /// Even spiderfy: [count] markers sharing a point get evenly spaced leaders
 /// around a circle (12 o'clock first), all the same length — clean radial
-/// spread, not random crossing lines. A lone marker gets no leader (length 0)
-/// so it sits right on the anchor.
+/// spread, not random crossing lines. A lone marker gets a long upward
+/// leader so its head floats clear of the wardrive trail dots at the anchor.
 FanGeometry fanGeometry(int index, int count) {
-  if (count <= 1) return const FanGeometry(0, 0);
+  if (count <= 1) return const FanGeometry(-pi / 2, 46);
   final angle = (index / count) * 2 * pi - pi / 2;
   final length = count <= 4 ? 38.0 : 32.0 + count * 2.0;
   return FanGeometry(angle, length);
@@ -49,23 +49,6 @@ class FannedPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (geo.length == 0) {
-      final ringSize = headExtent * 2 + 20;
-      return SizedBox(
-        width: ringSize,
-        height: ringSize,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            CustomPaint(
-              size: Size(ringSize, ringSize),
-              painter: _RingPainter(color: lineColor, radius: headExtent * 0.72),
-            ),
-            head,
-          ],
-        ),
-      );
-    }
     final box = (geo.length + headExtent) * 2;
     final dx = geo.length * cos(geo.angle);
     final dy = geo.length * sin(geo.angle);
@@ -114,37 +97,6 @@ class _LeaderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LeaderPainter old) =>
       old.dx != dx || old.dy != dy || old.color != color;
-}
-
-class _RingPainter extends CustomPainter {
-  _RingPainter({required this.color, required this.radius});
-  final Color color;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = Offset(size.width / 2, size.height / 2);
-    canvas.drawCircle(
-      c,
-      radius,
-      Paint()
-        ..color = color.withValues(alpha: 0.75)
-        ..strokeWidth = 2.0
-        ..style = PaintingStyle.stroke,
-    );
-    canvas.drawCircle(
-      c,
-      radius,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.22)
-        ..strokeWidth = 0.8
-        ..style = PaintingStyle.stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter old) =>
-      old.color != color || old.radius != radius;
 }
 
 const String kDroneSvgAsset = 'assets/icons/drone.svg';

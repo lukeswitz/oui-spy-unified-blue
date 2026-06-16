@@ -6,6 +6,7 @@ import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/engines/drone_map_view.dart';
+import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class SkySpyScreen extends ConsumerWidget {
@@ -60,8 +61,15 @@ class SkySpyScreen extends ConsumerWidget {
                             color: t.textDim, letterSpacing: 2, fontSize: 12)))
                 : ListView.builder(
                     itemCount: groups.length,
-                    itemBuilder: (context, index) =>
-                        _DroneRow(group: groups[index]),
+                    itemBuilder: (context, index) {
+                      final g = groups[index];
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () =>
+                            showDetectionDetails(context, ref, g.representative),
+                        child: _DroneRow(group: g),
+                      );
+                    },
                   ),
           ),
         ],
