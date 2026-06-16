@@ -6,6 +6,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+String _faaStr(dynamic v) {
+  if (v == null) return '';
+  if (v is String) return v;
+  if (v is List) {
+    return v
+        .map((e) => e?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .join(', ');
+  }
+  return v.toString();
+}
+
 class FaaRegistration {
   const FaaRegistration({
     required this.status,
@@ -39,37 +51,35 @@ class FaaRegistration {
 
   factory FaaRegistration.fromItemsShape(Map<String, dynamic> item) =>
       FaaRegistration(
-        status: (item['status'] as String?) ?? '',
-        brand: (item['brand'] as String?) ?? '',
-        model: (item['model'] as String?) ?? '',
-        manufacturerCode: (item['manufacturerCode'] as String?) ?? '',
-        productType: (item['productType'] as String?) ?? '',
-        operationRules: (item['operationRules'] as String?) ?? '',
-        makeName: (item['makeName'] as String?) ?? '',
-        modelName: (item['modelName'] as String?) ?? '',
-        series: (item['series'] as String?) ?? '',
-        trackingNumber: (item['trackingNumber'] as String?) ?? '',
-        complianceCategories:
-            (item['complianceCategories'] as String?) ?? '',
-        updatedAt: (item['updatedAt'] as String?) ?? '',
+        status: _faaStr(item['status']),
+        brand: _faaStr(item['brand']),
+        model: _faaStr(item['model']),
+        manufacturerCode: _faaStr(item['manufacturerCode']),
+        productType: _faaStr(item['productType']),
+        operationRules: _faaStr(item['operationRules']),
+        makeName: _faaStr(item['makeName']),
+        modelName: _faaStr(item['modelName']),
+        series: _faaStr(item['series']),
+        trackingNumber: _faaStr(item['trackingNumber']),
+        complianceCategories: _faaStr(item['complianceCategories']),
+        updatedAt: _faaStr(item['updatedAt']),
         cachedAt: DateTime.now(),
       );
 
   factory FaaRegistration.fromJson(Map<String, dynamic> json) =>
       FaaRegistration(
-        status: (json['status'] as String?) ?? '',
-        brand: (json['brand'] as String?) ?? '',
-        model: (json['model'] as String?) ?? '',
-        manufacturerCode: (json['manufacturerCode'] as String?) ?? '',
-        productType: (json['productType'] as String?) ?? '',
-        operationRules: (json['operationRules'] as String?) ?? '',
-        makeName: (json['makeName'] as String?) ?? '',
-        modelName: (json['modelName'] as String?) ?? '',
-        series: (json['series'] as String?) ?? '',
-        trackingNumber: (json['trackingNumber'] as String?) ?? '',
-        complianceCategories:
-            (json['complianceCategories'] as String?) ?? '',
-        updatedAt: (json['updatedAt'] as String?) ?? '',
+        status: _faaStr(json['status']),
+        brand: _faaStr(json['brand']),
+        model: _faaStr(json['model']),
+        manufacturerCode: _faaStr(json['manufacturerCode']),
+        productType: _faaStr(json['productType']),
+        operationRules: _faaStr(json['operationRules']),
+        makeName: _faaStr(json['makeName']),
+        modelName: _faaStr(json['modelName']),
+        series: _faaStr(json['series']),
+        trackingNumber: _faaStr(json['trackingNumber']),
+        complianceCategories: _faaStr(json['complianceCategories']),
+        updatedAt: _faaStr(json['updatedAt']),
         cachedAt: DateTime.fromMillisecondsSinceEpoch(
             (json['_cachedAt'] as int?) ?? 0),
       );
