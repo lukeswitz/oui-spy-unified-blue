@@ -48,7 +48,7 @@ OUI-SPY APEX is a fork of the OUI-SPY unified firmware, rebuilt around two ideas
 
 ## The Eight Engines
 
-Each engine answers one question: *is a specific kind of radio nearby?* Toggle any combination from the home screen — they all run together and take turns on the radio.
+Toggle any combination from the home screen — they all run together
 
 | Engine | Radio | What it finds | Plain-English purpose |
 |---|---|---|---|
@@ -67,8 +67,7 @@ Detailed mechanics for each are in [Detection Internals](#detection-internals).
 
 ## The App
 
-Flutter app for iOS, macOS, and Android, talking to the board over BLE.
-
+Cross-Platform Flutter app for iOS, macOS, and Android
 
 <img width="610" alt="APEX overview" src="https://github.com/user-attachments/assets/0a798936-51f3-41d2-b103-cdec0e7d9134" />
 
