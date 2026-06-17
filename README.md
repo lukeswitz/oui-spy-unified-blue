@@ -7,18 +7,23 @@
 ![Firmware](https://img.shields.io/badge/firmware-ESP32--S3-ff6600)
 [![CodeQL](https://github.com/lukeswitz/oui-spy-unified-blue/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/lukeswitz/oui-spy-unified-blue/actions/workflows/github-code-scanning/codeql)
 
-# OUI-SPY APEX
+# OUI-APEX
+
 
 <img width="320" alt="OUI-SPY APEX" src="https://github.com/user-attachments/assets/5a201c27-558b-4409-9e49-82d6e0176a4c" />
 
-**A distributed detection / wardriver that hunts surveillance gear.** Seven detectors, one ESP32, one phone app. Deploy a fleet: range of ~200m with ESP-NOW node integration
+**A distributed detection / wardriver that hunts surveillance gear.** Seven detectors, one ESP32, one phone app. Nodes reach ~200m with ESP-NOW integration. 
+
+
 
 [**Quick Start**](#quick-start) · [**The Eight Engines**](#the-eight-engines) · [**The App**](#the-app) · [**Detection Internals**](#detection-internals) · [**Flash & Hardware**](#flash--hardware)
 
 </div>
 
+
+
 > [!NOTE]
-> Not affiliated with OUI-SPY in any official capacity. Beta software — expect bugs.
+> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks. Not affiliated with OUI-SPY. Beta software — expect bugs.
 
 ---
 
@@ -35,7 +40,7 @@ OUI-SPY APEX is a fork of the OUI-SPY unified firmware, rebuilt around two ideas
 3. **Connect** — open the app, tap **CONNECT**, pick your board from the **SCAN FOR OUI-SPY** list.
 
 > [!IMPORTANT]
-> Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked. 
+> Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked.
 
 - APEX doesn't auto-connect unless you opt in (*Settings → App → Connection*). On launch it drops stale links and waits for you to choose a device. 
 
