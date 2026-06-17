@@ -233,20 +233,27 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.read(mac)!).toList();
   }
 
-  /// Get all flock + detector detections across all sessions, deduped by MAC
-  /// (latest per MAC), ordered by timestamp descending.
+  /// Get all flock + detector + drone (Sky Spy / Remote ID) detections across
+  /// all sessions, ordered by timestamp descending. Deduped to latest per
+  /// MAC+engine, except drones which dedupe by UAS-ID when present (their MAC
+  /// rotates per advert, so MAC keying would yield one row per advert).
   Future<List<Map<String, dynamic>>> getFlockDetectorDetections() async {
     final rows = await (select(detections)
           ..where((d) => d.engine.isIn([
-                'flockBle', 'flockWifi', 'detector',
+                'flockBle', 'flockWifi', 'detector', 'skySpy',
               ]))
           ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))
         .get();
-    // Dedupe: keep latest per MAC+engine
     final seen = <String, Map<String, dynamic>>{};
     for (final r in rows) {
-      final key = '${r.macAddress}|${r.engine}';
-      if (!seen.containsKey(key)) {
+      final uav = r.uavId ?? '';
+      final isDrone = r.engine == 'skySpy';
+      final key = (isDrone && uav.isNotEmpty)
+          ? 'uav:$uav'
+          : '${r.macAddress}|${r.engine}';
+      final existing = seen[key];
+      final method = r.detectionMethod;
+      if (existing == null) {
         seen[key] = {
           'id': r.id,
           'sessionId': r.sessionId,
@@ -261,8 +268,25 @@ class AppDatabase extends _$AppDatabase {
           'longitude': r.longitude,
           'ssid': r.ssid,
           'authMode': r.authMode,
+          'uavId': r.uavId,
+          'memberMacs': <String>{r.macAddress},
+          'transports': <String>{if (method.isNotEmpty) method},
         };
+      } else {
+        (existing['memberMacs'] as Set<String>).add(r.macAddress);
+        if (method.isNotEmpty) (existing['transports'] as Set<String>).add(method);
+        // Latest row is the representative (rows are time-desc), but a single
+        // drone's positions ride on its NAN/Beacon adverts — fill GPS from an
+        // earlier member if the representative advert carried none.
+        if (isDrone && existing['latitude'] == null && r.latitude != null) {
+          existing['latitude'] = r.latitude;
+          existing['longitude'] = r.longitude;
+        }
       }
+    }
+    for (final e in seen.values) {
+      e['memberMacs'] = (e['memberMacs'] as Set<String>).toList();
+      e['transports'] = (e['transports'] as Set<String>).toList()..sort();
     }
     return seen.values.toList();
   }

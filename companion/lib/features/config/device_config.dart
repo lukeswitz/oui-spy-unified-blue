@@ -2651,6 +2651,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       }).toList();
     } else if (_engineFilter == 'detector') {
       list = list.where((d) => d['engine'] == 'detector').toList();
+    } else if (_engineFilter == 'drone') {
+      list = list.where((d) => d['engine'] == 'skySpy').toList();
     }
 
     final q = _search.trim().toLowerCase();
@@ -2683,6 +2685,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'flockBle' => AppTheme.flockBle,
     'flockWifi' => AppTheme.flockWifi,
     'detector' => AppTheme.detector,
+    'skySpy' => AppTheme.skySpy,
     _ => AppTheme.accent,
   };
 
@@ -2690,6 +2693,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'flockBle' => 'FLOCK BLE',
     'flockWifi' => 'FLOCK WiFi',
     'detector' => 'DETECTOR',
+    'skySpy' => 'DRONE',
     _ => engine,
   };
 
@@ -2791,7 +2795,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
             )),
             const SizedBox(height: 6),
             Text(
-              'Run a wardrive with Flock or Detector engines to see detections here.',
+              'Run a wardrive with Flock, Detector, or Sky Spy engines to see detections here.',
               textAlign: TextAlign.center,
               style: TextStyle(color: t.textDim, fontSize: 11),
             ),
@@ -2806,13 +2810,16 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       return e == 'flockBle' || e == 'flockWifi';
     }).length;
     final detectorCount = _detections.where((d) => d['engine'] == 'detector').length;
+    final droneCount = _detections.where((d) => d['engine'] == 'skySpy').length;
 
     return Column(
       children: [
         // Filter chips
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
             children: [
               _FilterChip(
                 label: 'ALL (${_detections.length})',
@@ -2836,7 +2843,16 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 onTap: () => setState(() =>
                     _engineFilter = _engineFilter == 'detector' ? null : 'detector'),
               ),
+              const SizedBox(width: 6),
+              _FilterChip(
+                label: 'DRONES ($droneCount)',
+                selected: _engineFilter == 'drone',
+                color: AppTheme.skySpy,
+                onTap: () => setState(() =>
+                    _engineFilter = _engineFilter == 'drone' ? null : 'drone'),
+              ),
             ],
+          ),
           ),
         ),
         // Sort buttons
@@ -3356,6 +3372,13 @@ class _SortBtn extends StatelessWidget {
   }
 }
 
+String _droneTransportShort(String method) => switch (method) {
+      'odid_ble' => 'BLE',
+      'odid_nan' => 'NAN',
+      'odid_beacon' => 'BEACON',
+      _ => method.toUpperCase(),
+    };
+
 class _DetectionRow extends ConsumerWidget {
   const _DetectionRow({
     required this.data,
@@ -3524,6 +3547,29 @@ class _DetectionRow extends ConsumerWidget {
                         fontFamily: 'monospace', fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
                       )),
+                      if ((data['uavId'] as String?)?.isNotEmpty ?? false)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('UAS-ID ${data['uavId']}', style: TextStyle(
+                            color: engineColor, fontSize: 12,
+                            fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                          ), overflow: TextOverflow.ellipsis),
+                        ),
+                      if (data['engine'] == 'skySpy' &&
+                          (((data['memberMacs'] as List?)?.length ?? 1) > 1 ||
+                              ((data['transports'] as List?)?.length ?? 0) > 1))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            '${(data['memberMacs'] as List).length} MACs · '
+                            '${(data['transports'] as List).map((m) => _droneTransportShort(m as String)).join(' · ')}',
+                            style: TextStyle(
+                              color: t.textDim, fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       if (vendor != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 2),
