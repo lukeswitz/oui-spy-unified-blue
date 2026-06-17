@@ -49,6 +49,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   bool _followMode = true;
   String? _fittedSessionId;
   bool _initialFitDone = false;
+  bool _idleCenteredDone = false;
+  bool _feedCollapsed = false;
   final _statsKey = GlobalKey();
   double _statsHeight = 0;
   final _completedBarKey = GlobalKey();
@@ -64,7 +66,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadExclusionZones();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _primeLocationPermission());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final ok = await _primeLocationPermission();
+      if (ok && mounted) ref.read(gpsProvider).start();
+    });
   }
 
   @override
@@ -488,6 +493,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final wd = ref.watch(wardriveProvider);
     final activeMask = ref.watch(appStateProvider.select((s) => s.activeEngines));
     final gpsPos = ref.watch(gpsProvider).lastPosition;
+    final selfPos = wd.currentPosition ?? gpsPos;
     final center = wd.currentPosition != null
         ? LatLng(wd.currentPosition!.latitude, wd.currentPosition!.longitude)
         : gpsPos != null
@@ -507,6 +513,20 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     } else if (loadedId == null) {
       _fittedSessionId = null;
     }
+
+    // Idle (no active session, no loaded session): center once on first GPS fix
+    // so the self-dot and live detections are visible without a wardrive run.
+    if (!wd.isActive &&
+        loadedId == null &&
+        !_idleCenteredDone &&
+        selfPos != null) {
+      _idleCenteredDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.move(LatLng(selfPos.latitude, selfPos.longitude), 15);
+      });
+    }
+    if (wd.isActive) _idleCenteredDone = false;
 
     // Consume pending zoom target from cross-tab navigation
     if (wd.pendingZoomTarget != null) {
@@ -660,13 +680,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   if (detectionLayers.pins.isNotEmpty)
                     MarkerLayer(markers: detectionLayers.pins),
                 ],
-                if (wd.currentPosition != null)
+                if (selfPos != null)
                   MarkerLayer(markers: [
                     Marker(
-                      point: LatLng(
-                        wd.currentPosition!.latitude,
-                        wd.currentPosition!.longitude,
-                      ),
+                      point: LatLng(selfPos.latitude, selfPos.longitude),
                       width: wt.synthwaveSky ? 56 : 16,
                       height: wt.synthwaveSky ? 56 : 16,
                       child: _CurrentPosMarker(theme: wt),
@@ -956,13 +973,30 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   children: [
                     Center(child: _runControls(ref, wd)),
                     const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: _DetectionList(
-                        detections: wd.dedupedDetections,
-                        onDetectionTap: (d) => _zoomToDetection(d),
+                    if (wd.dedupedDetections.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Center(
+                              child: _FeedToggle(
+                                count: wd.dedupedDetections.length,
+                                collapsed: _feedCollapsed,
+                                onTap: () => setState(
+                                    () => _feedCollapsed = !_feedCollapsed),
+                              ),
+                            ),
+                            if (!_feedCollapsed) ...[
+                              const SizedBox(height: 4),
+                              _DetectionList(
+                                detections: wd.dedupedDetections,
+                                onDetectionTap: (d) => _zoomToDetection(d),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -973,9 +1007,30 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
   _DetectionLayers _buildDetectionLayers(WardriveController wd, WardriveThemeData wt) {
-    final allGeo = wd.dedupedDetections
-        .where((d) => _hasMapCoord(d.latitude, d.longitude))
-        .where((d) => wd.isWithinSession(d.latitude!, d.longitude!))
+    final appState = ref.read(appStateProvider);
+    final source = <Detection>[...wd.dedupedDetections];
+    final seenKeys = <String>{
+      for (final d in source) '${d.macAddress}|${d.engine.name}',
+    };
+    for (final d in appState.recentDetections) {
+      if (d.engine != Engine.skySpy &&
+          d.engine != Engine.flockBle &&
+          d.engine != Engine.flockWifi &&
+          d.engine != Engine.detector) {
+        continue;
+      }
+      if (!_hasMapCoord(d.latitude, d.longitude) &&
+          droneRidPoint(d) == null) {
+        continue;
+      }
+      if (seenKeys.add('${d.macAddress}|${d.engine.name}')) source.add(d);
+    }
+    final allGeo = source
+        .where((d) =>
+            _hasMapCoord(d.latitude, d.longitude) || droneRidPoint(d) != null)
+        .where((d) => wd.isWithinSession(
+            d.latitude ?? droneRidPoint(d)!.latitude,
+            d.longitude ?? droneRidPoint(d)!.longitude))
         .toList();
     final filterActive = wd.flockFilter || wd.detectorFilter;
     final geoDetections = filterActive
@@ -1028,7 +1083,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
     final meanLat = clusterable.isNotEmpty
         ? clusterable.first.latitude!
-        : (priority.isNotEmpty ? priority.first.latitude! : 0.0);
+        : (priority.isNotEmpty
+            ? (priority.first.latitude ??
+                droneRidPoint(priority.first)?.latitude ??
+                0.0)
+            : 0.0);
     final mPerPx = _metersPerPixel(meanLat, zoom);
     final pixelBucketRadius = 28.0;
     final bucketRadiusM = max(wd.markerDistanceM.toDouble(),
@@ -1128,7 +1187,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       ));
     }
 
-    final appState = ref.read(appStateProvider);
     final pins = <Marker>[];
     final tethers = <Polyline>[];
     final trails = <Polyline>[];
@@ -1966,6 +2024,54 @@ class _DetectionList extends StatelessWidget {
             ...entry.value.take(10).map((d) => _DetListRow(d: d, onTap: onDetectionTap)),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _FeedToggle extends StatelessWidget {
+  const _FeedToggle({
+    required this.count,
+    required this.collapsed,
+    required this.onTap,
+  });
+  final int count;
+  final bool collapsed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        decoration: BoxDecoration(
+          color: t.background.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: t.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              collapsed ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+              size: 14,
+              color: t.textDim,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              collapsed ? 'DEVICES  $count' : 'HIDE DEVICES',
+              style: TextStyle(
+                color: t.textDim,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
