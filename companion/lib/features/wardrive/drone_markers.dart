@@ -21,12 +21,13 @@ String plotKey(Detection d) {
 }
 
 /// Even spiderfy: [count] markers sharing a point get evenly spaced leaders
-/// around a circle (12 o'clock first), all the same length — clean radial
-/// spread, not random crossing lines. A lone marker gets a long upward
-/// leader so its head floats clear of the wardrive trail dots at the anchor.
-FanGeometry fanGeometry(int index, int count) {
-  if (count <= 1) return const FanGeometry(-pi / 2, 46);
-  final angle = (index / count) * 2 * pi - pi / 2;
+/// around a circle, all the same length — clean radial spread. [baseAngle]
+/// anchors the spread (and a lone marker's single leader); callers pass the
+/// travel-perpendicular angle so heads float off to the side of the route
+/// instead of overlapping it. Defaults to straight up.
+FanGeometry fanGeometry(int index, int count, {double baseAngle = -pi / 2}) {
+  if (count <= 1) return FanGeometry(baseAngle, 46);
+  final angle = (index / count) * 2 * pi + baseAngle;
   final length = count <= 4 ? 38.0 : 32.0 + count * 2.0;
   return FanGeometry(angle, length);
 }

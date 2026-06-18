@@ -1092,36 +1092,38 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final pixelBucketRadius = 28.0;
     final bucketRadiusM = max(wd.markerDistanceM.toDouble(),
         pixelBucketRadius * mPerPx);
-    final r2 = bucketRadiusM * bucketRadiusM;
+    final cellM = bucketRadiusM * 2.0;
+    final cosMean = cos(meanLat * pi / 180);
 
     final centers = <LatLng>[];
     final counts = <int>[];
     final engineMix = <Map<Engine, int>>[];
-
+    final sumLat = <double>[];
+    final sumLon = <double>[];
+    final cellToIdx = <int, int>{};
     final clusterIdxOf = <int>[]; // parallel to clusterable
     for (final d in clusterable) {
-      final ll = LatLng(d.latitude!, d.longitude!);
-      var hit = -1;
-      for (var i = 0; i < centers.length; i++) {
-        final c = centers[i];
-        final dx = (ll.latitude - c.latitude) * 111320.0;
-        final dy = (ll.longitude - c.longitude) * 111320.0 *
-            cos(ll.latitude * pi / 180);
-        if (dx * dx + dy * dy < r2) {
-          hit = i;
-          break;
-        }
+      final gx = (d.latitude! * 111320.0 / cellM).floor();
+      final gy = (d.longitude! * 111320.0 * cosMean / cellM).floor();
+      final key = (gx & 0x3FFFFFF) << 26 | (gy & 0x3FFFFFF);
+      var idx = cellToIdx[key];
+      if (idx == null) {
+        idx = centers.length;
+        cellToIdx[key] = idx;
+        centers.add(LatLng(d.latitude!, d.longitude!));
+        counts.add(0);
+        engineMix.add(<Engine, int>{});
+        sumLat.add(0);
+        sumLon.add(0);
       }
-      if (hit < 0) {
-        centers.add(ll);
-        counts.add(1);
-        engineMix.add({d.engine: 1});
-        clusterIdxOf.add(centers.length - 1);
-      } else {
-        counts[hit] = counts[hit] + 1;
-        engineMix[hit][d.engine] = (engineMix[hit][d.engine] ?? 0) + 1;
-        clusterIdxOf.add(hit);
-      }
+      counts[idx] = counts[idx] + 1;
+      sumLat[idx] = sumLat[idx] + d.latitude!;
+      sumLon[idx] = sumLon[idx] + d.longitude!;
+      engineMix[idx][d.engine] = (engineMix[idx][d.engine] ?? 0) + 1;
+      clusterIdxOf.add(idx);
+    }
+    for (var i = 0; i < centers.length; i++) {
+      centers[i] = LatLng(sumLat[i] / counts[i], sumLon[i] / counts[i]);
     }
 
     final sortedCounts = List<int>.from(counts)..sort();
@@ -1135,7 +1137,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final p90 = percentile(0.90);
     final p99 = percentile(0.99);
 
-    final heatRadiusM = max(bucketRadiusM * 0.7, 10.0);
+    final heatRadiusM = max(bucketRadiusM * 0.42, 6.0);
     final heatStride = clusterable.length > 800
         ? (clusterable.length / 800).ceil()
         : 1;
@@ -1166,7 +1168,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           : null;
 
       final base = 22.0 + 8.0 * (log(n + 1) / ln10);
-      final size = (base * zoomScale).clamp(20.0, 64.0);
+      final size = (base * zoomScale).clamp(26.0, 60.0);
       final domColor = wt.engineColor(dominant);
       final secColor = secondary != null ? wt.engineColor(secondary) : null;
       final heatColor = _percentileBlend(domColor, n, p50, p90, p99);
@@ -1204,7 +1206,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final pk = plotKey(d);
       final gi = grpSeen[pk] ?? 0;
       grpSeen[pk] = gi + 1;
-      final fan = fanGeometry(gi, grpCount[pk] ?? 1);
+      final bRad = _routeBearingRad(
+          LatLng(d.latitude ?? 0, d.longitude ?? 0), wd.routePoints);
+      final base =
+          bRad != null ? bRad + _currentRotation * pi / 180.0 : -pi / 2;
+      final fan = fanGeometry(gi, grpCount[pk] ?? 1, baseAngle: base);
 
       if (isDrone) {
         final color = droneColorForMac(d.macAddress);
@@ -1357,6 +1363,34 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         tethers: tethers,
         trails: trails,
         rings: rings);
+  }
+
+  /// Geographic bearing (rad, clockwise from north) of the route polyline at
+  /// its vertex nearest [p]. Null when the route is too short to have a
+  /// direction. Leaders are drawn perpendicular to this so heads sit off to
+  /// the side of the path instead of overlapping it.
+  // ponytail: O(detections·routePoints) nearest scan; build a grid index if a
+  // long session's marker rebuild ever lags.
+  static double? _routeBearingRad(LatLng p, List<LatLng> route) {
+    if (route.length < 2) return null;
+    final cosLat = cos(p.latitude * pi / 180);
+    var best = 0;
+    var bestD = double.infinity;
+    for (var i = 0; i < route.length; i++) {
+      final dLat = route[i].latitude - p.latitude;
+      final dLon = (route[i].longitude - p.longitude) * cosLat;
+      final d = dLat * dLat + dLon * dLon;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    final a = route[(best - 1).clamp(0, route.length - 1)];
+    final b = route[(best + 1).clamp(0, route.length - 1)];
+    final dN = b.latitude - a.latitude;
+    final dE = (b.longitude - a.longitude) * cosLat;
+    if (dN == 0 && dE == 0) return null;
+    return atan2(dE, dN);
   }
 
   static double _shortAngleDelta(double from, double to) {
@@ -2275,7 +2309,7 @@ class _ClusterDot extends StatelessWidget {
             neon: neon,
           ),
           child: Padding(
-            padding: EdgeInsets.all(size * 0.22 + 8),
+            padding: EdgeInsets.all(size * 0.16 + 4),
             child: count > 1
                 ? Center(
                     child: FittedBox(
@@ -2287,6 +2321,7 @@ class _ClusterDot extends StatelessWidget {
                           color: neon ? ringColor : Colors.white,
                           fontWeight: FontWeight.w800,
                           fontFamily: 'monospace',
+                          fontSize: 13,
                           height: 1.0,
                           letterSpacing: -0.3,
                           shadows: neon
