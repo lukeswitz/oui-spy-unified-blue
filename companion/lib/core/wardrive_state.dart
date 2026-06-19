@@ -95,12 +95,18 @@ class WardriveController extends ChangeNotifier {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready) {
         if (isActive) {
-          _reEnableEngines();
+          if (_ble.offlineScanEnabled) {
+            DebugLog.log('WARDRIVE: offline-scan on — adopting running engines, no re-enable');
+          } else {
+            _reEnableEngines();
+          }
         } else {
           _disableStaleEngines();
         }
       }
     });
+    _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
+    _spoolImportSub = _ble.spoolImport.listen(_onSpoolProgress);
     _loadPrefs();
   }
 
@@ -151,6 +157,10 @@ class WardriveController extends ChangeNotifier {
   final NotificationService _notificationService;
   final LiveActivityService _liveActivity;
   StreamSubscription<NodeConnectionState>? _connSub;
+  StreamSubscription<Detection>? _importedDetSub;
+  StreamSubscription<SpoolImportProgress>? _spoolImportSub;
+  String? _spoolSessionId;
+  bool _spoolBatchInserted = false;
 
   /// Imperial-units flag mirrored from [unitSystemProvider]. Used by
   /// [_updateLiveActivity] so the iOS Live Activity matches the in-app setting.
@@ -1013,6 +1023,76 @@ class WardriveController extends ChangeNotifier {
     });
   }
 
+  Future<String> _resolveSpoolSessionId() async {
+    if (sessionId.isNotEmpty) return sessionId;
+    final rows = await _db.getWardriveSessions();
+    if (rows.isNotEmpty) return rows.first.id;
+    final newId = const Uuid().v4();
+    await _db.insertSession(SessionsCompanion(
+      id: drift.Value(newId),
+      name: drift.Value('Recovered ${DateTime.now().toIso8601String().substring(0, 16)}'),
+      nodeId: const drift.Value('default'),
+      startedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+      isWardrive: const drift.Value(true),
+    ));
+    DebugLog.log('SPOOL: created recovered session $newId');
+    return newId;
+  }
+
+  Future<void> _onImportedDetection(Detection detection) async {
+    _spoolSessionId ??= await _resolveSpoolSessionId();
+    final sid = _spoolSessionId!;
+    final deviceNow = _ble.importDeviceNowMs;
+    final offsetMs = deviceNow - detection.deviceTimestampMs;
+    final wallClock = offsetMs < 0
+        ? DateTime.now()
+        : DateTime.now().subtract(Duration(milliseconds: offsetMs));
+    await _db.insertDetection(DetectionsCompanion(
+      sessionId: drift.Value(sid),
+      nodeId: const drift.Value('default'),
+      macAddress: drift.Value(detection.macAddress),
+      deviceName: drift.Value(detection.deviceName),
+      engine: drift.Value(detection.engine.name),
+      detectionMethod: drift.Value(detection.method),
+      rssi: drift.Value(detection.rssi),
+      channel: drift.Value(detection.channel),
+      deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
+      appTimestamp: drift.Value(wallClock.millisecondsSinceEpoch),
+      latitude: drift.Value(detection.latitude),
+      longitude: drift.Value(detection.longitude),
+      accuracy: drift.Value(detection.accuracy),
+      ssid: drift.Value(detection.ssid),
+      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
+      uavId: drift.Value(detection.odid?.uavId),
+      operatorId: drift.Value(detection.odid?.operatorId),
+      droneLat: drift.Value(detection.odid?.droneLat),
+      droneLon: drift.Value(detection.odid?.droneLon),
+      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
+      heightAgl: drift.Value(detection.odid?.heightAgl),
+      droneSpeed: drift.Value(detection.odid?.droneSpeed),
+      droneHeading: drift.Value(detection.odid?.droneHeading),
+      pilotLat: drift.Value(detection.odid?.pilotLat),
+      pilotLon: drift.Value(detection.odid?.pilotLon),
+    ));
+    _spoolBatchInserted = true;
+    DebugLog.log('SPOOL: inserted ${detection.macAddress} → session $sid wallClock=${wallClock.toIso8601String()}');
+  }
+
+  void _onSpoolProgress(SpoolImportProgress p) {
+    if (p.aborted) {
+      DebugLog.log('SPOOL: batch aborted seen=${p.seen} total=${p.total} — retaining spool, no confirm');
+      _spoolSessionId = null;
+      _spoolBatchInserted = false;
+      return;
+    }
+    if (p.done && _spoolBatchInserted) {
+      DebugLog.log('SPOOL: batch done seen=${p.seen} dropped=${p.dropped} — confirming');
+      _ble.confirmSpoolImported();
+      _spoolSessionId = null;
+      _spoolBatchInserted = false;
+    }
+  }
+
   /// Push combined state to iOS Live Activity / Dynamic Island.
   /// Resolves primary display mode from active engines + foxhunt target,
   /// then sends all cross-engine counts so expanded view shows everything.
@@ -1253,6 +1333,8 @@ class WardriveController extends ChangeNotifier {
     _detSub?.cancel();
     _gpsSub?.cancel();
     _statsTimer?.cancel();
+    _importedDetSub?.cancel();
+    _spoolImportSub?.cancel();
     super.dispose();
   }
 
