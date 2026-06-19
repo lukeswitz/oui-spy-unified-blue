@@ -41,17 +41,19 @@ void main() async {
   container.read(appStateProvider);
   container.read(wardriveProvider);
 
-  _forceCleanBleState().then((_) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('autoConnectEnabled') ?? false) {
-      await _autoConnect(container);
-    }
-  });
-
   runApp(UncontrolledProviderScope(
     container: container,
     child: const OuiSpyApp(),
   ));
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _forceCleanBleState().then((_) async {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('autoConnectEnabled') ?? false) {
+        await _autoConnect(container);
+      }
+    });
+  });
 }
 
 Future<void> _forceCleanBleState() async {
