@@ -1015,6 +1015,8 @@ class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+static void streamSpoolToPhone(void);
+
 // System control opcodes
 #define SYS_CMD_REBOOT            0x01
 #define SYS_CMD_FACTORY_RESET     0x02
@@ -1186,6 +1188,14 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 wifiOtaWipeCreds();
                 break;
             }
+
+            case SYS_CMD_FLUSH_SPOOL:
+                streamSpoolToPhone();
+                break;
+
+            case SYS_CMD_SPOOL_CLEAR:
+                detSpoolClear();
+                break;
 
             default:
                 Serial.printf("[SYS] Unknown command: 0x%02X\n", cmd);
@@ -1863,17 +1873,8 @@ void bleGattInit(void) {
 // ============================================================================
 // Notifications
 // ============================================================================
-void bleGattNotifyDetection(const DetectionEvent* evt) {
-    if (!phoneConnected) {
-        if (offlineScanEnabled && evt && engineSpoolable(evt->engine_id)) detSpoolAppend(evt);
-        return;
-    }
-    if (chrDetectionEvents == nullptr) return;
-
-    uint8_t buf[200];
+static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
     size_t len = 19;
-
-    // Common header: engine_id[1] mac[6] rssi[1] channel[1] ts_ms[4] method[1] source_node_id[5]
     buf[0] = evt->engine_id;
     memcpy(buf + 1, evt->mac, 6);
     buf[7] = (uint8_t)evt->rssi;
@@ -1881,8 +1882,6 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
     memcpy(buf + 9, &evt->timestamp_ms, 4);
     buf[13] = evt->method;
     memcpy(buf + 14, evt->source_node_id, MESH_NODE_ID_LEN);
-
-    // Engine-specific extension
     switch ((EngineId)evt->engine_id) {
         case ENGINE_FLOCK_BLE:
         case ENGINE_FLOCK_WIFI:
@@ -1891,7 +1890,6 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
             buf[36] = evt->ext.flock.auth_mode;
             len = 37;
             break;
-
         case ENGINE_SKYSPY:
             memcpy(buf + 19, evt->ext.odid.uav_id, 21);
             memcpy(buf + 40, evt->ext.odid.op_id, 21);
@@ -1928,30 +1926,67 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
             buf[154] = evt->ext.odid.self_id_type;
             len = 155;
             break;
-
         case ENGINE_UNIPWN:
             memcpy(buf + 19, evt->ext.unipwn.robot_type, 8);
             buf[27] = evt->ext.unipwn.exploited;
             len = 28;
             break;
-
         case ENGINE_DETECTOR:
             buf[19] = evt->ext.detector.is_full_mac;
             memcpy(buf + 20, evt->ext.detector.filter_desc, 32);
             len = 52;
             break;
-
         case ENGINE_WARDRIVE:
             memcpy(buf + 19, evt->ext.wardrive.ssid, 33);
             buf[52] = evt->ext.wardrive.auth_mode;
             memcpy(buf + 53, evt->ext.wardrive.device_name, 21);
             len = 74;
             break;
-
         default:
             break;
     }
+    return len;
+}
 
+static void bleGattNotifyRaw(const uint8_t* data, size_t len) {
+    if (chrDetectionEvents == nullptr) return;
+    chrDetectionEvents->setValue((uint8_t*)data, len);
+    chrDetectionEvents->notify();
+}
+
+static void streamSpoolToPhone(void) {
+    if (!phoneConnected) return;
+    uint16_t n = detSpoolCount();
+    uint16_t dropped = detSpoolDroppedCount();
+    uint32_t now = millis();
+    uint8_t hdr[9];
+    hdr[0] = 0xFF;
+    hdr[1] = (uint8_t)(n & 0xFF);           hdr[2] = (uint8_t)(n >> 8);
+    hdr[3] = (uint8_t)(dropped & 0xFF);     hdr[4] = (uint8_t)(dropped >> 8);
+    hdr[5] = (uint8_t)(now & 0xFF);         hdr[6] = (uint8_t)((now >> 8) & 0xFF);
+    hdr[7] = (uint8_t)((now >> 16) & 0xFF); hdr[8] = (uint8_t)((now >> 24) & 0xFF);
+    bleGattNotifyRaw(hdr, sizeof(hdr));
+    DetectionEvent evt;
+    uint8_t buf[200];
+    for (uint16_t i = 0; i < n; i++) {
+        if (!phoneConnected) return;
+        if (!detSpoolReadSlot(i, &evt, nullptr)) continue;
+        size_t len2 = packDetection(&evt, buf);
+        bleGattNotifyRaw(buf, len2);
+        delay(8);
+    }
+    uint8_t done = 0xFE;
+    bleGattNotifyRaw(&done, 1);
+}
+
+void bleGattNotifyDetection(const DetectionEvent* evt) {
+    if (!phoneConnected) {
+        if (offlineScanEnabled && evt && engineSpoolable(evt->engine_id)) detSpoolAppend(evt);
+        return;
+    }
+    if (chrDetectionEvents == nullptr) return;
+    uint8_t buf[200];
+    size_t len = packDetection(evt, buf);
     chrDetectionEvents->setValue(buf, len);
     chrDetectionEvents->notify();
 }
