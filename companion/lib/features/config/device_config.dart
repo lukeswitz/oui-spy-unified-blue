@@ -46,6 +46,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   late TabController _tabController;
 
   bool _flockExtendedOui = false;
+  bool _offlineScanEnabled = false;
   bool _buzzerEnabled = true;
   int _buzzerVolume = 100;
   bool _ledEnabled = true;
@@ -103,6 +104,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _neopixelBrightness = hw[2];
             _buzzerVolume = hw.length >= 4 ? hw[3] : 100;
             _flockExtendedOui = hw.length >= 5 && hw[4] != 0;
+            _offlineScanEnabled = hw.length > 5 && hw[5] != 0;
           });
           DebugLog.log('CONFIG: hw read: buzzer=$_buzzerEnabled vol=$_buzzerVolume led=$_ledEnabled neo=$_neopixelBrightness');
         }
@@ -520,6 +522,20 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           value: _flockExtendedOui,
           onChanged: (v) {
             setState(() => _flockExtendedOui = v);
+            _writeHardwareConfig();
+          },
+        ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'OFFLINE SCAN'),
+        ConfigToggleRow(
+          icon: Icons.cloud_off,
+          label: 'Keep scanning while disconnected',
+          subtitle: 'Node keeps scanning when the app is closed; detections import on reconnect. Higher battery use.',
+          color: const Color(0xFF4AB8FF),
+          value: _offlineScanEnabled,
+          onChanged: (v) {
+            setState(() => _offlineScanEnabled = v);
             _writeHardwareConfig();
           },
         ),
@@ -1052,6 +1068,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           neopixelBrightness: _neopixelBrightness,
           buzzerVolume: _buzzerVolume,
           extendedOui: _flockExtendedOui,
+          offlineScan: _offlineScanEnabled,
         );
   }
 

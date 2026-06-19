@@ -378,11 +378,67 @@ class _ConnectedView extends ConsumerWidget {
     
     final pad = 12.0;
 
+    final ble = ref.read(bleManagerProvider);
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(pad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          StreamBuilder<SpoolImportProgress>(
+            stream: ble.spoolImport,
+            builder: (context, snap) {
+              final p = snap.data;
+              if (p == null || (p.done && p.total == 0)) {
+                return const SizedBox.shrink();
+              }
+              final t = AppTheme.of(context);
+              if (p.aborted) {
+                return _SpoolBanner(
+                  color: AppTheme.error,
+                  icon: Icons.sync_problem,
+                  message: 'Import interrupted — will retry on reconnect',
+                );
+              }
+              if (p.done) {
+                final clamped = p.seen.clamp(0, p.total);
+                final suffix = p.dropped > 0
+                    ? ' (buffer was full, oldest ${p.dropped} dropped)'
+                    : '';
+                return _SpoolBanner(
+                  color: AppTheme.accent,
+                  icon: Icons.check_circle_outline,
+                  message: 'Imported $clamped detections seen while away$suffix',
+                );
+              }
+              final clamped = p.seen.clamp(0, p.total);
+              final progress =
+                  p.total > 0 ? (clamped / p.total).clamp(0.0, 1.0) : null;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      'Importing $clamped/${p.total} detections seen while away…',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 11,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  LinearProgressIndicator(
+                    value: progress,
+                    color: AppTheme.accent,
+                    backgroundColor: AppTheme.accent.withValues(alpha: 0.15),
+                    minHeight: 3,
+                  ),
+                  SizedBox(height: pad),
+                ],
+              );
+            },
+          ),
           _SummaryStrip(state: state),
           SizedBox(height: pad),
 
@@ -802,5 +858,47 @@ class _RecentActivity extends StatelessWidget {
     if (rssi > -50) return AppTheme.success;
     if (rssi > -70) return AppTheme.warning;
     return AppTheme.textDim;
+  }
+}
+
+class _SpoolBanner extends StatelessWidget {
+  const _SpoolBanner({
+    required this.color,
+    required this.icon,
+    required this.message,
+  });
+  final Color color;
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color.withValues(alpha: 0.8)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: t.textSecondary,
+                fontSize: 11,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
