@@ -16,6 +16,22 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
+
+class SpoolImportProgress {
+  final int seen;
+  final int total;
+  final int dropped;
+  final bool done;
+  final bool aborted;
+  const SpoolImportProgress({
+    required this.seen,
+    required this.total,
+    required this.dropped,
+    required this.done,
+    required this.aborted,
+  });
+}
+
 /// BLE connection state.
 enum NodeConnectionState {
   disconnected,
@@ -71,6 +87,23 @@ class BleManager {
   final _pcapStatsStream = StreamController<PcapStats>.broadcast();
   final _pcapDataStream = StreamController<Uint8List>.broadcast();
   PcapStats _latestPcapStats = PcapStats.empty;
+
+  final _importedDetections = StreamController<Detection>.broadcast();
+  Stream<Detection> get importedDetections => _importedDetections.stream;
+
+  final _spoolImport = StreamController<SpoolImportProgress>.broadcast();
+  Stream<SpoolImportProgress> get spoolImport => _spoolImport.stream;
+
+  bool _offlineScanEnabled = false;
+  bool get offlineScanEnabled => _offlineScanEnabled;
+
+  bool _importing = false;
+  int _importTotal = 0;
+  int _importSeen = 0;
+  int _importDropped = 0;
+  int _importDeviceNow = 0;
+  int get importDeviceNowMs => _importDeviceNow;
+  Timer? _importTimer;
 
   // WiFi OTA progress notifications: opcode 0x06, status[1], bytes[4 LE]
   final _wifiOtaStream = StreamController<({int status, int bytesRead})>.broadcast();
@@ -463,6 +496,9 @@ class BleManager {
         DebugLog.log('BLE: connectionState=$state');
         if (state == BluetoothConnectionState.disconnected) {
           _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
+          if (_importing) {
+            _abortImport();
+          }
           if (_userInitiatedDisconnect) {
             DebugLog.log('BLE: skipping reconnect (user-initiated)');
             _userInitiatedDisconnect = false;
@@ -564,6 +600,7 @@ class BleManager {
     _board = parts.length > 2 ? parts[2] : '';
     _role = parts.length > 3 ? parts[3] : '';
     DebugLog.log('BLE: nodeId=$_nodeId board=$_board role=$_role');
+    await _readDeviceConfig();
 
     // Subscribe to detection notifications
     if (_detectionEvents != null) {
@@ -582,10 +619,12 @@ class BleManager {
         }),
       );
       final isMgr = (device.platformName.toUpperCase()).contains('OUI-SPY-MGR');
-      if (!isMgr) {
+      if (!isMgr && !_offlineScanEnabled) {
         await _engineControl!.write(BleProtocol.encodeDisableAll());
         DebugLog.log('BLE: sent DISABLE_ALL on connect (node)');
         await Future.delayed(const Duration(milliseconds: 300));
+      } else if (!isMgr) {
+        DebugLog.log('BLE: offline-scan on — adopting running scan, no DISABLE_ALL');
       } else {
         DebugLog.log('BLE: skipped DISABLE_ALL on connect (manager)');
       }
@@ -690,6 +729,10 @@ class BleManager {
         DebugLog.log('BLE: OTA confirm write failed: ${e.description}');
       }
     }
+
+    if (_offlineScanEnabled) {
+      await requestSpoolFlush();
+    }
   }
 
   // -- System control --
@@ -710,6 +753,25 @@ class BleManager {
       Uint8List.fromList([0x02, 0xC0, 0xDE]),
       withoutResponse: false,
     );
+  }
+
+  Future<void> requestSpoolFlush() async {
+    if (_systemControl == null || !_offlineScanEnabled) return;
+    _importing = true;
+    _importSeen = 0;
+    _importTotal = 0;
+    _importDropped = 0;
+    _importDeviceNow = 0;
+    _importTimer?.cancel();
+    _importTimer = Timer(const Duration(seconds: 12), _abortImport);
+    await _systemControl!.write(BleProtocol.flushSpoolCmd, withoutResponse: false);
+    DebugLog.log('BLE: spool flush requested');
+  }
+
+  Future<void> confirmSpoolImported() async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(BleProtocol.spoolClearCmd, withoutResponse: false);
+    DebugLog.log('BLE: spool clear sent after DB commit');
   }
 
   /// Push WiFi STA credentials to device. Format:
@@ -1074,12 +1136,25 @@ class BleManager {
 
   // -- Hardware config --
 
+  Future<void> _readDeviceConfig() async {
+    if (_hardwareConfig == null) return;
+    try {
+      final value = await _hardwareConfig!.read();
+      _offlineScanEnabled = value.length > 5 && value[5] == 1;
+      DebugLog.log('BLE: hardwareConfig read len=${value.length} offlineScan=$_offlineScanEnabled');
+    } on Exception catch (e) {
+      DebugLog.log('BLE: hardwareConfig read failed: $e');
+      _offlineScanEnabled = false;
+    }
+  }
+
   Future<void> writeHardwareConfig({
     required bool buzzer,
     required bool led,
     required int neopixelBrightness,
     required int buzzerVolume,
     bool extendedOui = false,
+    bool offlineScan = false,
   }) async {
     if (_hardwareConfig == null) return;
     await _hardwareConfig!.write(
@@ -1089,6 +1164,7 @@ class BleManager {
         neopixelBrightness: neopixelBrightness,
         buzzerVolume: buzzerVolume,
         extendedOui: extendedOui,
+        offlineScan: offlineScan,
       ),
     );
   }
@@ -1204,8 +1280,11 @@ class BleManager {
 
   void dispose() {
     disconnect();
+    _importTimer?.cancel();
     _connectionState.close();
     _detections.close();
+    _importedDetections.close();
+    _spoolImport.close();
     _foxhunterRssiStream.close();
     _engineStates.close();
     _meshStatusStream.close();
@@ -1285,6 +1364,39 @@ class BleManager {
   // -- Private --
 
   void _onDetection(List<int> data) {
+    if (_importing) {
+      _importTimer?.cancel();
+      _importTimer = Timer(const Duration(seconds: 12), _abortImport);
+      if (BleProtocol.isSpoolHeader(data)) {
+        final h = BleProtocol.decodeSpoolHeader(data);
+        _importTotal = h.count;
+        _importDropped = h.dropped;
+        _importDeviceNow = h.deviceNowMs;
+        _spoolImport.add(SpoolImportProgress(seen: 0, total: _importTotal, dropped: _importDropped, done: false, aborted: false));
+        return;
+      }
+      if (BleProtocol.isSpoolDone(data)) {
+        _importTimer?.cancel();
+        _importTimer = null;
+        _importing = false;
+        _spoolImport.add(SpoolImportProgress(seen: _importSeen, total: _importTotal, dropped: _importDropped, done: true, aborted: false));
+        return;
+      }
+      final detection = BleProtocol.decodeDetection(
+        data,
+        sessionId: _sessionId,
+        nodeId: _nodeId,
+        appTimestamp: DateTime.now(),
+        latitude: _lastLat,
+        longitude: _lastLon,
+        accuracy: _lastAccuracy,
+        satelliteCount: _lastSatCount,
+      );
+      _importSeen++;
+      _importedDetections.add(detection);
+      _spoolImport.add(SpoolImportProgress(seen: _importSeen, total: _importTotal, dropped: _importDropped, done: false, aborted: false));
+      return;
+    }
     final detection = BleProtocol.decodeDetection(
       data,
       sessionId: _sessionId,
@@ -1296,6 +1408,15 @@ class BleManager {
       satelliteCount: _lastSatCount,
     );
     _detections.add(detection);
+  }
+
+  void _abortImport() {
+    if (!_importing) return;
+    _importTimer?.cancel();
+    _importTimer = null;
+    _importing = false;
+    _spoolImport.add(SpoolImportProgress(seen: _importSeen, total: _importTotal, dropped: _importDropped, done: true, aborted: true));
+    DebugLog.log('BLE: spool import aborted (timeout)');
   }
 
   Timer? _reconnectTimer;
