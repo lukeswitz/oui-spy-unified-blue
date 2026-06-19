@@ -305,6 +305,21 @@ extern volatile bool    hwAlertsSuppressed;  // set by phone (inside geofence) /
 #define CHR_DETECTOR_CONFIG  "00000100-" UUID_BASE
 
 // ============================================================================
+// System Control (CHR_SYSTEM_CONTROL write opcodes)
+// ============================================================================
+#define SYS_CMD_REBOOT            0x01
+#define SYS_CMD_FACTORY_RESET     0x02
+#define SYS_CMD_CONFIRM_OTA       0x03
+#define SYS_CMD_OTA_VIA_WIFI      0x04
+#define SYS_CMD_FLEET_OTA         0x05
+#define SYS_CMD_WIFI_DISCONNECT   0x06
+#define SYS_CMD_WIFI_WIPE         0x07
+#define SYS_OP_FLEET_PROGRESS     0x08
+#define SYS_CMD_FLEET_WIFI_OTA    0x0A
+#define SYS_CMD_FLUSH_SPOOL       0x0B
+#define SYS_CMD_SPOOL_CLEAR       0x0C
+
+// ============================================================================
 // PCAP — live capture stats (notified over CHR_PCAP_STATS)
 // ============================================================================
 // Modes:
