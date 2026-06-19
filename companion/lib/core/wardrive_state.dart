@@ -160,7 +160,10 @@ class WardriveController extends ChangeNotifier {
   StreamSubscription<Detection>? _importedDetSub;
   StreamSubscription<SpoolImportProgress>? _spoolImportSub;
   String? _spoolSessionId;
-  bool _spoolBatchInserted = false;
+  int _spoolInserted = 0;
+  int _spoolExpectedTotal = -1;
+  bool _spoolDone = false;
+  bool _spoolConfirmed = false;
 
   /// Imperial-units flag mirrored from [unitSystemProvider]. Used by
   /// [_updateLiveActivity] so the iOS Live Activity matches the in-app setting.
@@ -1074,22 +1077,47 @@ class WardriveController extends ChangeNotifier {
       pilotLat: drift.Value(detection.odid?.pilotLat),
       pilotLon: drift.Value(detection.odid?.pilotLon),
     ));
-    _spoolBatchInserted = true;
-    DebugLog.log('SPOOL: inserted ${detection.macAddress} → session $sid wallClock=${wallClock.toIso8601String()}');
+    _spoolInserted++;
+    DebugLog.log('SPOOL: inserted ${detection.macAddress} → session $sid wallClock=${wallClock.toIso8601String()} ($_spoolInserted/$_spoolExpectedTotal)');
+    _maybeConfirmSpool();
   }
 
   void _onSpoolProgress(SpoolImportProgress p) {
-    if (p.aborted) {
-      DebugLog.log('SPOOL: batch aborted seen=${p.seen} total=${p.total} — retaining spool, no confirm');
+    if (!p.done && !p.aborted && p.seen == 0) {
+      _spoolExpectedTotal = p.total;
+      _spoolInserted = 0;
+      _spoolDone = false;
+      _spoolConfirmed = false;
       _spoolSessionId = null;
-      _spoolBatchInserted = false;
+      DebugLog.log('SPOOL: batch header total=${p.total}');
       return;
     }
-    if (p.done && _spoolBatchInserted) {
-      DebugLog.log('SPOOL: batch done seen=${p.seen} dropped=${p.dropped} — confirming');
-      _ble.confirmSpoolImported();
+    if (p.aborted) {
+      DebugLog.log('SPOOL: batch aborted seen=${p.seen} total=${p.total} — retaining spool, no confirm');
+      _spoolDone = false;
+      _spoolInserted = 0;
+      _spoolExpectedTotal = -1;
+      _spoolConfirmed = false;
       _spoolSessionId = null;
-      _spoolBatchInserted = false;
+      return;
+    }
+    if (p.done) {
+      DebugLog.log('SPOOL: batch done seen=${p.seen} dropped=${p.dropped} inserted=$_spoolInserted expected=$_spoolExpectedTotal');
+      _spoolDone = true;
+      _maybeConfirmSpool();
+    }
+  }
+
+  Future<void> _maybeConfirmSpool() async {
+    if (_spoolDone && _spoolExpectedTotal >= 0 && _spoolInserted >= _spoolExpectedTotal && !_spoolConfirmed) {
+      _spoolConfirmed = true;
+      DebugLog.log('SPOOL: confirming inserted=$_spoolInserted expected=$_spoolExpectedTotal');
+      await _ble.confirmSpoolImported();
+      _spoolDone = false;
+      _spoolInserted = 0;
+      _spoolExpectedTotal = -1;
+      _spoolConfirmed = false;
+      _spoolSessionId = null;
     }
   }
 
