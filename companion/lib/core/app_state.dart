@@ -449,6 +449,10 @@ class AppState extends ChangeNotifier {
           DebugLog.log('GPS: start failed from BLE connect: $e');
           return false;
         });
+        if (_nodeWardriveRadio.isNotEmpty) {
+          DebugLog.log('AppState: connection ready — pushing saved node radio roles');
+          _pushNodeRadioRoles();
+        }
       }
       if (state == NodeConnectionState.disconnected ||
           state == NodeConnectionState.reconnecting) {
