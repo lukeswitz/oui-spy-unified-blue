@@ -5,7 +5,7 @@
 #include <Arduino.h>
 
 #ifdef OUISPY_ROLE_MANAGER
-#define SPOOL_CAP 300
+#define SPOOL_CAP 120
 #else
 #define SPOOL_CAP 1000
 #endif

@@ -151,6 +151,15 @@ void setup() {
     ignoreListInit();
 
     {
+        Preferences p;
+        p.begin("ouispy-hw", true);
+        bool offlScan = p.getBool("offl_scan", false);
+        p.end();
+        offlineScanEnabledSetFromPref(offlScan);
+        detSpoolInit();
+    }
+
+    {
         MeshConfig cfg = {};
         cfg.enabled = 1;
         cfg.encryption_enabled = 0;
