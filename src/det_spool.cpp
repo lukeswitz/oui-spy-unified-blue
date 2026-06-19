@@ -4,7 +4,7 @@
 #include <esp_heap_caps.h>
 #include <Arduino.h>
 
-#ifdef OUISPY_ROLE_MANAGER
+#if defined(OUISPY_ROLE_MANAGER) && !defined(BOARD_HAS_PSRAM)
 #define SPOOL_CAP 120
 #else
 #define SPOOL_CAP 1000
