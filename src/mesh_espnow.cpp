@@ -21,6 +21,8 @@ static mbedtls_gcm_context gcmCtx;
 static bool gcmReady = false;
 static uint64_t txCounter = 0;
 static char localNodeId[MESH_NODE_ID_LEN] = {};
+static volatile bool g_mgrPhoneConnected = false;
+static volatile uint32_t g_mgrPhoneSeenMs = 0;
 static SemaphoreHandle_t meshMutex = NULL;
 
 #define MESH_CMD_PENDING_MAX  16
@@ -814,11 +816,13 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         memcpy(&hb, plainBuf, sizeof(hb));
         if (memcmp(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0) {
             recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask, hb.fw_version);
-            Serial.printf("[HB] rx id=%.4s role=%u eng=0x%02X fw=0x%06X\n",
+            Serial.printf("[HB] rx id=%.4s role=%u eng=0x%02X fw=0x%06X phone=%u\n",
                           hb.source_node_id, hb.role, hb.active_engines_mask,
-                          (unsigned)hb.fw_version);
+                          (unsigned)hb.fw_version, hb.phone_connected);
             if (hb.role == MESH_ROLE_MANAGER) {
                 hwAlertsSuppressed = hb.alerts_suppressed != 0;
+                g_mgrPhoneConnected = hb.phone_connected != 0;
+                g_mgrPhoneSeenMs = millis();
             }
         }
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -1121,6 +1125,12 @@ bool meshInRidWindow(void) { return g_ridWindow; }
 void meshNoteOnHome(void) {
     g_lastHomeMs = millis();
     if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
+}
+
+bool meshMgrPhoneConnected(void) {
+    if (g_mgrPhoneSeenMs == 0) return false;
+    if (millis() - g_mgrPhoneSeenMs > 10000) return false;
+    return g_mgrPhoneConnected;
 }
 
 bool meshManagerJoined(void) {
@@ -2039,6 +2049,7 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     hb.active_engines_mask = active_engines_mask;
     hb.alerts_suppressed = hwAlertsSuppressed ? 1 : 0;
     hb.fw_version = FW_VERSION_NUM;
+    hb.phone_connected = bleGattIsConnected() ? 1 : 0;
     uint8_t enc[128]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
     enqueueTx(enc, encLen);

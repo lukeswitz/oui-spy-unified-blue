@@ -156,7 +156,6 @@ void setup() {
         bool offlScan = p.getBool("offl_scan", false);
         p.end();
         offlineScanEnabledSetFromPref(offlScan);
-        detSpoolInit();
     }
 
     {

@@ -26,6 +26,7 @@ bool meshTimeSlicingActive(void);
 void meshNoteOnHome(void);
 void meshMarkNodesEngine(uint8_t engine, bool on);
 bool meshManagerJoined(void);
+bool meshMgrPhoneConnected(void);
 void meshAddFleetMac(const uint8_t* mac);
 bool meshIsFleetMac(const uint8_t* mac);
 extern volatile uint32_t g_meshCmdRx;

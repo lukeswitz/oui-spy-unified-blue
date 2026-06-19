@@ -480,6 +480,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  active_engines_mask;
     uint8_t  alerts_suppressed;
     uint32_t fw_version;
+    uint8_t  phone_connected;
 } MeshHeartbeatPacket;
 
 typedef struct __attribute__((packed)) {

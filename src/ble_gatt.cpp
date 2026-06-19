@@ -1989,7 +1989,12 @@ void bleGattSpoolFlushPump(void) {
 
 void bleGattNotifyDetection(const DetectionEvent* evt) {
     if (!phoneConnected) {
-        if (offlineScanEnabled && evt && engineSpoolable(evt->engine_id)) detSpoolAppend(evt);
+#ifndef OUISPY_ROLE_MANAGER
+        if (offlineScanEnabled && evt && engineSpoolable(evt->engine_id) &&
+            (!meshManagerJoined() || !meshMgrPhoneConnected())) {
+            detSpoolAppend(evt);
+        }
+#endif
         return;
     }
     if (chrDetectionEvents == nullptr) return;
