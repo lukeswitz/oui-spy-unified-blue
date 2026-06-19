@@ -1007,6 +1007,7 @@ class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
 #define SYS_CMD_WIFI_DISCONNECT   0x06
 #define SYS_CMD_WIFI_WIPE         0x07
 #define SYS_OP_FLEET_PROGRESS     0x08
+#define SYS_CMD_FLEET_WIFI_OTA    0x0A  // push mgr WiFi creds + node URL to nodes
 
 #ifdef OUISPY_ROLE_MANAGER
 static void fleetOtaNotify(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) {
@@ -1021,6 +1022,17 @@ static void fleetProgressCb(uint8_t phase, uint8_t pct, uint8_t done, uint8_t se
 }
 void bleGattStartFleetProgress(void) {
     meshOtaSetProgressCb(fleetProgressCb);
+}
+
+static uint8_t g_fleetWifiBlob[MESH_WIFIOTA_MAX];
+static size_t  g_fleetWifiBlobLen = 0;
+static void fleetWifiOtaPushTask(void* arg) {
+    (void)arg;
+    for (int i = 0; i < 10; i++) {
+        meshBroadcastWifiOta(g_fleetWifiBlob, g_fleetWifiBlobLen);
+        vTaskDelay(pdMS_TO_TICKS(350));
+    }
+    vTaskDelete(NULL);
 }
 #endif
 
@@ -1101,6 +1113,44 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                     delay(300);
                     esp_restart();
                 }
+#endif
+                break;
+            }
+
+            case SYS_CMD_FLEET_WIFI_OTA: {
+                if (!magicOk) { Serial.println("[SYS] Fleet WiFi OTA rejected"); return; }
+                if (val.length() < 4) return;
+                std::string url(val.data() + 3, val.length() - 3);
+#ifdef OUISPY_ROLE_MANAGER
+                char ssid[33] = {0}, pass[65] = {0};
+                if (!wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass))) {
+                    Serial.println("[SYS] Fleet WiFi OTA: no manager WiFi creds saved");
+                    uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 0x80, 0, 0, 0, 0 };
+                    chr->setValue(b, sizeof(b)); chr->notify();
+                    return;
+                }
+                size_t sl = strlen(ssid), pl = strlen(pass), ul = url.length();
+                if (sl > 32) sl = 32;
+                if (pl > 64) pl = 64;
+                if (1 + sl + 1 + pl + 1 + ul > MESH_WIFIOTA_MAX) {
+                    Serial.println("[SYS] Fleet WiFi OTA: creds+url too large for mesh packet");
+                    uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 0x81, 0, 0, 0, 0 };
+                    chr->setValue(b, sizeof(b)); chr->notify();
+                    return;
+                }
+                size_t off = 0;
+                g_fleetWifiBlob[off++] = (uint8_t)sl;
+                memcpy(g_fleetWifiBlob + off, ssid, sl); off += sl;
+                g_fleetWifiBlob[off++] = (uint8_t)pl;
+                memcpy(g_fleetWifiBlob + off, pass, pl); off += pl;
+                g_fleetWifiBlob[off++] = (uint8_t)ul;
+                memcpy(g_fleetWifiBlob + off, url.data(), ul); off += ul;
+                g_fleetWifiBlobLen = off;
+                Serial.printf("[SYS] Fleet WiFi OTA: push creds(%s)+url to nodes (%u bytes)\n",
+                              ssid, (unsigned)off);
+                xTaskCreatePinnedToCore(fleetWifiOtaPushTask, "fleet_wifi", 3072, NULL, 1, NULL, 1);
+                uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 2, 100, 0, 0, 0 };
+                chr->setValue(b, sizeof(b)); chr->notify();
 #endif
                 break;
             }
@@ -1933,7 +1983,7 @@ void bleGattNotifyMeshStatus(void) {
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t liveCount = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
 
-    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 7];
+    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 11];
     buf[0] = st.enabled;
     buf[1] = st.peer_count;
     buf[2] = st.connected_peers;
@@ -1945,7 +1995,8 @@ void bleGattNotifyMeshStatus(void) {
         memcpy(buf + off, live[i].id, MESH_NODE_ID_LEN);
         buf[off + 5] = live[i].role;
         buf[off + 6] = live[i].active_engines;
-        off += 7;
+        memcpy(buf + off + 7, &live[i].fw_version, 4);
+        off += 11;
     }
 
     static uint8_t lastBuf[sizeof(buf)] = {};

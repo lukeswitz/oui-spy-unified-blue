@@ -408,6 +408,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_OTA_END         = 0x0F,
     MESH_PKT_OTA_ACK         = 0x10,
     MESH_PKT_DETECTION_BATCH = 0x11,
+    MESH_PKT_WIFI_OTA        = 0x12,
 };
 
 #define MESH_DET_REC_NAME_MAX  32
@@ -441,6 +442,17 @@ typedef struct __attribute__((packed)) {
     uint8_t  data[MESH_CONFIG_MAX];
 } MeshConfigPacket;
 
+// Fleet WiFi OTA: manager -> all nodes. Carries the manager's STA creds + the
+// node firmware URL so each node joins WiFi and self-updates (no per-node BLE).
+// data = [ssid_len][ssid][pass_len][pass][url_len][url]
+#define MESH_WIFIOTA_MAX 220
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;          // MESH_PKT_WIFI_OTA
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  len;
+    uint8_t  data[MESH_WIFIOTA_MAX];
+} MeshWifiOtaPacket;
+
 #define MESH_ROLE_NODE     0
 #define MESH_ROLE_MANAGER  1
 
@@ -452,6 +464,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  role;
     uint8_t  active_engines_mask;
     uint8_t  alerts_suppressed;
+    uint32_t fw_version;
 } MeshHeartbeatPacket;
 
 typedef struct __attribute__((packed)) {

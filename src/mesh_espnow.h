@@ -35,6 +35,7 @@ void meshResetTxDedup(void);
 void meshBroadcastIgnoreList(const uint8_t* data, size_t len);
 void meshBroadcastDetectorList(const uint8_t* data, size_t len);
 void meshBroadcastConfig(uint8_t kind, const uint8_t* data, size_t len);
+void meshBroadcastWifiOta(const uint8_t* data, size_t len);
 #if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)
 void meshDebugForceManager(void);
 #endif
@@ -49,6 +50,7 @@ struct MeshLiveNode {
     uint32_t last_ms;
     uint8_t  role;
     uint8_t  active_engines;
+    uint32_t fw_version;
 };
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms);
 

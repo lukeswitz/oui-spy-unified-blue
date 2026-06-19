@@ -3,6 +3,7 @@
 #include "engines/wardrive.h"
 #include "ignore_list.h"
 #include "engines/detector.h"
+#include "wifi_ota_handler.h"
 #include <stddef.h>
 #include "ble_gatt.h"
 #include <Arduino.h>
@@ -209,7 +210,7 @@ bool meshIsFleetMac(const uint8_t* mac) {
     return false;
 }
 
-static void recordLiveNode(const char* id, uint8_t role, uint8_t engines) {
+static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32_t fw_version = 0) {
     if (!liveMutex) return;
     if (id[0] == 0) return;
     if (memcmp(id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
@@ -227,6 +228,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines) {
             liveNodes[i].last_ms = now;
             liveNodes[i].role = role;
             liveNodes[i].active_engines = engines;
+            if (fw_version) liveNodes[i].fw_version = fw_version;
             xSemaphoreGive(liveMutex);
             return;
         }
@@ -240,6 +242,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines) {
     liveNodes[slot].last_ms = now;
     liveNodes[slot].role = role;
     liveNodes[slot].active_engines = engines;
+    liveNodes[slot].fw_version = fw_version;
     xSemaphoreGive(liveMutex);
 }
 
@@ -810,9 +813,10 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         MeshHeartbeatPacket hb;
         memcpy(&hb, plainBuf, sizeof(hb));
         if (memcmp(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0) {
-            recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask);
-            Serial.printf("[HB] rx id=%.4s role=%u eng=0x%02X\n",
-                          hb.source_node_id, hb.role, hb.active_engines_mask);
+            recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask, hb.fw_version);
+            Serial.printf("[HB] rx id=%.4s role=%u eng=0x%02X fw=0x%06X\n",
+                          hb.source_node_id, hb.role, hb.active_engines_mask,
+                          (unsigned)hb.fw_version);
             if (hb.role == MESH_ROLE_MANAGER) {
                 hwAlertsSuppressed = hb.alerts_suppressed != 0;
             }
@@ -863,6 +867,36 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     }
 
 #ifndef OUISPY_ROLE_MANAGER
+    if (plainLen >= offsetof(MeshWifiOtaPacket, data) && plainBuf[0] == MESH_PKT_WIFI_OTA) {
+        static bool s_wifiOtaApplied = false;
+        MeshWifiOtaPacket wp;
+        size_t c = plainLen <= sizeof(wp) ? plainLen : sizeof(wp);
+        memcpy(&wp, plainBuf, c);
+        if (memcmp(wp.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        if (s_wifiOtaApplied) return;
+        size_t n = wp.len; if (n > MESH_WIFIOTA_MAX) n = MESH_WIFIOTA_MAX;
+        size_t off = 0;
+        char ssid[33] = {0}, pass[65] = {0}, url[MESH_WIFIOTA_MAX + 1] = {0};
+        if (off >= n) return;
+        size_t sl = wp.data[off++];
+        if (sl > 32 || off + sl > n) return;
+        memcpy(ssid, wp.data + off, sl); off += sl;
+        if (off >= n) return;
+        size_t pl = wp.data[off++];
+        if (pl > 64 || off + pl > n) return;
+        memcpy(pass, wp.data + off, pl); off += pl;
+        if (off >= n) return;
+        size_t ul = wp.data[off++];
+        if (ul == 0 || off + ul > n) return;
+        memcpy(url, wp.data + off, ul);
+        s_wifiOtaApplied = true;
+        Serial.printf("[MESH-WIFIOTA] creds(%s)+url -> save + reboot to self-update\n", ssid);
+        wifiOtaSaveCreds(ssid, pass);
+        wifiOtaSetPending(url);
+        delay(200);
+        esp_restart();
+        return;
+    }
     if (plainLen == sizeof(MeshOtaBeginPacket) && plainBuf[0] == MESH_PKT_OTA_BEGIN) {
         MeshOtaBeginPacket b; memcpy(&b, plainBuf, sizeof(b)); otaRxBegin(&b); return;
     }
@@ -1411,6 +1445,20 @@ void meshBroadcastIgnoreList(const uint8_t* data, size_t len) {
     pkt.len = (uint8_t)len;
     if (len) memcpy(pkt.data, data, len);
     size_t pktSize = offsetof(MeshIgnoreListPacket, data) + len;
+    uint8_t enc[256]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
+    enqueueTx(enc, encLen);
+}
+
+void meshBroadcastWifiOta(const uint8_t* data, size_t len) {
+    if (!meshCurrentConfig.enabled) return;
+    if (len > MESH_WIFIOTA_MAX) len = MESH_WIFIOTA_MAX;
+    MeshWifiOtaPacket pkt = {};
+    pkt.pkt_type = MESH_PKT_WIFI_OTA;
+    memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    pkt.len = (uint8_t)len;
+    if (len) memcpy(pkt.data, data, len);
+    size_t pktSize = offsetof(MeshWifiOtaPacket, data) + len;
     uint8_t enc[256]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
     enqueueTx(enc, encLen);
@@ -1990,6 +2038,7 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
 #endif
     hb.active_engines_mask = active_engines_mask;
     hb.alerts_suppressed = hwAlertsSuppressed ? 1 : 0;
+    hb.fw_version = FW_VERSION_NUM;
     uint8_t enc[128]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
     enqueueTx(enc, encLen);

@@ -491,7 +491,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final mapStyle = ref.watch(mapStyleProvider);
     final wt = ref.watch(wardriveThemeDataProvider);
     final wd = ref.watch(wardriveProvider);
-    final activeMask = ref.watch(appStateProvider.select((s) => s.activeEngines));
     final gpsPos = ref.watch(gpsProvider).lastPosition;
     final selfPos = wd.currentPosition ?? gpsPos;
     final center = wd.currentPosition != null
@@ -840,12 +839,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   runSpacing: 4,
                   alignment: WrapAlignment.center,
                   children: [
-                    for (final m in WardriveController.selectableTargets)
-                      if (m != WardriveTarget.wigle &&
-                          m
-                              .engines(WardriveRadio.both)
-                              .any((e) => (activeMask & e.bitmask) != 0))
-                        _ScanningPill(color: m.color, label: m.label),
+                    if (wd.isActive)
+                      for (final m in WardriveController.selectableTargets)
+                        if (wd.isTargetSelected(m) && m != WardriveTarget.wigle)
+                          _ScanningPill(color: m.color, label: m.label),
                   ],
                 ),
               ),

@@ -3885,7 +3885,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   Timer? _wifiPoll;
   OtaRelease? _nodeRelease;
   String? _nodeStatus;
-  String? _busyNode;
   List<_FleetItem> _fleet = const [];
   bool _fleetRunning = false;
   bool _mgrReconnecting = false;
@@ -4013,113 +4012,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     }
   }
 
-  Future<void> _restoreManager(String? managerId) async {
-    if (managerId == null) return;
-    final ble = ref.read(bleManagerProvider);
-    if (mounted) setState(() => _nodeStatus = 'Reconnecting to manager...');
-    await ble.disconnect();
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    final ok = await ble.connectByIdAndReady(managerId);
-    if (mounted) {
-      setState(() => _nodeStatus =
-          ok ? 'Reconnected to manager.' : 'Could not auto-reconnect — tap CONNECT.');
-    }
-  }
-
-  Future<void> _updateNode(String nodeId) async {
-    final ble = ref.read(bleManagerProvider);
-    final release = _nodeRelease;
-    if (release == null) {
-      setState(() => _nodeStatus = 'Check for update first.');
-      return;
-    }
-    final managerId = ble.connectedDeviceId;
-    final cur = OtaService.parseVersion(widget.currentVersion);
-    final notNewer =
-        cur != null && OtaService.compareVersion(release.version, cur) <= 0;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Update node $nodeId?'),
-        content: Text(
-            (notNewer
-                    ? '⚠ ${release.tag} is NOT newer than this device '
-                        '(v${widget.currentVersion}). This may DOWNGRADE the node.\n\n'
-                    : '') +
-                'The app will disconnect from the manager, connect directly to '
-                'node $nodeId, flash ${release.tag} over BLE, then reconnect to '
-                'the manager. Keep the node powered and in range.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('CANCEL')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('UPDATE')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-
-    setState(() {
-      _busyNode = nodeId;
-      _nodeStatus = 'Disconnecting from manager...';
-    });
-    ref.read(otaServiceProvider).markOtaActive(ttl: const Duration(minutes: 3));
-    try {
-      await ble.disconnect();
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-
-      setState(() => _nodeStatus = 'Finding node $nodeId over BLE...');
-      final dev = await ble.scanForDeviceNamed('OUI-SPY-$nodeId');
-      if (dev == null) {
-        setState(() => _nodeStatus =
-            'Node $nodeId not found over BLE — must be powered and in range.');
-        await _restoreManager(managerId);
-        return;
-      }
-
-      setState(() => _nodeStatus = 'Connecting to node $nodeId...');
-      final connected = await ble.connectAndReady(dev);
-      if (!connected) {
-        setState(() => _nodeStatus = 'Failed to connect to node $nodeId.');
-        await _restoreManager(managerId);
-        return;
-      }
-      if (ble.role != 'node') {
-        setState(() => _nodeStatus =
-            'Connected device is not a node (role="${ble.role}") — aborting.');
-        await _restoreManager(managerId);
-        return;
-      }
-
-      var nodeRelease = release;
-      final nodeBoard = ble.board;
-      if (nodeBoard.isNotEmpty &&
-          !nodeRelease.assetUrl.toLowerCase().contains(nodeBoard.toLowerCase())) {
-        setState(() => _nodeStatus = 'Resolving $nodeBoard firmware for node $nodeId...');
-        final boardRelease = await ref
-            .read(otaServiceProvider)
-            .fetchLatestRelease(board: nodeBoard, role: 'node');
-        if (boardRelease != null) nodeRelease = boardRelease;
-      }
-
-      setState(() => _nodeStatus = 'Flashing node $nodeId — ${nodeRelease.tag}...');
-      final flashed = await ref.read(otaServiceProvider).performUpdate(nodeRelease);
-      setState(() => _nodeStatus = flashed
-          ? 'Node $nodeId flashed ${nodeRelease.tag}. Reconnecting manager...'
-          : 'Node $nodeId flash failed.');
-      await Future<void>.delayed(const Duration(seconds: 2));
-      await _restoreManager(managerId);
-    } catch (e) {
-      setState(() => _nodeStatus = 'Node update error: $e');
-      await _restoreManager(managerId);
-    } finally {
-      ref.read(otaServiceProvider).clearOtaActive();
-      if (mounted) setState(() => _busyNode = null);
-    }
-  }
-
   List<Widget> _buildNodeUpdateSection(ResolvedTheme t, bool busy) {
     final ble = ref.read(bleManagerProvider);
     if (!ble.isManagerConnected) return const [];
@@ -4204,28 +4096,40 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
           padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
           child: Row(
             children: [
+              Icon(Icons.sensors, size: 14, color: t.textDim),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(appState.labelForNode(id),
                     style: TextStyle(color: t.textPrimary, fontSize: 12)),
               ),
-              if (_busyNode == id)
-                const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                OutlinedButton(
-                  onPressed: (busy || _fleetRunning || _nodeRelease == null)
-                      ? null
-                      : _updateNodes,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    minimumSize: const Size(0, 32),
+              Builder(builder: (_) {
+                final v = appState.nodeFwVersion(id);
+                final outdated = v != null &&
+                    _nodeRelease != null &&
+                    OtaService.compareVersion(_nodeRelease!.version,
+                            OtaService.parseVersion(v) ?? const [0]) >
+                        0;
+                return Text(
+                  v == null ? 'v?' : 'v$v',
+                  style: TextStyle(
+                    color: outdated ? AppTheme.accent : t.textSecondary,
+                    fontSize: 11,
+                    fontWeight: outdated ? FontWeight.w700 : FontWeight.w400,
                   ),
-                  child: const Text('UPDATE', style: TextStyle(fontSize: 11)),
-                ),
+                );
+              }),
             ],
+          ),
+        ),
+      if (nodes.isNotEmpty && _nodeRelease != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+          child: ElevatedButton.icon(
+            onPressed: (busy || _fleetRunning) ? null : _updateNodes,
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accent),
+            icon: const Icon(Icons.wifi, size: 16),
+            label: Text(
+                'Update ${nodes.length} node${nodes.length == 1 ? '' : 's'} over WiFi'),
           ),
         ),
       if (_nodeStatus != null)
@@ -4237,13 +4141,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     ];
   }
 
-  Future<void> _installBle() async {
-    final release = _availableRelease;
-    if (release == null) return;
-    final ota = ref.read(otaServiceProvider);
-    await ota.performUpdate(release);
-  }
-
   Future<void> _installWifi() async {
     final release = _availableRelease;
     if (release == null) return;
@@ -4252,50 +4149,61 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await ota.performWifiUpdate(release);
   }
 
-  /// One-tap fleet update: manager (BLE DFU) -> reconnect -> each live node
-  /// (direct BLE DFU) -> back to manager. BLE DFU everywhere: reliable, needs
-  /// no WiFi creds, live byte-accurate progress per device.
-  /// Relay the node image to ALL nodes via the manager (ESP-NOW byte-relay).
-  /// Phone stays connected to the manager the whole time. Returns success.
-  Future<bool> _relayNodesViaManager(_FleetItem nodesItem) async {
+  /// Fleet WiFi update: the manager broadcasts its saved WiFi creds + the node
+  /// firmware URL to every node over mesh. Each node saves the creds, reboots
+  /// into WiFi-OTA mode, joins the network, downloads + flashes itself, then
+  /// rejoins the mesh. The phone stays on the manager (BLE) the whole time.
+  /// Nodes go offline from the mesh while they self-update.
+  Future<bool> _pushWifiFleet(_FleetItem nodesItem) async {
     final ble = ref.read(bleManagerProvider);
     final nodeRelease = _nodeRelease;
     if (nodeRelease == null) return false;
+    if (!_wifiConfigured) {
+      setState(() {
+        nodesItem.status = _FleetStatus.failed;
+        nodesItem.detail =
+            'Manager has no saved WiFi — set creds in the WIFI NETWORK section first.';
+      });
+      return false;
+    }
     setState(() {
       nodesItem.status = _FleetStatus.active;
-      nodesItem.detail = 'Manager staging node image…';
+      nodesItem.detail = 'Pushing WiFi creds + update to nodes…';
     });
     final done = Completer<bool>();
     final sub = ble.fleetOtaUpdates.listen((e) {
       if (!mounted) return;
       setState(() {
-        if (e.phase == 1) {
-          nodesItem.detail = 'Manager staging node image…';
-        } else if (e.phase == 2) {
-          nodesItem.detail =
-              'Relaying over mesh ${e.pct}% · ${e.done}/${e.seen} done';
-        } else if (e.phase == 3) {
+        if (e.phase == 2) {
           nodesItem.status = _FleetStatus.done;
-          nodesItem.detail = '${e.done}/${e.seen} nodes updated';
+          nodesItem.detail =
+              'Pushed — nodes rebooting to self-update over WiFi (~60–90s). '
+              'They drop off mesh, then rejoin when done.';
           if (!done.isCompleted) done.complete(true);
-        } else if (e.phase >= 0x80) {
+        } else if (e.phase == 0x80) {
           nodesItem.status = _FleetStatus.failed;
-          nodesItem.detail = 'Relay failed';
+          nodesItem.detail =
+              'Manager has no saved WiFi — set creds in the WIFI NETWORK section first.';
+          if (!done.isCompleted) done.complete(false);
+        } else if (e.phase == 0x81) {
+          nodesItem.status = _FleetStatus.failed;
+          nodesItem.detail = 'WiFi creds + URL too long for one mesh packet.';
           if (!done.isCompleted) done.complete(false);
         }
       });
     });
     try {
-      await ble.triggerFleetOta(nodeRelease.assetUrl);
-      return await done.future.timeout(const Duration(minutes: 5),
-          onTimeout: () {
+      await ble.triggerFleetWifiOta(nodeRelease.assetUrl);
+      return await done.future
+          .timeout(const Duration(seconds: 20), onTimeout: () {
         if (mounted) {
           setState(() {
-            nodesItem.status = _FleetStatus.failed;
-            nodesItem.detail = 'Timed out waiting for nodes';
+            nodesItem.status = _FleetStatus.done;
+            nodesItem.detail =
+                'Update pushed — nodes reboot to self-update over WiFi (~60–90s).';
           });
         }
-        return false;
+        return true;
       });
     } finally {
       await sub.cancel();
@@ -4326,10 +4234,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       _fleet = [nodesItem];
       _fleetRunning = true;
     });
-    ota.markOtaActive(ttl: const Duration(minutes: 6));
+    ota.markOtaActive(ttl: const Duration(minutes: 3));
     try {
-      await _relayNodesViaManager(nodesItem);
-      if (!ble.isManagerConnected) await ble.connectByIdAndReady(managerId);
+      await _pushWifiFleet(nodesItem);
     } finally {
       ota.clearOtaActive();
       if (mounted) setState(() => _fleetRunning = false);
@@ -4375,12 +4282,13 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       _mgrReconnecting = false;
     });
     ota.markOtaActive(ttl: const Duration(minutes: 8));
-    await _ensureWifiForUpdate();
 
     try {
       if (hasNodes) {
-        await _relayNodesViaManager(fleet.first);
-        if (!ble.isManagerConnected) await ble.connectByIdAndReady(managerId);
+        await _pushWifiFleet(fleet.first);
+        // Let the manager finish broadcasting creds+URL to the nodes before it
+        // reboots into its own WiFi update below (the push runs ~3.5s on-device).
+        await Future<void>.delayed(const Duration(seconds: 6));
       }
 
       if (hasMgr) {
@@ -4389,9 +4297,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
           mgr.status = _FleetStatus.active;
           mgr.detail = 'Updating manager…';
         });
-        final mok = _wifiConfigured
-            ? await ota.performWifiUpdate(mgrRelease)
-            : await ota.performUpdate(mgrRelease);
+        final mok = await ota.performWifiUpdate(mgrRelease);
         if (!mok) {
           setState(() {
             mgr.status = _FleetStatus.failed;
@@ -4541,58 +4447,36 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
           ),
         ),
         if (_availableRelease != null && !busy) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: _wifiConfigured
-                ? ElevatedButton.icon(
-                    onPressed: _installWifi,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accent,
-                    ),
-                    icon: const Icon(Icons.wifi, size: 16),
-                    label: Text(
-                        'Install via WiFi (fast) — ${_availableRelease!.tag}'),
-                  )
-                : ElevatedButton.icon(
-                    onPressed: _installBle,
-                    icon: const Icon(Icons.bluetooth, size: 16),
-                    label: Text('Install ${_availableRelease!.tag}'),
-                  ),
-          ),
-          if (!_wifiConfigured)
+          if (_wifiConfigured) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                'Tip: set WiFi in the WIFI NETWORK section above for ~10x faster updates.',
-                style: TextStyle(
-                  color: AppTheme.of(context).textDim, fontSize: 10,
-                ),
-              ),
-            ),
-          if (_wifiConfigured)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextButton(
-                onPressed: _installBle,
-                child: Text(
-                  'Use BLE instead (slow)',
-                  style: TextStyle(
-                    color: AppTheme.of(context).textDim,
-                    fontSize: 11,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ),
-          if (ref.read(bleManagerProvider).isManagerConnected)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: ElevatedButton.icon(
-                onPressed: _fleetRunning ? null : _updateAll,
-                style:
-                    ElevatedButton.styleFrom(backgroundColor: AppTheme.accent),
-                icon: const Icon(Icons.system_update_alt, size: 16),
-                label: const Text('Update All — manager + nodes'),
+                onPressed: _installWifi,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accent,
+                ),
+                icon: const Icon(Icons.wifi, size: 16),
+                label: Text('Install via WiFi — ${_availableRelease!.tag}'),
+              ),
+            ),
+            if (ref.read(bleManagerProvider).isManagerConnected)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: ElevatedButton.icon(
+                  onPressed: _fleetRunning ? null : _updateAll,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent),
+                  icon: const Icon(Icons.system_update_alt, size: 16),
+                  label: const Text('Update All — manager + nodes (WiFi)'),
+                ),
+              ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Text(
+                'Set WiFi credentials in the WIFI NETWORK section above to update '
+                'over WiFi.',
+                style: TextStyle(color: AppTheme.warning, fontSize: 12),
               ),
             ),
         ],

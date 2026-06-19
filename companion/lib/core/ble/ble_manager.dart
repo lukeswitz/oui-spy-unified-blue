@@ -67,7 +67,7 @@ class BleManager {
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
-  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines})> liveNodes})>.broadcast();
+  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion})> liveNodes})>.broadcast();
   final _pcapStatsStream = StreamController<PcapStats>.broadcast();
   final _pcapDataStream = StreamController<Uint8List>.broadcast();
   PcapStats _latestPcapStats = PcapStats.empty;
@@ -100,7 +100,7 @@ class BleManager {
   Stream<({int rssi, int intervalMs})> get foxhunterRssi => _foxhunterRssiStream.stream;
   Stream<({int available, int active, List<EngineState> states})> get engineStates =>
       _engineStates.stream;
-  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines})> liveNodes})> get meshStatusUpdates =>
+  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion})> liveNodes})> get meshStatusUpdates =>
       _meshStatusStream.stream;
   Stream<PcapStats> get pcapStats => _pcapStatsStream.stream;
   Stream<Uint8List> get pcapData => _pcapDataStream.stream;
@@ -868,6 +868,25 @@ class BleManager {
     final urlBytes = nodeUrl.codeUnits;
     final payload = Uint8List(3 + urlBytes.length);
     payload[0] = 0x05; // SYS_CMD_FLEET_OTA
+    payload[1] = 0xC0;
+    payload[2] = 0xDE;
+    payload.setRange(3, 3 + urlBytes.length, urlBytes);
+    await _systemControl!.write(payload, withoutResponse: false);
+  }
+
+  /// Fleet WiFi OTA: manager broadcasts its saved WiFi creds + the node firmware
+  /// URL to every node over mesh. Each node saves the creds, reboots into its
+  /// WiFi-OTA boot mode, joins the network, downloads + flashes itself, and
+  /// rejoins the mesh. Phone stays on the manager (BLE). Status arrives on
+  /// [fleetOtaUpdates] (phase 2 = pushed, 0x80 = manager has no WiFi creds,
+  /// 0x81 = creds+url too large for one mesh packet).
+  Future<void> triggerFleetWifiOta(String nodeUrl) async {
+    if (_systemControl == null) {
+      throw StateError('System control characteristic not found');
+    }
+    final urlBytes = nodeUrl.codeUnits;
+    final payload = Uint8List(3 + urlBytes.length);
+    payload[0] = 0x0A; // SYS_CMD_FLEET_WIFI_OTA
     payload[1] = 0xC0;
     payload[2] = 0xDE;
     payload.setRange(3, 3 + urlBytes.length, urlBytes);

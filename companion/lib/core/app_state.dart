@@ -219,10 +219,19 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _nodeLabels = {};
   final Set<String> _seenNodes = {};
   final Map<String, int> _nodeLastSeenMs = {};
+  final Map<String, int> _nodeFwVersion = {};
   final Set<String> _meshLiveNodeIds = {};
   final Set<String> _meshManagerNodeIds = {};
   bool isManagerNode(String id) =>
       _meshManagerNodeIds.contains(canonicalNodeId(id));
+
+  /// Firmware version a node last reported over mesh heartbeat, as "maj.min.pat"
+  /// (e.g. "0.4.7"), or null if not yet heard.
+  String? nodeFwVersion(String id) {
+    final v = _nodeFwVersion[canonicalNodeId(id)];
+    if (v == null || v == 0) return null;
+    return '${(v >> 16) & 0xFF}.${(v >> 8) & 0xFF}.${v & 0xFF}';
+  }
   static const int _seenNodeTtlMs = 7 * 24 * 60 * 60 * 1000;
   static const int _liveNodeTtlMs = 30 * 1000;
   final Map<String, int> _nodeWardriveRadio = {};
@@ -532,6 +541,7 @@ class AppState extends ChangeNotifier {
         live.add(canon);
         if (entry.role == 1) managers.add(canon);
         _nodeLastSeenMs[canon] = now;
+        if (entry.fwVersion != 0) _nodeFwVersion[canon] = entry.fwVersion;
       }
       _meshLiveNodeIds
         ..clear()

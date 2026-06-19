@@ -296,7 +296,7 @@ class BleProtocol {
     int connectedPeers,
     int rxCount,
     int txCount,
-    List<({String id, int role, int activeEngines})> liveNodes,
+    List<({String id, int role, int activeEngines, int fwVersion})> liveNodes,
   }) decodeMeshStatus(List<int> data) {
     if (data.length < 11) {
       return (
@@ -310,15 +310,20 @@ class BleProtocol {
     }
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
-    final live = <({String id, int role, int activeEngines})>[];
+    final live = <({String id, int role, int activeEngines, int fwVersion})>[];
     if (data.length >= 12) {
       final n = data[11];
-      const entryLen = 7;
+      const entryLen = 11;
       for (int i = 0; i < n && 12 + (i + 1) * entryLen <= data.length; i++) {
         final off = 12 + i * entryLen;
         final idBytes = bytes.sublist(off, off + 4);
         final id = String.fromCharCodes(idBytes);
-        live.add((id: id, role: data[off + 5], activeEngines: data[off + 6]));
+        live.add((
+          id: id,
+          role: data[off + 5],
+          activeEngines: data[off + 6],
+          fwVersion: view.getUint32(off + 7, Endian.little),
+        ));
       }
     }
     return (
