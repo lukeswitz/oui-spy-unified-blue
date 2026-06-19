@@ -1016,6 +1016,7 @@ class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 static void streamSpoolToPhone(void);
+static volatile bool g_spoolFlushPending = false;
 
 // System control opcodes
 #define SYS_CMD_REBOOT            0x01
@@ -1190,7 +1191,7 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
             }
 
             case SYS_CMD_FLUSH_SPOOL:
-                streamSpoolToPhone();
+                g_spoolFlushPending = true;
                 break;
 
             case SYS_CMD_SPOOL_CLEAR:
@@ -1977,6 +1978,13 @@ static void streamSpoolToPhone(void) {
     }
     uint8_t done = 0xFE;
     bleGattNotifyRaw(&done, 1);
+}
+
+void bleGattSpoolFlushPump(void) {
+    if (g_spoolFlushPending) {
+        g_spoolFlushPending = false;
+        streamSpoolToPhone();
+    }
 }
 
 void bleGattNotifyDetection(const DetectionEvent* evt) {

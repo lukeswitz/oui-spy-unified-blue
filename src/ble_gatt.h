@@ -51,6 +51,7 @@ void bleGattStreamPcapBytes(const uint8_t* buf, size_t len);
 void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
                                uint16_t seq, const uint8_t* payload, uint8_t len);
 void bleGattStartFleetProgress(void);
+void bleGattSpoolFlushPump(void);
 
 #ifdef OUISPY_NETCOUNT
 void bleGattNetcountDrive(void);

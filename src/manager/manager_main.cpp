@@ -53,6 +53,7 @@ static void heartbeatTask(void*) {
         bleGattMaybeResliceWardrive();
         bleGattReconcileEngines();
         detSpoolFlushIfDirty();
+        bleGattSpoolFlushPump();
         if ((tick % 7) == 0 && meshIsEnabled()) {
             uint8_t ib[256];
             size_t in = ignoreListSerialize(ib, sizeof(ib));

@@ -394,6 +394,7 @@ static void statusHeartbeatTask(void* param) {
 #endif
 
         detSpoolFlushIfDirty();
+        bleGattSpoolFlushPump();
 
         static bool wasManaged = false;
         if (meshIsEnabled()) {
