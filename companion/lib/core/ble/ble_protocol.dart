@@ -196,6 +196,7 @@ class BleProtocol {
     required int neopixelBrightness,
     required int buzzerVolume,
     bool extendedOui = false,
+    bool offlineScan = false,
   }) {
     return Uint8List.fromList([
       buzzer ? 1 : 0,
@@ -203,8 +204,21 @@ class BleProtocol {
       neopixelBrightness.clamp(0, 255),
       buzzerVolume.clamp(0, 255),
       extendedOui ? 1 : 0,
+      offlineScan ? 1 : 0,
     ]);
   }
+
+  static Uint8List get flushSpoolCmd => Uint8List.fromList([0x0B]);
+  static Uint8List get spoolClearCmd => Uint8List.fromList([0x0C]);
+
+  static bool isSpoolHeader(List<int> d) => d.length == 9 && d[0] == 0xFF;
+  static bool isSpoolDone(List<int> d) => d.length == 1 && d[0] == 0xFE;
+
+  static SpoolHeader decodeSpoolHeader(List<int> d) => SpoolHeader(
+        count: d[1] | (d[2] << 8),
+        dropped: d[3] | (d[4] << 8),
+        deviceNowMs: d[5] | (d[6] << 8) | (d[7] << 16) | (d[8] << 24),
+      );
 
   /// Encode alert config: cooldown[2] heartbeat[2] rediscover[2] hb_active[2]
   static Uint8List encodeAlertConfig({
@@ -509,4 +523,11 @@ class BleProtocol {
     return buf;
   }
 
+}
+
+class SpoolHeader {
+  final int count;
+  final int dropped;
+  final int deviceNowMs;
+  const SpoolHeader({required this.count, required this.dropped, required this.deviceNowMs});
 }
