@@ -396,6 +396,29 @@ static void statusHeartbeatTask(void* param) {
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
 
+#ifndef OUISPY_ROLE_MANAGER
+        {
+            static bool prevMgrPhone = false;
+            bool mgrPhone = meshManagerJoined() && meshMgrPhoneConnected();
+            if (mgrPhone && !prevMgrPhone) {
+                uint16_t n = detSpoolCount();
+                if (n > 0) {
+                    Serial.printf("[SPOOL] mgr phone back — flushing %u to mesh\n", n);
+                    DetectionEvent evt;
+                    for (uint16_t i = 0; i < n; i++) {
+                        if (detSpoolReadSlot(i, &evt, nullptr)) {
+                            meshBroadcastDetection(&evt);
+                            vTaskDelay(pdMS_TO_TICKS(8));
+                        }
+                    }
+                    detSpoolClear();
+                    Serial.println("[SPOOL] mesh flush done, spool cleared");
+                }
+            }
+            prevMgrPhone = mgrPhone;
+        }
+#endif
+
         static bool wasManaged = false;
         if (meshIsEnabled()) {
             if (meshManagerJoined()) {
