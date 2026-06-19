@@ -137,10 +137,10 @@ bool detSpoolReadSlot(uint16_t i, DetectionEvent* out, uint16_t* hitCount) {
 }
 
 void detSpoolClear() {
+    if (s_ready) LittleFS.remove(SPOOL_PATH);
     s_count = 0;
     s_dropped = 0;
     s_dirty = false;
-    if (s_ready) LittleFS.remove(SPOOL_PATH);
 }
 
 void detSpoolFlushIfDirty() {
@@ -174,7 +174,8 @@ void detSpoolSelfTest() {
     Serial.printf("[SPOOL-TEST] count=%u (want 5) dedup=%s\n",
                   detSpoolCount(), ok ? "PASS" : "FAIL");
     persist();
-    s_count = 0; s_ready = false; s_slots = nullptr;
+    s_count = 0; s_ready = false;
+    heap_caps_free(s_slots); s_slots = nullptr;
     detSpoolInit();
     Serial.printf("[SPOOL-TEST] reload=%u (want 5) %s\n",
                   detSpoolCount(), detSpoolCount() == 5 ? "PASS" : "FAIL");
