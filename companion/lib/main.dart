@@ -89,15 +89,24 @@ Future<void> _autoConnect(ProviderContainer container) async {
     final lastPrimaryId = prefs.getString('lastPrimaryDeviceId');
 
     final connected = FlutterBluePlus.connectedDevices;
+    BluetoothDevice? connMgr;
+    BluetoothDevice? connNode;
     for (final device in connected) {
-      if (device.platformName.contains('OUI-SPY')) {
-        DebugLog.log('AUTO: reconnecting to system-remembered ${device.platformName}');
-        final ble = container.read(bleManagerProvider);
-        await ble.connect(device, sessionId: const Uuid().v4());
-        ble.markAsPrimary();
-        await _onConnected(container, device.remoteId.toString());
-        return;
+      if (!device.platformName.contains('OUI-SPY')) continue;
+      if (device.platformName.toUpperCase().contains('MGR')) {
+        connMgr = device;
+      } else {
+        connNode ??= device;
       }
+    }
+    final already = connMgr ?? connNode;
+    if (already != null) {
+      DebugLog.log('AUTO: reconnecting to system-remembered ${already.platformName}');
+      final ble = container.read(bleManagerProvider);
+      await ble.connect(already, sessionId: const Uuid().v4());
+      ble.markAsPrimary();
+      await _onConnected(container, already.remoteId.toString());
+      return;
     }
 
     DebugLog.log('AUTO: scanning (no filter, 8s)...');
@@ -126,14 +135,21 @@ Future<void> _autoConnect(ProviderContainer container) async {
         }
 
         if (isOuiSpy) {
-          if (lastPrimaryId != null && id == lastPrimaryId) {
-            DebugLog.log('AUTO: PREFERRED MATCH: $name/$advName');
+          final isMgr = name.toUpperCase().contains('MGR') ||
+              advName.toUpperCase().contains('MGR');
+          if (isMgr) {
+            DebugLog.log('AUTO: MANAGER MATCH (preferred): $name/$advName');
             FlutterBluePlus.stopScan();
             if (!completer.isCompleted) completer.complete(r.device);
             return;
           }
-          preferredDevice ??= r.device;
-          DebugLog.log('AUTO: MATCH: $name/$advName (fallback)');
+          if (lastPrimaryId != null && id == lastPrimaryId) {
+            preferredDevice = r.device;
+            DebugLog.log('AUTO: lastPrimary node (used only if no manager): $name/$advName');
+          } else {
+            preferredDevice ??= r.device;
+            DebugLog.log('AUTO: node MATCH (fallback): $name/$advName');
+          }
         }
       }
     });
