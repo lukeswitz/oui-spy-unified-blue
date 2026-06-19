@@ -12,6 +12,7 @@
  * - Foxhunter RSSI (NOTIFY)
  */
 #include "ble_gatt.h"
+#include "det_spool.h"
 #include "engine_registry.h"
 #include "ignore_list.h"
 #include "engines/pcap.h"
@@ -58,6 +59,9 @@ static bool phoneConnected = false;
 static volatile bool pcapDownloadRunning = false;
 static volatile uint32_t mgrPhoneGoneMs = 0;
 static volatile bool mgrTornDown = false;
+static bool offlineScanEnabled = false;
+bool bleGattOfflineScanEnabled() { return offlineScanEnabled; }
+void offlineScanEnabledSetFromPref(bool v) { offlineScanEnabled = v; }
 #define MGR_PHONE_GRACE_MS 8000
 
 #ifdef OUISPY_ROLE_MANAGER
@@ -386,15 +390,19 @@ void bleGattReconcileEngines(void) {
     }
     if (mgrPhoneGoneMs != 0 && !phoneConnected && !mgrTornDown &&
         (millis() - mgrPhoneGoneMs) > MGR_PHONE_GRACE_MS) {
-        mgrTornDown = true;
-        g_meshManagerActive = false;
-        mgrCommandedMask = 0;
-        for (int i = 0; i < ENGINE_COUNT; i++) {
-            mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
-            if (i != ENGINE_PCAP) meshMarkNodesEngine((uint8_t)i, false);
+        if (offlineScanEnabled) {
+            mgrPhoneGoneMs = 0;
+        } else {
+            mgrTornDown = true;
+            g_meshManagerActive = false;
+            mgrCommandedMask = 0;
+            for (int i = 0; i < ENGINE_COUNT; i++) {
+                mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
+                if (i != ENGINE_PCAP) meshMarkNodesEngine((uint8_t)i, false);
+            }
+            if (meshIsEnabled()) meshBroadcastCommand(0x0F, 0, nullptr, 0);
+            Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL + manager demoted (nodes will self-idle)");
         }
-        if (meshIsEnabled()) meshBroadcastCommand(0x0F, 0, nullptr, 0);
-        Serial.println("[BLE] App gone (grace expired) — DISABLE_ALL + manager demoted (nodes will self-idle)");
     }
     if (!meshIsEnabled()) return;
     mgrPushEngineDeny();
@@ -470,8 +478,12 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         mgrPhoneGoneMs = millis();
         Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
 #else
-        engineDisableAll();
-        Serial.println("[BLE] Phone disconnected — engines off");
+        if (!offlineScanEnabled) {
+            engineDisableAll();
+            Serial.println("[BLE] Phone disconnected — engines off");
+        } else {
+            Serial.println("[BLE] Phone disconnected — offline scan, engines kept");
+        }
 #endif
         NimBLEDevice::startAdvertising();
     }
@@ -659,6 +671,10 @@ void hardwareConfigApply(const uint8_t* data, size_t len) {
         p.putBool("flock_ext", flockExt);
         flockSetExtendedOui(flockExt);
     }
+    if (len >= 6) {
+        offlineScanEnabled = data[5] != 0;
+        p.putBool("offl_scan", offlineScanEnabled);
+    }
     p.end();
 
     Serial.printf("[CFG] Hardware: buzzer=%d vol=%d led=%d brightness=%d flock_ext=%d\n",
@@ -794,14 +810,15 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* chr) override {
         Preferences p;
         p.begin("ouispy-hw", true);
-        uint8_t buf[5];
+        uint8_t buf[6];
         buf[0] = p.getBool("buzzer", true) ? 1 : 0;
         buf[1] = p.getBool("led", true) ? 1 : 0;
         buf[2] = p.getUChar("neo_brt", 50);
         buf[3] = p.getUChar("bz_vol", 100);
         buf[4] = p.getBool("flock_ext", false) ? 1 : 0;
+        buf[5] = p.getBool("offl_scan", false) ? 1 : 0;
         p.end();
-        chr->setValue(buf, 5);
+        chr->setValue(buf, 6);
     }
 };
 
@@ -1847,7 +1864,11 @@ void bleGattInit(void) {
 // Notifications
 // ============================================================================
 void bleGattNotifyDetection(const DetectionEvent* evt) {
-    if (!phoneConnected || chrDetectionEvents == nullptr) return;
+    if (!phoneConnected) {
+        if (offlineScanEnabled && evt && engineSpoolable(evt->engine_id)) detSpoolAppend(evt);
+        return;
+    }
+    if (chrDetectionEvents == nullptr) return;
 
     uint8_t buf[200];
     size_t len = 19;

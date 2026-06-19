@@ -22,6 +22,10 @@ void bleGattNotifyEngineState(void);
 // Check if a phone is connected
 bool bleGattIsConnected(void);
 
+// Offline scan flag — true means engines keep running when phone disconnects
+bool bleGattOfflineScanEnabled(void);
+void offlineScanEnabledSetFromPref(bool v);
+
 // Manager: re-slice wardrive channel ranges when the live-node set changes
 void bleGattMaybeResliceWardrive(void);
 

@@ -18,6 +18,7 @@
 #include <freertos/queue.h>
 
 #include "protocol.h"
+#include "det_spool.h"
 #include "engine_registry.h"
 #include "radio_coex.h"
 #include "ignore_list.h"
@@ -80,8 +81,11 @@ static void loadHardwareConfig(void) {
     hwLedEnabled = p.getBool("led", true);
     hwNeopixelBrightness = p.getUChar("neo_brt", 50);
     bool flockExt = p.getBool("flock_ext", false);
+    bool offlScan = p.getBool("offl_scan", false);
     p.end();
     flockSetExtendedOui(flockExt);
+    offlineScanEnabledSetFromPref(offlScan);
+    detSpoolInit();
     Serial.printf("[HW] Config: buzzer=%d vol=%d led=%d neo=%d flock_ext=%d\n",
                   (int)hwBuzzerEnabled, (int)hwBuzzerVolume,
                   (int)hwLedEnabled, (int)hwNeopixelBrightness, (int)flockExt);
@@ -389,13 +393,17 @@ static void statusHeartbeatTask(void* param) {
                       meshTimeSlicingActive() ? 1 : 0);
 #endif
 
+        detSpoolFlushIfDirty();
+
         static bool wasManaged = false;
         if (meshIsEnabled()) {
             if (meshManagerJoined()) {
                 wasManaged = true;
             } else if (wasManaged && engineGetActiveMask() != 0) {
-                Serial.println("[WATCHDOG] manager lost — self-idle all engines");
-                engineDisableAll();
+                if (!bleGattOfflineScanEnabled()) {
+                    Serial.println("[WATCHDOG] manager lost — self-idle all engines");
+                    engineDisableAll();
+                }
                 wasManaged = false;
             } else if (wasManaged) {
                 wasManaged = false;

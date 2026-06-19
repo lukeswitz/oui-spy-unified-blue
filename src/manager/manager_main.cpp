@@ -3,6 +3,7 @@
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
 #include "../protocol.h"
+#include "../det_spool.h"
 #include "../ble_gatt.h"
 #include "../mesh_espnow.h"
 #include "../wifi_ota_handler.h"
@@ -51,6 +52,7 @@ static void heartbeatTask(void*) {
         tick++;
         bleGattMaybeResliceWardrive();
         bleGattReconcileEngines();
+        detSpoolFlushIfDirty();
         if ((tick % 7) == 0 && meshIsEnabled()) {
             uint8_t ib[256];
             size_t in = ignoreListSerialize(ib, sizeof(ib));
