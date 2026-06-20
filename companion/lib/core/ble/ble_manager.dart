@@ -99,6 +99,9 @@ class BleManager {
   bool get offlineScanEnabled => _offlineScanEnabled;
 
   bool _importing = false;
+  int _awaySeen = 0;
+  bool _awayWindow = false;
+  Timer? _awayTimer;
   int _importTotal = 0;
   int _importSeen = 0;
   int _importDropped = 0;
@@ -733,6 +736,7 @@ class BleManager {
 
     if (_offlineScanEnabled) {
       await requestSpoolFlush();
+      _startAwayImport();
     }
   }
 
@@ -1298,10 +1302,15 @@ class BleManager {
     if (_device != null) _lastDevice = _device;
     _userInitiatedDisconnect = true;
     _reconnectTimer?.cancel();
-    for (final sub in _subscriptions) {
-      await sub.cancel();
-    }
+    final subs = List.of(_subscriptions);
     _subscriptions.clear();
+    for (final sub in subs) {
+      try {
+        await sub.cancel();
+      } on Exception catch (e) {
+        DebugLog.log('BLE: sub cancel on quiet disconnect: $e');
+      }
+    }
     try {
       await _device?.disconnect();
     } on FlutterBluePlusException catch (e) {
@@ -1329,6 +1338,7 @@ class BleManager {
   void dispose() {
     disconnect();
     _importTimer?.cancel();
+    _awayTimer?.cancel();
     _connectionState.close();
     _detections.close();
     _importedDetections.close();
@@ -1456,6 +1466,28 @@ class BleManager {
       satelliteCount: _lastSatCount,
     );
     _detections.add(detection);
+    if (_awayWindow) {
+      _awaySeen++;
+      _spoolImport.add(SpoolImportProgress(
+          seen: _awaySeen, total: 0, dropped: 0, done: false, aborted: false));
+    }
+  }
+
+  void _startAwayImport() {
+    _awayTimer?.cancel();
+    _awaySeen = 0;
+    _awayWindow = true;
+    _spoolImport.add(const SpoolImportProgress(
+        seen: 0, total: 0, dropped: 0, done: false, aborted: false));
+    _awayTimer = Timer(const Duration(seconds: 7), () {
+      _awayWindow = false;
+      _spoolImport.add(SpoolImportProgress(
+          seen: _awaySeen,
+          total: _awaySeen,
+          dropped: 0,
+          done: true,
+          aborted: false));
+    });
   }
 
   void _abortImport() {

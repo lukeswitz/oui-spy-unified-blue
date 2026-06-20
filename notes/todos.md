@@ -6,5 +6,6 @@
 - [ ] Fix iOS close-crash (flutter_blue_plus didUpdateValueForCharacteristic invokeMethod after engine teardown — happens because detection NOTIFY stream is in-flight on close while scanning). Native guard needed (Dart disconnectQuiet insufficient under load).
 
 ## Backlog
+- [x] (done) battery text removed from offline-scan toggle subtitle
 - [ ] watchlist: per-entry on/off toggles like the ignore list has
 - [ ] config-tab settings full sync to nodes: detector watchlist (0x100) + ignore list (0x23) not in periodic rebroadcast -> late-joining/rebooted nodes miss them

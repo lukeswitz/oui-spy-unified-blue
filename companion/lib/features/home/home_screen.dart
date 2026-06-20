@@ -411,16 +411,19 @@ class _ConnectedView extends ConsumerWidget {
                   message: 'Imported $clamped detections seen while away$suffix',
                 );
               }
-              final clamped = p.seen.clamp(0, p.total);
+              final hasTotal = p.total > 0;
+              final clamped = hasTotal ? p.seen.clamp(0, p.total) : p.seen;
               final progress =
-                  p.total > 0 ? (clamped / p.total).clamp(0.0, 1.0) : null;
+                  hasTotal ? (clamped / p.total).clamp(0.0, 1.0) : null;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      'Importing $clamped/${p.total} detections seen while away…',
+                      hasTotal
+                          ? 'Importing $clamped/${p.total} detections seen while away…'
+                          : 'Syncing — $clamped detection(s) found while away…',
                       style: TextStyle(
                         color: t.textSecondary,
                         fontSize: 11,

@@ -531,7 +531,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ConfigToggleRow(
           icon: Icons.cloud_off,
           label: 'Keep scanning while disconnected',
-          subtitle: 'Node keeps scanning when the app is closed; detections import on reconnect. Higher battery use.',
+          subtitle: 'Node keeps scanning when the app is closed; detections import on reconnect.',
           color: const Color(0xFF4AB8FF),
           value: _offlineScanEnabled,
           onChanged: (v) {
