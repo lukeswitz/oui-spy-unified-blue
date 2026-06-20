@@ -1794,7 +1794,7 @@ static void sendAckPacket(const MeshCommandPacket* cmd) {
         ack.ack_seq, ack.ack_cmd, ack.ack_engine_id);
 }
 
-void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len) {
+void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len, uint8_t maxRetries) {
     if (!meshCurrentConfig.enabled) return;
 
     uint8_t seq;
@@ -1820,7 +1820,7 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     if (p.payload_len > 0) memcpy(p.payload, payload, p.payload_len);
     p.last_send_ms = millis();
     p.created_ms = millis();
-    p.retries_left = MESH_CMD_MAX_RETRIES;
+    p.retries_left = maxRetries;
     p.acked = false;
     p.acks = 0;
     {

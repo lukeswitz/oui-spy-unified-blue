@@ -191,7 +191,7 @@ static void mgrPushEngineDeny(void) {
         memcpy(out + 1, live[i].id, MESH_NODE_ID_LEN - 1);
         out[5] = 0x00;
         out[CFG_TGT_OVERHEAD] = deny;
-        meshBroadcastCommand(0x12, 0, out, (uint8_t)(CFG_TGT_OVERHEAD + 1));
+        meshBroadcastCommand(0x12, 0, out, (uint8_t)(CFG_TGT_OVERHEAD + 1), 3);
         Serial.printf("[MGR-FANOUT] node=%.4s deny=0x%02x%s\n",
                       live[i].id, deny, nonCompliant ? " (re-push)" : "");
     }
@@ -267,7 +267,7 @@ static void mgrBroadcastNodeRadioConfig(uint8_t engineId) {
         memcpy(out + 1, live[i].id, MESH_NODE_ID_LEN - 1);
         out[5] = 0x00;
         out[CFG_TGT_OVERHEAD] = r;
-        meshBroadcastCommand(0x10, engineId, out, (uint8_t)(CFG_TGT_OVERHEAD + 1));
+        meshBroadcastCommand(0x10, engineId, out, (uint8_t)(CFG_TGT_OVERHEAD + 1), 3);
         Serial.printf("[NODE-RADIO] eng=%u node=%.4s radio=0x%02X\n",
                       engineId, live[i].id, r);
     }
