@@ -110,10 +110,7 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
-      final ble = ref.read(bleManagerProvider);
-      if (!ble.isManagerConnected) {
-        ble.disableAllEngines();
-      }
+      ref.read(bleManagerProvider).disconnectQuiet();
       ref.read(liveActivityServiceProvider).endAll();
       ref.read(notificationServiceProvider).cancelAll();
     } else if (state == AppLifecycleState.resumed) {

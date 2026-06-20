@@ -1293,6 +1293,23 @@ class BleManager {
     _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
   }
 
+  Future<void> disconnectQuiet() async {
+    _userInitiatedDisconnect = true;
+    _reconnectTimer?.cancel();
+    for (final sub in _subscriptions) {
+      await sub.cancel();
+    }
+    _subscriptions.clear();
+    try {
+      await _device?.disconnect();
+    } on FlutterBluePlusException catch (e) {
+      DebugLog.log('BLE: quiet disconnect failed: ${e.description}');
+    }
+    _device = null;
+    _currentState = NodeConnectionState.disconnected;
+    _connectionState.add(NodeConnectionState.disconnected);
+  }
+
   void dispose() {
     disconnect();
     _importTimer?.cancel();
