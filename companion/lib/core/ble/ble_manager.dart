@@ -1099,6 +1099,21 @@ class BleManager {
     }
   }
 
+  Future<void> resyncOnResume() async {
+    if (_currentState != NodeConnectionState.ready || _device == null) {
+      DebugLog.log('BLE: resume — not connected, autoconnect handles it');
+      return;
+    }
+    DebugLog.log('BLE: app resumed — reconcile to firmware state + flush node spool');
+    try {
+      await _readDeviceConfig();
+      await _refreshEngineState();
+      await requestSpoolFlush();
+    } catch (e) {
+      DebugLog.log('BLE: resync on resume failed: $e');
+    }
+  }
+
   // -- GPS push --
 
   Future<void> pushGps({
