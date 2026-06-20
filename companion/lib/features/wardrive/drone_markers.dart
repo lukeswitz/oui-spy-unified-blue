@@ -26,9 +26,9 @@ String plotKey(Detection d) {
 /// travel-perpendicular angle so heads float off to the side of the route
 /// instead of overlapping it. Defaults to straight up.
 FanGeometry fanGeometry(int index, int count, {double baseAngle = -pi / 2}) {
-  if (count <= 1) return FanGeometry(baseAngle, 46);
+  if (count <= 1) return FanGeometry(baseAngle, 23);
   final angle = (index / count) * 2 * pi + baseAngle;
-  final length = count <= 4 ? 38.0 : 32.0 + count * 2.0;
+  final length = count <= 4 ? 19.0 : 16.0 + count * 1.0;
   return FanGeometry(angle, length);
 }
 

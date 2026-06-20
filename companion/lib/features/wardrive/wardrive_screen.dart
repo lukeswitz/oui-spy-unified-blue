@@ -1227,7 +1227,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             borderColor: color.withValues(alpha: 0.9),
             borderStrokeWidth: 2.0,
           ));
-          final droneBox = (fan.length + 44) * 2;
+          final droneBox = (fan.length + 22) * 2;
           pins.add(Marker(
             point: obs,
             width: droneBox,
@@ -1237,7 +1237,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             child: FannedPin(
               geo: fan,
               lineColor: color,
-              headExtent: 44,
+              headExtent: 22,
               head: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => showDetectionDetails(context, ref, d),
@@ -1315,7 +1315,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       }
 
       final pinColor = wt.engineColor(d.engine);
-      final box = (fan.length + pinHead + 10) * 2;
+      final box = (fan.length + pinHead + 5) * 2;
       pins.add(Marker(
         point: LatLng(d.latitude!, d.longitude!),
         width: box,
@@ -1325,7 +1325,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         child: FannedPin(
           geo: fan,
           lineColor: pinColor,
-          headExtent: pinHead + 10,
+          headExtent: pinHead + 5,
           head: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => showDetectionDetails(context, ref, d),
