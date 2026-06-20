@@ -517,3 +517,19 @@ void engineProcessCommand(const EngineCommand* cmd) {
             break;
     }
 }
+
+void engineStateConfigApply(const uint8_t* data, uint8_t len) {
+    if (len < 1) return;
+    uint8_t desired = (uint8_t)(data[0] & ~g_engineDenyMask & ~ENGINE_BITMASK(ENGINE_PCAP));
+    uint8_t current = (uint8_t)(engineGetActiveMask() & ~ENGINE_BITMASK(ENGINE_PCAP));
+    if (desired == current) return;
+    for (int i = 0; i < ENGINE_COUNT; i++) {
+        if (i == ENGINE_PCAP) continue;
+        uint8_t bit = ENGINE_BITMASK(i);
+        bool want = (desired & bit) != 0;
+        bool have = (current & bit) != 0;
+        if (want && !have) engineEnable((EngineId)i);
+        else if (!want && have) engineDisable((EngineId)i);
+    }
+    Serial.printf("[ENGINE-CFG] desired=0x%02X was=0x%02X\n", desired, current);
+}

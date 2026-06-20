@@ -376,6 +376,14 @@ void bleGattNetcountDrive(void) {
 }
 #endif
 
+static void mgrPushEngineState(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    if (!meshIsEnabled()) return;
+    uint8_t em = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
+    meshBroadcastConfig(MESH_CFG_KIND_ENGINE, &em, 1);
+#endif
+}
+
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
     // Advertising watchdog: if no phone is connected, ensure we are advertising.
@@ -406,46 +414,7 @@ void bleGattReconcileEngines(void) {
     }
     if (!meshIsEnabled()) return;
     mgrPushEngineDeny();
-    const uint8_t pcapBit = ENGINE_BITMASK(ENGINE_PCAP);
-    uint8_t desired = (uint8_t)(mgrCommandedMask & ~pcapBit);
-    MeshLiveNode live[MESH_LIVE_NODES_MAX];
-    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
-    uint8_t missingAny = 0;
-    uint8_t extraAny = 0;
-    uint8_t nodeCount = 0;
-    for (size_t i = 0; i < total; i++) {
-        if (live[i].role == MESH_ROLE_MANAGER) continue;
-        nodeCount++;
-        if (live[i].active_engines & pcapBit) continue;
-        uint8_t nodeDesired = (uint8_t)(desired & ~mgrNodeDenyMask(live[i].id));
-        uint8_t have = (uint8_t)(live[i].active_engines & ~pcapBit);
-        missingAny |= (uint8_t)(nodeDesired & ~have);
-        extraAny   |= (uint8_t)(have & ~desired);
-    }
-    if (nodeCount == 0) return;
-    static uint32_t lastEnable[ENGINE_COUNT] = {0};
-    static uint32_t lastDisable[ENGINE_COUNT] = {0};
-    uint32_t now = millis();
-    for (int e = 0; e < ENGINE_COUNT; e++) {
-        if (e == ENGINE_PCAP || kEngineTargetable[e]) continue;
-        if (missingAny & ENGINE_BITMASK(e)) {
-            if (lastEnable[e] != 0 && (now - lastEnable[e]) < 6000) continue;
-            lastEnable[e] = now;
-            meshBroadcastCommand(0x01, (uint8_t)e, nullptr, 0);
-            meshMarkNodesEngine((uint8_t)e, true);
-            if (e == ENGINE_FLOCK_WIFI || e == ENGINE_FLOCK_BLE ||
-                e == ENGINE_DETECTOR || e == ENGINE_SKYSPY) {
-                mgrBroadcastNodeRadioConfig((uint8_t)e);
-            }
-            Serial.printf("[MGR-RECONCILE] engine %d missing — re-enable\n", e);
-        } else if (extraAny & ENGINE_BITMASK(e)) {
-            if (lastDisable[e] != 0 && (now - lastDisable[e]) < 6000) continue;
-            lastDisable[e] = now;
-            meshBroadcastCommand(0x00, (uint8_t)e, nullptr, 0);
-            meshMarkNodesEngine((uint8_t)e, false);
-            Serial.printf("[MGR-RECONCILE] engine %d not commanded — disable\n", e);
-        }
-    }
+    mgrPushEngineState();
 #endif
 }
 

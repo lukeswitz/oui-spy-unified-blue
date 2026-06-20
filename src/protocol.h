@@ -448,6 +448,7 @@ typedef struct __attribute__((packed)) {
 #define MESH_CFG_KIND_ALERT 2   // alert timing: cooldown/heartbeat/rediscover
 #define MESH_CFG_KIND_AUTOPCAP 3
 #define MESH_CFG_KIND_FOXHUNTER 4
+#define MESH_CFG_KIND_ENGINE 5
 #define MESH_CONFIG_MAX     32
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;          // MESH_PKT_CONFIG

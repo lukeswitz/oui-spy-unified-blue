@@ -867,6 +867,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         else if (cp.cfg_kind == MESH_CFG_KIND_ALERT) alertConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_AUTOPCAP) autoPcapConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_FOXHUNTER) foxhunterConfigApply(cp.data, n);
+#ifndef OUISPY_ROLE_MANAGER
+        else if (cp.cfg_kind == MESH_CFG_KIND_ENGINE) engineStateConfigApply(cp.data, n);
+#endif
         return;
     }
 

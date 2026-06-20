@@ -47,6 +47,7 @@ void engineLoopAll(void);
 void engineProcessCommand(const EngineCommand* cmd);
 
 void engineSetDenyMask(uint8_t mask);
+void engineStateConfigApply(const uint8_t* data, uint8_t len);
 
 // ---- Auto-PCAP-on-detect ---------------------------------------------------
 // When enabled, a detection from any engine other than Foxhunter triggers a
