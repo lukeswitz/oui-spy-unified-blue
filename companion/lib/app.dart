@@ -118,7 +118,11 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
         ref.read(notificationServiceProvider).cancelAll();
       }
     } else if (state == AppLifecycleState.resumed) {
-      ref.read(bleManagerProvider).reconnectPrimary();
+      // Reconnect, then shut every engine down so we're not live-scanning on
+      // resume — the node's spooled away-detections flush in as the import.
+      ref.read(bleManagerProvider).reconnectPrimary().then((_) {
+        ref.read(bleManagerProvider).disableAllEngines();
+      });
     }
   }
 

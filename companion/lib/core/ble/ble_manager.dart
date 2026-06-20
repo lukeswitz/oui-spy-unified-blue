@@ -1327,6 +1327,23 @@ class BleManager {
     _connectionState.add(NodeConnectionState.disconnected);
   }
 
+  /// Launch-time auto-connect runs a scan before it can call connect(); this
+  /// surfaces a "reconnecting" state during that window so the UI shows a
+  /// searching animation instead of the manual CONNECT button.
+  void signalAutoReconnect(bool active) {
+    if (_currentState == NodeConnectionState.ready ||
+        _currentState == NodeConnectionState.connecting ||
+        _currentState == NodeConnectionState.negotiating ||
+        _currentState == NodeConnectionState.syncing) {
+      return;
+    }
+    final s = active
+        ? NodeConnectionState.reconnecting
+        : NodeConnectionState.disconnected;
+    _currentState = s;
+    _connectionState.add(s);
+  }
+
   Future<void> reconnectPrimary() async {
     if (_currentState == NodeConnectionState.ready) return;
     final dev = _lastDevice;

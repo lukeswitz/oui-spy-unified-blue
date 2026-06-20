@@ -491,6 +491,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final mapStyle = ref.watch(mapStyleProvider);
     final wt = ref.watch(wardriveThemeDataProvider);
     final wd = ref.watch(wardriveProvider);
+    final appEngines = ref.watch(appStateProvider);
     final gpsPos = ref.watch(gpsProvider).lastPosition;
     final selfPos = wd.currentPosition ?? gpsPos;
     final center = wd.currentPosition != null
@@ -839,10 +840,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   runSpacing: 4,
                   alignment: WrapAlignment.center,
                   children: [
-                    if (wd.isActive)
-                      for (final m in WardriveController.selectableTargets)
-                        if (wd.isTargetSelected(m) && m != WardriveTarget.wigle)
-                          _ScanningPill(color: m.color, label: m.label),
+                    for (final m in WardriveController.selectableTargets)
+                      if (m != WardriveTarget.wigle &&
+                          ((wd.isActive && wd.isTargetSelected(m)) ||
+                              _targetEngineRunning(appEngines, m)))
+                        _ScanningPill(color: m.color, label: m.label),
                   ],
                 ),
               ),
@@ -5357,6 +5359,21 @@ class _CaptureFlashPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _CaptureFlashPainter old) =>
       old.phase != phase || old.color != color;
+}
+
+/// A wardrive target counts as running if any engine behind it is enabled on
+/// the device — so engines turned on from the home screen show as active chips
+/// on the wardrive screen too, not only ones started via wardrive's own picker.
+bool _targetEngineRunning(AppState app, WardriveTarget m) {
+  bool on(Engine e) => app.getEngineState(e) != EngineState.disabled;
+  return switch (m) {
+    WardriveTarget.flock => on(Engine.flockBle) || on(Engine.flockWifi),
+    WardriveTarget.drone => on(Engine.skySpy),
+    WardriveTarget.detector => on(Engine.detector),
+    WardriveTarget.wigle => on(Engine.wardrive),
+    WardriveTarget.wigleFlock =>
+      on(Engine.wardrive) || on(Engine.flockBle) || on(Engine.flockWifi),
+  };
 }
 
 class _ScanningPill extends StatefulWidget {

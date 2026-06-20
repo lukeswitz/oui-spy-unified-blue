@@ -215,10 +215,10 @@ class AppTheme {
   static const _lightBackground = Color(0xFFF2F3F8);
   static const _lightSurface = Color(0xFFFFFFFF);
   static const _lightSurfaceLight = Color(0xFFEBECF2);
-  static const _lightBorder = Color(0xFFCDD1DE);
+  static const _lightBorder = Color(0xFFB0B6C6);
   static const _lightTextPrimary = Color(0xFF151720);
-  static const _lightTextSecondary = Color(0xFF5A5F74);
-  static const _lightTextDim = Color(0xFF8A8FA4);
+  static const _lightTextSecondary = Color(0xFF4C5165);
+  static const _lightTextDim = Color(0xFF6B7186);
 
   static ResolvedTheme of(BuildContext context) {
     final brightness = Theme.of(context).brightness;

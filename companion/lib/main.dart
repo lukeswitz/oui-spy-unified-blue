@@ -13,6 +13,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/core/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -27,7 +28,10 @@ void main() async {
     ),
   );
 
-  final container = ProviderContainer();
+  final prefs = await SharedPreferences.getInstance();
+  final container = ProviderContainer(
+    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+  );
 
   // Load OUI vendor database (async, non-blocking)
   container.read(ouiLookupProvider).init();
@@ -49,7 +53,9 @@ void main() async {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _forceCleanBleState().then((_) async {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool('autoConnectEnabled') ?? false) {
+      final autoConnect = prefs.getBool('autoConnectEnabled') ?? false;
+      final offlineScan = prefs.getBool('offlineScanEnabled') ?? false;
+      if (autoConnect || offlineScan) {
         await _autoConnect(container);
       }
     });
@@ -84,6 +90,10 @@ Future<void> _autoConnect(ProviderContainer container) async {
       DebugLog.log('AUTO: BLE not on ($adapterState)');
       return;
     }
+
+    // Surface a reconnecting state so the home screen shows a searching
+    // animation through the scan window instead of the manual CONNECT button.
+    container.read(bleManagerProvider).signalAutoReconnect(true);
 
     final prefs = await SharedPreferences.getInstance();
     final lastPrimaryId = prefs.getString('lastPrimaryDeviceId');
@@ -171,9 +181,11 @@ Future<void> _autoConnect(ProviderContainer container) async {
       DebugLog.log('AUTO: connected');
     } else {
       DebugLog.log('AUTO: no OUI-SPY found after scan');
+      container.read(bleManagerProvider).signalAutoReconnect(false);
     }
   } catch (e) {
     DebugLog.log('AUTO: failed: $e');
+    container.read(bleManagerProvider).signalAutoReconnect(false);
   }
 }
 

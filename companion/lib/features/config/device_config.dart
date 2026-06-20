@@ -12,6 +12,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/prefs.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
@@ -106,6 +108,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _flockExtendedOui = hw.length >= 5 && hw[4] != 0;
             _offlineScanEnabled = hw.length > 5 && hw[5] != 0;
           });
+          ref.read(sharedPreferencesProvider)
+              .setBool('offlineScanEnabled', _offlineScanEnabled);
           DebugLog.log('CONFIG: hw read: buzzer=$_buzzerEnabled vol=$_buzzerVolume led=$_ledEnabled neo=$_neopixelBrightness');
         }
       }
@@ -1070,6 +1074,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           extendedOui: _flockExtendedOui,
           offlineScan: _offlineScanEnabled,
         );
+    ref.read(sharedPreferencesProvider)
+        .setBool('offlineScanEnabled', _offlineScanEnabled);
   }
 
   void _writeAlertConfig() {
@@ -1246,29 +1252,20 @@ class _ChannelRangeSlider extends ConsumerWidget {
   }
 }
 
-class _AutoConnectToggle extends StatefulWidget {
+class _AutoConnectToggle extends ConsumerStatefulWidget {
   const _AutoConnectToggle();
 
   @override
-  State<_AutoConnectToggle> createState() => _AutoConnectToggleState();
+  ConsumerState<_AutoConnectToggle> createState() => _AutoConnectToggleState();
 }
 
-class _AutoConnectToggleState extends State<_AutoConnectToggle> {
-  bool _value = false;
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((p) {
-      if (!mounted) return;
-      setState(() => _value = p.getBool('autoConnectEnabled') ?? false);
-    });
-  }
+class _AutoConnectToggleState extends ConsumerState<_AutoConnectToggle> {
+  late bool _value =
+      ref.read(sharedPreferencesProvider).getBool('autoConnectEnabled') ?? false;
 
   Future<void> _set(bool v) async {
     setState(() => _value = v);
-    final p = await SharedPreferences.getInstance();
-    await p.setBool('autoConnectEnabled', v);
+    await ref.read(sharedPreferencesProvider).setBool('autoConnectEnabled', v);
   }
 
   @override
@@ -2595,7 +2592,47 @@ class _WatchlistEntryTile extends ConsumerWidget {
   }
 }
 
-enum _DetSort { time, rssi, mac }
+enum _DetSort {
+  time('TIME'),
+  rssi('RSSI'),
+  mac('MAC');
+
+  const _DetSort(this.label);
+  final String label;
+}
+
+enum _RadioSel { all, ble, wifi }
+
+/// 0 = BLE, 1 = WiFi, 2 = unknown — for a raw DB detection row.
+int _detRadioRank(Map<String, dynamic> d) {
+  final method = (d['detectionMethod'] as String?) ?? '';
+  if (isBleMethod(method)) return 0;
+  if (isWifiMethod(method)) return 1;
+  final engine = (d['engine'] as String?) ?? '';
+  if (engine == 'flockBle' || engine == 'detector') return 0;
+  if (engine == 'flockWifi') return 1;
+  final ch = (d['channel'] as int?) ?? 0;
+  return (ch >= 1 && ch <= 14) ? 1 : 0;
+}
+
+/// Detection-method label — the exact text shown on each detections-tab row.
+String _detMethodLabel(String method) => switch (method) {
+  'oui_addr1' => 'ADDR1 (DST)',
+  'oui_addr2' => 'ADDR2 (SRC)',
+  'oui_addr3' => 'ADDR3 (BSSID)',
+  'ssid' => 'SSID',
+  'wildcard_probe' => 'PROBE REQ',
+  'oui_match' => 'BLE OUI',
+  'name_match' => 'BLE NAME',
+  'mfg_id' => 'MFG DATA',
+  'raven_uuid' => 'RAVEN UUID',
+  'watchlist' => 'WATCHLIST',
+  'ble_watchlist' => 'BLE WATCHLIST',
+  'wifi_watchlist' => 'WIFI WATCHLIST',
+  'ble_proximity' => 'BLE PROXIMITY',
+  'wifi_proximity' => 'WIFI PROXIMITY',
+  _ => method.toUpperCase(),
+};
 
 class _DetectionsTab extends ConsumerStatefulWidget {
   const _DetectionsTab();
@@ -2611,6 +2648,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   _DetSort _sort = _DetSort.time;
   bool _ascending = false;
   String? _engineFilter; // null = all, 'flock', 'detector'
+  _RadioSel _radioFilter = _RadioSel.all;
+  String? _methodFilter; // null = all, else a raw detectionMethod string
   bool _showMap = false;
   bool _pcapExpanded = true;
   bool _searchOpen = false;
@@ -2687,6 +2726,17 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       list = list.where((d) => d['engine'] == 'skySpy').toList();
     }
 
+    if (_radioFilter != _RadioSel.all) {
+      final wantRank = _radioFilter == _RadioSel.ble ? 0 : 1;
+      list = list.where((d) => _detRadioRank(d) == wantRank).toList();
+    }
+
+    if (_methodFilter != null) {
+      list = list
+          .where((d) => (d['detectionMethod'] as String?) == _methodFilter)
+          .toList();
+    }
+
     final q = _search.trim().toLowerCase();
     if (q.isNotEmpty) {
       list = list.where((d) {
@@ -2738,6 +2788,105 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         _ascending = false;
       }
     });
+  }
+
+  Future<void> _showPicker<T>({
+    required String title,
+    required List<(T, String)> options,
+    required T current,
+    required ValueChanged<T> onSelected,
+  }) {
+    final t = AppTheme.of(context);
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: t.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.6,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                child: Row(
+                  children: [
+                    Text(title,
+                        style: TextStyle(
+                            color: t.textDim,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 3)),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final (val, lbl) in options)
+                      ListTile(
+                        title: Text(lbl,
+                            style: TextStyle(
+                                color: val == current
+                                    ? AppTheme.accent
+                                    : t.textPrimary,
+                                fontSize: 14,
+                                fontWeight: val == current
+                                    ? FontWeight.w700
+                                    : FontWeight.w500)),
+                        trailing: val == current
+                            ? const Icon(Icons.check,
+                                size: 18, color: AppTheme.accent)
+                            : null,
+                        onTap: () {
+                          onSelected(val);
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickRadio() => _showPicker<_RadioSel>(
+        title: 'RADIO',
+        current: _radioFilter,
+        options: const [
+          (_RadioSel.all, 'ALL'),
+          (_RadioSel.ble, 'BLE'),
+          (_RadioSel.wifi, 'WIFI'),
+        ],
+        onSelected: (v) => setState(() => _radioFilter = v),
+      );
+
+  Future<void> _pickMethod() {
+    final methods = _detections
+        .map((d) => (d['detectionMethod'] as String?) ?? '')
+        .where((m) => m.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => _detMethodLabel(a).compareTo(_detMethodLabel(b)));
+    return _showPicker<String?>(
+      title: 'METHOD',
+      current: _methodFilter,
+      options: [
+        (null, 'ALL'),
+        for (final m in methods) (m, _detMethodLabel(m)),
+      ],
+      onSelected: (v) => setState(() => _methodFilter = v),
+    );
   }
 
   static final _csvTs = DateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
@@ -2887,33 +3036,58 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           ),
           ),
         ),
+        // Radio + method filter dropdowns
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: _DetDropdown(
+                  icon: Icons.cell_tower,
+                  label: 'RADIO',
+                  value: switch (_radioFilter) {
+                    _RadioSel.all => 'ALL',
+                    _RadioSel.ble => 'BLE',
+                    _RadioSel.wifi => 'WIFI',
+                  },
+                  active: _radioFilter != _RadioSel.all,
+                  onTap: _pickRadio,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DetDropdown(
+                  icon: Icons.tune,
+                  label: 'METHOD',
+                  value: _methodFilter == null
+                      ? 'ALL'
+                      : _detMethodLabel(_methodFilter!),
+                  active: _methodFilter != null,
+                  onTap: _pickMethod,
+                ),
+              ),
+            ],
+          ),
+        ),
         // Sort buttons
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Row(
             children: [
               Text('SORT', style: TextStyle(
-                color: t.textDim, fontSize: 9,
+                color: t.textSecondary, fontSize: 11,
                 fontWeight: FontWeight.w700, letterSpacing: 1,
               )),
               const SizedBox(width: 8),
-              _SortBtn(
-                label: 'TIME', active: _sort == _DetSort.time,
-                ascending: _ascending,
-                onTap: () => _toggleSort(_DetSort.time),
-              ),
-              const SizedBox(width: 4),
-              _SortBtn(
-                label: 'RSSI', active: _sort == _DetSort.rssi,
-                ascending: _ascending,
-                onTap: () => _toggleSort(_DetSort.rssi),
-              ),
-              const SizedBox(width: 4),
-              _SortBtn(
-                label: 'MAC', active: _sort == _DetSort.mac,
-                ascending: _ascending,
-                onTap: () => _toggleSort(_DetSort.mac),
-              ),
+              for (final s in _DetSort.values) ...[
+                _SortBtn(
+                  label: s.label,
+                  active: _sort == s,
+                  ascending: _ascending,
+                  onTap: () => _toggleSort(s),
+                ),
+                const SizedBox(width: 6),
+              ],
               const Spacer(),
               GestureDetector(
                 onTap: items.isEmpty ? null : () => _exportCsv(context, items),
@@ -3339,18 +3513,79 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          color: selected
+              ? color.withValues(alpha: 0.22)
+              : color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? color.withValues(alpha: 0.6) : color.withValues(alpha: 0.25),
+            color: selected ? color : color.withValues(alpha: 0.55),
+            width: selected ? 1.6 : 1.0,
           ),
         ),
         child: Text(label, style: TextStyle(
-          color: selected ? color : color.withValues(alpha: 0.6),
-          fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+          color: color,
+          fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5,
         )),
+      ),
+    );
+  }
+}
+
+class _DetDropdown extends StatelessWidget {
+  const _DetDropdown({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.active,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: active
+              ? AppTheme.accent.withValues(alpha: 0.12)
+              : t.surfaceLight,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? AppTheme.accent : t.border,
+            width: active ? 1.4 : 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: active ? AppTheme.accent : t.textDim),
+            const SizedBox(width: 7),
+            Text(label, style: TextStyle(
+              color: t.textDim, fontSize: 11,
+              fontWeight: FontWeight.w700, letterSpacing: 0.5,
+            )),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(value,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: active ? AppTheme.accent : t.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  )),
+            ),
+            Icon(Icons.arrow_drop_down, size: 18, color: t.textDim),
+          ],
+        ),
       ),
     );
   }
@@ -3375,26 +3610,29 @@ class _SortBtn extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
         decoration: BoxDecoration(
-          color: active ? AppTheme.accent.withValues(alpha: 0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
+          color: active
+              ? AppTheme.accent.withValues(alpha: 0.18)
+              : t.surfaceLight,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: active ? AppTheme.accent.withValues(alpha: 0.4) : t.border,
+            color: active ? AppTheme.accent : t.border,
+            width: active ? 1.6 : 1.0,
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(label, style: TextStyle(
-              color: active ? AppTheme.accent : t.textDim,
-              fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+              color: active ? AppTheme.accent : t.textSecondary,
+              fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5,
             )),
             if (active) ...[
-              const SizedBox(width: 2),
+              const SizedBox(width: 4),
               Icon(
                 ascending ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 9, color: AppTheme.accent,
+                size: 13, color: AppTheme.accent,
               ),
             ],
           ],
@@ -3655,7 +3893,7 @@ class _DetectionRow extends ConsumerWidget {
                       color: t.textDim.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text(_methodLabel(method), style: TextStyle(
+                    child: Text(_detMethodLabel(method), style: TextStyle(
                       color: t.textSecondary, fontSize: 10,
                       fontWeight: FontWeight.w600,
                     )),
@@ -3753,22 +3991,6 @@ class _DetectionRow extends ConsumerWidget {
     );
   }
 
-  String _methodLabel(String method) => switch (method) {
-    'oui_addr1' => 'ADDR1 (DST)',
-    'oui_addr2' => 'ADDR2 (SRC)',
-    'oui_addr3' => 'ADDR3 (BSSID)',
-    'wildcard_probe' => 'PROBE REQ',
-    'oui_match' => 'BLE OUI',
-    'name_match' => 'BLE NAME',
-    'mfg_id' => 'MFG DATA',
-    'raven_uuid' => 'RAVEN UUID',
-    'watchlist' => 'WATCHLIST',
-    'ble_watchlist' => 'BLE WATCHLIST',
-    'wifi_watchlist' => 'WIFI WATCHLIST',
-    'ble_proximity' => 'BLE PROXIMITY',
-    'wifi_proximity' => 'WIFI PROXIMITY',
-    _ => method.toUpperCase(),
-  };
 }
 
 class _OuiDatabaseSection extends ConsumerStatefulWidget {

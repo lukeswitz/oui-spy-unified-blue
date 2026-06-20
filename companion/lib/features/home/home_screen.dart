@@ -61,7 +61,7 @@ class _DisconnectedView extends ConsumerWidget {
         child: Column(
           children: [
             const SizedBox(height: 40),
-            _PulsingRadar(active: isConnecting),
+            _PulsingRadar(active: isConnecting || isReconnecting),
             const SizedBox(height: 28),
             Text(
               'OUI-SPY',
@@ -76,7 +76,9 @@ class _DisconnectedView extends ConsumerWidget {
             Text(
               isConnecting
                   ? 'Establishing BLE link...'
-                  : 'Multi-engine RF intelligence',
+                  : isReconnecting
+                      ? 'Searching for your OUI-SPY…'
+                      : 'Multi-engine RF intelligence',
               style: TextStyle(
                 color: t.textDim,
                 fontSize: 12,
@@ -110,7 +112,7 @@ class _DisconnectedView extends ConsumerWidget {
                   ),
                 ),
               ),
-            ] else
+            ] else if (!isReconnecting)
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -141,24 +143,27 @@ class _DisconnectedView extends ConsumerWidget {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: AppTheme.error.withValues(alpha: 0.08),
+                  color: AppTheme.accent.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: AppTheme.error.withValues(alpha: 0.2),
+                    color: AppTheme.accent.withValues(alpha: 0.25),
                   ),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    Icon(
-                      Icons.sync_problem,
-                      size: 14,
-                      color: AppTheme.error.withValues(alpha: 0.8),
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.accent,
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'CONNECTION LOST — RETRYING',
+                    SizedBox(width: 8),
+                    Text(
+                      'RECONNECTING…',
                       style: TextStyle(
-                        color: AppTheme.error,
+                        color: AppTheme.accent,
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 1,

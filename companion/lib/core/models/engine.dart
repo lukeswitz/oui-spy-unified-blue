@@ -2,18 +2,19 @@ import 'package:flutter/material.dart';
 
 /// All scan engines available in the OUI-SPY firmware.
 enum Engine {
-  detector('Detector', 'WiFi + BLE watchlist alerting', Color(0xFF4A9EFF), 0x01),
-  flockBle('Flock BLE', 'Flock Safety BLE detection', Color(0xFFB44AFF), 0x02),
+  // Mid-tone hues: vivid on the dark background, still legible on white.
+  detector('Detector', 'WiFi + BLE watchlist alerting', Color(0xFF3286E6), 0x01),
+  flockBle('Flock BLE', 'Flock Safety BLE detection', Color(0xFF9A35E6), 0x02),
   flockWifi(
-      'Flock WiFi', 'Flock Safety WiFi promiscuous', Color(0xFFFF4A8A), 0x04),
-  foxhunter('Foxhunter', 'WiFi + BLE proximity tracker', Color(0xFF4AFF8A), 0x08),
-  skySpy('Sky Spy', 'FAA Remote ID / ODID detection', Color(0xFF4AFFEA), 0x10),
+      'Flock WiFi', 'Flock Safety WiFi promiscuous', Color(0xFFE63577), 0x04),
+  foxhunter('Foxhunter', 'WiFi + BLE proximity tracker', Color(0xFF1FA866), 0x08),
+  skySpy('Sky Spy', 'FAA Remote ID / ODID detection', Color(0xFF15A89B), 0x10),
   uniPwn(
-      'UniPwn', 'Unitree robot exploitation', Color(0xFFFF4A4A), 0x20),
+      'UniPwn', 'Unitree robot exploitation', Color(0xFFE63535), 0x20),
   wardrive(
-      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8C4A), 0x40),
+      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFE67435), 0x40),
   pcap(
-      'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF4AFFCC), 0x80);
+      'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF13A884), 0x80);
 
   const Engine(this.label, this.description, this.color, this.bitmask);
 
