@@ -184,6 +184,7 @@ static uint32_t                latestAutoPcapEventMs = 0;
 static SemaphoreHandle_t       autoPcapEventMutex = NULL;
 
 static MeshLiveNode liveNodes[MESH_LIVE_NODES_MAX] = {};
+static volatile bool gNewNodeJoined = false;
 static SemaphoreHandle_t liveMutex = NULL;
 
 #define MESH_FLEET_MAC_MAX 24
@@ -245,7 +246,17 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
     liveNodes[slot].role = role;
     liveNodes[slot].active_engines = engines;
     liveNodes[slot].fw_version = fw_version;
+    gNewNodeJoined = true;
     xSemaphoreGive(liveMutex);
+}
+
+// A brand-new node took a slot since the last check — the manager uses this to
+// push the full current config immediately instead of making the node wait up
+// to ~21s for the next 7s rebroadcast cycle.
+bool meshConsumeNewNodeJoined(void) {
+    bool v = gNewNodeJoined;
+    gNewNodeJoined = false;
+    return v;
 }
 
 // Optimistically reflect a just-issued engine command in every live node's

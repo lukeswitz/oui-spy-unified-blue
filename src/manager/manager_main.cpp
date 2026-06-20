@@ -54,6 +54,18 @@ static void heartbeatTask(void*) {
         bleGattReconcileEngines();
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
+        // A node just joined — push the full current config now instead of
+        // making it wait up to ~21s for the staggered 7s rebroadcast, so the
+        // whole swarm is unified the moment a node appears.
+        if (meshIsEnabled() && meshConsumeNewNodeJoined()) {
+            uint8_t ib[256];
+            size_t in = ignoreListSerialize(ib, sizeof(ib));
+            meshBroadcastIgnoreList(ib, in);
+            bleGattRebroadcastConfigs();
+            uint8_t db[256];
+            size_t dn = detectorSerialize(db, sizeof(db));
+            meshBroadcastDetectorList(db, dn);
+        }
         if ((tick % 7) == 0 && meshIsEnabled()) {
             uint8_t ib[256];
             size_t in = ignoreListSerialize(ib, sizeof(ib));

@@ -451,7 +451,11 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             engineDisableAll();
             Serial.println("[BLE] Phone disconnected — engines off");
         } else {
-            Serial.println("[BLE] Phone disconnected — offline scan, engines kept");
+            // Wardrive (wigle) is a full-band sweep that monopolizes the radio
+            // and would starve the targeted offline-scan engines while away.
+            // Drop it; keep the rest scanning + spooling.
+            engineDisable(ENGINE_WARDRIVE);
+            Serial.println("[BLE] Phone disconnected — offline scan, wigle off, targeted engines kept");
         }
 #endif
         NimBLEDevice::startAdvertising();
