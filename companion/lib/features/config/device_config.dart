@@ -2193,7 +2193,7 @@ class _WatchlistTab extends ConsumerWidget {
               ),
               const Spacer(),
               Text(
-                '${entries.length} target${entries.length == 1 ? '' : 's'}',
+                '${entries.where((e) => e.enabled).length} active',
                 style: TextStyle(
                   color: t.textDim, fontSize: 10,
                   fontFamily: 'monospace',
@@ -2479,6 +2479,7 @@ class _WatchlistEntryTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final isHex = !entry.isName;
+    final isEnabled = entry.enabled;
     final IconData icon = switch (entry.matchType) {
       WatchlistMatchType.oui => Icons.radar,
       WatchlistMatchType.fullMac => Icons.fingerprint,
@@ -2506,20 +2507,23 @@ class _WatchlistEntryTile extends ConsumerWidget {
         decoration: BoxDecoration(
           color: t.surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: t.border),
+          border: Border.all(
+            color: isEnabled ? t.border : t.border.withValues(alpha: 0.4),
+          ),
         ),
         child: Row(
           children: [
             Container(
               width: 32, height: 32,
               decoration: BoxDecoration(
-                color: AppTheme.detector.withValues(alpha: 0.1),
+                color: (isEnabled ? AppTheme.detector : t.textDim)
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 icon,
                 size: 16,
-                color: AppTheme.detector,
+                color: isEnabled ? AppTheme.detector : t.textDim,
               ),
             ),
             const SizedBox(width: 10),
@@ -2532,7 +2536,7 @@ class _WatchlistEntryTile extends ConsumerWidget {
                         ? entry.identifier.toUpperCase()
                         : entry.identifier,
                     style: TextStyle(
-                      color: t.textPrimary,
+                      color: isEnabled ? t.textPrimary : t.textDim,
                       fontSize: 13,
                       fontFamily: isHex ? 'monospace' : null,
                       fontWeight: FontWeight.w600,
@@ -2546,13 +2550,14 @@ class _WatchlistEntryTile extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 5, vertical: 1),
                         decoration: BoxDecoration(
-                          color: AppTheme.detector.withValues(alpha: 0.1),
+                          color: (isEnabled ? AppTheme.detector : t.textDim)
+                              .withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(3),
                         ),
                         child: Text(
                           entry.matchType.label,
-                          style: const TextStyle(
-                            color: AppTheme.detector,
+                          style: TextStyle(
+                            color: isEnabled ? AppTheme.detector : t.textDim,
                             fontSize: 8, fontWeight: FontWeight.w700,
                             letterSpacing: 0.5,
                           ),
@@ -2571,6 +2576,16 @@ class _WatchlistEntryTile extends ConsumerWidget {
                     ],
                   ),
                 ],
+              ),
+            ),
+            Transform.scale(
+              scale: 0.7,
+              child: Switch(
+                value: isEnabled,
+                onChanged: (v) =>
+                    ref.read(watchlistProvider).toggleEnabled(entry, enabled: v),
+                activeTrackColor: AppTheme.detector.withValues(alpha: 0.3),
+                activeColor: AppTheme.detector,
               ),
             ),
           ],

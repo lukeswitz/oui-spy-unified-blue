@@ -19,11 +19,13 @@ class WatchlistEntry {
     required this.identifier,
     this.matchType = WatchlistMatchType.oui,
     this.description = '',
+    this.enabled = true,
   });
 
   String identifier;
   WatchlistMatchType matchType;
   String description;
+  bool enabled;
 
   bool get isFullMac => matchType == WatchlistMatchType.fullMac;
   bool get isName => matchType == WatchlistMatchType.name;
@@ -34,6 +36,7 @@ class WatchlistEntry {
         'identifier': identifier,
         'matchType': matchType.name,
         'description': description,
+        'enabled': enabled,
       };
 
   factory WatchlistEntry.fromJson(Map<String, dynamic> json) {
@@ -53,6 +56,7 @@ class WatchlistEntry {
       identifier: json['identifier'] as String? ?? '',
       matchType: type,
       description: json['description'] as String? ?? '',
+      enabled: json['enabled'] as bool? ?? true,
     );
   }
 }
@@ -67,6 +71,17 @@ class WatchlistState extends ChangeNotifier {
   final List<WatchlistEntry> entries = [];
   bool _loaded = false;
   bool get isLoaded => _loaded;
+
+  List<WatchlistEntry> get enabledEntries =>
+      entries.where((e) => e.enabled).toList();
+
+  void toggleEnabled(WatchlistEntry entry, {required bool enabled}) {
+    final idx = entries.indexOf(entry);
+    if (idx == -1) return;
+    entries[idx].enabled = enabled;
+    notifyListeners();
+    _save();
+  }
 
   void add(WatchlistEntry entry) {
     entries.add(entry);

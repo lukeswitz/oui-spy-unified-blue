@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -380,68 +382,16 @@ class _ConnectedView extends ConsumerWidget {
 
     final ble = ref.read(bleManagerProvider);
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(pad),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          StreamBuilder<SpoolImportProgress>(
-            stream: ble.spoolImport,
-            builder: (context, snap) {
-              final p = snap.data;
-              if (p == null || (p.done && p.total == 0)) {
-                return const SizedBox.shrink();
-              }
-              final t = AppTheme.of(context);
-              if (p.aborted) {
-                return _SpoolBanner(
-                  color: AppTheme.error,
-                  icon: Icons.sync_problem,
-                  message: 'Import interrupted — will retry on reconnect',
-                );
-              }
-              if (p.done) {
-                final clamped = p.seen.clamp(0, p.total);
-                final suffix = p.dropped > 0
-                    ? ' (buffer was full, oldest ${p.dropped} dropped)'
-                    : '';
-                return _SpoolBanner(
-                  color: AppTheme.accent,
-                  icon: Icons.check_circle_outline,
-                  message: 'Imported $clamped detections seen while away$suffix',
-                );
-              }
-              final hasTotal = p.total > 0;
-              final clamped = hasTotal ? p.seen.clamp(0, p.total) : p.seen;
-              final progress =
-                  hasTotal ? (clamped / p.total).clamp(0.0, 1.0) : null;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      hasTotal
-                          ? 'Importing $clamped/${p.total} detections seen while away…'
-                          : 'Syncing — $clamped detection(s) found while away…',
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        fontSize: 11,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                  LinearProgressIndicator(
-                    value: progress,
-                    color: AppTheme.accent,
-                    backgroundColor: AppTheme.accent.withValues(alpha: 0.15),
-                    minHeight: 3,
-                  ),
-                  SizedBox(height: pad),
-                ],
-              );
-            },
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SpoolImportBanner(stream: ble.awayImport, pad: pad),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(pad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
           _SummaryStrip(state: state),
           SizedBox(height: pad),
 
@@ -512,8 +462,11 @@ class _ConnectedView extends ConsumerWidget {
 
           if (state.recentDetections.isNotEmpty)
             _RecentActivity(state: state),
-        ],
-      ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -864,6 +817,78 @@ class _RecentActivity extends StatelessWidget {
   }
 }
 
+class _SpoolImportBanner extends StatefulWidget {
+  const _SpoolImportBanner({required this.stream, required this.pad});
+  final Stream<SpoolImportProgress> stream;
+  final double pad;
+
+  @override
+  State<_SpoolImportBanner> createState() => _SpoolImportBannerState();
+}
+
+class _SpoolImportBannerState extends State<_SpoolImportBanner> {
+  SpoolImportProgress? _p;
+  StreamSubscription<SpoolImportProgress>? _sub;
+  Timer? _hold;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = widget.stream.listen(_onEvent);
+  }
+
+  void _onEvent(SpoolImportProgress p) {
+    // Only the settled result is shown — no progress churn.
+    if (!p.done && !p.aborted) return;
+    if (p.done && !p.aborted && p.seen == 0) return;
+    _hold?.cancel();
+    _hold = Timer(const Duration(seconds: 8), () {
+      if (mounted) setState(() => _p = null);
+    });
+    setState(() => _p = p);
+  }
+
+  void _dismiss() {
+    _hold?.cancel();
+    setState(() => _p = null);
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _hold?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _p;
+    if (p == null) return const SizedBox.shrink();
+    final String message;
+    final Color color;
+    final IconData icon;
+    if (p.aborted) {
+      message = 'Import interrupted — will retry on reconnect';
+      color = AppTheme.error;
+      icon = Icons.sync_problem;
+    } else {
+      final suffix = p.dropped > 0
+          ? ' (buffer was full, oldest ${p.dropped} dropped)'
+          : '';
+      message = 'Imported ${p.seen} detection(s) while away$suffix';
+      color = AppTheme.accent;
+      icon = Icons.check_circle_outline;
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(widget.pad, widget.pad, widget.pad, 0),
+      child: GestureDetector(
+        onTap: _dismiss,
+        child: _SpoolBanner(color: color, icon: icon, message: message),
+      ),
+    );
+  }
+}
+
 class _SpoolBanner extends StatelessWidget {
   const _SpoolBanner({
     required this.color,
@@ -879,27 +904,29 @@ class _SpoolBanner extends StatelessWidget {
     final t = AppTheme.of(context);
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: color.withValues(alpha: 0.8)),
-          const SizedBox(width: 8),
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
               style: TextStyle(
-                color: t.textSecondary,
-                fontSize: 11,
-                letterSpacing: 0.3,
+                color: t.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
               ),
             ),
           ),
+          const SizedBox(width: 8),
+          Icon(Icons.close, size: 16, color: t.textDim),
         ],
       ),
     );

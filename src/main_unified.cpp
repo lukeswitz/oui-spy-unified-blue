@@ -423,7 +423,7 @@ static void statusHeartbeatTask(void* param) {
                     DetectionEvent evt;
                     for (uint16_t i = 0; i < n; i++) {
                         if (detSpoolReadSlot(i, &evt, nullptr)) {
-                            meshBroadcastDetection(&evt);
+                            meshBroadcastDetection(&evt, true);
                             vTaskDelay(pdMS_TO_TICKS(8));
                         }
                     }

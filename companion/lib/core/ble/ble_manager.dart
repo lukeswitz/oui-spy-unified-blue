@@ -92,16 +92,21 @@ class BleManager {
   final _importedDetections = StreamController<Detection>.broadcast();
   Stream<Detection> get importedDetections => _importedDetections.stream;
 
+  final _awayLiveDetections = StreamController<Detection>.broadcast();
+  Stream<Detection> get awayLiveDetections => _awayLiveDetections.stream;
+
   final _spoolImport = StreamController<SpoolImportProgress>.broadcast();
   Stream<SpoolImportProgress> get spoolImport => _spoolImport.stream;
+
+  final _awayImport = StreamController<SpoolImportProgress>.broadcast();
+  Stream<SpoolImportProgress> get awayImport => _awayImport.stream;
 
   bool _offlineScanEnabled = false;
   bool get offlineScanEnabled => _offlineScanEnabled;
 
   bool _importing = false;
   int _awaySeen = 0;
-  bool _awayWindow = false;
-  Timer? _awayTimer;
+  Timer? _awaySettle;
   int _importTotal = 0;
   int _importSeen = 0;
   int _importDropped = 0;
@@ -734,9 +739,10 @@ class BleManager {
       }
     }
 
+    _awaySettle?.cancel();
+    _awaySeen = 0;
     if (_offlineScanEnabled) {
       await requestSpoolFlush();
-      _startAwayImport();
     }
   }
 
@@ -1338,11 +1344,13 @@ class BleManager {
   void dispose() {
     disconnect();
     _importTimer?.cancel();
-    _awayTimer?.cancel();
+    _awaySettle?.cancel();
     _connectionState.close();
     _detections.close();
     _importedDetections.close();
+    _awayLiveDetections.close();
     _spoolImport.close();
+    _awayImport.close();
     _foxhunterRssiStream.close();
     _engineStates.close();
     _meshStatusStream.close();
@@ -1452,7 +1460,7 @@ class BleManager {
       );
       _importSeen++;
       _importedDetections.add(detection);
-      _spoolImport.add(SpoolImportProgress(seen: _importSeen, total: _importTotal, dropped: _importDropped, done: false, aborted: false));
+      _noteAway();
       return;
     }
     final detection = BleProtocol.decodeDetection(
@@ -1466,27 +1474,25 @@ class BleManager {
       satelliteCount: _lastSatCount,
     );
     _detections.add(detection);
-    if (_awayWindow) {
-      _awaySeen++;
-      _spoolImport.add(SpoolImportProgress(
-          seen: _awaySeen, total: 0, dropped: 0, done: false, aborted: false));
+    if (data.isNotEmpty && (data[0] & 0x80) != 0) {
+      _noteAway();
+      _awayLiveDetections.add(detection);
     }
   }
 
-  void _startAwayImport() {
-    _awayTimer?.cancel();
-    _awaySeen = 0;
-    _awayWindow = true;
-    _spoolImport.add(const SpoolImportProgress(
-        seen: 0, total: 0, dropped: 0, done: false, aborted: false));
-    _awayTimer = Timer(const Duration(seconds: 7), () {
-      _awayWindow = false;
-      _spoolImport.add(SpoolImportProgress(
-          seen: _awaySeen,
-          total: _awaySeen,
-          dropped: 0,
-          done: true,
-          aborted: false));
+  /// One genuine while-away capture arrived (manager spool flush, or a
+  /// node-relayed spool detection flagged DET_FLAG_AWAY). Accumulate and
+  /// finalize the banner a few seconds after the last one — counts only
+  /// real away captures, never live re-announcements of present devices.
+  void _noteAway() {
+    _awaySeen++;
+    _awaySettle?.cancel();
+    _awayImport.add(SpoolImportProgress(
+        seen: _awaySeen, total: 0, dropped: _importDropped, done: false, aborted: false));
+    _awaySettle = Timer(const Duration(seconds: 3), () {
+      _awayImport.add(SpoolImportProgress(
+          seen: _awaySeen, total: _awaySeen, dropped: _importDropped, done: true, aborted: false));
+      _awaySeen = 0;
     });
   }
 
@@ -1543,10 +1549,10 @@ class BleManager {
 
 final bleManagerProvider = Provider<BleManager>((ref) {
   final manager = BleManager();
-  manager.setWatchlistGetter(() => ref.read(watchlistProvider).entries);
+  manager.setWatchlistGetter(() => ref.read(watchlistProvider).enabledEntries);
   ref.listen(watchlistProvider, (prev, next) {
     if (manager.currentConnectionState == NodeConnectionState.ready) {
-      manager.syncDetectorWatchlist(next.entries);
+      manager.syncDetectorWatchlist(next.enabledEntries);
     }
   });
   ref.onDispose(manager.dispose);

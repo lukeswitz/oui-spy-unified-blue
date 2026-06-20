@@ -25,7 +25,7 @@ class BleProtocol {
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
 
-    final engineIndex = bytes[0];
+    final engineIndex = bytes[0] & 0x7F;
     final engine = Engine.values[engineIndex.clamp(0, Engine.values.length - 1)];
 
     final mac = _decodeMac(bytes, 1);

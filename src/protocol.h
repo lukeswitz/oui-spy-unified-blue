@@ -403,6 +403,8 @@ typedef struct __attribute__((packed)) {
     uint8_t  ext_len;
 } MeshDetectionPacket;
 
+#define DET_FLAG_AWAY 0x80
+
 // ============================================================================
 // Mesh Packet Types — discriminator for ESP-NOW payloads
 // ============================================================================

@@ -106,6 +106,7 @@ class WardriveController extends ChangeNotifier {
       }
     });
     _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
+    _awayLiveSub = _ble.awayLiveDetections.listen(_onAwayLiveDetection);
     _spoolImportSub = _ble.spoolImport.listen(_onSpoolProgress);
     _loadPrefs();
   }
@@ -158,6 +159,7 @@ class WardriveController extends ChangeNotifier {
   final LiveActivityService _liveActivity;
   StreamSubscription<NodeConnectionState>? _connSub;
   StreamSubscription<Detection>? _importedDetSub;
+  StreamSubscription<Detection>? _awayLiveSub;
   StreamSubscription<SpoolImportProgress>? _spoolImportSub;
   String? _spoolSessionId;
   int _spoolInserted = 0;
@@ -1082,6 +1084,39 @@ class WardriveController extends ChangeNotifier {
     _maybeConfirmSpool();
   }
 
+  Future<void> _onAwayLiveDetection(Detection detection) async {
+    if (state == WardriveState.running) return;
+    final sid = _spoolSessionId ??= await _resolveSpoolSessionId();
+    await _db.insertDetection(DetectionsCompanion(
+      sessionId: drift.Value(sid),
+      nodeId: const drift.Value('default'),
+      macAddress: drift.Value(detection.macAddress),
+      deviceName: drift.Value(detection.deviceName),
+      engine: drift.Value(detection.engine.name),
+      detectionMethod: drift.Value(detection.method),
+      rssi: drift.Value(detection.rssi),
+      channel: drift.Value(detection.channel),
+      deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
+      appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
+      latitude: drift.Value(detection.latitude),
+      longitude: drift.Value(detection.longitude),
+      accuracy: drift.Value(detection.accuracy),
+      ssid: drift.Value(detection.ssid),
+      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
+      uavId: drift.Value(detection.odid?.uavId),
+      operatorId: drift.Value(detection.odid?.operatorId),
+      droneLat: drift.Value(detection.odid?.droneLat),
+      droneLon: drift.Value(detection.odid?.droneLon),
+      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
+      heightAgl: drift.Value(detection.odid?.heightAgl),
+      droneSpeed: drift.Value(detection.odid?.droneSpeed),
+      droneHeading: drift.Value(detection.odid?.droneHeading),
+      pilotLat: drift.Value(detection.odid?.pilotLat),
+      pilotLon: drift.Value(detection.odid?.pilotLon),
+    ));
+    DebugLog.log('AWAY-LIVE: persisted ${detection.macAddress} → session $sid');
+  }
+
   void _onSpoolProgress(SpoolImportProgress p) {
     if (!p.done && !p.aborted && p.seen == 0) {
       _spoolExpectedTotal = p.total;
@@ -1362,6 +1397,7 @@ class WardriveController extends ChangeNotifier {
     _gpsSub?.cancel();
     _statsTimer?.cancel();
     _importedDetSub?.cancel();
+    _awayLiveSub?.cancel();
     _spoolImportSub?.cancel();
     super.dispose();
   }
@@ -1400,7 +1436,7 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final notif = ref.watch(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
   final controller = WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
-  controller.setWatchlistGetter(() => ref.read(watchlistProvider).entries);
+  controller.setWatchlistGetter(() => ref.read(watchlistProvider).enabledEntries);
   controller.isImperial = ref.read(unitSystemProvider) == UnitSystem.imperial;
   ref.listen<UnitSystem>(unitSystemProvider, (_, next) {
     controller.isImperial = next == UnitSystem.imperial;

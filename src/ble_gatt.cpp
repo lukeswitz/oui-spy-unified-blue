@@ -1854,7 +1854,7 @@ static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
     memcpy(buf + 9, &evt->timestamp_ms, 4);
     buf[13] = evt->method;
     memcpy(buf + 14, evt->source_node_id, MESH_NODE_ID_LEN);
-    switch ((EngineId)evt->engine_id) {
+    switch ((EngineId)(evt->engine_id & 0x7F)) {
         case ENGINE_FLOCK_BLE:
         case ENGINE_FLOCK_WIFI:
             buf[19] = evt->ext.flock.is_raven;

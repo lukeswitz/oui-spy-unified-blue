@@ -1046,7 +1046,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     pushDetection(&evt);
     recordLiveSeen(pkt.source_node_id);
 #ifdef OUISPY_NETCOUNT
-    if (evt.engine_id == ENGINE_WARDRIVE && evt.channel != 0) ncRecordWifiMac(evt.mac);
+    if ((evt.engine_id & 0x7F) == ENGINE_WARDRIVE && evt.channel != 0) ncRecordWifiMac(evt.mac);
 #endif
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -1595,14 +1595,14 @@ static void ncInjectTaskFn(void* arg) {
 }
 #endif
 
-void meshBroadcastDetection(const DetectionEvent* evt) {
+void meshBroadcastDetection(const DetectionEvent* evt, bool spooled) {
     if (!meshCurrentConfig.enabled) return;
     if (evt->source_node_id[0] != '\0') return;
-    if (txDedupCheck(evt->engine_id, evt->mac, evt->channel)) return;
+    if (!spooled && txDedupCheck(evt->engine_id, evt->mac, evt->channel)) return;
 
     MeshDetectionPacket pkt = {};
     memcpy(pkt.source_node_id, localNodeId, MESH_NODE_ID_LEN);
-    pkt.engine_id = evt->engine_id;
+    pkt.engine_id = spooled ? (uint8_t)(evt->engine_id | DET_FLAG_AWAY) : evt->engine_id;
     memcpy(pkt.mac, evt->mac, 6);
     pkt.rssi = evt->rssi;
     pkt.channel = evt->channel;
