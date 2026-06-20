@@ -437,8 +437,10 @@
                 style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface-light);color:var(--text-primary);border:1px solid var(--border);font-family:inherit;font-size:13px;">
           <option value="node-xiao_s3">XIAO ESP32-S3 (node)</option>
           <option value="node-s3_devkitc">ESP32-S3 N16R8 DevKitC (node)</option>
+          <option value="mgr-xiao_s3">XIAO ESP32-S3 (manager) — recommended</option>
+          <option value="mgr-s3_devkitc">ESP32-S3 N16R8 DevKitC (manager)</option>
+          <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager)</option>
           <option value="mgr-wroom">ESP32 WROOM (manager)</option>
-          <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager) — recommended</option>
         </select>
         <button class="flash-btn" id="flashBtn" onclick="startFlash()">
           CONNECT &amp; FLASH
@@ -509,16 +511,26 @@
         path: 'node-s3_devkitc/',
         flashSize: '16MB', flashMode: 'qio', flashFreq: '80m',
       },
+      'mgr-xiao_s3': {
+        label: 'XIAO ESP32-S3 (manager) — recommended',
+        path: 'mgr-xiao_s3/',
+        flashSize: '8MB', flashMode: 'qio', flashFreq: '80m',
+      },
+      'mgr-s3_devkitc': {
+        label: 'ESP32-S3 N16R8 DevKitC (manager)',
+        path: 'mgr-s3_devkitc/',
+        flashSize: '16MB', flashMode: 'qio', flashFreq: '80m',
+      },
+      'mgr-xiao_c3': {
+        label: 'XIAO ESP32-C3 (manager)',
+        path: 'mgr-xiao_c3/',
+        flashSize: '4MB', flashMode: 'dio', flashFreq: '80m',
+      },
       'mgr-wroom': {
         label: 'ESP32 WROOM (manager)',
         path: 'mgr-wroom/',
         flashSize: '4MB', flashMode: 'dio', flashFreq: '40m',
         bootloaderOffset: 0x1000,
-      },
-      'mgr-xiao_c3': {
-        label: 'XIAO ESP32-C3 (manager) — recommended',
-        path: 'mgr-xiao_c3/',
-        flashSize: '4MB', flashMode: 'dio', flashFreq: '80m',
       },
     };
     let currentTarget = localStorage.getItem('ouispy_target') || 'node-xiao_s3';

@@ -33,6 +33,14 @@ jobs:
             role: mgr
             board: xiao_c3
             chip: esp32c3
+          - env: v3_node_manager_s3
+            role: mgr
+            board: xiao_s3
+            chip: esp32s3
+          - env: v3_node_manager_s3_devkitc
+            role: mgr
+            board: s3_devkitc
+            chip: esp32s3
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -110,6 +118,8 @@ jobs:
             | XIAO ESP32-S3 | node | `oui-spy-node-xiao_s3-${{ github.ref_name }}.bin` | `oui-spy-node-xiao_s3-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32-S3 N16R8 DevKitC | node | `oui-spy-node-s3_devkitc-${{ github.ref_name }}.bin` | `oui-spy-node-s3_devkitc-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32 WROOM   | mgr  | `oui-spy-mgr-wroom-${{ github.ref_name }}.bin`   | `oui-spy-mgr-wroom-${{ github.ref_name }}-usb.tar.gz` |
+            | XIAO ESP32-S3 (recommended) | mgr  | `oui-spy-mgr-xiao_s3-${{ github.ref_name }}.bin` | `oui-spy-mgr-xiao_s3-${{ github.ref_name }}-usb.tar.gz` |
+            | ESP32-S3 N16R8 DevKitC | mgr  | `oui-spy-mgr-s3_devkitc-${{ github.ref_name }}.bin` | `oui-spy-mgr-s3_devkitc-${{ github.ref_name }}-usb.tar.gz` |
             | XIAO ESP32-C3 | mgr  | `oui-spy-mgr-xiao_c3-${{ github.ref_name }}.bin` | `oui-spy-mgr-xiao_c3-${{ github.ref_name }}-usb.tar.gz` |
 
             First-time flash on bare board: extract `*-usb.tar.gz` and use webflasher or esptool.
@@ -125,7 +135,7 @@ jobs:
             | **iOS** | [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) | Join beta via TestFlight. |
 
             ### Requirements
-            - Boards: XIAO ESP32-S3 or ESP32-S3 N16R8 DevKitC (node), ESP32 WROOM or XIAO ESP32-C3 (manager)
+            - Boards: XIAO ESP32-S3 or ESP32-S3 N16R8 DevKitC (node); XIAO ESP32-S3 (recommended), ESP32-S3 N16R8 DevKitC, XIAO ESP32-C3, or ESP32 WROOM (manager)
             - BLE-capable phone/computer
             - GPS/Location for wardriving
 

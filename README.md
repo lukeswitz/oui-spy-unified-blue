@@ -117,7 +117,7 @@ On iPhone 14 Pro and newer (iOS 16.2+), live detection counts show on the Lock S
 
 ## Node Mode (run a swarm)
 
-Flash one board as a **manager** (`mgr-xiao_c3` or `mgr-wroom`) and the rest as **nodes** (`node-xiao_s3`). Power them on — nodes auto-join in ~10 s with no pairing. Connect the app to the manager.
+Flash one board as a **manager** (`mgr-xiao_s3` recommended — its PSRAM keeps a deep detection buffer; the C3's ~6 KB free heap bottlenecks a busy swarm) and the rest as **nodes** (`node-xiao_s3`). Power them on — nodes auto-join in ~10 s with no pairing. Connect the app to the manager.
 
 - Detection engines run across **all** nodes at once; every hit is tagged with the node that found it.
 - The manager splits the WiFi channel range across nodes, so more boards cover the band faster and cover more ground.
@@ -187,7 +187,7 @@ USB-C · 8 MB flash · BLE 5 + WiFi · dual-core 240 MHz.
 | GPIO 21 | Onboard LED (active LOW) |
 | GPIO 43/44 | Optional hardware GPS TX/RX (otherwise phone GPS is relayed) |
 
-Managers also run on **ESP32 WROOM** and **XIAO ESP32-C3**.
+Managers run on **XIAO ESP32-S3** (recommended), **ESP32-S3 N16R8 DevKitC**, **XIAO ESP32-C3**, and **ESP32 WROOM**.
 
 ---
 
@@ -196,9 +196,12 @@ Managers also run on **ESP32 WROOM** and **XIAO ESP32-C3**.
 
 ### Firmware (PlatformIO)
 ```bash
-pio run -e v3_app_controlled            # node (XIAO ESP32-S3)
-pio run -e v3_node_manager_wroom        # manager (ESP32 WROOM)
+pio run -e v3_app_controlled             # node (XIAO ESP32-S3)
+pio run -e v3_app_controlled_s3_devkitc  # node (ESP32-S3 N16R8 DevKitC)
+pio run -e v3_node_manager_s3            # manager (XIAO ESP32-S3, recommended)
+pio run -e v3_node_manager_s3_devkitc   # manager (ESP32-S3 N16R8 DevKitC)
 pio run -e v3_node_manager_xiao_c3      # manager (XIAO ESP32-C3)
+pio run -e v3_node_manager_wroom        # manager (ESP32 WROOM)
 pio run -e v3_app_controlled -t upload  # flash
 pio device monitor                      # serial @ 115200
 ```
