@@ -737,13 +737,15 @@ void bleGattRebroadcastConfigs(void) {
 static void mgrLoadConfigCaches(void) {
     Preferences p;
     p.begin("ouispy-hw", true);
-    uint8_t hw[4];
+    uint8_t hw[6];
     hw[0] = p.getBool("buzzer", true) ? 1 : 0;
     hw[1] = p.getBool("led", true) ? 1 : 0;
     hw[2] = p.getUChar("neo_brt", 50);
     hw[3] = p.getUChar("bz_vol", 100);
+    hw[4] = p.getBool("flock_ext", false) ? 1 : 0;
+    hw[5] = p.getBool("offl_scan", false) ? 1 : 0;
     p.end();
-    mgrCacheConfig(MESH_CFG_KIND_HW, hw, 4);
+    mgrCacheConfig(MESH_CFG_KIND_HW, hw, 6);
 
     Preferences q;
     q.begin("ouispy-alert", true);
