@@ -49,6 +49,7 @@ class BleManager {
   BleManager();
 
   BluetoothDevice? _device;
+  BluetoothDevice? _lastDevice;
   BluetoothCharacteristic? _engineControl;
   BluetoothCharacteristic? _detectionEvents;
   BluetoothCharacteristic? _deviceStatus;
@@ -1294,6 +1295,7 @@ class BleManager {
   }
 
   Future<void> disconnectQuiet() async {
+    if (_device != null) _lastDevice = _device;
     _userInitiatedDisconnect = true;
     _reconnectTimer?.cancel();
     for (final sub in _subscriptions) {
@@ -1308,6 +1310,20 @@ class BleManager {
     _device = null;
     _currentState = NodeConnectionState.disconnected;
     _connectionState.add(NodeConnectionState.disconnected);
+  }
+
+  Future<void> reconnectPrimary() async {
+    if (_currentState == NodeConnectionState.ready) return;
+    final dev = _lastDevice;
+    if (dev == null) return;
+    _userInitiatedDisconnect = false;
+    DebugLog.log('BLE: resume — reconnecting to ${dev.platformName}');
+    try {
+      await connect(dev,
+          sessionId: DateTime.now().millisecondsSinceEpoch.toString());
+    } on Exception catch (e) {
+      DebugLog.log('BLE: reconnect on resume failed: $e');
+    }
   }
 
   void dispose() {

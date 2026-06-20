@@ -396,6 +396,22 @@ static void statusHeartbeatTask(void* param) {
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
 
+#ifdef OUISPY_SPOOL_LIVETEST
+        Serial.printf("[SPOOL-LIVE] count=%u dropped=%u active=0x%02X rawSeen=%lu\n",
+                      detSpoolCount(), detSpoolDroppedCount(), engineGetActiveMask(),
+                      (unsigned long)g_engRawSeen);
+        {
+            DetectionEvent ev; uint16_t hc;
+            uint16_t sn = detSpoolCount(); if (sn > 6) sn = 6;
+            for (uint16_t i = 0; i < sn; i++) {
+                if (detSpoolReadSlot(i, &ev, &hc))
+                    Serial.printf("[SPOOL-LIVE]   [%u] eng=%u %02X:%02X:%02X:%02X:%02X:%02X rssi=%d hits=%u\n",
+                        i, ev.engine_id, ev.mac[0], ev.mac[1], ev.mac[2], ev.mac[3], ev.mac[4], ev.mac[5],
+                        ev.rssi, hc);
+            }
+        }
+#endif
+
 #ifndef OUISPY_ROLE_MANAGER
         {
             static bool prevMgrPhone = false;
@@ -836,6 +852,13 @@ void setup() {
         meshEnable(&cfg);
         Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
     }
+#endif
+#ifdef OUISPY_SPOOL_LIVETEST
+    meshDisable();
+    offlineScanEnabledSetFromPref(true);
+    delay(800);
+    engineEnable(ENGINE_FLOCK_WIFI);
+    Serial.println("[SPOOL-LIVE] standalone flock-WIFI spool test: mesh OFF, offline ON, no phone, flock-WIFI armed");
 #endif
 #ifdef OUISPY_AUTOPCAP_SELFTEST
     xTaskCreatePinnedToCore(autoPcapSelftestTask, "aptest", 4096, NULL, 1, NULL, 1);
