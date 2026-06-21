@@ -886,6 +886,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   ref: ref,
                   isManagerConnected: ref.watch(
                       appStateProvider.select((s) => s.isManagerConnected)),
+                  enginesRunning: WardriveController.selectableTargets.any((m) =>
+                      m != WardriveTarget.wigle &&
+                      _targetEngineRunning(appEngines, m)),
                   onGeofenceReturn: _loadExclusionZones,
                   onStart: () async {
                     if (!await _primeLocationPermission()) return;
@@ -1462,10 +1465,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 }
 
 class _IdleControls extends StatelessWidget {
-  const _IdleControls({required this.wd, required this.ref, required this.isManagerConnected, this.onGeofenceReturn, required this.onStart});
+  const _IdleControls({required this.wd, required this.ref, required this.isManagerConnected, required this.enginesRunning, this.onGeofenceReturn, required this.onStart});
   final WardriveController wd;
   final WidgetRef ref;
   final bool isManagerConnected;
+  final bool enginesRunning;
   final VoidCallback? onGeofenceReturn;
   final Future<void> Function() onStart;
 
@@ -1687,24 +1691,31 @@ class _IdleControls extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            _Pill(
-              label: 'START',
-              color: t.color,
-              onTap: () {
-                ref.read(gpsProvider).onMessage = (msg) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(msg),
-                        backgroundColor: AppTheme.accent,
-                        duration: const Duration(seconds: 4),
-                      ),
-                    );
-                  }
-                };
-                onStart();
-              },
-            ),
+            if (enginesRunning)
+              _Pill(
+                label: 'STOP',
+                color: AppTheme.error,
+                onTap: () => ref.read(wardriveProvider).stopSession(),
+              )
+            else
+              _Pill(
+                label: 'START',
+                color: t.color,
+                onTap: () {
+                  ref.read(gpsProvider).onMessage = (msg) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(msg),
+                          backgroundColor: AppTheme.accent,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    }
+                  };
+                  onStart();
+                },
+              ),
           ],
         ),
       ],

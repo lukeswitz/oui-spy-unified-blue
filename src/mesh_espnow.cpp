@@ -301,14 +301,18 @@ size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
     if (!liveMutex || !out || maxOut == 0) return 0;
     if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
     uint32_t now = millis();
+    uint32_t evictTtl =
+        ttl_ms > MESH_NODE_TIMEOUT_MS ? ttl_ms : MESH_NODE_TIMEOUT_MS;
     size_t n = 0;
-    for (int i = 0; i < MESH_LIVE_NODES_MAX && n < maxOut; i++) {
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
         if (liveNodes[i].id[0] == 0) continue;
-        if ((now - liveNodes[i].last_ms) > ttl_ms) {
+        uint32_t age = now - liveNodes[i].last_ms;
+        if (age > evictTtl) {
             memset(&liveNodes[i], 0, sizeof(liveNodes[i]));
             continue;
         }
-        out[n++] = liveNodes[i];
+        if (age > ttl_ms) continue;
+        if (n < maxOut) out[n++] = liveNodes[i];
     }
     xSemaphoreGive(liveMutex);
     return n;

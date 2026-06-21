@@ -2648,6 +2648,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   _DetSort _sort = _DetSort.time;
   bool _ascending = false;
   String? _engineFilter; // null = all, 'flock', 'detector'
+  bool _noGpsOnly = false;
   _RadioSel _radioFilter = _RadioSel.all;
   String? _methodFilter; // null = all, else a raw detectionMethod string
   bool _showMap = false;
@@ -2724,6 +2725,12 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       list = list.where((d) => d['engine'] == 'detector').toList();
     } else if (_engineFilter == 'drone') {
       list = list.where((d) => d['engine'] == 'skySpy').toList();
+    }
+
+    if (_noGpsOnly) {
+      list = list
+          .where((d) => d['latitude'] == null || d['longitude'] == null)
+          .toList();
     }
 
     if (_radioFilter != _RadioSel.all) {
@@ -2992,23 +2999,28 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     }).length;
     final detectorCount = _detections.where((d) => d['engine'] == 'detector').length;
     final droneCount = _detections.where((d) => d['engine'] == 'skySpy').length;
+    final noGpsCount = _detections
+        .where((d) => d['latitude'] == null || d['longitude'] == null)
+        .length;
 
     return Column(
       children: [
         // Filter chips
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
               _FilterChip(
                 label: 'ALL (${_detections.length})',
-                selected: _engineFilter == null,
+                selected: _engineFilter == null && !_noGpsOnly,
                 color: AppTheme.accent,
-                onTap: () => setState(() => _engineFilter = null),
+                onTap: () => setState(() {
+                  _engineFilter = null;
+                  _noGpsOnly = false;
+                }),
               ),
-              const SizedBox(width: 6),
               _FilterChip(
                 label: 'FLOCK ($flockCount)',
                 selected: _engineFilter == 'flock',
@@ -3016,7 +3028,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 onTap: () => setState(() =>
                     _engineFilter = _engineFilter == 'flock' ? null : 'flock'),
               ),
-              const SizedBox(width: 6),
               _FilterChip(
                 label: 'DETECT ($detectorCount)',
                 selected: _engineFilter == 'detector',
@@ -3024,7 +3035,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 onTap: () => setState(() =>
                     _engineFilter = _engineFilter == 'detector' ? null : 'detector'),
               ),
-              const SizedBox(width: 6),
               _FilterChip(
                 label: 'DRONES ($droneCount)',
                 selected: _engineFilter == 'drone',
@@ -3032,8 +3042,13 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 onTap: () => setState(() =>
                     _engineFilter = _engineFilter == 'drone' ? null : 'drone'),
               ),
+              _FilterChip(
+                label: 'NO GPS ($noGpsCount)',
+                selected: _noGpsOnly,
+                color: AppTheme.gpsNone,
+                onTap: () => setState(() => _noGpsOnly = !_noGpsOnly),
+              ),
             ],
-          ),
           ),
         ),
         // Radio + method filter dropdowns
@@ -3318,7 +3333,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     final channel = det['channel'] as int? ?? 0;
     final method = det['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(det['appTimestamp'] as int);
-    final timeStr = DateFormat('MMM d HH:mm').format(ts);
+    final timeStr = DateFormat('MMM d yyyy HH:mm').format(ts);
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
     final lat = det['latitude'] as double?;
     final lon = det['longitude'] as double?;
@@ -3759,7 +3774,7 @@ class _DetectionRow extends ConsumerWidget {
     final channel = data['channel'] as int? ?? 0;
     final method = data['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
-    final timeStr = DateFormat('MMM d HH:mm').format(ts);
+    final timeStr = DateFormat('MMM d yyyy HH:mm').format(ts);
     final hasGps = data['latitude'] != null && data['longitude'] != null;
     final deviceName = data['deviceName'] as String? ?? '';
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
@@ -3887,16 +3902,20 @@ class _DetectionRow extends ConsumerWidget {
                 const SizedBox(width: 8),
                 // Method
                 if (method.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: t.textDim.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: t.textDim.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(_detMethodLabel(method),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textSecondary, fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        )),
                     ),
-                    child: Text(_detMethodLabel(method), style: TextStyle(
-                      color: t.textSecondary, fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    )),
                   ),
                 if (channel > 0) ...[
                   const SizedBox(width: 8),
@@ -3910,6 +3929,15 @@ class _DetectionRow extends ConsumerWidget {
                 if ((data['authMode'] as int? ?? 0) > 0) ...[
                   const SizedBox(width: 8),
                   _ConfigAuthPill(authMode: data['authMode'] as int),
+                ],
+                if (!hasGps) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.location_off, size: 12, color: AppTheme.gpsNone),
+                  const SizedBox(width: 3),
+                  Text('NO GPS', style: TextStyle(
+                    color: AppTheme.gpsNone, fontSize: 10,
+                    fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                  )),
                 ],
                 const Spacer(),
                 // Timestamp

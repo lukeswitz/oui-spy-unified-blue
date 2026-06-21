@@ -1349,6 +1349,7 @@ class BleManager {
     final dev = _lastDevice;
     if (dev == null) return;
     _userInitiatedDisconnect = false;
+    signalAutoReconnect(true);
     DebugLog.log('BLE: resume — reconnecting to ${dev.platformName}');
     try {
       await connect(dev,
@@ -1470,28 +1471,29 @@ class BleManager {
         sessionId: _sessionId,
         nodeId: _nodeId,
         appTimestamp: DateTime.now(),
-        latitude: _lastLat,
-        longitude: _lastLon,
-        accuracy: _lastAccuracy,
-        satelliteCount: _lastSatCount,
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        satelliteCount: null,
       );
       _importSeen++;
       _importedDetections.add(detection);
       _noteAway();
       return;
     }
+    final isAway = data.isNotEmpty && (data[0] & 0x80) != 0;
     final detection = BleProtocol.decodeDetection(
       data,
       sessionId: _sessionId,
       nodeId: _nodeId,
       appTimestamp: DateTime.now(),
-      latitude: _lastLat,
-      longitude: _lastLon,
-      accuracy: _lastAccuracy,
-      satelliteCount: _lastSatCount,
+      latitude: isAway ? null : _lastLat,
+      longitude: isAway ? null : _lastLon,
+      accuracy: isAway ? null : _lastAccuracy,
+      satelliteCount: isAway ? null : _lastSatCount,
     );
     _detections.add(detection);
-    if (data.isNotEmpty && (data[0] & 0x80) != 0) {
+    if (isAway) {
       _noteAway();
       _awayLiveDetections.add(detection);
     }

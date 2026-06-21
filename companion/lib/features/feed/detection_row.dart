@@ -209,7 +209,8 @@ class DetectionRow extends ConsumerWidget {
   String _formatTimeDiff(Duration diff) {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    return '${diff.inHours}h';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    return DateFormat('MMM d yyyy').format(detection.appTimestamp);
   }
 }
 

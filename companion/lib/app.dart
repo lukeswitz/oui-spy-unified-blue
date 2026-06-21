@@ -113,8 +113,8 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       ref.read(bleManagerProvider).disconnectQuiet();
+      ref.read(liveActivityServiceProvider).endAll();
       if (state == AppLifecycleState.detached) {
-        ref.read(liveActivityServiceProvider).endAll();
         ref.read(notificationServiceProvider).cancelAll();
       }
     } else if (state == AppLifecycleState.resumed) {
