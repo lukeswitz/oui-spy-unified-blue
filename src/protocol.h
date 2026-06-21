@@ -622,8 +622,15 @@ extern QueueHandle_t peerStatusQueue;  // MeshStatusPacket, depth 4
 // ============================================================================
 // Helper: push detection onto queue (ISR-safe variant available)
 // ============================================================================
+#ifdef OUISPY_ENGINE_DIAG
+extern volatile uint32_t g_diagDetCount[ENGINE_COUNT];
+#endif
+
 static inline bool pushDetection(const DetectionEvent* evt) {
     if (detectionQueue == NULL) return false;
+#ifdef OUISPY_ENGINE_DIAG
+    if (evt && evt->engine_id < ENGINE_COUNT) g_diagDetCount[evt->engine_id]++;
+#endif
     return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(10)) == pdTRUE;
 }
 
@@ -634,6 +641,9 @@ static inline void stampGps(DetectionEvent* evt) {
 
 static inline bool pushDetectionFromISR(const DetectionEvent* evt) {
     if (detectionQueue == NULL) return false;
+#ifdef OUISPY_ENGINE_DIAG
+    if (evt && evt->engine_id < ENGINE_COUNT) g_diagDetCount[evt->engine_id]++;
+#endif
     BaseType_t wake = pdFALSE;
     bool ok = xQueueSendFromISR(detectionQueue, evt, &wake) == pdTRUE;
     if (wake) portYIELD_FROM_ISR();

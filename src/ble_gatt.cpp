@@ -2020,6 +2020,10 @@ bool bleGattIsConnected(void) {
     return phoneConnected;
 }
 
+#ifdef OUISPY_ENGINE_DIAG
+void bleGattDebugForcePhone(bool on) { phoneConnected = on; }
+#endif
+
 void bleGattNotifyMeshStatus(void) {
     if (!phoneConnected || chrMeshStatus == nullptr) return;
 

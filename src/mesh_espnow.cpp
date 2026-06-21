@@ -301,18 +301,14 @@ size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
     if (!liveMutex || !out || maxOut == 0) return 0;
     if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
     uint32_t now = millis();
-    uint32_t evictTtl =
-        ttl_ms > MESH_NODE_TIMEOUT_MS ? ttl_ms : MESH_NODE_TIMEOUT_MS;
     size_t n = 0;
-    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+    for (int i = 0; i < MESH_LIVE_NODES_MAX && n < maxOut; i++) {
         if (liveNodes[i].id[0] == 0) continue;
-        uint32_t age = now - liveNodes[i].last_ms;
-        if (age > evictTtl) {
+        if ((now - liveNodes[i].last_ms) > ttl_ms) {
             memset(&liveNodes[i], 0, sizeof(liveNodes[i]));
             continue;
         }
-        if (age > ttl_ms) continue;
-        if (n < maxOut) out[n++] = liveNodes[i];
+        out[n++] = liveNodes[i];
     }
     xSemaphoreGive(liveMutex);
     return n;
@@ -787,7 +783,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         if (cmd.command == 0x12) {
             const uint8_t* dp = cmd.payload;
             uint8_t dl = cmd.payload_len;
-            if (cfgTgtStrip(&dp, &dl, localNodeId) && dl >= 1) {
+            if (!bleGattIsConnected() && cfgTgtStrip(&dp, &dl, localNodeId) && dl >= 1) {
                 engineSetDenyMask(dp[0]);
                 Serial.printf("[MESH-CMD] fan-out deny mask=0x%02x\n", dp[0]);
             }
@@ -808,13 +804,16 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
                               localNodeId);
             }
         }
-        if (targetMatch) {
+        if (targetMatch && !bleGattIsConnected()) {
             EngineCommand ec = {};
             ec.command = cmd.command;
             ec.engine_id = cmd.engine_id;
             ec.payload_len = cmd.payload_len > sizeof(ec.payload) ? sizeof(ec.payload) : cmd.payload_len;
             if (ec.payload_len > 0) memcpy(ec.payload, cmd.payload, ec.payload_len);
             engineProcessCommand(&ec);
+        } else if (targetMatch) {
+            Serial.printf("[MESH-CMD] phone-owned node — ignoring manager engine cmd 0x%02x eng=%u\n",
+                          cmd.command, cmd.engine_id);
         }
         sendAckPacket(&cmd);
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -883,7 +882,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         else if (cp.cfg_kind == MESH_CFG_KIND_AUTOPCAP) autoPcapConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_FOXHUNTER) foxhunterConfigApply(cp.data, n);
 #ifndef OUISPY_ROLE_MANAGER
-        else if (cp.cfg_kind == MESH_CFG_KIND_ENGINE) engineStateConfigApply(cp.data, n);
+        else if (cp.cfg_kind == MESH_CFG_KIND_ENGINE) {
+            if (!bleGattIsConnected()) engineStateConfigApply(cp.data, n);
+        }
 #endif
         return;
     }

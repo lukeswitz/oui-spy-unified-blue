@@ -440,7 +440,7 @@ static void statusHeartbeatTask(void* param) {
             if (meshManagerJoined()) {
                 wasManaged = true;
             } else if (wasManaged && engineGetActiveMask() != 0) {
-                if (!bleGattOfflineScanEnabled()) {
+                if (!bleGattOfflineScanEnabled() && !bleGattIsConnected()) {
                     Serial.println("[WATCHDOG] manager lost — self-idle all engines");
                     engineDisableAll();
                 }
@@ -451,6 +451,105 @@ static void statusHeartbeatTask(void* param) {
         }
     }
 }
+
+#ifdef OUISPY_ENGINE_DIAG
+volatile uint32_t g_diagDetCount[ENGINE_COUNT] = {0};
+
+static const char* diagEngName(int id) {
+    switch (id) {
+        case ENGINE_DETECTOR:   return "DETECTOR";
+        case ENGINE_FLOCK_BLE:  return "FLOCK_BLE";
+        case ENGINE_FLOCK_WIFI: return "FLOCK_WIFI";
+        case ENGINE_FOXHUNTER:  return "FOXHUNTER";
+        case ENGINE_SKYSPY:     return "SKYSPY";
+        case ENGINE_UNIPWN:     return "UNIPWN";
+        case ENGINE_WARDRIVE:   return "WARDRIVE";
+        case ENGINE_PCAP:       return "PCAP";
+        default:                return "?";
+    }
+}
+
+static void engineDiagTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
+    for (int phase = 0; phase < 2; phase++) {
+        bool phone = (phase == 1);
+        bleGattDebugForcePhone(phone);
+        for (int i = 0; i < ENGINE_COUNT; i++) g_diagDetCount[i] = 0;
+        uint32_t lastHop = wardriveGetHopCount();
+        engineEnable(ENGINE_WARDRIVE);
+        Serial.printf("\n[DIAG] ==== A/B WARDRIVE phoneOwned=%d mgrJoined=%d ====\n",
+            phone ? 1 : 0, meshManagerJoined() ? 1 : 0);
+        uint32_t t0 = millis();
+        while (millis() - t0 < 16000) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            uint32_t hop = wardriveGetHopCount();
+            uint8_t ch = 0; wifi_second_chan_t s2; esp_wifi_get_channel(&ch, &s2);
+            Serial.printf("[DIAG] AB phoneOwned=%d t+%2lus ch=%2u hop+=%lu W=%lu st=%d\n",
+                phone ? 1 : 0, (unsigned long)((millis() - t0) / 1000), ch,
+                (unsigned long)(hop - lastHop),
+                (unsigned long)g_diagDetCount[ENGINE_WARDRIVE],
+                (int)engineGetState(ENGINE_WARDRIVE));
+            lastHop = hop;
+        }
+        engineDisable(ENGINE_WARDRIVE);
+        vTaskDelay(pdMS_TO_TICKS(1500));
+    }
+
+    bleGattDebugForcePhone(true);
+    const EngineId order[] = {
+        ENGINE_WARDRIVE, ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI,
+        ENGINE_SKYSPY, ENGINE_FOXHUNTER, ENGINE_UNIPWN, ENGINE_PCAP,
+    };
+    const uint32_t kRunMs = 20000;
+    for (;;) {
+        for (size_t k = 0; k < sizeof(order) / sizeof(order[0]); k++) {
+            EngineId e = order[k];
+            for (int i = 0; i < ENGINE_COUNT; i++) g_diagDetCount[i] = 0;
+            uint32_t lastHop = wardriveGetHopCount();
+            uint32_t lastSkip = wardriveGetMeshSkipCount();
+            bool ok = engineEnable(e);
+            MeshStatus ms = meshGetStatus();
+            MeshLiveNode lv[MESH_LIVE_NODES_MAX];
+            size_t lc = meshGetLiveNodes(lv, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+            Serial.printf("\n[DIAG] ==== ENABLE %s ok=%d mesh_en=%d mgrJoined=%d sliceActive=%d rx=%lu tx=%lu live=%u self=%s ====\n",
+                diagEngName(e), ok ? 1 : 0, meshIsEnabled() ? 1 : 0,
+                meshManagerJoined() ? 1 : 0, meshTimeSlicingActive() ? 1 : 0,
+                (unsigned long)ms.rx_count, (unsigned long)ms.tx_count,
+                (unsigned)lc, meshGetLocalNodeId());
+            for (size_t li = 0; li < lc; li++)
+                Serial.printf("[DIAG]    live[%u] id=%.4s role=%u eng=0x%02x age=%lums\n",
+                    (unsigned)li, lv[li].id, lv[li].role, lv[li].active_engines,
+                    (unsigned long)(millis() - lv[li].last_ms));
+            uint32_t t0 = millis();
+            while (millis() - t0 < kRunMs) {
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                uint8_t ch = 0; wifi_second_chan_t s2;
+                esp_wifi_get_channel(&ch, &s2);
+                uint32_t hop = wardriveGetHopCount();
+                uint32_t skip = wardriveGetMeshSkipCount();
+                Serial.printf("[DIAG] %s t+%2lus ch=%2u hop+=%lu meshskip+=%lu inWin=%d "
+                    "det[D=%lu FB=%lu FW=%lu SKY=%lu W=%lu PCAP=%lu] heap=%u st=%d\n",
+                    diagEngName(e), (unsigned long)((millis() - t0) / 1000), ch,
+                    (unsigned long)(hop - lastHop), (unsigned long)(skip - lastSkip),
+                    meshInMeshWindow() ? 1 : 0,
+                    (unsigned long)g_diagDetCount[ENGINE_DETECTOR],
+                    (unsigned long)g_diagDetCount[ENGINE_FLOCK_BLE],
+                    (unsigned long)g_diagDetCount[ENGINE_FLOCK_WIFI],
+                    (unsigned long)g_diagDetCount[ENGINE_SKYSPY],
+                    (unsigned long)g_diagDetCount[ENGINE_WARDRIVE],
+                    (unsigned long)g_diagDetCount[ENGINE_PCAP],
+                    (unsigned)esp_get_free_heap_size(), (int)engineGetState(e));
+                lastHop = hop; lastSkip = skip;
+            }
+            engineDisable(e);
+            Serial.printf("[DIAG] ==== DISABLE %s ====\n", diagEngName(e));
+            vTaskDelay(pdMS_TO_TICKS(1500));
+        }
+    }
+}
+#endif
 
 // ============================================================================
 // Arduino Setup
@@ -879,6 +978,10 @@ void setup() {
 #ifdef OUISPY_SKYSPY_MESH_TEST
     xTaskCreatePinnedToCore(skyspyMeshTestTask, "skytest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] SKYSPY MESH TEST armed (real manager)");
+#endif
+#ifdef OUISPY_ENGINE_DIAG
+    xTaskCreatePinnedToCore(engineDiagTask, "engdiag", 6144, NULL, 1, NULL, 1);
+    Serial.println("[INIT] ENGINE DIAG armed (cycles all engines, mesh auto-enabled — standalone repro)");
 #endif
 #else
     xTaskCreatePinnedToCore(engineSelftestTask, "selftest", 8192, NULL, 1, NULL, 1);

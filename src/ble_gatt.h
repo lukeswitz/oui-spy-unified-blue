@@ -25,6 +25,10 @@ bool bleGattIsConnected(void);
 bool bleGattOfflineScanEnabled(void);
 void offlineScanEnabledSetFromPref(bool v);
 
+#ifdef OUISPY_ENGINE_DIAG
+void bleGattDebugForcePhone(bool on);
+#endif
+
 // Manager: re-slice wardrive channel ranges when the live-node set changes
 void bleGattMaybeResliceWardrive(void);
 

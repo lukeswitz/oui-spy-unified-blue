@@ -580,8 +580,13 @@ static void wardriveStop(void) {
     Serial.println("[WARDRIVE] Stopped");
 }
 
+static volatile uint32_t g_wdHopCount = 0;
+static volatile uint32_t g_wdMeshSkip = 0;
+uint32_t wardriveGetHopCount(void) { return g_wdHopCount; }
+uint32_t wardriveGetMeshSkipCount(void) { return g_wdMeshSkip; }
+
 static void wardriveLoop(void) {
-    if (meshIsEnabled() && (meshInMeshWindow() || meshInRidWindow())) return;
+    if (meshIsEnabled() && (meshInMeshWindow() || meshInRidWindow())) { g_wdMeshSkip++; return; }
     if (!wardriveActive) return;
     unsigned long now = millis();
 
@@ -602,6 +607,7 @@ static void wardriveLoop(void) {
                    (elapsed >= minDwell && (uint32_t)(now - wifiLastNetMs) >= kAdaptiveQuietMs);
 #endif
         if (due) {
+            g_wdHopCount++;
             hopIdx++;
             if (hopIdx >= hopScheduleLen) hopIdx = 0;
 #ifdef OUISPY_SWEEPLOG
