@@ -977,25 +977,6 @@ class BleManager {
 
   Future<void> enableEngine(Engine engine, {int? radio, String? targetNodeId}) async {
     if (_engineControl == null) return;
-    final mgr = isManagerConnected;
-    if (engine.isWifi && !mgr) {
-      bool sentAny = false;
-      for (final conflict in Engine.values.where((e) => e.isWifi && e != engine)) {
-        if ((engine == Engine.flockWifi && conflict == Engine.wardrive) ||
-            (engine == Engine.wardrive && conflict == Engine.flockWifi)) {
-          continue;
-        }
-        try {
-          await _serializedEngineWrite(() => _engineControl!.write(
-                BleProtocol.encodeEngineControl(engine: conflict, enable: false),
-              ));
-          sentAny = true;
-        } catch (e) {
-          DebugLog.log('BLE: conflict-disable ${conflict.name} failed: $e');
-        }
-      }
-      if (sentAny) await Future.delayed(const Duration(milliseconds: 150));
-    }
     if (radio != null) {
       try {
         await _serializedEngineWrite(() => _engineControl!.write(

@@ -473,39 +473,35 @@ static void engineDiagTask(void* arg) {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(3000));
 
-    {
+    for (;;) {
         bleGattDebugForcePhone(true);
+        for (int i = 0; i < ENGINE_COUNT; i++) g_diagDetCount[i] = 0;
         uint32_t lh = wardriveGetHopCount();
         engineEnable(ENGINE_WARDRIVE);
-        Serial.printf("\n[PROOF] wardrive ENABLED (no manager, mgrJoined=%d)\n",
-            meshManagerJoined() ? 1 : 0);
-        for (int t = 0; t < 4; t++) {
-            vTaskDelay(pdMS_TO_TICKS(2000));
+        engineEnable(ENGINE_FLOCK_WIFI);
+        engineEnable(ENGINE_FLOCK_BLE);
+        engineEnable(ENGINE_SKYSPY);
+        engineEnable(ENGINE_DETECTOR);
+        Serial.println("\n[MULTI] enabled W+FW+FB+SKY+DET together (direct node, no manager)");
+        uint32_t lraw = g_engRawSeen;
+        int ridSeen = 0;
+        for (int t = 0; t < 12; t++) {
+            for (int s = 0; s < 25; s++) {
+                if (meshInRidWindow()) ridSeen++;
+                vTaskDelay(pdMS_TO_TICKS(100));
+            }
             uint32_t h = wardriveGetHopCount();
-            Serial.printf("[PROOF] scanning t+%ds hop+=%lu st=%d\n",
-                (t + 1) * 2, (unsigned long)(h - lh), (int)engineGetState(ENGINE_WARDRIVE));
-            lh = h;
+            uint32_t raw = g_engRawSeen;
+            uint8_t ch = 0; wifi_second_chan_t s2; esp_wifi_get_channel(&ch, &s2);
+            Serial.printf("[MULTI] t+%2lus ch=%2u hop+=%lu raw+=%lu ridWin=%d det[W=%lu FW=%lu SKY=%lu DET=%lu]\n",
+                (unsigned long)((t + 1) * 25 / 10), ch, (unsigned long)(h - lh), (unsigned long)(raw - lraw),
+                ridSeen,
+                (unsigned long)g_diagDetCount[ENGINE_WARDRIVE], (unsigned long)g_diagDetCount[ENGINE_FLOCK_WIFI],
+                (unsigned long)g_diagDetCount[ENGINE_SKYSPY], (unsigned long)g_diagDetCount[ENGINE_DETECTOR]);
+            lh = h; lraw = raw; ridSeen = 0;
         }
-        Serial.println("[PROOF] >>> simulate app iOS-resume: engineDisableAll() <<<");
         engineDisableAll();
-        for (int t = 0; t < 4; t++) {
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            uint32_t h = wardriveGetHopCount();
-            Serial.printf("[PROOF] after DISABLE_ALL t+%ds hop+=%lu st=%d (no mgr -> STUCK STOPPED)\n",
-                (t + 1) * 2, (unsigned long)(h - lh), (int)engineGetState(ENGINE_WARDRIVE));
-            lh = h;
-        }
-        Serial.println("[PROOF] >>> re-enable (what a manager would do) <<<");
-        engineEnable(ENGINE_WARDRIVE);
-        for (int t = 0; t < 3; t++) {
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            uint32_t h = wardriveGetHopCount();
-            Serial.printf("[PROOF] re-enabled t+%ds hop+=%lu st=%d (RECOVERS)\n",
-                (t + 1) * 2, (unsigned long)(h - lh), (int)engineGetState(ENGINE_WARDRIVE));
-            lh = h;
-        }
-        engineDisable(ENGINE_WARDRIVE);
-        vTaskDelay(pdMS_TO_TICKS(1500));
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 
     for (int phase = 0; phase < 2; phase++) {
