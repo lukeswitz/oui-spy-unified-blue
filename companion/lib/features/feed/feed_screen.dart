@@ -176,6 +176,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     enabled: filtered.isNotEmpty,
                     onTap: filtered.isEmpty ? null : () => _exportCsv(context, filtered),
                   ),
+                  const SizedBox(width: 8),
+                  _HeaderIconButton(
+                    icon: Icons.delete_sweep,
+                    active: false,
+                    enabled: state.recentDetections.isNotEmpty,
+                    onTap: state.recentDetections.isEmpty ? null : () => _clearAll(context),
+                  ),
                   const SizedBox(width: 10),
                   if (state.isManagerConnected && sourceNodes.isNotEmpty) ...[
                     const Icon(Icons.hub, size: 14, color: AppTheme.warning),
@@ -235,6 +242,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _clearAll(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear feed?'),
+        content: const Text('Clears all detections from the feed and resets counts.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CLEAR', style: TextStyle(color: AppTheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) ref.read(appStateProvider).resetCounts();
   }
 
   Future<void> _exportCsv(BuildContext context, List<Detection> detections) async {

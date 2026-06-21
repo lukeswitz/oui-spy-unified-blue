@@ -2687,6 +2687,33 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     }
   }
 
+  Future<void> _clearAll() async {
+    final db = ref.read(databaseProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear all detections?'),
+        content: Text('Permanently deletes ${_detections.length} detection(s) from the database.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CLEAR', style: TextStyle(color: AppTheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final n = await db.clearFlockDetectorDetections();
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      backgroundColor: AppTheme.success,
+      content: Text('Cleared $n detection(s)'),
+    ));
+    await _load();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3009,6 +3036,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 2),
           child: Wrap(
+            alignment: WrapAlignment.center,
             spacing: 6,
             runSpacing: 6,
             children: [
@@ -3151,6 +3179,17 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                         ),
                       )
                     : Icon(Icons.refresh, size: 16, color: AppTheme.detector),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: _detections.isEmpty ? null : _clearAll,
+                child: Icon(
+                  Icons.delete_sweep,
+                  size: 16,
+                  color: _detections.isEmpty
+                      ? t.textDim.withValues(alpha: 0.4)
+                      : AppTheme.error,
+                ),
               ),
             ],
           ),
@@ -3528,12 +3567,12 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: selected
               ? color.withValues(alpha: 0.22)
               : color.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(13),
           border: Border.all(
             color: selected ? color : color.withValues(alpha: 0.55),
             width: selected ? 1.6 : 1.0,
@@ -3541,7 +3580,7 @@ class _FilterChip extends StatelessWidget {
         ),
         child: Text(label, style: TextStyle(
           color: color,
-          fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5,
+          fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.3,
         )),
       ),
     );

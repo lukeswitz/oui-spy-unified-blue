@@ -295,6 +295,10 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteDetectionById(int id) =>
       (delete(detections)..where((d) => d.id.equals(id))).go();
 
+  Future<int> clearFlockDetectorDetections() => (delete(detections)
+        ..where((d) => d.engine.isIn(['flockBle', 'flockWifi', 'detector', 'skySpy'])))
+      .go();
+
   /// Delete all detections in [sessionId] whose MAC is in [macs]. Used to drop
   /// a whole logical detection (all MACs of one drone/device) at once.
   Future<void> deleteDetectionsByMacs(String sessionId, List<String> macs) {

@@ -1355,6 +1355,10 @@ class BleManager {
       await connect(dev,
           sessionId: DateTime.now().millisecondsSinceEpoch.toString());
     } on Exception catch (e) {
+      if (_currentState != NodeConnectionState.ready) {
+        _currentState = NodeConnectionState.disconnected;
+        _connectionState.add(NodeConnectionState.disconnected);
+      }
       DebugLog.log('BLE: reconnect on resume failed: $e');
     }
   }
