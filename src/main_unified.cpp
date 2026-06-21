@@ -473,6 +473,41 @@ static void engineDiagTask(void* arg) {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(3000));
 
+    {
+        bleGattDebugForcePhone(true);
+        uint32_t lh = wardriveGetHopCount();
+        engineEnable(ENGINE_WARDRIVE);
+        Serial.printf("\n[PROOF] wardrive ENABLED (no manager, mgrJoined=%d)\n",
+            meshManagerJoined() ? 1 : 0);
+        for (int t = 0; t < 4; t++) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            uint32_t h = wardriveGetHopCount();
+            Serial.printf("[PROOF] scanning t+%ds hop+=%lu st=%d\n",
+                (t + 1) * 2, (unsigned long)(h - lh), (int)engineGetState(ENGINE_WARDRIVE));
+            lh = h;
+        }
+        Serial.println("[PROOF] >>> simulate app iOS-resume: engineDisableAll() <<<");
+        engineDisableAll();
+        for (int t = 0; t < 4; t++) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            uint32_t h = wardriveGetHopCount();
+            Serial.printf("[PROOF] after DISABLE_ALL t+%ds hop+=%lu st=%d (no mgr -> STUCK STOPPED)\n",
+                (t + 1) * 2, (unsigned long)(h - lh), (int)engineGetState(ENGINE_WARDRIVE));
+            lh = h;
+        }
+        Serial.println("[PROOF] >>> re-enable (what a manager would do) <<<");
+        engineEnable(ENGINE_WARDRIVE);
+        for (int t = 0; t < 3; t++) {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            uint32_t h = wardriveGetHopCount();
+            Serial.printf("[PROOF] re-enabled t+%ds hop+=%lu st=%d (RECOVERS)\n",
+                (t + 1) * 2, (unsigned long)(h - lh), (int)engineGetState(ENGINE_WARDRIVE));
+            lh = h;
+        }
+        engineDisable(ENGINE_WARDRIVE);
+        vTaskDelay(pdMS_TO_TICKS(1500));
+    }
+
     for (int phase = 0; phase < 2; phase++) {
         bool phone = (phase == 1);
         bleGattDebugForcePhone(phone);

@@ -14,6 +14,7 @@ import 'package:oui_spy/features/pcap/pcap_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -118,10 +119,10 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
         ref.read(notificationServiceProvider).cancelAll();
       }
     } else if (state == AppLifecycleState.resumed) {
-      // Reconnect, then shut every engine down so we're not live-scanning on
-      // resume — the node's spooled away-detections flush in as the import.
       ref.read(bleManagerProvider).reconnectPrimary().then((_) {
-        ref.read(bleManagerProvider).disableAllEngines();
+        if (!ref.read(wardriveProvider).isActive) {
+          ref.read(bleManagerProvider).disableAllEngines();
+        }
       });
     }
   }
