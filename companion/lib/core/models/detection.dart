@@ -28,6 +28,7 @@ class Detection with _$Detection {
     double? heading,
     double? accuracy,
     int? satelliteCount,
+    @Default(false) bool approxGps,
     FlockExtension? flock,
     OdidExtension? odid,
     UnipwnExtension? unipwn,

@@ -30,6 +30,7 @@ _$DetectionImpl _$$DetectionImplFromJson(
   heading: (json['heading'] as num?)?.toDouble(),
   accuracy: (json['accuracy'] as num?)?.toDouble(),
   satelliteCount: (json['satelliteCount'] as num?)?.toInt(),
+  approxGps: json['approxGps'] as bool? ?? false,
   flock: json['flock'] == null
       ? null
       : FlockExtension.fromJson(json['flock'] as Map<String, dynamic>),
@@ -70,6 +71,7 @@ Map<String, dynamic> _$$DetectionImplToJson(_$DetectionImpl instance) =>
       'heading': instance.heading,
       'accuracy': instance.accuracy,
       'satelliteCount': instance.satelliteCount,
+      'approxGps': instance.approxGps,
       'flock': instance.flock,
       'odid': instance.odid,
       'unipwn': instance.unipwn,
