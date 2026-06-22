@@ -42,6 +42,7 @@ mixin _$Detection {
   double? get heading => throw _privateConstructorUsedError;
   double? get accuracy => throw _privateConstructorUsedError;
   int? get satelliteCount => throw _privateConstructorUsedError;
+  bool get approxGps => throw _privateConstructorUsedError;
   FlockExtension? get flock => throw _privateConstructorUsedError;
   OdidExtension? get odid => throw _privateConstructorUsedError;
   UnipwnExtension? get unipwn => throw _privateConstructorUsedError;
@@ -85,6 +86,7 @@ abstract class $DetectionCopyWith<$Res> {
     double? heading,
     double? accuracy,
     int? satelliteCount,
+    bool approxGps,
     FlockExtension? flock,
     OdidExtension? odid,
     UnipwnExtension? unipwn,
@@ -135,6 +137,7 @@ class _$DetectionCopyWithImpl<$Res, $Val extends Detection>
     Object? heading = freezed,
     Object? accuracy = freezed,
     Object? satelliteCount = freezed,
+    Object? approxGps = null,
     Object? flock = freezed,
     Object? odid = freezed,
     Object? unipwn = freezed,
@@ -227,6 +230,10 @@ class _$DetectionCopyWithImpl<$Res, $Val extends Detection>
                 ? _value.satelliteCount
                 : satelliteCount // ignore: cast_nullable_to_non_nullable
                       as int?,
+            approxGps: null == approxGps
+                ? _value.approxGps
+                : approxGps // ignore: cast_nullable_to_non_nullable
+                      as bool,
             flock: freezed == flock
                 ? _value.flock
                 : flock // ignore: cast_nullable_to_non_nullable
@@ -354,6 +361,7 @@ abstract class _$$DetectionImplCopyWith<$Res>
     double? heading,
     double? accuracy,
     int? satelliteCount,
+    bool approxGps,
     FlockExtension? flock,
     OdidExtension? odid,
     UnipwnExtension? unipwn,
@@ -408,6 +416,7 @@ class __$$DetectionImplCopyWithImpl<$Res>
     Object? heading = freezed,
     Object? accuracy = freezed,
     Object? satelliteCount = freezed,
+    Object? approxGps = null,
     Object? flock = freezed,
     Object? odid = freezed,
     Object? unipwn = freezed,
@@ -500,6 +509,10 @@ class __$$DetectionImplCopyWithImpl<$Res>
             ? _value.satelliteCount
             : satelliteCount // ignore: cast_nullable_to_non_nullable
                   as int?,
+        approxGps: null == approxGps
+            ? _value.approxGps
+            : approxGps // ignore: cast_nullable_to_non_nullable
+                  as bool,
         flock: freezed == flock
             ? _value.flock
             : flock // ignore: cast_nullable_to_non_nullable
@@ -550,6 +563,7 @@ class _$DetectionImpl implements _Detection {
     this.heading,
     this.accuracy,
     this.satelliteCount,
+    this.approxGps = false,
     this.flock,
     this.odid,
     this.unipwn,
@@ -607,6 +621,9 @@ class _$DetectionImpl implements _Detection {
   @override
   final int? satelliteCount;
   @override
+  @JsonKey()
+  final bool approxGps;
+  @override
   final FlockExtension? flock;
   @override
   final OdidExtension? odid;
@@ -619,7 +636,7 @@ class _$DetectionImpl implements _Detection {
 
   @override
   String toString() {
-    return 'Detection(id: $id, sessionId: $sessionId, nodeId: $nodeId, macAddress: $macAddress, engine: $engine, method: $method, rssi: $rssi, channel: $channel, deviceTimestampMs: $deviceTimestampMs, appTimestamp: $appTimestamp, deviceName: $deviceName, ssid: $ssid, count: $count, sourceNodeId: $sourceNodeId, latitude: $latitude, longitude: $longitude, altitude: $altitude, speed: $speed, heading: $heading, accuracy: $accuracy, satelliteCount: $satelliteCount, flock: $flock, odid: $odid, unipwn: $unipwn, detector: $detector, wardrive: $wardrive)';
+    return 'Detection(id: $id, sessionId: $sessionId, nodeId: $nodeId, macAddress: $macAddress, engine: $engine, method: $method, rssi: $rssi, channel: $channel, deviceTimestampMs: $deviceTimestampMs, appTimestamp: $appTimestamp, deviceName: $deviceName, ssid: $ssid, count: $count, sourceNodeId: $sourceNodeId, latitude: $latitude, longitude: $longitude, altitude: $altitude, speed: $speed, heading: $heading, accuracy: $accuracy, satelliteCount: $satelliteCount, approxGps: $approxGps, flock: $flock, odid: $odid, unipwn: $unipwn, detector: $detector, wardrive: $wardrive)';
   }
 
   @override
@@ -659,6 +676,8 @@ class _$DetectionImpl implements _Detection {
                 other.accuracy == accuracy) &&
             (identical(other.satelliteCount, satelliteCount) ||
                 other.satelliteCount == satelliteCount) &&
+            (identical(other.approxGps, approxGps) ||
+                other.approxGps == approxGps) &&
             (identical(other.flock, flock) || other.flock == flock) &&
             (identical(other.odid, odid) || other.odid == odid) &&
             (identical(other.unipwn, unipwn) || other.unipwn == unipwn) &&
@@ -693,6 +712,7 @@ class _$DetectionImpl implements _Detection {
     heading,
     accuracy,
     satelliteCount,
+    approxGps,
     flock,
     odid,
     unipwn,
@@ -737,6 +757,7 @@ abstract class _Detection implements Detection {
     final double? heading,
     final double? accuracy,
     final int? satelliteCount,
+    final bool approxGps,
     final FlockExtension? flock,
     final OdidExtension? odid,
     final UnipwnExtension? unipwn,
@@ -789,6 +810,8 @@ abstract class _Detection implements Detection {
   double? get accuracy;
   @override
   int? get satelliteCount;
+  @override
+  bool get approxGps;
   @override
   FlockExtension? get flock;
   @override

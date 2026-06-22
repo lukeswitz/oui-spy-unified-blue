@@ -94,6 +94,8 @@ class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready) {
+        SharedPreferences.getInstance().then(
+            (p) => offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false);
         if (isActive) {
           if (_ble.offlineScanEnabled) {
             DebugLog.log('WARDRIVE: offline-scan on — adopting running engines, no re-enable');
@@ -113,6 +115,7 @@ class WardriveController extends ChangeNotifier {
 
   Future<void> _loadPrefs() async {
     final p = await SharedPreferences.getInstance();
+    offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false;
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
     _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 250;
@@ -170,6 +173,11 @@ class WardriveController extends ChangeNotifier {
   /// Imperial-units flag mirrored from [unitSystemProvider]. Used by
   /// [_updateLiveActivity] so the iOS Live Activity matches the in-app setting.
   bool isImperial = false;
+
+  /// When on, while-away detections (spool import + node-relayed away-live) that
+  /// arrive with no GPS are tagged with the phone's last-known position and
+  /// flagged approximate. Gated by the Offline Scan sub-toggle.
+  bool offlineGpsTag = false;
 
   WardriveState state = WardriveState.idle;
   final Set<WardriveTarget> selectedTargets = {WardriveTarget.wigle};
@@ -829,6 +837,7 @@ class WardriveController extends ChangeNotifier {
       heading: row['heading'] as double?,
       accuracy: row['accuracy'] as double?,
       satelliteCount: row['satelliteCount'] as int?,
+      approxGps: (row['approxGps'] as bool?) ?? false,
       wardrive: engine == Engine.wardrive
           ? WardriveExtension(ssid: ssid, authMode: authMode, deviceName: deviceName)
           : null,
@@ -1044,6 +1053,16 @@ class WardriveController extends ChangeNotifier {
     return newId;
   }
 
+  ({double? lat, double? lon, double? acc, bool approx}) _tagGps(Detection d) {
+    if (offlineGpsTag && d.latitude == null) {
+      final p = _gps.lastPosition;
+      if (p != null) {
+        return (lat: p.latitude, lon: p.longitude, acc: p.accuracy, approx: true);
+      }
+    }
+    return (lat: d.latitude, lon: d.longitude, acc: d.accuracy, approx: false);
+  }
+
   Future<void> _onImportedDetection(Detection detection) async {
     _spoolSessionId ??= await _resolveSpoolSessionId();
     final sid = _spoolSessionId!;
@@ -1052,6 +1071,7 @@ class WardriveController extends ChangeNotifier {
     final wallClock = offsetMs < 0
         ? DateTime.now()
         : DateTime.now().subtract(Duration(milliseconds: offsetMs));
+    final g = _tagGps(detection);
     await _db.insertDetection(DetectionsCompanion(
       sessionId: drift.Value(sid),
       nodeId: const drift.Value('default'),
@@ -1063,9 +1083,10 @@ class WardriveController extends ChangeNotifier {
       channel: drift.Value(detection.channel),
       deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
       appTimestamp: drift.Value(wallClock.millisecondsSinceEpoch),
-      latitude: drift.Value(detection.latitude),
-      longitude: drift.Value(detection.longitude),
-      accuracy: drift.Value(detection.accuracy),
+      latitude: drift.Value(g.lat),
+      longitude: drift.Value(g.lon),
+      accuracy: drift.Value(g.acc),
+      approxGps: drift.Value(g.approx),
       ssid: drift.Value(detection.ssid),
       authMode: drift.Value(detection.wardrive?.authMode ?? 0),
       uavId: drift.Value(detection.odid?.uavId),
@@ -1087,6 +1108,7 @@ class WardriveController extends ChangeNotifier {
   Future<void> _onAwayLiveDetection(Detection detection) async {
     if (state == WardriveState.running) return;
     final sid = _spoolSessionId ??= await _resolveSpoolSessionId();
+    final g = _tagGps(detection);
     await _db.insertDetection(DetectionsCompanion(
       sessionId: drift.Value(sid),
       nodeId: const drift.Value('default'),
@@ -1098,9 +1120,10 @@ class WardriveController extends ChangeNotifier {
       channel: drift.Value(detection.channel),
       deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
       appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
-      latitude: drift.Value(detection.latitude),
-      longitude: drift.Value(detection.longitude),
-      accuracy: drift.Value(detection.accuracy),
+      latitude: drift.Value(g.lat),
+      longitude: drift.Value(g.lon),
+      accuracy: drift.Value(g.acc),
+      approxGps: drift.Value(g.approx),
       ssid: drift.Value(detection.ssid),
       authMode: drift.Value(detection.wardrive?.authMode ?? 0),
       uavId: drift.Value(detection.odid?.uavId),

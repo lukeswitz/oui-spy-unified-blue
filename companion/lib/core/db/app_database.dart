@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -43,6 +43,9 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 3) {
           await m.addColumn(geofences, geofences.excludeFromWardrive);
+        }
+        if (from < 4) {
+          await m.addColumn(detections, detections.approxGps);
         }
       },
     );
@@ -158,6 +161,7 @@ class AppDatabase extends _$AppDatabase {
               'droneHeading': r.droneHeading,
               'pilotLat': r.pilotLat,
               'pilotLon': r.pilotLon,
+              'approxGps': r.approxGps,
             })
         .toList();
   }

@@ -49,6 +49,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
 
   bool _flockExtendedOui = false;
   bool _offlineScanEnabled = false;
+  bool _offlineGpsTag = false;
   bool _buzzerEnabled = true;
   int _buzzerVolume = 100;
   bool _ledEnabled = true;
@@ -70,6 +71,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 8, vsync: this);
+    _offlineGpsTag =
+        ref.read(sharedPreferencesProvider).getBool('offlineGpsTagEnabled') ?? false;
     _readDeviceConfig();
     final ble = ref.read(bleManagerProvider);
     _connStateSub = ble.connectionState.listen((s) {
@@ -543,6 +546,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _writeHardwareConfig();
           },
         ),
+        if (_offlineScanEnabled)
+          ConfigToggleRow(
+            icon: Icons.my_location,
+            label: 'Tag away detections with last GPS',
+            subtitle: 'Detections seen while away get the phone\'s last-known location (approximate).',
+            color: const Color(0xFF4AB8FF),
+            value: _offlineGpsTag,
+            onChanged: (v) {
+              setState(() => _offlineGpsTag = v);
+              ref.read(sharedPreferencesProvider).setBool('offlineGpsTagEnabled', v);
+            },
+          ),
       ],
     );
   }

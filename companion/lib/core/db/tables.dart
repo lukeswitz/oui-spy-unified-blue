@@ -77,6 +77,8 @@ class Detections extends Table {
   // Detector extensions
   TextColumn get filterDescription => text().nullable()();
   BoolColumn get isFullMac => boolean().nullable()();
+  // GPS tagged from app's last-known position (captured while phone away)
+  BoolColumn get approxGps => boolean().nullable()();
 }
 
 class EngineConfigs extends Table {

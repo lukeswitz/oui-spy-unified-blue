@@ -181,9 +181,17 @@ class DetectionRow extends ConsumerWidget {
                     onTap: () => _startFoxhunt(context, ref),
                   ),
                   _ActionIcon(
-                    icon: Icons.location_on,
-                    color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
-                    tooltip: hasGps ? 'Show on map' : 'No GPS fix',
+                    icon: detection.approxGps ? Icons.location_searching : Icons.location_on,
+                    color: !hasGps
+                        ? AppTheme.gpsNone
+                        : detection.approxGps
+                            ? AppTheme.gpsFair
+                            : AppTheme.gpsGood,
+                    tooltip: !hasGps
+                        ? 'No GPS fix'
+                        : detection.approxGps
+                            ? 'Last-known GPS (approx)'
+                            : 'Show on map',
                     onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
                   ),
                 ],

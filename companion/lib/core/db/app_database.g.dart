@@ -1629,6 +1629,20 @@ class $DetectionsTable extends Detections
       'CHECK ("is_full_mac" IN (0, 1))',
     ),
   );
+  static const VerificationMeta _approxGpsMeta = const VerificationMeta(
+    'approxGps',
+  );
+  @override
+  late final GeneratedColumn<bool> approxGps = GeneratedColumn<bool>(
+    'approx_gps',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("approx_gps" IN (0, 1))',
+    ),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1669,6 +1683,7 @@ class $DetectionsTable extends Detections
     robotSerial,
     filterDescription,
     isFullMac,
+    approxGps,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1952,6 +1967,12 @@ class $DetectionsTable extends Detections
         isFullMac.isAcceptableOrUnknown(data['is_full_mac']!, _isFullMacMeta),
       );
     }
+    if (data.containsKey('approx_gps')) {
+      context.handle(
+        _approxGpsMeta,
+        approxGps.isAcceptableOrUnknown(data['approx_gps']!, _approxGpsMeta),
+      );
+    }
     return context;
   }
 
@@ -2113,6 +2134,10 @@ class $DetectionsTable extends Detections
         DriftSqlType.bool,
         data['${effectivePrefix}is_full_mac'],
       ),
+      approxGps: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}approx_gps'],
+      ),
     );
   }
 
@@ -2161,6 +2186,7 @@ class Detection extends DataClass implements Insertable<Detection> {
   final String? robotSerial;
   final String? filterDescription;
   final bool? isFullMac;
+  final bool? approxGps;
   const Detection({
     required this.id,
     required this.sessionId,
@@ -2200,6 +2226,7 @@ class Detection extends DataClass implements Insertable<Detection> {
     this.robotSerial,
     this.filterDescription,
     this.isFullMac,
+    this.approxGps,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2289,6 +2316,9 @@ class Detection extends DataClass implements Insertable<Detection> {
     }
     if (!nullToAbsent || isFullMac != null) {
       map['is_full_mac'] = Variable<bool>(isFullMac);
+    }
+    if (!nullToAbsent || approxGps != null) {
+      map['approx_gps'] = Variable<bool>(approxGps);
     }
     return map;
   }
@@ -2381,6 +2411,9 @@ class Detection extends DataClass implements Insertable<Detection> {
       isFullMac: isFullMac == null && nullToAbsent
           ? const Value.absent()
           : Value(isFullMac),
+      approxGps: approxGps == null && nullToAbsent
+          ? const Value.absent()
+          : Value(approxGps),
     );
   }
 
@@ -2430,6 +2463,7 @@ class Detection extends DataClass implements Insertable<Detection> {
         json['filterDescription'],
       ),
       isFullMac: serializer.fromJson<bool?>(json['isFullMac']),
+      approxGps: serializer.fromJson<bool?>(json['approxGps']),
     );
   }
   @override
@@ -2474,6 +2508,7 @@ class Detection extends DataClass implements Insertable<Detection> {
       'robotSerial': serializer.toJson<String?>(robotSerial),
       'filterDescription': serializer.toJson<String?>(filterDescription),
       'isFullMac': serializer.toJson<bool?>(isFullMac),
+      'approxGps': serializer.toJson<bool?>(approxGps),
     };
   }
 
@@ -2516,6 +2551,7 @@ class Detection extends DataClass implements Insertable<Detection> {
     Value<String?> robotSerial = const Value.absent(),
     Value<String?> filterDescription = const Value.absent(),
     Value<bool?> isFullMac = const Value.absent(),
+    Value<bool?> approxGps = const Value.absent(),
   }) => Detection(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -2561,6 +2597,7 @@ class Detection extends DataClass implements Insertable<Detection> {
         ? filterDescription.value
         : this.filterDescription,
     isFullMac: isFullMac.present ? isFullMac.value : this.isFullMac,
+    approxGps: approxGps.present ? approxGps.value : this.approxGps,
   );
   Detection copyWithCompanion(DetectionsCompanion data) {
     return Detection(
@@ -2628,6 +2665,7 @@ class Detection extends DataClass implements Insertable<Detection> {
           ? data.filterDescription.value
           : this.filterDescription,
       isFullMac: data.isFullMac.present ? data.isFullMac.value : this.isFullMac,
+      approxGps: data.approxGps.present ? data.approxGps.value : this.approxGps,
     );
   }
 
@@ -2671,7 +2709,8 @@ class Detection extends DataClass implements Insertable<Detection> {
           ..write('exploited: $exploited, ')
           ..write('robotSerial: $robotSerial, ')
           ..write('filterDescription: $filterDescription, ')
-          ..write('isFullMac: $isFullMac')
+          ..write('isFullMac: $isFullMac, ')
+          ..write('approxGps: $approxGps')
           ..write(')'))
         .toString();
   }
@@ -2716,6 +2755,7 @@ class Detection extends DataClass implements Insertable<Detection> {
     robotSerial,
     filterDescription,
     isFullMac,
+    approxGps,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -2758,7 +2798,8 @@ class Detection extends DataClass implements Insertable<Detection> {
           other.exploited == this.exploited &&
           other.robotSerial == this.robotSerial &&
           other.filterDescription == this.filterDescription &&
-          other.isFullMac == this.isFullMac);
+          other.isFullMac == this.isFullMac &&
+          other.approxGps == this.approxGps);
 }
 
 class DetectionsCompanion extends UpdateCompanion<Detection> {
@@ -2800,6 +2841,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
   final Value<String?> robotSerial;
   final Value<String?> filterDescription;
   final Value<bool?> isFullMac;
+  final Value<bool?> approxGps;
   const DetectionsCompanion({
     this.id = const Value.absent(),
     this.sessionId = const Value.absent(),
@@ -2839,6 +2881,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     this.robotSerial = const Value.absent(),
     this.filterDescription = const Value.absent(),
     this.isFullMac = const Value.absent(),
+    this.approxGps = const Value.absent(),
   });
   DetectionsCompanion.insert({
     this.id = const Value.absent(),
@@ -2879,6 +2922,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     this.robotSerial = const Value.absent(),
     this.filterDescription = const Value.absent(),
     this.isFullMac = const Value.absent(),
+    this.approxGps = const Value.absent(),
   }) : sessionId = Value(sessionId),
        nodeId = Value(nodeId),
        macAddress = Value(macAddress),
@@ -2927,6 +2971,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     Expression<String>? robotSerial,
     Expression<String>? filterDescription,
     Expression<bool>? isFullMac,
+    Expression<bool>? approxGps,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2967,6 +3012,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
       if (robotSerial != null) 'robot_serial': robotSerial,
       if (filterDescription != null) 'filter_description': filterDescription,
       if (isFullMac != null) 'is_full_mac': isFullMac,
+      if (approxGps != null) 'approx_gps': approxGps,
     });
   }
 
@@ -3009,6 +3055,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     Value<String?>? robotSerial,
     Value<String?>? filterDescription,
     Value<bool?>? isFullMac,
+    Value<bool?>? approxGps,
   }) {
     return DetectionsCompanion(
       id: id ?? this.id,
@@ -3049,6 +3096,7 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
       robotSerial: robotSerial ?? this.robotSerial,
       filterDescription: filterDescription ?? this.filterDescription,
       isFullMac: isFullMac ?? this.isFullMac,
+      approxGps: approxGps ?? this.approxGps,
     );
   }
 
@@ -3169,6 +3217,9 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
     if (isFullMac.present) {
       map['is_full_mac'] = Variable<bool>(isFullMac.value);
     }
+    if (approxGps.present) {
+      map['approx_gps'] = Variable<bool>(approxGps.value);
+    }
     return map;
   }
 
@@ -3212,7 +3263,8 @@ class DetectionsCompanion extends UpdateCompanion<Detection> {
           ..write('exploited: $exploited, ')
           ..write('robotSerial: $robotSerial, ')
           ..write('filterDescription: $filterDescription, ')
-          ..write('isFullMac: $isFullMac')
+          ..write('isFullMac: $isFullMac, ')
+          ..write('approxGps: $approxGps')
           ..write(')'))
         .toString();
   }
@@ -9475,6 +9527,7 @@ typedef $$DetectionsTableCreateCompanionBuilder =
       Value<String?> robotSerial,
       Value<String?> filterDescription,
       Value<bool?> isFullMac,
+      Value<bool?> approxGps,
     });
 typedef $$DetectionsTableUpdateCompanionBuilder =
     DetectionsCompanion Function({
@@ -9516,6 +9569,7 @@ typedef $$DetectionsTableUpdateCompanionBuilder =
       Value<String?> robotSerial,
       Value<String?> filterDescription,
       Value<bool?> isFullMac,
+      Value<bool?> approxGps,
     });
 
 final class $$DetectionsTableReferences
@@ -9746,6 +9800,11 @@ class $$DetectionsTableFilterComposer
 
   ColumnFilters<bool> get isFullMac => $composableBuilder(
     column: $table.isFullMac,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get approxGps => $composableBuilder(
+    column: $table.approxGps,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9985,6 +10044,11 @@ class $$DetectionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get approxGps => $composableBuilder(
+    column: $table.approxGps,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SessionsTableOrderingComposer get sessionId {
     final $$SessionsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -10175,6 +10239,9 @@ class $$DetectionsTableAnnotationComposer
   GeneratedColumn<bool> get isFullMac =>
       $composableBuilder(column: $table.isFullMac, builder: (column) => column);
 
+  GeneratedColumn<bool> get approxGps =>
+      $composableBuilder(column: $table.approxGps, builder: (column) => column);
+
   $$SessionsTableAnnotationComposer get sessionId {
     final $$SessionsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -10288,6 +10355,7 @@ class $$DetectionsTableTableManager
                 Value<String?> robotSerial = const Value.absent(),
                 Value<String?> filterDescription = const Value.absent(),
                 Value<bool?> isFullMac = const Value.absent(),
+                Value<bool?> approxGps = const Value.absent(),
               }) => DetectionsCompanion(
                 id: id,
                 sessionId: sessionId,
@@ -10327,6 +10395,7 @@ class $$DetectionsTableTableManager
                 robotSerial: robotSerial,
                 filterDescription: filterDescription,
                 isFullMac: isFullMac,
+                approxGps: approxGps,
               ),
           createCompanionCallback:
               ({
@@ -10368,6 +10437,7 @@ class $$DetectionsTableTableManager
                 Value<String?> robotSerial = const Value.absent(),
                 Value<String?> filterDescription = const Value.absent(),
                 Value<bool?> isFullMac = const Value.absent(),
+                Value<bool?> approxGps = const Value.absent(),
               }) => DetectionsCompanion.insert(
                 id: id,
                 sessionId: sessionId,
@@ -10407,6 +10477,7 @@ class $$DetectionsTableTableManager
                 robotSerial: robotSerial,
                 filterDescription: filterDescription,
                 isFullMac: isFullMac,
+                approxGps: approxGps,
               ),
           withReferenceMapper: (p0) => p0
               .map(
