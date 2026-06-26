@@ -481,6 +481,19 @@ class BleManager {
 
   /// Connect to a specific device and set up GATT subscriptions.
   Future<void> connect(BluetoothDevice device, {required String sessionId}) async {
+    if (_connecting) {
+      DebugLog.log('BLE: connect in flight — ignoring duplicate ${device.remoteId}');
+      return;
+    }
+    _connecting = true;
+    try {
+      await _doConnect(device, sessionId: sessionId);
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  Future<void> _doConnect(BluetoothDevice device, {required String sessionId}) async {
     // Clean up previous subscriptions to prevent reconnect storm
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -1096,11 +1109,10 @@ class BleManager {
       DebugLog.log('BLE: resume — not connected, autoconnect handles it');
       return;
     }
-    DebugLog.log('BLE: app resumed — reconcile to firmware state + flush node spool');
+    DebugLog.log('BLE: app resumed — reconcile to firmware state');
     try {
       await _readDeviceConfig();
       await _refreshEngineState();
-      await requestSpoolFlush();
     } catch (e) {
       DebugLog.log('BLE: resync on resume failed: $e');
     }
@@ -1511,9 +1523,11 @@ class BleManager {
 
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
+  bool _connecting = false;
 
   void _startReconnect() {
     if (_device == null) return;
+    if (_connecting || (_reconnectTimer?.isActive ?? false)) return;
     _currentState = NodeConnectionState.reconnecting; _connectionState.add(NodeConnectionState.reconnecting);
     _reconnectAttempt = 0;
     _attemptReconnect();
