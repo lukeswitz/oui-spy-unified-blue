@@ -129,30 +129,29 @@ static inline bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev,
     if (fwOut) *fwOut = "";
     if (!dev->haveServiceUUID()) return false;
     if (!flockRavenCache.ready) flockMatchInit();
-    bool hit = false;
-    bool has_new_gps = false, has_old_loc = false, has_power = false;
+    bool has_proprietary = false;
+    bool has_dev_info = false, has_hrt = false, has_old_loc = false;
     int count = dev->getServiceUUIDCount();
     for (int i = 0; i < count; i++) {
         NimBLEUUID u = dev->getServiceUUID(i);
-        if (u.equals(flockRavenCache.dev_info) ||
-            u.equals(flockRavenCache.upload)   ||
-            u.equals(flockRavenCache.config)   ||
-            u.equals(flockRavenCache.error)    ||
-            u.equals(flockRavenCache.hrt)) {
-            hit = true;
-        }
-        if (u.equals(flockRavenCache.gps))     { hit = true; has_new_gps = true; }
-        if (u.equals(flockRavenCache.power))   { hit = true; has_power   = true; }
-        if (u.equals(flockRavenCache.old_loc)) { hit = true; has_old_loc = true; }
+        if (u.equals(flockRavenCache.gps)    ||
+            u.equals(flockRavenCache.power)  ||
+            u.equals(flockRavenCache.upload) ||
+            u.equals(flockRavenCache.config) ||
+            u.equals(flockRavenCache.error))  has_proprietary = true;
+        if (u.equals(flockRavenCache.dev_info)) has_dev_info = true;
+        if (u.equals(flockRavenCache.hrt))      has_hrt      = true;
+        if (u.equals(flockRavenCache.old_loc))  has_old_loc  = true;
     }
-    if (!hit) return false;
-    if (fwOut) {
-        if (has_old_loc && !has_new_gps) *fwOut = "1.1.x";
-        else if (has_new_gps && !has_power) *fwOut = "1.2.x";
-        else if (has_new_gps && has_power)  *fwOut = "1.3.x";
-        else                                 *fwOut = "?";
+    if (has_proprietary) {
+        if (fwOut) *fwOut = "1.2+";
+        return true;
     }
-    return true;
+    if (has_dev_info && has_hrt && has_old_loc) {
+        if (fwOut) *fwOut = "1.1.x";
+        return true;
+    }
+    return false;
 }
 
 // ----------------------------------------------------------------------------
