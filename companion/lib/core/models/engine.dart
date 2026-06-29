@@ -70,6 +70,16 @@ enum EngineState {
   complete,
 }
 
+int commandedEngineMask(List<EngineState> states) {
+  int mask = 0;
+  for (final e in Engine.values) {
+    if (e.index < states.length && states[e.index] != EngineState.disabled) {
+      mask |= e.bitmask;
+    }
+  }
+  return mask;
+}
+
 /// Which engines can run simultaneously.
 class EngineCompatibility {
   const EngineCompatibility._();

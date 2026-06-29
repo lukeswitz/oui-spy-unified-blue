@@ -90,21 +90,23 @@ enum WardriveRadio {
   final String label;
 }
 
+Set<WardriveTarget> targetsFromEngineMask(int mask) {
+  final targets = <WardriveTarget>{};
+  if ((mask & (Engine.flockWifi.bitmask | Engine.flockBle.bitmask)) != 0) {
+    targets.add(WardriveTarget.flock);
+  }
+  if ((mask & Engine.skySpy.bitmask) != 0) targets.add(WardriveTarget.drone);
+  if ((mask & Engine.detector.bitmask) != 0) targets.add(WardriveTarget.detector);
+  return targets;
+}
+
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready) {
         SharedPreferences.getInstance().then(
             (p) => offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false);
-        if (isActive) {
-          if (_ble.offlineScanEnabled) {
-            DebugLog.log('WARDRIVE: offline-scan on — adopting running engines, no re-enable');
-          } else {
-            _reEnableEngines();
-          }
-        } else {
-          _disableStaleEngines();
-        }
+        _adoptFirmwareState();
       }
     });
     _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
@@ -1007,34 +1009,46 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  Future<void> _disableStaleEngines() async {
-    const wardriveEngines = [
+  Future<void> _adoptFirmwareState() async {
+    final mask = await _ble.readCommandedEngineMask();
+    if (mask < 0) return;
+    const klass = [
       Engine.wardrive,
       Engine.flockWifi,
       Engine.flockBle,
       Engine.skySpy,
       Engine.detector,
-      Engine.pcap,
     ];
-    DebugLog.log('WARDRIVE: reconciling firmware — app idle, disabling stale wardrive engines');
-    for (final e in wardriveEngines) {
-      try {
-        await _ble.disableEngine(e);
-      } catch (err) {
-        DebugLog.log('WARDRIVE: stale-disable $e error: $err');
+    final running = klass.any((e) => (mask & e.bitmask) != 0);
+    if (!running) {
+      if (state == WardriveState.running) {
+        state = WardriveState.idle;
+        notifyListeners();
       }
+      DebugLog.log('WARDRIVE: firmware reports no engines — staying idle');
+      return;
     }
+    selectedTargets
+      ..clear()
+      ..addAll(targetsFromEngineMask(mask));
+    await _ensureLoggingAttached();
+    state = WardriveState.running;
+    notifyListeners();
+    DebugLog.log('WARDRIVE: adopted firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
   }
 
-  /// Re-enable engines after BLE reconnect killed them with DISABLE_ALL.
-  void _reEnableEngines() {
-    DebugLog.log('WARDRIVE: re-enabling engines after reconnect');
-    _enableEnginesSequentially(activeEngines).then((_) {
-      if (foxhuntTarget != null) {
-        _ble.enableEngine(Engine.foxhunter);
-        _ble.setFoxhunterTarget(foxhuntTarget!);
-      }
-    });
+  Future<void> _ensureLoggingAttached() async {
+    if (_detSub != null) return;
+    sessionId = await _resolveSpoolSessionId();
+    startTime ??= DateTime.now();
+    _gps.start();
+    _detSub = _ble.detections.listen(_onDetection);
+    _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
+    final cached = _gps.lastPosition;
+    if (cached != null) currentPosition = cached;
+    WakelockPlus.enable();
+    _updateLiveActivity();
   }
 
   Future<String> _resolveSpoolSessionId() async {

@@ -23,6 +23,9 @@ static uint64_t txCounter = 0;
 static char localNodeId[MESH_NODE_ID_LEN] = {};
 static volatile bool g_mgrPhoneConnected = false;
 static volatile uint32_t g_mgrPhoneSeenMs = 0;
+#ifdef OUISPY_SPOOL_STRESS
+volatile uint32_t g_spoolStressAwayRx = 0;
+#endif
 static SemaphoreHandle_t meshMutex = NULL;
 
 #define MESH_CMD_PENDING_MAX  16
@@ -1063,6 +1066,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     recordLiveSeen(pkt.source_node_id);
 #ifdef OUISPY_NETCOUNT
     if ((evt.engine_id & 0x7F) == ENGINE_WARDRIVE && evt.channel != 0) ncRecordWifiMac(evt.mac);
+#endif
+#ifdef OUISPY_SPOOL_STRESS
+    if (evt.engine_id & DET_FLAG_AWAY) g_spoolStressAwayRx++;
 #endif
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {

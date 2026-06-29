@@ -96,6 +96,15 @@ static void heartbeatTask(void*) {
                 Serial.printf("[MGR]   live[%u] id=%.4s role=%u\n",
                               (unsigned)i, lv[i].id, lv[i].role);
         }
+#ifdef OUISPY_SPOOL_STRESS
+        if ((tick % 2) == 0) {
+            MeshStatus s = meshGetStatus();
+            Serial.printf("[SPOOL-STRESS-MGR] awayRx=%lu meshRx=%lu meshErr=%lu heap=%u ble=%d\n",
+                (unsigned long)g_spoolStressAwayRx, (unsigned long)s.rx_count,
+                (unsigned long)s.rx_errors, (unsigned)ESP.getFreeHeap(),
+                bleGattIsConnected() ? 1 : 0);
+        }
+#endif
     }
 }
 

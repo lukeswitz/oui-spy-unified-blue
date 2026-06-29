@@ -1104,6 +1104,32 @@ class BleManager {
     }
   }
 
+  Future<int> readActiveEngineMask() async {
+    if (_engineControl == null) return -1;
+    try {
+      final data = await _engineControl!.read();
+      final status = BleProtocol.decodeEngineStatus(data);
+      _engineStates.add(status);
+      return status.active;
+    } catch (e) {
+      DebugLog.log('BLE: active-engine-mask read failed: $e');
+      return -1;
+    }
+  }
+
+  Future<int> readCommandedEngineMask() async {
+    if (_engineControl == null) return -1;
+    try {
+      final data = await _engineControl!.read();
+      final status = BleProtocol.decodeEngineStatus(data);
+      _engineStates.add(status);
+      return commandedEngineMask(status.states);
+    } catch (e) {
+      DebugLog.log('BLE: commanded-engine-mask read failed: $e');
+      return -1;
+    }
+  }
+
   Future<void> resyncOnResume() async {
     if (_currentState != NodeConnectionState.ready || _device == null) {
       DebugLog.log('BLE: resume — not connected, autoconnect handles it');
@@ -1269,21 +1295,8 @@ class BleManager {
 
   Future<void> disconnect() async {
     _userInitiatedDisconnect = true;
-    final wasFullyConnected =
-        _currentState == NodeConnectionState.ready;
-    final isMgr = (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR');
     _reconnectTimer?.cancel();
-    if (wasFullyConnected && !isMgr) {
-      try {
-        await disableAllEngines();
-      } on FlutterBluePlusException catch (e) {
-        DebugLog.log('BLE: disableAllEngines on disconnect failed: ${e.description}');
-      }
-    } else if (isMgr) {
-      DebugLog.log('BLE: skipped disableAllEngines on disconnect (manager)');
-    } else {
-      DebugLog.log('BLE: cancel mid-connect (state=$_currentState) — skipping engine writes');
-    }
+    DebugLog.log('BLE: disconnect — leaving engine state to firmware (offline-scan aware)');
     for (final sub in _subscriptions) {
       await sub.cancel();
     }

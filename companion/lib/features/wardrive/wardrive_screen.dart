@@ -884,6 +884,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 child: _IdleControls(
                   wd: wd,
                   ref: ref,
+                  appEngines: appEngines,
                   isManagerConnected: ref.watch(
                       appStateProvider.select((s) => s.isManagerConnected)),
                   enginesRunning: WardriveController.selectableTargets.any((m) =>
@@ -1465,9 +1466,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 }
 
 class _IdleControls extends StatelessWidget {
-  const _IdleControls({required this.wd, required this.ref, required this.isManagerConnected, required this.enginesRunning, this.onGeofenceReturn, required this.onStart});
+  const _IdleControls({required this.wd, required this.ref, required this.appEngines, required this.isManagerConnected, required this.enginesRunning, this.onGeofenceReturn, required this.onStart});
   final WardriveController wd;
   final WidgetRef ref;
+  final AppState appEngines;
   final bool isManagerConnected;
   final bool enginesRunning;
   final VoidCallback? onGeofenceReturn;
@@ -1493,7 +1495,10 @@ class _IdleControls extends StatelessWidget {
             children: [
               Row(
                 children: WardriveController.selectableTargets.map((m) {
-                  final sel = wd.isTargetSelected(m);
+                  final sel = m == WardriveTarget.wigle
+                      ? wd.isTargetSelected(m)
+                      : (wd.isTargetSelected(m) ||
+                          _targetEngineRunning(appEngines, m));
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => ref.read(wardriveProvider).toggleTarget(m),

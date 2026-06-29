@@ -534,11 +534,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'OFFLINE SCAN'),
+        const ConfigSectionHeader(label: 'OFFLINE SCAN (EXPERIMENTAL)'),
         ConfigToggleRow(
           icon: Icons.cloud_off,
-          label: 'Keep scanning while disconnected',
-          subtitle: 'Node keeps scanning when the app is closed; detections import on reconnect.',
+          label: 'Keep scanning while disconnected (EXPERIMENTAL)',
+          subtitle: 'EXPERIMENTAL — may be unstable. Node keeps scanning when the app is closed; detections import on reconnect.',
           color: const Color(0xFF4AB8FF),
           value: _offlineScanEnabled,
           onChanged: (v) {
