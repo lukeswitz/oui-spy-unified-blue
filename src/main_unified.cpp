@@ -89,6 +89,9 @@ static void loadHardwareConfig(void) {
 #ifdef OUISPY_SPOOL_SELFTEST
     detSpoolSelfTest();
 #endif
+#ifdef OUISPY_WIGLE_OFFLINE_SELFTEST
+    bleGattWigleOfflineSelfTest();
+#endif
     Serial.printf("[HW] Config: buzzer=%d vol=%d led=%d neo=%d flock_ext=%d\n",
                   (int)hwBuzzerEnabled, (int)hwBuzzerVolume,
                   (int)hwLedEnabled, (int)hwNeopixelBrightness, (int)flockExt);

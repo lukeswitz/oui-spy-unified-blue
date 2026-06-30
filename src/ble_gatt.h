@@ -46,6 +46,12 @@ void bleGattRebroadcastConfigs(void);
 #if defined(OUISPY_STOP_SELFTEST) || defined(OUISPY_ENGSTRESS)
 void mgrDebugSetCommanded(uint8_t mask);
 #endif
+#ifdef OUISPY_WIGLE_OFFLINE_SELFTEST
+void bleGattWigleOfflineSelfTest(void);
+#endif
+#ifdef OUISPY_E2E_SMOKETEST
+void bleGattE2ESmokeStart(void);
+#endif
 
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);

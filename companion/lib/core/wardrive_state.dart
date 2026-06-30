@@ -182,7 +182,7 @@ class WardriveController extends ChangeNotifier {
   bool offlineGpsTag = false;
 
   WardriveState state = WardriveState.idle;
-  final Set<WardriveTarget> selectedTargets = {WardriveTarget.wigle};
+  final Set<WardriveTarget> selectedTargets = {};
   static const List<WardriveTarget> selectableTargets = [
     WardriveTarget.flock,
     WardriveTarget.drone,
@@ -1010,10 +1010,27 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> _adoptFirmwareState() async {
-    final mask = await _ble.readCommandedEngineMask();
+    var mask = await _ble.readCommandedEngineMask();
+    for (var i = 0; mask < 0 && i < 3; i++) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      mask = await _ble.readCommandedEngineMask();
+    }
     if (mask < 0) return;
+
+    final restore = state != WardriveState.running;
+    final wigleAlive = (mask & Engine.wardrive.bitmask) != 0;
+    if (restore) {
+      selectedTargets.remove(WardriveTarget.wigle);
+      if (wigleAlive) {
+        try {
+          await _ble.disableEngine(Engine.wardrive);
+        } catch (e) {
+          DebugLog.log('WARDRIVE: adopt disable wardrive error: $e');
+        }
+      }
+    }
+
     const klass = [
-      Engine.wardrive,
       Engine.flockWifi,
       Engine.flockBle,
       Engine.skySpy,
@@ -1024,8 +1041,10 @@ class WardriveController extends ChangeNotifier {
       if (state == WardriveState.running) {
         state = WardriveState.idle;
         notifyListeners();
+      } else if (restore) {
+        notifyListeners();
       }
-      DebugLog.log('WARDRIVE: firmware reports no engines — staying idle');
+      DebugLog.log('WARDRIVE: firmware reports no keep-alive engines — staying idle');
       return;
     }
     selectedTargets

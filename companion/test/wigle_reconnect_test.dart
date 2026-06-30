@@ -70,4 +70,73 @@ void main() {
     expect(wd.selectedTargets.contains(WardriveTarget.wigle), isFalse,
         reason: 'wigle must be deselected on reconnect');
   });
+
+  test('wigle deselects on reconnect even when wardrive engine is OFF', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final ble = MockBle();
+    final conn = StreamController<NodeConnectionState>.broadcast();
+    when(() => ble.connectionState).thenAnswer((_) => conn.stream);
+    when(() => ble.detections)
+        .thenAnswer((_) => const Stream<Detection>.empty());
+    when(() => ble.importedDetections)
+        .thenAnswer((_) => const Stream<Detection>.empty());
+    when(() => ble.awayLiveDetections)
+        .thenAnswer((_) => const Stream<Detection>.empty());
+    when(() => ble.spoolImport)
+        .thenAnswer((_) => const Stream<SpoolImportProgress>.empty());
+    when(() => ble.isManagerConnected).thenReturn(false);
+    // flock_ble + skyspy + detector running, wardrive (0x40) OFF.
+    when(() => ble.readCommandedEngineMask()).thenAnswer((_) async => 0x13);
+
+    final gps = MockGps();
+    when(() => gps.positionStream)
+        .thenAnswer((_) => const Stream<GpsPosition>.empty());
+    when(() => gps.start()).thenAnswer((_) async => true);
+    when(() => gps.lastPosition).thenReturn(null);
+
+    final db = MockDb();
+    when(() => db.getWardriveSessions()).thenAnswer((_) async => <Session>[]);
+    when(() => db.insertSession(any())).thenAnswer((_) async => 0);
+
+    late WardriveController wd;
+    await runZonedGuarded(() async {
+      wd = WardriveController(
+          ble, gps, db, MockIgnore(), MockGeo(), MockNotif(), MockLive());
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      wd.selectedTargets
+        ..clear()
+        ..add(WardriveTarget.wigle);
+      conn.add(NodeConnectionState.ready);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }, (e, s) {});
+
+    expect(wd.selectedTargets.contains(WardriveTarget.wigle), isFalse,
+        reason: 'wigle must be deselected on launch regardless of engine state');
+    expect(wd.selectedTargets.contains(WardriveTarget.detector), isTrue,
+        reason: 'running targeted engines are adopted');
+  });
+
+  test('default selectedTargets does not preselect wigle', () async {
+    SharedPreferences.setMockInitialValues({});
+    final ble = MockBle();
+    when(() => ble.connectionState)
+        .thenAnswer((_) => const Stream<NodeConnectionState>.empty());
+    when(() => ble.detections)
+        .thenAnswer((_) => const Stream<Detection>.empty());
+    when(() => ble.importedDetections)
+        .thenAnswer((_) => const Stream<Detection>.empty());
+    when(() => ble.awayLiveDetections)
+        .thenAnswer((_) => const Stream<Detection>.empty());
+    when(() => ble.spoolImport)
+        .thenAnswer((_) => const Stream<SpoolImportProgress>.empty());
+
+    final gps = MockGps();
+    when(() => gps.positionStream)
+        .thenAnswer((_) => const Stream<GpsPosition>.empty());
+    final wd = WardriveController(
+        ble, gps, MockDb(), MockIgnore(), MockGeo(), MockNotif(), MockLive());
+    expect(wd.selectedTargets.contains(WardriveTarget.wigle), isFalse,
+        reason: 'wigle is not selected by default on app launch');
+  });
 }
