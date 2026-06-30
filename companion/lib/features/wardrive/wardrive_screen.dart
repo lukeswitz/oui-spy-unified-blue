@@ -1499,9 +1499,15 @@ class _IdleControls extends StatelessWidget {
                       ? wd.isTargetSelected(m)
                       : (wd.isTargetSelected(m) ||
                           _targetEngineRunning(appEngines, m));
+                  final wigleLocked =
+                      m == WardriveTarget.wigle && enginesRunning;
                   return Expanded(
-                    child: GestureDetector(
-                      onTap: () => ref.read(wardriveProvider).toggleTarget(m),
+                    child: Opacity(
+                      opacity: wigleLocked ? 0.35 : 1.0,
+                      child: GestureDetector(
+                      onTap: wigleLocked
+                          ? null
+                          : () => ref.read(wardriveProvider).toggleTarget(m),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1545,6 +1551,7 @@ class _IdleControls extends StatelessWidget {
                           ],
                         ),
                       ),
+                    ),
                     ),
                   );
                 }).toList(),
