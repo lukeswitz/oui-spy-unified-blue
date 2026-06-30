@@ -503,6 +503,7 @@ class BleManager {
 
     _sessionId = sessionId;
     _device = device;
+    _userInitiatedDisconnect = false;
     _currentState = NodeConnectionState.connecting; _connectionState.add(NodeConnectionState.connecting);
 
     _lastDeviceId = device.remoteId.toString();
@@ -1132,7 +1133,16 @@ class BleManager {
 
   Future<void> resyncOnResume() async {
     if (_currentState != NodeConnectionState.ready || _device == null) {
-      DebugLog.log('BLE: resume — not connected, autoconnect handles it');
+      if (_device != null &&
+          !_userInitiatedDisconnect &&
+          _currentState != NodeConnectionState.connecting &&
+          _currentState != NodeConnectionState.negotiating &&
+          _currentState != NodeConnectionState.syncing) {
+        DebugLog.log('BLE: resume — link down, restarting reconnect loop');
+        _startReconnect();
+      } else {
+        DebugLog.log('BLE: resume — not connected, autoconnect handles it');
+      }
       return;
     }
     DebugLog.log('BLE: app resumed — reconcile to firmware state');
@@ -1552,10 +1562,15 @@ class BleManager {
     );
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () async {
-      if (_device == null) return;
+      if (_device == null || _userInitiatedDisconnect) return;
       try {
         await connect(_device!, sessionId: _sessionId);
-      } catch (_) {
+      } catch (e) {
+        DebugLog.log('BLE: reconnect attempt failed: $e');
+      }
+      if (_device != null &&
+          !_userInitiatedDisconnect &&
+          _currentState != NodeConnectionState.ready) {
         _reconnectAttempt++;
         _attemptReconnect();
       }

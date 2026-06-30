@@ -3823,6 +3823,7 @@ class _DetectionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
+    final connected = ref.watch(appStateProvider).isConnected;
     final mac = (data['macAddress'] as String).toUpperCase();
     final rssi = data['rssi'] as int;
     final channel = data['channel'] as int? ?? 0;
@@ -3844,6 +3845,7 @@ class _DetectionRow extends ConsumerWidget {
       },
       child: GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTap: () => _showCopySheet(context, ref),
       onLongPress: () {
         HapticFeedback.mediumImpact();
         _showCopySheet(context, ref);
@@ -3956,20 +3958,18 @@ class _DetectionRow extends ConsumerWidget {
                 const SizedBox(width: 8),
                 // Method
                 if (method.isNotEmpty)
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: t.textDim.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(_detMethodLabel(method),
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: t.textSecondary, fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        )),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: t.textDim.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
                     ),
+                    child: Text(_detMethodLabel(method),
+                      softWrap: false,
+                      style: TextStyle(
+                        color: t.textSecondary, fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      )),
                   ),
                 if (channel > 0) ...[
                   const SizedBox(width: 8),
@@ -3997,10 +3997,15 @@ class _DetectionRow extends ConsumerWidget {
                 // Timestamp
                 Icon(Icons.access_time, size: 12, color: t.textDim),
                 const SizedBox(width: 4),
-                Text(timeStr, style: TextStyle(
-                  color: t.textDim, fontSize: 11,
-                  fontFamily: 'monospace',
-                )),
+                Flexible(
+                  child: Text(timeStr,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: TextStyle(
+                      color: t.textDim, fontSize: 11,
+                      fontFamily: 'monospace',
+                    )),
+                ),
               ],
             ),
           ),
@@ -4043,17 +4048,22 @@ class _DetectionRow extends ConsumerWidget {
                 // Foxhunt button
                 Expanded(
                   child: GestureDetector(
-                    onTap: onFoxhunt,
+                    onTap: connected ? onFoxhunt : null,
                     behavior: HitTestBehavior.opaque,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.gps_fixed, size: 16, color: AppTheme.foxhunter),
-                          SizedBox(width: 6),
+                          Icon(Icons.gps_fixed, size: 16,
+                            color: connected
+                                ? AppTheme.foxhunter
+                                : t.textDim.withValues(alpha: 0.3)),
+                          const SizedBox(width: 6),
                           Text('FOXHUNT', style: TextStyle(
-                            color: AppTheme.foxhunter,
+                            color: connected
+                                ? AppTheme.foxhunter
+                                : t.textDim.withValues(alpha: 0.3),
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1,

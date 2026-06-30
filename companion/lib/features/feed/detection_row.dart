@@ -26,6 +26,7 @@ class DetectionRow extends ConsumerWidget {
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
+    final connected = ref.watch(appStateProvider).isConnected;
     final nodeLabel = detection.sourceNodeId.isEmpty
         ? ''
         : ref.watch(appStateProvider).labelForNode(detection.sourceNodeId);
@@ -177,8 +178,8 @@ class DetectionRow extends ConsumerWidget {
                   _ActionIcon(
                     icon: Icons.gps_fixed,
                     color: AppTheme.foxhunter,
-                    tooltip: 'Foxhunt',
-                    onTap: () => _startFoxhunt(context, ref),
+                    tooltip: connected ? 'Foxhunt' : 'Foxhunt (node disconnected)',
+                    onTap: connected ? () => _startFoxhunt(context, ref) : null,
                   ),
                   _ActionIcon(
                     icon: detection.approxGps ? Icons.location_searching : Icons.location_on,
@@ -255,6 +256,7 @@ void showDetectionDetails(
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
     final t = AppTheme.of(context);
     final vendor = ref.read(ouiLookupProvider).lookup(detection.macAddress);
+    final connected = ref.read(appStateProvider).isConnected;
     showModalBottomSheet(
       context: context,
       backgroundColor: t.surface,
@@ -292,17 +294,18 @@ void showDetectionDetails(
               ),
             ),
             const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
-              title: const Text('Foxhunt This Device',
-                  style: TextStyle(color: AppTheme.foxhunter)),
-              subtitle: Text('Track by RSSI proximity',
-                  style: TextStyle(color: t.textDim, fontSize: 11)),
-              onTap: () {
-                Navigator.pop(ctx);
-                detectionStartFoxhunt(context, ref, detection);
-              },
-            ),
+            if (connected)
+              ListTile(
+                leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
+                title: const Text('Foxhunt This Device',
+                    style: TextStyle(color: AppTheme.foxhunter)),
+                subtitle: Text('Track by RSSI proximity',
+                    style: TextStyle(color: t.textDim, fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  detectionStartFoxhunt(context, ref, detection);
+                },
+              ),
             if (showMapAction && detection.latitude != null)
               ListTile(
                 leading: const Icon(Icons.map, color: AppTheme.gpsGood),
