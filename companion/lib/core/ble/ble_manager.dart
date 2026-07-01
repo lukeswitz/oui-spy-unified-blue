@@ -1116,6 +1116,9 @@ class BleManager {
           _currentState != NodeConnectionState.syncing) {
         DebugLog.log('BLE: resume — link down, restarting reconnect loop');
         _startReconnect();
+      } else if (_device == null && _lastDevice != null) {
+        DebugLog.log('BLE: resume — device torn down on detach, reconnecting to last');
+        await reconnectPrimary();
       } else {
         DebugLog.log('BLE: resume — not connected, autoconnect handles it');
       }
