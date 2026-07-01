@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/debug_log.dart';
-import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:uuid/uuid.dart';
 
@@ -24,10 +23,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   bool _connecting = false;
   String? _connectingId;
   String? _error;
-  bool _autoReconnecting = false;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<NodeConnectionState>? _connSub;
-  Timer? _autoFallback;
 
   @override
   void initState() {
@@ -44,36 +41,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         context.go('/home');
       }
     });
-    // main.dart's _autoConnect runs on launch when auto-connect or
-    // keep-scanning is on; reflect that here instead of showing the manual
-    // SCAN button (which made users miss that a resume was already underway).
-    final prefs = ref.read(sharedPreferencesProvider);
-    final autoConnect = prefs.getBool('autoConnectEnabled') ?? false;
-    final offlineScan = prefs.getBool('offlineScanEnabled') ?? false;
-    if (autoConnect || offlineScan) {
-      _autoReconnecting = true;
-      // Fall back to the manual scan UI if the background reconnect hasn't
-      // landed — never leave the user stuck on a spinner.
-      _autoFallback = Timer(const Duration(seconds: 22), () {
-        if (mounted && !ble.isConnected) {
-          setState(() => _autoReconnecting = false);
-        }
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startScan();
+    });
   }
 
   @override
   void dispose() {
     _connSub?.cancel();
     _scanSub?.cancel();
-    _autoFallback?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
-  }
-
-  void _cancelAutoReconnect() {
-    _autoFallback?.cancel();
-    setState(() => _autoReconnecting = false);
   }
 
   Future<void> _startScan() async {
@@ -278,9 +256,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         title: const Text('CONNECT'),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/home')),
       ),
-      body: _autoReconnecting
-          ? _ReconnectingView(onManual: _cancelAutoReconnect)
-          : Padding(
+      body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,78 +368,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                         );
                       },
                     ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReconnectingView extends StatelessWidget {
-  const _ReconnectingView({required this.onManual});
-  final VoidCallback onManual;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 72,
-              height: 72,
-              child: Stack(
-                alignment: Alignment.center,
-                children: const [
-                  SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: AppTheme.accent,
-                    ),
-                  ),
-                  Icon(Icons.bluetooth_searching,
-                      size: 30, color: AppTheme.accent),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'RECONNECTING…',
-              style: TextStyle(
-                color: t.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Resuming your OUI-SPY session.\nDetections found while away will import.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: t.textSecondary,
-                fontSize: 12,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 28),
-            TextButton(
-              onPressed: onManual,
-              child: Text(
-                'CONNECT MANUALLY',
-                style: TextStyle(
-                  color: t.textDim,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1,
-                ),
-              ),
             ),
           ],
         ),

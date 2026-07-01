@@ -34,6 +34,7 @@ import 'dart:io';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
+import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DeviceConfigScreen extends ConsumerStatefulWidget {
@@ -248,6 +249,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final isDark = themeMode == ThemeMode.dark;
     final unitSystem = ref.watch(unitSystemProvider);
     final isImperial = unitSystem == UnitSystem.imperial;
+    final use24Hour = ref.watch(use24HourTimeProvider);
     final t = AppTheme.of(context);
 
     return ListView(
@@ -282,6 +284,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   v ? UnitSystem.imperial : UnitSystem.metric,
                 );
           },
+        ),
+        ConfigToggleRow(
+          icon: Icons.schedule,
+          label: '24-Hour Time',
+          subtitle: use24Hour ? 'Times shown as 20:13' : 'Times shown as 8:13 PM',
+          color: AppTheme.accent,
+          value: use24Hour,
+          onChanged: (v) => ref.read(use24HourTimeProvider.notifier).set(v),
         ),
 
         const SizedBox(height: 16),
@@ -534,11 +544,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'OFFLINE SCAN'),
+        const ConfigSectionHeader(label: 'OFFLINE SCAN (EXPERIMENTAL)'),
         ConfigToggleRow(
           icon: Icons.cloud_off,
-          label: 'Keep scanning while disconnected',
-          subtitle: 'Node keeps scanning when the app is closed; detections import on reconnect.',
+          label: 'Keep scanning while disconnected (EXPERIMENTAL)',
+          subtitle: 'EXPERIMENTAL — may be unstable. Node keeps scanning when the app is closed; detections import on reconnect.',
           color: const Color(0xFF4AB8FF),
           value: _offlineScanEnabled,
           onChanged: (v) {
@@ -3387,7 +3397,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     final channel = det['channel'] as int? ?? 0;
     final method = det['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(det['appTimestamp'] as int);
-    final timeStr = DateFormat('MMM d yyyy HH:mm').format(ts);
+    final timeStr = AppTime.dateTime(ts);
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
     final lat = det['latitude'] as double?;
     final lon = det['longitude'] as double?;
@@ -3823,12 +3833,13 @@ class _DetectionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
+    final connected = ref.watch(appStateProvider).isConnected;
     final mac = (data['macAddress'] as String).toUpperCase();
     final rssi = data['rssi'] as int;
     final channel = data['channel'] as int? ?? 0;
     final method = data['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
-    final timeStr = DateFormat('MMM d yyyy HH:mm').format(ts);
+    final timeStr = AppTime.dateTime(ts);
     final hasGps = data['latitude'] != null && data['longitude'] != null;
     final deviceName = data['deviceName'] as String? ?? '';
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
@@ -3844,6 +3855,7 @@ class _DetectionRow extends ConsumerWidget {
       },
       child: GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTap: () => _showCopySheet(context, ref),
       onLongPress: () {
         HapticFeedback.mediumImpact();
         _showCopySheet(context, ref);
@@ -3956,20 +3968,18 @@ class _DetectionRow extends ConsumerWidget {
                 const SizedBox(width: 8),
                 // Method
                 if (method.isNotEmpty)
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: t.textDim.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(_detMethodLabel(method),
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: t.textSecondary, fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        )),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: t.textDim.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
                     ),
+                    child: Text(_detMethodLabel(method),
+                      softWrap: false,
+                      style: TextStyle(
+                        color: t.textSecondary, fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      )),
                   ),
                 if (channel > 0) ...[
                   const SizedBox(width: 8),
@@ -3997,10 +4007,15 @@ class _DetectionRow extends ConsumerWidget {
                 // Timestamp
                 Icon(Icons.access_time, size: 12, color: t.textDim),
                 const SizedBox(width: 4),
-                Text(timeStr, style: TextStyle(
-                  color: t.textDim, fontSize: 11,
-                  fontFamily: 'monospace',
-                )),
+                Flexible(
+                  child: Text(timeStr,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: TextStyle(
+                      color: t.textDim, fontSize: 11,
+                      fontFamily: 'monospace',
+                    )),
+                ),
               ],
             ),
           ),
@@ -4043,17 +4058,22 @@ class _DetectionRow extends ConsumerWidget {
                 // Foxhunt button
                 Expanded(
                   child: GestureDetector(
-                    onTap: onFoxhunt,
+                    onTap: connected ? onFoxhunt : null,
                     behavior: HitTestBehavior.opaque,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.gps_fixed, size: 16, color: AppTheme.foxhunter),
-                          SizedBox(width: 6),
+                          Icon(Icons.gps_fixed, size: 16,
+                            color: connected
+                                ? AppTheme.foxhunter
+                                : t.textDim.withValues(alpha: 0.3)),
+                          const SizedBox(width: 6),
                           Text('FOXHUNT', style: TextStyle(
-                            color: AppTheme.foxhunter,
+                            color: connected
+                                ? AppTheme.foxhunter
+                                : t.textDim.withValues(alpha: 0.3),
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1,
@@ -4278,9 +4298,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await prefs.setString(_nodeBoardPrefKey, v);
   }
 
-  /// When the user has opted into auto-connect, enable WiFi STA on the manager
-  /// before a WiFi OTA so it joins the saved network for the download (and
-  /// rejoins after the reboot). No-op without saved credentials.
   Future<void> _ensureWifiForUpdate() async {
     return;
   }
@@ -4485,11 +4502,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await ota.performWifiUpdate(release);
   }
 
-  /// Fleet WiFi update: the manager broadcasts its saved WiFi creds + the node
-  /// firmware URL to every node over mesh. Each node saves the creds, reboots
-  /// into WiFi-OTA mode, joins the network, downloads + flashes itself, then
-  /// rejoins the mesh. The phone stays on the manager (BLE) the whole time.
-  /// Nodes go offline from the mesh while they self-update.
   Future<bool> _pushWifiFleet(_FleetItem nodesItem) async {
     final ble = ref.read(bleManagerProvider);
     final nodeRelease = _nodeRelease;
@@ -4622,8 +4634,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     try {
       if (hasNodes) {
         await _pushWifiFleet(fleet.first);
-        // Let the manager finish broadcasting creds+URL to the nodes before it
-        // reboots into its own WiFi update below (the push runs ~3.5s on-device).
         await Future<void>.delayed(const Duration(seconds: 6));
       }
 
@@ -5379,7 +5389,7 @@ class _PcapInlineSectionState extends ConsumerState<_PcapInlineSection> {
                       ],
                     ),
                     subtitle: Text(
-                      "${_humanBytes(e.size)}  ·  ${DateFormat("MM-dd HH:mm:ss").format(e.modified)}",
+                      "${_humanBytes(e.size)}  ·  ${AppTime.dateTimeSeconds(e.modified)}",
                       style: TextStyle(color: t.textDim, fontSize: 10),
                     ),
                     trailing: deleting

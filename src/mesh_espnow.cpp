@@ -23,6 +23,9 @@ static uint64_t txCounter = 0;
 static char localNodeId[MESH_NODE_ID_LEN] = {};
 static volatile bool g_mgrPhoneConnected = false;
 static volatile uint32_t g_mgrPhoneSeenMs = 0;
+#ifdef OUISPY_SPOOL_STRESS
+volatile uint32_t g_spoolStressAwayRx = 0;
+#endif
 static SemaphoreHandle_t meshMutex = NULL;
 
 #define MESH_CMD_PENDING_MAX  16
@@ -1064,6 +1067,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
 #ifdef OUISPY_NETCOUNT
     if ((evt.engine_id & 0x7F) == ENGINE_WARDRIVE && evt.channel != 0) ncRecordWifiMac(evt.mac);
 #endif
+#ifdef OUISPY_SPOOL_STRESS
+    if (evt.engine_id & DET_FLAG_AWAY) g_spoolStressAwayRx++;
+#endif
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         MeshStatus s;
@@ -1219,6 +1225,15 @@ bool meshTimeSlicingActive(void) {
     return meshCurrentConfig.enabled && meshManagerJoined() && meshNodeHopsWifi();
 }
 
+static bool meshIsStandalone(void) {
+    if (meshManagerJoined()) return false;
+    MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+    size_t n = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    for (size_t i = 0; i < n; i++)
+        if (ln[i].role != MESH_ROLE_MANAGER) return false;
+    return true;
+}
+
 #if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)
 void meshDebugForceManager(void) {
     recordLiveNode("MGRX", MESH_ROLE_MANAGER, 0);
@@ -1231,6 +1246,10 @@ static void meshSchedTaskFn(void* arg) {
     for (;;) {
         g_meshWindow = false;
         g_ridWindow = false;
+        if (meshIsStandalone()) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
         bool ridScan = false;
         if (meshSkyspyOwnsChannel() && txMutex &&
             xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {

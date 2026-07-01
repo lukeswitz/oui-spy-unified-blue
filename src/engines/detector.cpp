@@ -40,6 +40,7 @@ static unsigned long lastChannelHop = 0;
 static const unsigned long DWELL_MS = 120;
 
 static DedupRing<32, 3000> dedup;
+static DedupRingISR<32, 3000> wifiDedupISR;
 
 static void detectorStart(void);
 static void detectorStop(void);
@@ -108,6 +109,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     const uint8_t* addr2 = &p[10];
     const TargetFilter* hit = matchFilterBytes(addr2);
     if (!hit) return;
+    if (wifiDedupISR.check(addr2)) return;
 
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_DETECTOR;
@@ -163,6 +165,7 @@ void IRAM_ATTR detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t 
     if (!scanning) return;
     const TargetFilter* hit = matchFilterBytes(mac);
     if (!hit) return;
+    if (wifiDedupISR.check(mac)) return;
 
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_DETECTOR;
@@ -264,12 +267,14 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
 
 static void detectorInit(void) {
     dedup.reset();
+    wifiDedupISR.reset();
     Serial.printf("[DETECTOR] Initialized (preserved filters=%d)\n", filterCount);
 }
 
 static void detectorStart(void) {
     scanning = true;
     dedup.setCooldownMs(engineGetRediscoverMs());
+    wifiDedupISR.setCooldownMs(engineGetRediscoverMs());
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
     bool wantBle  = (detectorRadioMask & 0x02) != 0;
     bool wantWifi = (detectorRadioMask & 0x01) != 0;
@@ -287,7 +292,7 @@ static void detectorStart(void) {
         if (!meshIsEnabled()) {
             WiFi.mode(WIFI_STA);
         }
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        wifiSnifferApplyPs();
         wifiCoexRegister(wifiSnifferCb,
                          WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
@@ -351,7 +356,7 @@ void detectorHostSuspend(bool suspend) {
         }
         if (detectorRadioMask & 0x01) {
             if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
-            esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+            wifiSnifferApplyPs();
             wifiCoexRegister(wifiSnifferCb,
                              WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         }

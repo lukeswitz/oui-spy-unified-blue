@@ -86,6 +86,12 @@ static void loadHardwareConfig(void) {
     flockSetExtendedOui(flockExt);
     offlineScanEnabledSetFromPref(offlScan);
     detSpoolInit();
+#ifdef OUISPY_SPOOL_SELFTEST
+    detSpoolSelfTest();
+#endif
+#ifdef OUISPY_WIGLE_OFFLINE_SELFTEST
+    bleGattWigleOfflineSelfTest();
+#endif
     Serial.printf("[HW] Config: buzzer=%d vol=%d led=%d neo=%d flock_ext=%d\n",
                   (int)hwBuzzerEnabled, (int)hwBuzzerVolume,
                   (int)hwLedEnabled, (int)hwNeopixelBrightness, (int)flockExt);
@@ -272,6 +278,58 @@ static bool isDroneDedupCooldown(const char* uavId, uint8_t method) {
     return false;
 }
 
+#ifdef OUISPY_SPOOL_STRESS
+volatile bool g_spoolStressFlushPulse = false;
+static volatile uint32_t g_spoolStressInjected = 0;
+static void spoolStressInjectTask(void* arg) {
+    (void)arg;
+    uint32_t n = 0;
+    for (;;) {
+        // ~500 spoolable detections/s through the REAL capture hook.
+        // 80% unique (fill+evict), 20% repeats of a hot set (dedup path).
+        for (int i = 0; i < 50; i++) {
+            DetectionEvent e = {};
+            e.engine_id = ENGINE_FLOCK_WIFI;
+            e.rssi = -55; e.channel = 6; e.method = 1;
+            uint32_t id = (i % 5 == 0) ? (n % 32) : n;   // every 5th = repeat of hot set
+            e.mac[0] = 0x02; e.mac[1] = 0xAA;
+            e.mac[2] = (uint8_t)(id >> 24); e.mac[3] = (uint8_t)(id >> 16);
+            e.mac[4] = (uint8_t)(id >> 8);  e.mac[5] = (uint8_t)id;
+            e.timestamp_ms = millis();
+            bleGattNotifyDetection(&e);
+            g_spoolStressInjected++;
+            n++;
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+#endif
+
+#ifdef OUISPY_SPOOL_E2E
+static void spoolE2EInjectTask(void* arg) {
+    (void)arg;
+    uint32_t tick = 0;
+    for (;;) {
+        if (bleGattIsConnected()) { vTaskDelay(pdMS_TO_TICKS(500)); continue; }
+        for (int i = 0; i < 8; i++) {
+            DetectionEvent e = {};
+            e.engine_id = ENGINE_FLOCK_WIFI;
+            e.rssi = -50; e.channel = 6; e.method = 1;
+            e.mac[0] = 0x02; e.mac[1] = 0xE2; e.mac[2] = 0xE2;
+            e.mac[3] = 0x00; e.mac[4] = 0x00; e.mac[5] = (uint8_t)i;
+            e.timestamp_ms = millis();
+            bleGattNotifyDetection(&e);
+        }
+        if ((tick++ % 3) == 0) {
+            Serial.printf("[SPOOL-E2E] offl=%d spoolCount=%u dropped=%u mgrJoin=%d mgrPhone=%d\n",
+                          bleGattOfflineScanEnabled() ? 1 : 0, detSpoolCount(), detSpoolDroppedCount(),
+                          meshManagerJoined() ? 1 : 0, meshMgrPhoneConnected() ? 1 : 0);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+#endif
+
 static void detectionNotifyTask(void* param) {
     DetectionEvent evt;
     Serial.println("[TASK] Detection notify task started");
@@ -337,14 +395,21 @@ static void detectionNotifyTask(void* param) {
             snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
                      evt.mac[0], evt.mac[1], evt.mac[2],
                      evt.mac[3], evt.mac[4], evt.mac[5]);
-            if (evt.engine_id == ENGINE_FLOCK_WIFI) {
-                Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d,\"auth\":%d}\n",
-                              evt.engine_id, macStr, evt.rssi, evt.channel, evt.method,
-                              evt.ext.flock.auth_mode);
-            } else {
-                Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d}\n",
-                              evt.engine_id, macStr, evt.rssi, evt.channel, evt.method);
+            // Only emit when the TX buffer has room — a full USB-CDC/UART
+            // buffer would block this drain task and back up detectionQueue,
+            // causing the WiFi ISR to drop captures.
+#ifndef OUISPY_SWEEPLOG
+            if (Serial.availableForWrite() >= 96) {
+                if (evt.engine_id == ENGINE_FLOCK_WIFI) {
+                    Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d,\"auth\":%d}\n",
+                                  evt.engine_id, macStr, evt.rssi, evt.channel, evt.method,
+                                  evt.ext.flock.auth_mode);
+                } else {
+                    Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d}\n",
+                                  evt.engine_id, macStr, evt.rssi, evt.channel, evt.method);
+                }
             }
+#endif
         }
     }
 }
@@ -412,10 +477,29 @@ static void statusHeartbeatTask(void* param) {
         }
 #endif
 
+#ifdef OUISPY_SPOOL_STRESS
+        {
+            static uint32_t lastPulse = 0;
+            uint32_t nowMs = millis();
+            if (nowMs > 20000 && nowMs - lastPulse > 20000) {
+                lastPulse = nowMs;
+                g_spoolStressFlushPulse = true;   // fire real spool->mesh flush
+                Serial.println("[SPOOL-STRESS] flush pulse armed (mgr-phone-back simulated)");
+            }
+            Serial.printf("[SPOOL-STRESS] inj=%lu count=%u dropped=%u active=0x%02X heap=%u mgrJoin=%d\n",
+                          (unsigned long)g_spoolStressInjected, detSpoolCount(), detSpoolDroppedCount(),
+                          engineGetActiveMask(), (unsigned)esp_get_free_heap_size(),
+                          meshManagerJoined() ? 1 : 0);
+        }
+#endif
+
 #ifndef OUISPY_ROLE_MANAGER
         {
             static bool prevMgrPhone = false;
             bool mgrPhone = meshManagerJoined() && meshMgrPhoneConnected();
+#ifdef OUISPY_SPOOL_STRESS
+            if (g_spoolStressFlushPulse) { mgrPhone = true; g_spoolStressFlushPulse = false; }
+#endif
             if (mgrPhone && !prevMgrPhone) {
                 uint16_t n = detSpoolCount();
                 if (n > 0) {
@@ -919,7 +1003,7 @@ void setup() {
     ignoreListInit();
 
     // Create FreeRTOS queues
-    detectionQueue = xQueueCreate(64, sizeof(DetectionEvent));
+    detectionQueue = xQueueCreate(128, sizeof(DetectionEvent));
     engineCmdQueue = xQueueCreate(8, sizeof(EngineCommand));
     chimeQueue = xQueueCreate(1, sizeof(uint8_t));
 
@@ -990,6 +1074,16 @@ void setup() {
     engineEnable(ENGINE_FLOCK_WIFI);
     Serial.println("[SPOOL-LIVE] standalone flock-WIFI spool test: mesh OFF, offline ON, no phone, flock-WIFI armed");
 #endif
+#ifdef OUISPY_SPOOL_STRESS
+    offlineScanEnabledSetFromPref(true);
+    xTaskCreatePinnedToCore(spoolStressInjectTask, "spoolstress", 4096, NULL, 1, NULL, 1);
+    Serial.println("[SPOOL-STRESS] node: offline ON, mesh auto, injecting ~500 spoolable det/s; 20s flush-to-mesh pulse");
+#endif
+#ifdef OUISPY_SPOOL_E2E
+    offlineScanEnabledSetFromPref(true);
+    xTaskCreatePinnedToCore(spoolE2EInjectTask, "spoole2e", 4096, NULL, 1, NULL, 1);
+    Serial.println("[SPOOL-E2E] node: offline forced ON, injecting 8 fixed flock det/s via real capture hook");
+#endif
 #ifdef OUISPY_AUTOPCAP_SELFTEST
     xTaskCreatePinnedToCore(autoPcapSelftestTask, "aptest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] AUTO-PCAP SELFTEST armed");
@@ -1009,6 +1103,10 @@ void setup() {
 #ifdef OUISPY_SKYSPY_MESH_TEST
     xTaskCreatePinnedToCore(skyspyMeshTestTask, "skytest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] SKYSPY MESH TEST armed (real manager)");
+#endif
+#ifdef OUISPY_SPOOL_E2E
+    bleGattSpoolE2EStart();
+    Serial.println("[INIT] SPOOL E2E armed (standalone node: engines + spool-while-away + flush)");
 #endif
 #ifdef OUISPY_ENGINE_DIAG
     xTaskCreatePinnedToCore(engineDiagTask, "engdiag", 6144, NULL, 1, NULL, 1);

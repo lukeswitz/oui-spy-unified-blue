@@ -2,10 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class PcapLibraryScreen extends ConsumerStatefulWidget {
@@ -227,7 +227,7 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                     ],
                   ),
                   subtitle: Text(
-                    '${_humanBytes(e.size)}  ·  ${DateFormat('yyyy-MM-dd HH:mm:ss').format(e.modified)}',
+                    '${_humanBytes(e.size)}  ·  ${AppTime.dateTimeSeconds(e.modified)}',
                     style: TextStyle(color: t.textDim, fontSize: 11),
                   ),
                   trailing: Row(

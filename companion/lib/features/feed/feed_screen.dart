@@ -45,9 +45,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   FeedMetric _sortMetric = FeedMetric.time;
   bool _sortAscending = false; // false = descending (newest/strongest/most first)
 
-  /// Merge flock detections from active wardrive into the feed.
-  /// The feed's 500-entry ring buffer gets overwhelmed by wardrive
-  /// detections, evicting flock entries. This ensures they always show.
   List<Detection> _mergeFlockFromWardrive(
     List<Detection> feedDetections,
     WardriveController wd,

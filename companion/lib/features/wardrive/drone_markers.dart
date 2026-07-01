@@ -20,11 +20,6 @@ String plotKey(Detection d) {
   return '${(lat * 1e5).round()},${(lon * 1e5).round()}';
 }
 
-/// Even spiderfy: [count] markers sharing a point get evenly spaced leaders
-/// around a circle, all the same length — clean radial spread. [baseAngle]
-/// anchors the spread (and a lone marker's single leader); callers pass the
-/// travel-perpendicular angle so heads float off to the side of the route
-/// instead of overlapping it. Defaults to straight up.
 FanGeometry fanGeometry(int index, int count, {double baseAngle = -pi / 2}) {
   if (count <= 1) return FanGeometry(baseAngle, 23);
   final angle = (index / count) * 2 * pi + baseAngle;
@@ -32,9 +27,6 @@ FanGeometry fanGeometry(int index, int count, {double baseAngle = -pi / 2}) {
   return FanGeometry(angle, length);
 }
 
-/// Anchors at the true point (box centre); paints a leader line of [geo.length]
-/// at [geo.angle] and floats [head] at the far end. The detection's real
-/// location is the line's origin — nothing is plotted off-position.
 class FannedPin extends StatelessWidget {
   const FannedPin({
     super.key,
@@ -284,9 +276,6 @@ class PilotPin extends StatelessWidget {
   final Color color;
   final double size;
 
-  /// When the operator location is the take-off point (ODID
-  /// OperatorLocationType == Takeoff), show a launch icon instead of the
-  /// live-operator icon.
   final bool isTakeoff;
 
   @override

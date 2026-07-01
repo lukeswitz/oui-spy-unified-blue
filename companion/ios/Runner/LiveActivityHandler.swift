@@ -113,7 +113,8 @@ class LiveActivityHandler {
             intervalMs: args["intervalMs"] as? Int ?? 0,
             robotType: args["robotType"] as? String ?? "",
             exploitStatus: args["exploitStatus"] as? String ?? "",
-            isImperial: args["isImperial"] as? Bool ?? false
+            isImperial: args["isImperial"] as? Bool ?? false,
+            activeLabel: args["activeLabel"] as? String ?? ""
         )
     }
 }

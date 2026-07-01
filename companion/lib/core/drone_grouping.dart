@@ -40,11 +40,6 @@ int odidCompleteness(OdidExtension? o) {
   return s;
 }
 
-/// Groups SkySpy/Remote-ID detections by UAS-ID (serial). One physical drone
-/// broadcasts on BLE + WiFi-NAN + WiFi-Beacon with different MACs but one ID.
-/// The representative is the member with the most complete ODID (e.g. a WiFi
-/// message pack), so the grouped entity shows full data even when a single
-/// BLE advert carried only one message type. Newest-first.
 List<DroneGroup> groupDronesByUavId(List<Detection> detections) {
   final byId = <String, List<Detection>>{};
   for (final d in detections) {

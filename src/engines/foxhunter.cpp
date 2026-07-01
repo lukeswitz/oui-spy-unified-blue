@@ -246,7 +246,7 @@ static void foxhunterStart(void) {
         // MGMT+DATA only. CTRL frames (ACK/CTS/RTS/BlockAck) outnumber legit
         // target frames 10-100x on busy networks; including them overloads
         // the ISR and drops the very frames foxhunter needs to track RSSI on.
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        wifiSnifferApplyPs();
         wifiCoexRegister(wifiSnifferCb,
                          WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         uint8_t startCh = (hintChannel > 0) ? hintChannel : 1;

@@ -8,3 +8,5 @@ void wifiCoexRegister(WifiRxParser parser, uint32_t filterMask);
 void wifiCoexUnregister(WifiRxParser parser);
 bool wifiCoexActive(void);
 bool wifiCoexShouldHop(int engineId);
+
+void wifiSnifferApplyPs(void);

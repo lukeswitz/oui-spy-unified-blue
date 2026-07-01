@@ -152,32 +152,71 @@ void detSpoolFlushIfDirty() {
 }
 
 #ifdef OUISPY_SPOOL_SELFTEST
+static void mkMac(DetectionEvent* e, uint32_t n) {
+    e->mac[0] = 0x02; e->mac[1] = 0x00;
+    e->mac[2] = (uint8_t)(n >> 24); e->mac[3] = (uint8_t)(n >> 16);
+    e->mac[4] = (uint8_t)(n >> 8);  e->mac[5] = (uint8_t)(n);
+}
+
 void detSpoolSelfTest() {
-    detSpoolClear();
-    DetectionEvent e;
-    memset(&e, 0, sizeof(e));
-    e.engine_id = 1;
-    for (int i = 0; i < 5; i++) {
-        e.mac[5] = (uint8_t)i;
-        e.timestamp_ms = (uint32_t)(1000 + i);
-        detSpoolAppend(&e);
-    }
-    e.mac[5] = 2;
-    e.timestamp_ms = 9999;
-    detSpoolAppend(&e);
-    uint16_t hc = 0; DetectionEvent r;
+    Serial.printf("[SPOOL-TEST] sizeof(DetectionEvent)=%u SpoolSlot=%u cap=%u psram=%d\n",
+                  (unsigned)sizeof(DetectionEvent), (unsigned)sizeof(SpoolSlot),
+                  s_cap, psramFound() ? 1 : 0);
     bool ok = true;
+
+    // 1. dedup: same engine+mac -> one slot, hit_count climbs
+    detSpoolClear();
+    DetectionEvent e; memset(&e, 0, sizeof(e)); e.engine_id = 1;
+    for (int i = 0; i < 5; i++) { mkMac(&e, i); e.timestamp_ms = 1000 + i; detSpoolAppend(&e); }
+    mkMac(&e, 2); e.timestamp_ms = 9999; detSpoolAppend(&e);
+    uint16_t hc = 0; DetectionEvent r;
     ok &= (detSpoolCount() == 5);
-    for (uint16_t i = 0; i < detSpoolCount(); i++) {
-        if (detSpoolReadSlot(i, &r, &hc) && r.mac[5] == 2) ok &= (hc == 2);
-    }
-    Serial.printf("[SPOOL-TEST] count=%u (want 5) dedup=%s\n",
-                  detSpoolCount(), ok ? "PASS" : "FAIL");
+    for (uint16_t i = 0; i < detSpoolCount(); i++)
+        if (detSpoolReadSlot(i, &r, &hc) && r.mac[5] == 2 && r.mac[4] == 0) ok &= (hc == 2);
+    Serial.printf("[SPOOL-TEST] dedup count=%u (want 5) %s\n", detSpoolCount(), ok ? "PASS" : "FAIL");
+
+    // 2. fill to cap with unique macs
+    detSpoolClear();
+    uint32_t t0 = millis();
+    for (uint32_t i = 0; i < s_cap; i++) { mkMac(&e, i); e.timestamp_ms = i + 1; detSpoolAppend(&e); }
+    uint32_t fillMs = millis() - t0;
+    bool fillOk = (detSpoolCount() == s_cap && detSpoolDroppedCount() == 0);
+    ok &= fillOk;
+    Serial.printf("[SPOOL-TEST] fill count=%u (want %u) dropped=%u in %ums %s\n",
+                  detSpoolCount(), s_cap, detSpoolDroppedCount(), fillMs, fillOk ? "PASS" : "FAIL");
+
+    // 3. overflow: 200 more unique -> count pinned, oldest evicted, dropped=200
+    for (uint32_t i = s_cap; i < s_cap + 200u; i++) { mkMac(&e, i); e.timestamp_ms = i + 1; detSpoolAppend(&e); }
+    bool evOk = (detSpoolCount() == s_cap && detSpoolDroppedCount() == 200);
+    ok &= evOk;
+    Serial.printf("[SPOOL-TEST] overflow count=%u dropped=%u (want %u/200) %s\n",
+                  detSpoolCount(), detSpoolDroppedCount(), s_cap, evOk ? "PASS" : "FAIL");
+
+    // 4. persist timing at full cap + LittleFS file size
+    uint32_t t1 = millis();
     persist();
+    uint32_t persistMs = millis() - t1;
+    size_t fsz = 0;
+    File pf = LittleFS.open(SPOOL_PATH, "r");
+    if (pf) { fsz = pf.size(); pf.close(); }
+    Serial.printf("[SPOOL-TEST] persist %u slots in %ums file=%uB free=%uB\n",
+                  detSpoolCount(), persistMs, (unsigned)fsz,
+                  (unsigned)(LittleFS.totalBytes() - LittleFS.usedBytes()));
+
+    // 5. teardown + reload from flash -> integrity
+    uint16_t wantCount = detSpoolCount(), wantDrop = detSpoolDroppedCount();
     s_count = 0; s_ready = false;
-    heap_caps_free(s_slots); s_slots = nullptr;
+    if (s_slots) { heap_caps_free(s_slots); s_slots = nullptr; }
+    uint32_t t2 = millis();
     detSpoolInit();
-    Serial.printf("[SPOOL-TEST] reload=%u (want 5) %s\n",
-                  detSpoolCount(), detSpoolCount() == 5 ? "PASS" : "FAIL");
+    uint32_t reloadMs = millis() - t2;
+    bool relOk = (detSpoolCount() == wantCount && detSpoolDroppedCount() == wantDrop);
+    ok &= relOk;
+    Serial.printf("[SPOOL-TEST] reload count=%u dropped=%u (want %u/%u) in %ums %s\n",
+                  detSpoolCount(), detSpoolDroppedCount(), wantCount, wantDrop, reloadMs,
+                  relOk ? "PASS" : "FAIL");
+
+    detSpoolClear();
+    Serial.printf("[SPOOL-TEST] === %s ===\n", ok ? "ALL PASS" : "FAILURES PRESENT");
 }
 #endif

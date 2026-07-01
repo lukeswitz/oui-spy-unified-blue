@@ -5,9 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 
-/// Runtime geofence exclusion filter for wardrive modes.
-/// Loads active geofences marked [excludeFromWardrive] and checks whether
-/// a GPS coordinate falls inside any of them.
 class GeofenceFilter extends ChangeNotifier {
   GeofenceFilter(this._db) {
     reload();
@@ -26,8 +23,6 @@ class GeofenceFilter extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Returns true if [lat],[lon] is inside ANY exclusion geofence.
-  /// Fast path: returns false immediately when no zones configured.
   bool isExcluded(double lat, double lon) {
     if (_zones.isEmpty) return false;
     for (final zone in _zones) {
@@ -175,8 +170,6 @@ double _haversineMeters(double lat1, double lon1, double lat2, double lon2) {
 
 double _toRad(double deg) => deg * math.pi / 180;
 
-/// Approximate distance from point to line segment in meters.
-/// Uses flat-earth approximation (fast, accurate at geofence scale <10km).
 double _distToSegmentMeters(
   double pLat, double pLon,
   double aLat, double aLon,

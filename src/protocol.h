@@ -626,12 +626,18 @@ extern QueueHandle_t peerStatusQueue;  // MeshStatusPacket, depth 4
 extern volatile uint32_t g_diagDetCount[ENGINE_COUNT];
 #endif
 
+// Slots reserved for the WiFi promiscuous ISR path (pushDetectionFromISR),
+// which cannot block or retry. Task-context producers (BLE) back off before
+// the queue is full so a dense BLE environment can't starve WiFi capture.
+#define DETQ_ISR_RESERVE 24
+
 static inline bool pushDetection(const DetectionEvent* evt) {
     if (detectionQueue == NULL) return false;
 #ifdef OUISPY_ENGINE_DIAG
     if (evt && evt->engine_id < ENGINE_COUNT) g_diagDetCount[evt->engine_id]++;
 #endif
-    return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(10)) == pdTRUE;
+    if (uxQueueSpacesAvailable(detectionQueue) <= DETQ_ISR_RESERVE) return false;
+    return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(2)) == pdTRUE;
 }
 
 /// Stamp a DetectionEvent with current GPS from phone app.

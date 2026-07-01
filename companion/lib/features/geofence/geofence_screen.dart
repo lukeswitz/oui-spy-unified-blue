@@ -12,8 +12,6 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:uuid/uuid.dart';
 
-/// Geofence creation, editing and management screen.
-/// Supports circle (tap center + drag radius) and polygon (tap vertices) zones.
 class GeofenceScreen extends ConsumerStatefulWidget {
   const GeofenceScreen({super.key});
 

@@ -7,9 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
 
-/// Provides manufacturer name lookup from MAC address OUI prefix.
-/// Loads 39k+ unique OUIs from bundled asset (gzipped TSV).
-/// Supports runtime updates from Ringmast4r GitHub repo.
 final ouiLookupProvider = ChangeNotifierProvider<OuiLookupService>((ref) {
   return OuiLookupService();
 });
@@ -20,9 +17,6 @@ class OuiLookupService extends ChangeNotifier {
       'https://raw.githubusercontent.com/Ringmast4r/OUI-Master-Database/master/LISTS/master_oui.txt';
   static const _localFileName = 'oui_vendors.tsv';
 
-  /// Known device overrides — these OUIs are registered to chip vendors
-  /// (Silicon Labs, Liteon, UGS, Espressif) but are actually used by
-  /// specific surveillance hardware. Matches flock_oui.h in firmware.
   static const Map<String, String> _overrides = {
     // Flock Safety — FS Ext Battery (BLE, Silicon Labs EFR32)
     '588E81': 'Flock Safety (Battery)',
@@ -105,10 +99,6 @@ class OuiLookupService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Look up manufacturer by MAC address string.
-  /// Accepts formats: "AA:BB:CC:DD:EE:FF", "AA-BB-CC-DD-EE-FF", "AABBCCDDEEFF"
-  /// When an OUI matches a known override (e.g. Flock Safety) AND the OUI DB
-  /// has the chip vendor, returns both: "Flock Safety (Falcon) · Liteon".
   String? lookup(String macAddress) {
     final prefix = _extractPrefix(macAddress);
     if (prefix == null) return null;
@@ -123,8 +113,6 @@ class OuiLookupService extends ChangeNotifier {
     return dbVendor;
   }
 
-  /// Check if an OUI DB update is available and download it.
-  /// Returns true if database was updated.
   Future<bool> checkForUpdate() async {
     try {
       final dio = Dio();

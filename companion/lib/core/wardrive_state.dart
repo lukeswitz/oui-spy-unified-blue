@@ -90,46 +90,71 @@ enum WardriveRadio {
   final String label;
 }
 
+Set<WardriveTarget> targetsFromEngineMask(int mask) {
+  final targets = <WardriveTarget>{};
+  if ((mask & (Engine.flockWifi.bitmask | Engine.flockBle.bitmask)) != 0) {
+    targets.add(WardriveTarget.flock);
+  }
+  if ((mask & Engine.skySpy.bitmask) != 0) targets.add(WardriveTarget.drone);
+  if ((mask & Engine.detector.bitmask) != 0) targets.add(WardriveTarget.detector);
+  return targets;
+}
+
+Set<WardriveTarget> reconciledTargets(
+    int mask, Set<WardriveTarget> current, bool keepRunning) {
+  final t = targetsFromEngineMask(mask);
+  if (current.contains(WardriveTarget.wigle) && !keepRunning) {
+    t.add(WardriveTarget.wigle);
+  }
+  return t;
+}
+
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
       if (connState == NodeConnectionState.ready) {
         SharedPreferences.getInstance().then(
             (p) => offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false);
-        if (isActive) {
-          if (_ble.offlineScanEnabled) {
-            DebugLog.log('WARDRIVE: offline-scan on — adopting running engines, no re-enable');
-          } else {
-            _reEnableEngines();
-          }
-        } else {
-          _disableStaleEngines();
-        }
+        _adoptFirmwareState();
       }
     });
     _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
     _awayLiveSub = _ble.awayLiveDetections.listen(_onAwayLiveDetection);
     _spoolImportSub = _ble.spoolImport.listen(_onSpoolProgress);
-    _loadPrefs();
+    _prefsLoaded = _loadPrefs();
   }
+
+  Future<void>? _prefsLoaded;
 
   Future<void> _loadPrefs() async {
     final p = await SharedPreferences.getInstance();
     offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false;
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
-    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 250;
-    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 110;
+    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
+    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
-    _channelEnd = p.getInt('wd_channelEnd') ?? 14;
-    if (!(p.getBool('wd_dwellFastReset_v2') ?? false)) {
-      _wifiScanInterval = 250;
-      _wifiDwellPerCh = 110;
+    _channelEnd = p.getInt('wd_channelEnd') ?? 11;
+    radio = radioFromMask(p.getInt('wd_radio') ?? 0x03);
+    final savedTargets = p.getStringList('wd_targets');
+    if (savedTargets != null) {
+      selectedTargets
+        ..clear()
+        ..addAll(savedTargets
+            .map((n) => WardriveTarget.values
+                .where((t) => t.name == n)
+                .cast<WardriveTarget?>()
+                .firstWhere((t) => t != null, orElse: () => null))
+            .whereType<WardriveTarget>());
+    }
+    if (!(p.getBool('wd_dwellMaxNets_v4') ?? false)) {
+      _wifiScanInterval = 350;
+      _wifiDwellPerCh = 150;
       await p.setInt('wd_wifiScanInterval', _wifiScanInterval);
       await p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
-      await p.setBool('wd_dwellFastReset_v2', true);
+      await p.setBool('wd_dwellMaxNets_v4', true);
     }
     notifyListeners();
   }
@@ -144,6 +169,8 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_bleScanInterval', _bleScanInterval);
     p.setInt('wd_channelStart', _channelStart);
     p.setInt('wd_channelEnd', _channelEnd);
+    p.setInt('wd_radio', radioBitmask);
+    p.setStringList('wd_targets', selectedTargets.map((t) => t.name).toList());
   }
 
   /// Map a radio mask (0x01/0x02/0x03) to the [WardriveRadio] enum.
@@ -170,17 +197,13 @@ class WardriveController extends ChangeNotifier {
   bool _spoolDone = false;
   bool _spoolConfirmed = false;
 
-  /// Imperial-units flag mirrored from [unitSystemProvider]. Used by
-  /// [_updateLiveActivity] so the iOS Live Activity matches the in-app setting.
   bool isImperial = false;
 
-  /// When on, while-away detections (spool import + node-relayed away-live) that
-  /// arrive with no GPS are tagged with the phone's last-known position and
-  /// flagged approximate. Gated by the Offline Scan sub-toggle.
   bool offlineGpsTag = false;
 
   WardriveState state = WardriveState.idle;
-  final Set<WardriveTarget> selectedTargets = {WardriveTarget.wigle};
+  bool _userStopped = false;
+  final Set<WardriveTarget> selectedTargets = {};
   static const List<WardriveTarget> selectableTargets = [
     WardriveTarget.flock,
     WardriveTarget.drone,
@@ -188,6 +211,7 @@ class WardriveController extends ChangeNotifier {
     WardriveTarget.detector,
   ];
   bool isTargetSelected(WardriveTarget t) => selectedTargets.contains(t);
+  bool get keepRunningEnabled => _ble.offlineScanEnabled;
   WardriveTarget get primaryTarget {
     for (final t in selectableTargets) {
       if (selectedTargets.contains(t)) return t;
@@ -213,29 +237,45 @@ class WardriveController extends ChangeNotifier {
   int get bleRssiRelogDb => _bleRssiRelogDb;
   set bleRssiRelogDb(int v) { _bleRssiRelogDb = v; notifyListeners(); _savePrefs(); }
 
-  int _wifiScanInterval = 250;
+  int _wifiScanInterval = 350;
   int get wifiScanInterval => _wifiScanInterval;
-  set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); }
+  set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
-  int _wifiDwellPerCh = 110;
+  int _wifiDwellPerCh = 150;
   int get wifiDwellPerCh => _wifiDwellPerCh;
-  set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); }
+  set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _bleScanDuration = 800;
   int get bleScanDuration => _bleScanDuration;
-  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); }
+  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _bleScanInterval = 3000;
   int get bleScanInterval => _bleScanInterval;
-  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); }
+  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _channelStart = 1;
   int get channelStart => _channelStart;
-  set channelStart(int v) { _channelStart = v.clamp(1, 14); notifyListeners(); _savePrefs(); }
+  set channelStart(int v) { _channelStart = v.clamp(1, 14); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
-  int _channelEnd = 14;
+  int _channelEnd = 11;
   int get channelEnd => _channelEnd;
-  set channelEnd(int v) { _channelEnd = v.clamp(_channelStart, 14); notifyListeners(); _savePrefs(); }
+  set channelEnd(int v) { _channelEnd = v.clamp(_channelStart, 14); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
+
+  Uint8List get _wardriveConfigPayload => Uint8List.fromList([
+        radioBitmask,
+        wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
+        wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
+        bleScanDuration & 0xFF, (bleScanDuration >> 8) & 0xFF,
+        bleScanInterval & 0xFF, (bleScanInterval >> 8) & 0xFF,
+        channelStart,
+        channelEnd,
+      ]);
+
+  void _pushWardriveConfigLive() {
+    if (!isActive) return;
+    if (!activeEngines.contains(Engine.wardrive)) return;
+    _ble.sendEngineConfig(Engine.wardrive, _wardriveConfigPayload);
+  }
 
   double get markerDistanceM => _markerDistanceM;
   set markerDistanceM(double v) {
@@ -284,8 +324,6 @@ class WardriveController extends ChangeNotifier {
   String? foxhuntTarget;
   String sessionId = '';
 
-  /// Pending zoom target set from other screens (e.g. feed tap).
-  /// Consumed once by the wardrive map, then cleared.
   LatLng? pendingZoomTarget;
 
   /// Request the wardrive map to zoom to a specific location.
@@ -316,9 +354,6 @@ class WardriveController extends ChangeNotifier {
   List<Detection>? _cachedDetectorDetections;
   final List<LatLng> routePoints = [];
   double distanceKm = 0;
-  /// Median coord of the active/loaded session. Used to reject GPS outliers
-  /// (e.g. a fix that lands in Antarctica when the rest of the session is in
-  /// California). Null when no plausible coords have been seen yet.
   LatLng? sessionCenter;
   double _sessionOutlierKm = 200.0;
   GpsPosition? lastGpsForDistance;
@@ -399,11 +434,64 @@ class WardriveController extends ChangeNotifier {
   void toggleTarget(WardriveTarget t) {
     if (isActive) return;
     if (selectedTargets.contains(t)) {
-      if (selectedTargets.length > 1) selectedTargets.remove(t);
+      selectedTargets.remove(t);
     } else {
       selectedTargets.add(t);
     }
     notifyListeners();
+    _savePrefs();
+  }
+
+  Future<void> onChipTap(WardriveTarget t, Set<WardriveTarget> liveTargets) async {
+    if (!isActive && liveTargets.isEmpty) {
+      toggleTarget(t);
+      return;
+    }
+    if (state != WardriveState.running) {
+      _userStopped = false;
+      selectedTargets
+        ..clear()
+        ..addAll(liveTargets);
+      state = WardriveState.running;
+      await _ensureLoggingAttached();
+      notifyListeners();
+    }
+    if (liveTargets.contains(t)) {
+      await _removeTargetLive(t);
+    } else {
+      await _addTargetLive(t);
+    }
+  }
+
+  Future<void> _addTargetLive(WardriveTarget t) async {
+    selectedTargets.add(t);
+    _savePrefs();
+    notifyListeners();
+    await _ensureLoggingAttached();
+    final engines =
+        _ble.isManagerConnected ? t.engines(WardriveRadio.both) : t.engines(radio);
+    await _enableEnginesSequentially(engines);
+    notifyListeners();
+    DebugLog.log('WARDRIVE: added target $t live -> $activeLabel');
+  }
+
+  Future<void> _removeTargetLive(WardriveTarget t) async {
+    selectedTargets.remove(t);
+    final keep = <Engine>{};
+    for (final rt in selectedTargets) {
+      keep.addAll(rt.engines(radio));
+    }
+    final toStop = t.engines(radio).toSet()..removeAll(keep);
+    for (final e in toStop) {
+      try {
+        await _ble.disableEngine(e);
+      } catch (err) {
+        DebugLog.log('WARDRIVE: removeTargetLive $e error: $err');
+      }
+    }
+    _savePrefs();
+    notifyListeners();
+    DebugLog.log('WARDRIVE: removed target $t live -> $activeLabel');
   }
 
   void setTarget(WardriveTarget t) {
@@ -412,19 +500,16 @@ class WardriveController extends ChangeNotifier {
       ..clear()
       ..add(t);
     notifyListeners();
+    _savePrefs();
   }
 
   void setRadio(WardriveRadio r) {
     if (isActive) return;
     radio = r;
     notifyListeners();
+    _savePrefs();
   }
 
-  /// Stop a single engine that the active wardrive session owns (e.g. user
-  /// toggled its card off on the home screen). Drops the owning target(s) and
-  /// disables the engine(s) that only those targets needed; if nothing is left
-  /// to scan, tears down the whole session. Keeps [selectedTargets] intact for
-  /// the next run when the session is stopped.
   Future<void> stopOwnedEngine(Engine e) async {
     if (!isActive) return;
     if (e == Engine.wardrive) {
@@ -467,9 +552,6 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remove every map/session member of the same logical detection as [d]
-  /// (by UAS-ID for Remote-ID drones, else by MAC) from the in-memory overlay
-  /// and from the database, so a deleted drone/device does not reappear.
   Future<void> removeDetectionGroup(Detection d) async {
     final uav = d.odid?.uavId;
     final byUav = uav != null && uav.isNotEmpty;
@@ -508,6 +590,10 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> startSession() async {
+    if (selectedTargets.isEmpty) {
+      DebugLog.log('WARDRIVE: start ignored — no targets selected');
+      return;
+    }
     final gpsOk = await _gps.start();
     if (!gpsOk) {
       DebugLog.log('WARDRIVE: GPS failed to start — check permissions/services');
@@ -547,6 +633,7 @@ class WardriveController extends ChangeNotifier {
     ));
 
     state = WardriveState.running;
+    _userStopped = false;
 
     _detSub = _ble.detections.listen(_onDetection);
     _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
@@ -570,6 +657,7 @@ class WardriveController extends ChangeNotifier {
 
   Future<void> stopSession() async {
     state = WardriveState.idle;
+    _userStopped = true;
     notifyListeners();
 
     _detSub?.cancel();
@@ -682,8 +770,6 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// True when (lat, lon) is inside the loaded session's outlier radius.
-  /// Always true when no session center is known (live capture, empty session).
   bool isWithinSession(double lat, double lon) {
     final c = sessionCenter;
     if (c == null) return true;
@@ -875,8 +961,6 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  /// Get CSV file for a session. Always regenerates from DB to ensure
-  /// latest WiGLE format. Uses human-readable filename based on session date.
   Future<File?> getCsvFile(String sid) async {
     final dir = await _wardriveDir();
     final filename = await _csvFilename(sid);
@@ -950,6 +1034,7 @@ class WardriveController extends ChangeNotifier {
   void resumeSession() {
     state = WardriveState.running;
     notifyListeners();
+    _reEnableEngines();
   }
 
   /// Toggle flock display filter (does NOT control engines).
@@ -985,18 +1070,7 @@ class WardriveController extends ChangeNotifier {
     for (final engine in engineList) {
       if (state == WardriveState.idle) return;
       if (engine == Engine.wardrive) {
-        await _ble.sendEngineConfig(
-          engine,
-          Uint8List.fromList([
-            radioBitmask,
-            wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
-            wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
-            bleScanDuration & 0xFF, (bleScanDuration >> 8) & 0xFF,
-            bleScanInterval & 0xFF, (bleScanInterval >> 8) & 0xFF,
-            channelStart,
-            channelEnd,
-          ]),
-        );
+        await _ble.sendEngineConfig(engine, _wardriveConfigPayload);
         await Future.delayed(const Duration(milliseconds: 100));
       }
       if (state == WardriveState.idle) return;
@@ -1007,26 +1081,103 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
+  Future<void> _adoptFirmwareState() async {
+    await _prefsLoaded;
+    if (_ble.offlineScanEnabled) {
+      if (selectedTargets.remove(WardriveTarget.wigle)) {
+        DebugLog.log('WARDRIVE: keep-running on — wigle chip deselected (wigle not running)');
+        _savePrefs();
+        notifyListeners();
+      }
+      try {
+        await _ble.disableEngine(Engine.wardrive);
+      } catch (e) {
+        DebugLog.log('WARDRIVE: keep-running wardrive-disable error: $e');
+      }
+    }
+    if (state == WardriveState.paused) return;
+    if (state == WardriveState.running) {
+      if (_ble.offlineScanEnabled) {
+        await _reconcileTargetsToFirmware();
+      } else {
+        _reEnableEngines();
+      }
+      return;
+    }
+
+    if (!_ble.offlineScanEnabled || _userStopped) {
+      await _disableStaleEngines();
+      return;
+    }
+
+    var mask = await _ble.readCommandedEngineMask();
+    for (var i = 0; mask < 0 && i < 3; i++) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      mask = await _ble.readCommandedEngineMask();
+    }
+    if (mask < 0) return;
+
+    const klass = [
+      Engine.flockWifi,
+      Engine.flockBle,
+      Engine.skySpy,
+      Engine.detector,
+    ];
+    if (!klass.any((e) => (mask & e.bitmask) != 0)) {
+      DebugLog.log('WARDRIVE: firmware idle — nothing to adopt');
+      return;
+    }
+    final adopted =
+        reconciledTargets(mask, selectedTargets, _ble.offlineScanEnabled);
+    selectedTargets
+      ..clear()
+      ..addAll(adopted);
+    await _ensureLoggingAttached();
+    state = WardriveState.running;
+    notifyListeners();
+    DebugLog.log('WARDRIVE: adopted firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
+  }
+
+  Future<void> _reconcileTargetsToFirmware() async {
+    var mask = await _ble.readCommandedEngineMask();
+    for (var i = 0; mask < 0 && i < 3; i++) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      mask = await _ble.readCommandedEngineMask();
+    }
+    if (mask < 0) return;
+    final t =
+        reconciledTargets(mask, selectedTargets, _ble.offlineScanEnabled);
+    if (t.isEmpty) return;
+    if (t.length == selectedTargets.length && selectedTargets.containsAll(t)) {
+      return;
+    }
+    selectedTargets
+      ..clear()
+      ..addAll(t);
+    _savePrefs();
+    notifyListeners();
+    DebugLog.log('WARDRIVE: reconciled targets to firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
+  }
+
   Future<void> _disableStaleEngines() async {
-    const wardriveEngines = [
+    const stale = [
       Engine.wardrive,
       Engine.flockWifi,
       Engine.flockBle,
       Engine.skySpy,
       Engine.detector,
-      Engine.pcap,
+      Engine.foxhunter,
     ];
-    DebugLog.log('WARDRIVE: reconciling firmware — app idle, disabling stale wardrive engines');
-    for (final e in wardriveEngines) {
+    for (final e in stale) {
       try {
         await _ble.disableEngine(e);
       } catch (err) {
         DebugLog.log('WARDRIVE: stale-disable $e error: $err');
       }
     }
+    DebugLog.log('WARDRIVE: idle — disabled stale node engines to match UI');
   }
 
-  /// Re-enable engines after BLE reconnect killed them with DISABLE_ALL.
   void _reEnableEngines() {
     DebugLog.log('WARDRIVE: re-enabling engines after reconnect');
     _enableEnginesSequentially(activeEngines).then((_) {
@@ -1037,10 +1188,24 @@ class WardriveController extends ChangeNotifier {
     });
   }
 
+  Future<void> _ensureLoggingAttached() async {
+    if (_detSub != null) return;
+    sessionId = await _resolveSpoolSessionId();
+    startTime ??= DateTime.now();
+    _gps.start();
+    _detSub = _ble.detections.listen(_onDetection);
+    _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) => notifyListeners());
+    final cached = _gps.lastPosition;
+    if (cached != null) currentPosition = cached;
+    WakelockPlus.enable();
+    _updateLiveActivity();
+  }
+
   Future<String> _resolveSpoolSessionId() async {
     if (sessionId.isNotEmpty) return sessionId;
     final rows = await _db.getWardriveSessions();
-    if (rows.isNotEmpty) return rows.first.id;
+    if (rows.isNotEmpty && rows.first.endedAt == null) return rows.first.id;
     final newId = const Uuid().v4();
     await _db.insertSession(SessionsCompanion(
       id: drift.Value(newId),
@@ -1179,9 +1344,6 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  /// Push combined state to iOS Live Activity / Dynamic Island.
-  /// Resolves primary display mode from active engines + foxhunt target,
-  /// then sends all cross-engine counts so expanded view shows everything.
   void _updateLiveActivity() {
     final engineNames = activeEngines.map((e) => e.name).toSet();
     if (foxhuntTarget != null) engineNames.add('foxhunter');
@@ -1191,14 +1353,30 @@ class WardriveController extends ChangeNotifier {
     );
     _liveActivity.update(
       primaryMode: mode,
+      activeLabel: _liveActivityLabel(engineNames),
       uniqueCount: uniqueMacs.length,
       flockCount: _flockMacs.length,
       droneCount: droneCount,
+      detectorHits: includesDetector ? detectorCount : 0,
       distanceKm: distanceKm,
       speedKmh: currentPosition?.speedKmh ?? 0,
       targetMac: foxhuntTarget ?? '',
       isImperial: isImperial,
     );
+  }
+
+  /// Human label listing every active radio path, e.g. "WiGLE+Flock+Drone".
+  String _liveActivityLabel(Set<String> engineNames) {
+    final parts = <String>[];
+    if (engineNames.contains('wardrive')) parts.add('WiGLE');
+    if (engineNames.contains('flockBle') || engineNames.contains('flockWifi')) {
+      parts.add('Flock');
+    }
+    if (engineNames.contains('skySpy')) parts.add('Drone');
+    if (engineNames.contains('detector')) parts.add('Detect');
+    if (engineNames.contains('foxhunter')) parts.add('Foxhunt');
+    if (engineNames.contains('uniPwn')) parts.add('UniPwn');
+    return parts.isEmpty ? 'Scanning' : parts.join('+');
   }
 
   SessionStats get currentStats {
@@ -1425,9 +1603,6 @@ class WardriveController extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Reject coords that are null, non-finite, exact (0,0), or pole-locked.
-  /// Mirrors the map-render filter in wardrive_screen so the in-memory route
-  /// stays clean too (no polyline darting to Null Island / Antarctica).
   static bool _isPlausibleCoord(double? lat, double? lon) {
     if (lat == null || lon == null) return false;
     if (!lat.isFinite || !lon.isFinite) return false;

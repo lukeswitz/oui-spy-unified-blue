@@ -76,8 +76,6 @@ class WardriveThemeData {
   Color engineColor(Engine e) => engineOverrides[e] ?? e.color;
 }
 
-/// Magenta+cyan duotone shift on the dark Carto basemap so the world reads
-/// as one synthwave palette instead of a stock map.
 final ColorFilter _nightriderTileTint = ColorFilter.matrix(<double>[
   0.85, 0.0, 0.6, 0, 20,
   0.0, 0.3, 0.4, 0, 5,

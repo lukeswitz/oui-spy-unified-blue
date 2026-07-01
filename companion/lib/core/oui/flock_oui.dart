@@ -1,10 +1,3 @@
-/// Flock OUI lookup — Dart port of `src/engines/flock_oui.h`.
-///
-/// Source list MUST stay in sync with firmware. Sources:
-///   - colonelpanichacks/flock-you (original)
-///   - zmattmanz/flock-detection (scored model)
-///   - dougborg/AirHound (broad)
-///   - VirtuallyScott/flock-you (wifi+ble)
 class FlockOui {
   const FlockOui._();
 
@@ -23,8 +16,6 @@ class FlockOui {
 
   static final Set<int> _set = Set<int>.unmodifiable(_table);
 
-  /// Match by lower-cased "aa:bb:cc:dd:ee:ff" or "AA:BB:CC:..." style MAC.
-  /// Skips locally-administered MACs (bit 1 of first octet) — matches firmware.
   static bool match(String mac) {
     if (mac.length < 8) return false;
     final p = _parsePrefix(mac);

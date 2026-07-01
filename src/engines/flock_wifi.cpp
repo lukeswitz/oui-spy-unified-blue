@@ -173,7 +173,7 @@ static void flockWifiStart(void) {
     if (!meshIsEnabled()) {
         WiFi.mode(WIFI_STA);
     }
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    wifiSnifferApplyPs();
     wifiCoexRegister(wifiSnifferCb,
                      WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
     esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
@@ -238,7 +238,7 @@ void flockWifiHostSuspend(bool suspend) {
         wifiCoexUnregister(wifiSnifferCb);
     } else if (scanning && flockWifiRadioGate) {
         if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        wifiSnifferApplyPs();
         wifiCoexRegister(wifiSnifferCb,
                          WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);

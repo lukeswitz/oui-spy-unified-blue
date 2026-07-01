@@ -2,6 +2,15 @@
 #include "engine_registry.h"
 #include "protocol.h"
 #include <Arduino.h>
+#include "esp_bt.h"
+
+void wifiSnifferApplyPs(void) {
+    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    } else {
+        esp_wifi_set_ps(WIFI_PS_NONE);
+    }
+}
 
 #define WIFI_COEX_MAX 8
 

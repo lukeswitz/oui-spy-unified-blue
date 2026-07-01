@@ -8,6 +8,7 @@
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
 #include "../ble_coex.h"
+#include "../engine_registry.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -342,7 +343,7 @@ static void skyspyStart(void) {
         }
         // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
         // bury the callback in irrelevant traffic and miss drone beacons.
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        wifiSnifferApplyPs();
         wifiCoexRegister(wifiCallback, WIFI_PROMIS_FILTER_MASK_MGMT);
         esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
     }
@@ -367,6 +368,8 @@ static void skyspyStop(void) {
     Serial.println("[SKYSPY] Stopped");
 }
 
+static void skyspyScanComplete(NimBLEScanResults results) { (void)results; }
+
 static void skyspyLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning) return;
@@ -379,10 +382,15 @@ static void skyspyLoop(void) {
         }
     }
 
-    // BLE scan cycle
-    if (bleScan && (skyspyRadioMask & 0x02) && millis() - lastScanStart >= 1500) {
+    // BLE scan cycle. When wardrive owns the radio it duty-cycles the shared
+    // NimBLE scan (bleScanDuration/Interval); our bleCb still receives adverts
+    // via the ble_coex dispatch, so RID detection continues. Driving start()
+    // ourselves here would pin the scan near-continuous and starve WiFi.
+    if (bleScan && (skyspyRadioMask & 0x02) &&
+        engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED &&
+        millis() - lastScanStart >= 1500) {
         if (!bleScan->isScanning()) {
-            bleScan->start(1, false);
+            bleScan->start(1, skyspyScanComplete, false);
             lastScanStart = millis();
         }
     }

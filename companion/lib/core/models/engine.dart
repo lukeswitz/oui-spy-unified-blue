@@ -70,12 +70,20 @@ enum EngineState {
   complete,
 }
 
+int commandedEngineMask(List<EngineState> states) {
+  int mask = 0;
+  for (final e in Engine.values) {
+    if (e.index < states.length && states[e.index] != EngineState.disabled) {
+      mask |= e.bitmask;
+    }
+  }
+  return mask;
+}
+
 /// Which engines can run simultaneously.
 class EngineCompatibility {
   const EngineCompatibility._();
 
-  /// WiFi engines are mutually exclusive — except wardrive+flockWifi which
-  /// coexist via firmware passive mode (flockWifi rides wardrive's sniffer).
   static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive, Engine.pcap};
 
   static bool _wifiCompatible(Engine a, Engine b) {

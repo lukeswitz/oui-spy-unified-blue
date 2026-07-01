@@ -160,6 +160,8 @@ void flockBleHostSuspend(bool suspend) {
     }
 }
 
+static void flockBleScanComplete(NimBLEScanResults results) { (void)results; }
+
 static void flockBleLoop(void) {
     if (!scanning) return;
     if (!flockBleRadioGate) return;
@@ -169,7 +171,7 @@ static void flockBleLoop(void) {
     if (now - lastScanStart >= scanIntervalMs && !bleScan->isScanning()) {
         scanDurationMs = wardriveGetBleScanDurationMs();
         scanIntervalMs = wardriveGetBleScanIntervalMs();
-        bleScan->start(0, false);
+        bleScan->start(0, flockBleScanComplete, false);
         lastScanStart = now;
     } else if (bleScan->isScanning() && (now - lastScanStart >= scanDurationMs)) {
         bleScan->stop();

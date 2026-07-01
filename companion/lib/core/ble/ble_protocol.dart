@@ -237,8 +237,6 @@ class BleProtocol {
 
   // -- Foxhunter --
 
-  /// Encode foxhunter target MAC + optional channel hint.
-  /// MAC[6] + channel[1]. Channel 0 = hop ch1/6/11, 1-14 = lock to channel.
   static Uint8List encodeFoxhunterTarget(String mac, {int channel = 0}) {
     final macBytes = _encodeMac(mac);
     final result = Uint8List(7);

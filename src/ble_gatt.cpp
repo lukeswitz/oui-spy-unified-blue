@@ -384,6 +384,302 @@ static void mgrPushEngineState(void) {
 #endif
 }
 
+#ifdef OUISPY_ROLE_MANAGER
+static void mgrDropWigleForOffline(void) {
+    mgrCommandedMask &= (uint8_t)~ENGINE_BITMASK(ENGINE_WARDRIVE);
+    mgrCommandedStates[ENGINE_WARDRIVE] = (uint8_t)ESTATE_DISABLED;
+    engineDisable(ENGINE_WARDRIVE);
+    meshMarkNodesEngine((uint8_t)ENGINE_WARDRIVE, false);
+    if (meshIsEnabled()) meshBroadcastCommand(0x00, ENGINE_WARDRIVE, nullptr, 0);
+}
+
+static void mgrReconcileDropWigle(void) {
+    if (mgrCommandedMask & ENGINE_BITMASK(ENGINE_WARDRIVE)) return;
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    bool anyWigle = false;
+    for (size_t i = 0; i < total; i++) {
+        if (live[i].role == MESH_ROLE_MANAGER) continue;
+        if (live[i].active_engines & ENGINE_BITMASK(ENGINE_WARDRIVE)) { anyWigle = true; break; }
+    }
+    if (!anyWigle) return;
+    meshBroadcastCommand(0x00, ENGINE_WARDRIVE, nullptr, 0);
+    Serial.println("[MGR] reconcile: node still running wigle while uncommanded — re-disabling");
+}
+#endif
+
+#ifdef OUISPY_SPOOL_E2E
+static void spoolE2ETask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    Serial.println("\n[SPOOL-E2E] ===== STANDALONE NODE WARDRIVE + SPOOL E2E =====");
+    bool pass = true;
+
+    Serial.println("[REPRO] ===== A/B: wardrive LAST, phoneConnected false vs true =====");
+    for (int phase = 0; phase < 2; phase++) {
+        phoneConnected = (phase == 1);
+        engineEnable(ENGINE_FLOCK_WIFI);
+        engineEnable(ENGINE_FLOCK_BLE);
+        engineEnable(ENGINE_SKYSPY);
+        engineEnable(ENGINE_DETECTOR);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        engineEnable(ENGINE_WARDRIVE);
+        uint32_t h0 = wardriveGetHopCount();
+        vTaskDelay(pdMS_TO_TICKS(8000));
+        uint32_t h = wardriveGetHopCount() - h0;
+        Serial.printf("[REPRO] phoneConnected=%d -> hops in 8s=%lu %s\n",
+                      phase, (unsigned long)h, h > 5 ? "OK" : "STUCK");
+        engineDisableAll();
+        vTaskDelay(pdMS_TO_TICKS(1500));
+    }
+    phoneConnected = false;
+    Serial.println("[REPRO] A/B done");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    const uint8_t want = (uint8_t)(ENGINE_BITMASK(ENGINE_WARDRIVE) |
+                                   ENGINE_BITMASK(ENGINE_FLOCK_BLE) |
+                                   ENGINE_BITMASK(ENGINE_FLOCK_WIFI) |
+                                   ENGINE_BITMASK(ENGINE_SKYSPY) |
+                                   ENGINE_BITMASK(ENGINE_DETECTOR));
+
+    const EngineId perEng[] = { ENGINE_WARDRIVE, ENGINE_FLOCK_WIFI, ENGINE_FLOCK_BLE,
+                                ENGINE_SKYSPY, ENGINE_DETECTOR, ENGINE_FOXHUNTER };
+    const char* perName[] = { "WIGLE", "FLOCK_WIFI", "FLOCK_BLE", "SKYSPY", "DETECTOR", "FOXHUNTER" };
+    Serial.println("[SPOOL-E2E] P0: each engine enables/activates/disables standalone");
+    for (size_t k = 0; k < sizeof(perEng) / sizeof(perEng[0]); k++) {
+        EngineId id = perEng[k];
+        engineEnable(id);
+        vTaskDelay(pdMS_TO_TICKS(500));
+        bool on = (engineGetActiveMask() & ENGINE_BITMASK(id)) != 0;
+        engineDisable(id);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        bool off = (engineGetActiveMask() & ENGINE_BITMASK(id)) == 0;
+        Serial.printf("[SPOOL-E2E] P0 %-10s enable=%d disable=%d -> %s\n",
+                      perName[k], on ? 1 : 0, off ? 1 : 0, (on && off) ? "PASS" : "FAIL");
+        if (!(on && off)) { pass = false; }
+    }
+
+    Serial.println("[SPOOL-E2E] P1: enable ALL wardrive engines (wigle+flock+drone+detect)");
+    engineEnable(ENGINE_WARDRIVE);
+    engineEnable(ENGINE_FLOCK_BLE);
+    engineEnable(ENGINE_FLOCK_WIFI);
+    engineEnable(ENGINE_SKYSPY);
+    engineEnable(ENGINE_DETECTOR);
+    vTaskDelay(pdMS_TO_TICKS(600));
+    uint8_t am = engineGetActiveMask();
+    Serial.printf("[SPOOL-E2E] P1 active mask=0x%02X want=0x%02X\n", am, want);
+    if ((am & want) != want) { pass = false; Serial.println("[SPOOL-E2E] P1 FAIL not all engines active"); }
+    else Serial.println("[SPOOL-E2E] P1 PASS all wardrive engines scanning");
+
+    uint32_t raw0 = g_engRawSeen;
+    for (int t = 0; t < 4; t++) {
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        Serial.printf("[SPOOL-E2E] P1 t=%ds raw frames+=%u\n", (t + 1) * 2, g_engRawSeen - raw0);
+    }
+    if (g_engRawSeen - raw0 == 0) { pass = false; Serial.println("[SPOOL-E2E] P1 FAIL radio captured 0 frames"); }
+    else Serial.printf("[SPOOL-E2E] P1 PASS radio hot: %u frames in 8s\n", g_engRawSeen - raw0);
+
+    Serial.println("[SPOOL-E2E] P2: phone GONE + offline ON -> spool via real capture hook");
+    detSpoolClear();
+    bool prevPhone = phoneConnected, prevOff = offlineScanEnabled;
+    phoneConnected = false;
+    offlineScanEnabled = true;
+    DetectionEvent e; memset(&e, 0, sizeof(e));
+    e.source_node_id[0] = '\0';
+    for (int i = 0; i < 20; i++) { e.engine_id = ENGINE_FLOCK_BLE; e.mac[5] = (uint8_t)i;      e.timestamp_ms = 1000 + i; bleGattNotifyDetection(&e); }
+    for (int i = 0; i < 10; i++) { e.engine_id = ENGINE_SKYSPY;    e.mac[5] = (uint8_t)(100 + i); e.timestamp_ms = 2000 + i; bleGattNotifyDetection(&e); }
+    for (int i = 0; i < 15; i++) { e.engine_id = ENGINE_WARDRIVE;  e.mac[5] = (uint8_t)(200 + i); e.timestamp_ms = 3000 + i; bleGattNotifyDetection(&e); }
+    uint16_t sc = detSpoolCount();
+    Serial.printf("[SPOOL-E2E] P2 spooled=%u (want 30: 20 flock + 10 drone; 15 wigle MUST be excluded)\n", sc);
+    if (sc != 30) { pass = false; Serial.printf("[SPOOL-E2E] P2 FAIL count %u != 30 (wigle leaked into spool, or drop)\n", sc); }
+    else Serial.println("[SPOOL-E2E] P2 PASS 30 targeted spooled, wigle excluded from spool");
+
+    Serial.println("[SPOOL-E2E] P3: phone BACK -> spool readable + drains");
+    phoneConnected = true;
+    DetectionEvent out; uint16_t hc; int readable = 0;
+    uint16_t total = detSpoolCount();
+    for (uint16_t i = 0; i < total; i++) if (detSpoolReadSlot(i, &out, &hc)) readable++;
+    Serial.printf("[SPOOL-E2E] P3 readable slots=%d/%u\n", readable, total);
+    if (readable != (int)total) { pass = false; Serial.println("[SPOOL-E2E] P3 FAIL not all slots readable for flush"); }
+    else Serial.println("[SPOOL-E2E] P3 PASS every spooled slot readable");
+    detSpoolClear();
+    Serial.printf("[SPOOL-E2E] P3 after flush/clear count=%u\n", detSpoolCount());
+    if (detSpoolCount() != 0) { pass = false; Serial.println("[SPOOL-E2E] P3 FAIL clear did not drain"); }
+
+    phoneConnected = prevPhone;
+    offlineScanEnabled = prevOff;
+
+    Serial.println("[SPOOL-E2E] P4: disable ALL -> must STAY disabled (no self re-arm)");
+    engineEnable(ENGINE_WARDRIVE);
+    engineEnable(ENGINE_FLOCK_BLE);
+    engineEnable(ENGINE_SKYSPY);
+    engineEnable(ENGINE_DETECTOR);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    engineDisableAll();
+    uint8_t rearm = 0;
+    for (int t = 0; t < 5; t++) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        uint8_t m = (uint8_t)(engineGetActiveMask() & ~ENGINE_BITMASK(ENGINE_PCAP));
+        rearm |= m;
+        Serial.printf("[SPOOL-E2E] P4 t=%ds active mask=0x%02X\n", t + 1, m);
+    }
+    if (rearm != 0) { pass = false; Serial.printf("[SPOOL-E2E] P4 FAIL engines re-armed after disable-all: 0x%02X\n", rearm); }
+    else Serial.println("[SPOOL-E2E] P4 PASS stayed disabled 5s (stop stays stopped)");
+
+    Serial.printf("[SPOOL-E2E] ===== RESULT: %s =====\n", pass ? "PASS (P0..P4)" : "FAIL");
+    vTaskDelete(NULL);
+}
+
+void bleGattSpoolE2EStart(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    Serial.println("[SPOOL-E2E] SKIP — node-only test");
+#else
+    xTaskCreatePinnedToCore(spoolE2ETask, "spoole2e", 8192, NULL, 1, NULL, 1);
+#endif
+}
+#endif
+
+#ifdef OUISPY_WIGLE_OFFLINE_SELFTEST
+void bleGattWigleOfflineSelfTest(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    const uint8_t kept = (uint8_t)(ENGINE_BITMASK(ENGINE_FLOCK_BLE) |
+                                   ENGINE_BITMASK(ENGINE_SKYSPY) |
+                                   ENGINE_BITMASK(ENGINE_DETECTOR));
+    mgrCommandedMask = (uint8_t)(ENGINE_BITMASK(ENGINE_WARDRIVE) | kept);
+    for (int i = 0; i < ENGINE_COUNT; i++)
+        mgrCommandedStates[i] = (mgrCommandedMask & (1u << i)) ? (uint8_t)ESTATE_SCANNING
+                                                              : (uint8_t)ESTATE_DISABLED;
+    Serial.printf("[WIGLE-OFFL] pre  mask=0x%02X (wardrive+flock+sky+det)\n", mgrCommandedMask);
+
+    bool prevOffline = offlineScanEnabled;
+    offlineScanEnabled = true;
+    mgrDropWigleForOffline();
+    offlineScanEnabled = prevOffline;
+
+    bool ok = true;
+    if (mgrCommandedMask & ENGINE_BITMASK(ENGINE_WARDRIVE)) {
+        ok = false; Serial.println("[WIGLE-OFFL] FAIL wardrive still commanded");
+    }
+    if ((mgrCommandedMask & kept) != kept) {
+        ok = false; Serial.println("[WIGLE-OFFL] FAIL targeted engine dropped");
+    }
+    if (mgrCommandedStates[ENGINE_WARDRIVE] != (uint8_t)ESTATE_DISABLED) {
+        ok = false; Serial.println("[WIGLE-OFFL] FAIL wardrive state not DISABLED");
+    }
+    Serial.printf("[WIGLE-OFFL] post mask=0x%02X -> %s\n", mgrCommandedMask,
+                  ok ? "PASS wigle dropped, targeted engines kept" : "FAIL");
+#else
+    Serial.println("[WIGLE-OFFL] SKIP — manager-only test");
+#endif
+}
+#endif
+
+#ifdef OUISPY_E2E_SMOKETEST
+#ifdef OUISPY_ROLE_MANAGER
+static int e2eReadNodeMask(void) {
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t n = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    for (size_t i = 0; i < n; i++)
+        if (live[i].role != MESH_ROLE_MANAGER) return (int)live[i].active_engines;
+    return -1;
+}
+
+static void e2eEnableEngine(uint8_t eng) {
+    mgrCommandedMask |= (uint8_t)ENGINE_BITMASK(eng);
+    mgrCommandedStates[eng] = (uint8_t)ESTATE_SCANNING;
+    if (eng == ENGINE_WARDRIVE) {
+        mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+        delay(120);
+    }
+    meshBroadcastCommand(0x01, eng, nullptr, 0);
+}
+
+static void e2eSmokeTask(void* arg) {
+    (void)arg;
+    const uint8_t targeted = (uint8_t)(ENGINE_BITMASK(ENGINE_FLOCK_BLE) |
+                                       ENGINE_BITMASK(ENGINE_FLOCK_WIFI) |
+                                       ENGINE_BITMASK(ENGINE_SKYSPY) |
+                                       ENGINE_BITMASK(ENGINE_DETECTOR));
+    const uint8_t wbit = (uint8_t)ENGINE_BITMASK(ENGINE_WARDRIVE);
+    Serial.println("\n[E2E] ===== END-TO-END SMOKETEST START =====");
+
+    int waited = 0;
+    while (e2eReadNodeMask() < 0 && waited < 30000) {
+        vTaskDelay(pdMS_TO_TICKS(1000)); waited += 1000;
+    }
+    if (e2eReadNodeMask() < 0) {
+        Serial.println("[E2E] FAIL no node joined within 30s");
+        vTaskDelete(NULL); return;
+    }
+    Serial.printf("[E2E] node joined after %dms\n", waited);
+    bool pass = true;
+
+    Serial.println("[E2E] PHASE A: phone present -> enable flock+drone+detect+WIGLE on node");
+    bool prevOffline = offlineScanEnabled;
+    offlineScanEnabled = true;
+    phoneConnected = true;
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    e2eEnableEngine(ENGINE_DETECTOR);
+    e2eEnableEngine(ENGINE_FLOCK_BLE);
+    e2eEnableEngine(ENGINE_FLOCK_WIFI);
+    e2eEnableEngine(ENGINE_SKYSPY);
+    e2eEnableEngine(ENGINE_WARDRIVE);
+    vTaskDelay(pdMS_TO_TICKS(10000));
+    int m = e2eReadNodeMask();
+    Serial.printf("[E2E] A node mask=0x%02X want=0x%02X\n", m, targeted | wbit);
+    if (m < 0 || (m & (targeted | wbit)) != (targeted | wbit)) {
+        pass = false; Serial.println("[E2E] A FAIL not all engines started");
+    } else Serial.println("[E2E] A PASS all engines incl wigle scanning on node");
+
+    Serial.println("[E2E] PHASE B: phone gone + offline -> node must drop wigle locally");
+    phoneConnected = false;
+    mgrDropWigleForOffline();
+    Serial.printf("[E2E] B mgrCommandedMask after drop=0x%02X\n", mgrCommandedMask);
+    for (int t = 0; t < 15; t++) {
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        int nm = e2eReadNodeMask();
+        Serial.printf("[E2E] B t=%ds node mask=0x%02X mgrMask=0x%02X\n",
+                      (t + 1) * 2, nm, mgrCommandedMask);
+        if (nm >= 0 && !(nm & wbit)) break;
+    }
+    m = e2eReadNodeMask();
+    Serial.printf("[E2E] B node mask=0x%02X want=0x%02X (wigle off)\n", m, targeted);
+    if (m < 0 || (m & wbit) || (m & targeted) != targeted) {
+        pass = false; Serial.println("[E2E] B FAIL wigle not dropped or targeted lost");
+    } else Serial.println("[E2E] B PASS wigle dropped, flock+drone+detect kept");
+
+    Serial.println("[E2E] PHASE C: phone back -> restart WIGLE on node");
+    phoneConnected = true;
+    vTaskDelay(pdMS_TO_TICKS(4000));
+    e2eEnableEngine(ENGINE_WARDRIVE);
+    for (int t = 0; t < 12; t++) {
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        int nm = e2eReadNodeMask();
+        Serial.printf("[E2E] C t=%ds node mask=0x%02X\n", (t + 1) * 2, nm);
+        if (nm >= 0 && (nm & wbit)) break;
+    }
+    m = e2eReadNodeMask();
+    Serial.printf("[E2E] C node mask=0x%02X want wigle bit 0x%02X\n", m, wbit);
+    if (m < 0 || !(m & wbit)) {
+        pass = false; Serial.println("[E2E] C FAIL wigle did not restart");
+    } else Serial.println("[E2E] C PASS wigle restarted like before");
+    offlineScanEnabled = prevOffline;
+    phoneConnected = false;
+
+    Serial.printf("[E2E] ===== SMOKETEST %s =====\n",
+                  pass ? "PASS (A+B+C)" : "FAIL");
+    vTaskDelete(NULL);
+}
+#endif
+
+void bleGattE2ESmokeStart(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    xTaskCreate(e2eSmokeTask, "e2e", 6144, NULL, 1, NULL);
+#else
+    Serial.println("[E2E] SKIP — manager-only test");
+#endif
+}
+#endif
+
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
     // Advertising watchdog: if no phone is connected, ensure we are advertising.
@@ -415,6 +711,7 @@ void bleGattReconcileEngines(void) {
     if (!meshIsEnabled()) return;
     mgrPushEngineDeny();
     mgrPushEngineState();
+    mgrReconcileDropWigle();
 #endif
 }
 
@@ -445,15 +742,17 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         hwAlertsSuppressed = false;
 #ifdef OUISPY_ROLE_MANAGER
         mgrPhoneGoneMs = millis();
-        Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
+        if (offlineScanEnabled) {
+            mgrDropWigleForOffline();
+            Serial.println("[BLE] Phone disconnected (manager) — offline scan, wigle dropped fleet-wide, targeted engines kept");
+        } else {
+            Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
+        }
 #else
         if (!offlineScanEnabled) {
             engineDisableAll();
             Serial.println("[BLE] Phone disconnected — engines off");
         } else {
-            // Wardrive (wigle) is a full-band sweep that monopolizes the radio
-            // and would starve the targeted offline-scan engines while away.
-            // Drop it; keep the rest scanning + spooling.
             engineDisable(ENGINE_WARDRIVE);
             Serial.println("[BLE] Phone disconnected — offline scan, wigle off, targeted engines kept");
         }

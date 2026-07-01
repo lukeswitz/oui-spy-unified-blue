@@ -160,9 +160,6 @@ class IgnoreListState extends ChangeNotifier {
     return false;
   }
 
-  // Wire format for firmware (matches src/ignore_list.cpp):
-  //   [count:1] then per entry [type:1][scope:1][len:1][value:len]
-  //   type: ssid=0 mac=1 oui=2 (IgnoreType.index); scope: both=0 wifi=1 ble=2 (IgnoreScope.index)
   List<int> serializeForFirmware() {
     final encoded = <List<int>>[];
     for (final e in _entries) {

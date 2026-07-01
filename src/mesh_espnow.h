@@ -66,4 +66,8 @@ uint32_t ncUniqueCount(void);
 uint32_t ncRxTotalCount(void);
 #endif
 
+#ifdef OUISPY_SPOOL_STRESS
+extern volatile uint32_t g_spoolStressAwayRx;
+#endif
+
 #endif // MESH_ESPNOW_H

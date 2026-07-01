@@ -2,6 +2,7 @@
 #include "protocol.h"
 #include "dedup_ring.h"
 #include "../ble_coex.h"
+#include "../engine_registry.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
@@ -81,11 +82,16 @@ static void unipwnStop(void) {
     Serial.println("[UNIPWN] Stopped");
 }
 
+static void unipwnScanComplete(NimBLEScanResults results) { (void)results; }
+
 static void unipwnLoop(void) {
     if (!scanning || !bleScan) return;
+    // Yield the shared scan to wardrive's duty cycle when it owns the radio;
+    // our scanCb still gets adverts via ble_coex dispatch.
+    if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (millis() - lastScanStart >= 2000) {
         if (!bleScan->isScanning()) {
-            bleScan->start(1, false);
+            bleScan->start(1, unipwnScanComplete, false);
             lastScanStart = millis();
         }
     }

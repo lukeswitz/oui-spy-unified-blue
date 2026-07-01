@@ -232,7 +232,7 @@ private struct LockScreenView: View {
                 .foregroundColor(engineColor(state.mode))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("OUI-SPY \(state.mode.label)")
+                Text("OUI-SPY \(state.displayLabel)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
                 Text(lockScreenSubtitle(state))
@@ -303,12 +303,17 @@ private struct LockScreenView: View {
         switch s.mode {
         case .foxhunter: return formatMac(s.targetMac)
         case .uniPwn:    return s.robotType
-        case .wardrive:  return "\(s.uniqueCount) unique \u{00b7} \(s.distanceValueOnly)\(s.distanceUnitLabel)"
-        case .wardriveFlock: return "\(s.uniqueCount) unique \u{00b7} \(s.flockCount) cameras \u{00b7} \(s.distanceValueOnly)\(s.distanceUnitLabel)"
-        case .flockBle, .flockWifi: return "\(s.flockCount) cameras \u{00b7} \(s.uniqueCount) total"
-        case .flockDual: return "\(s.flockCount) cameras \u{00b7} WiFi+BLE"
-        case .detector:  return "\(s.detectorHits) watchlist hits"
-        case .skySpy:    return "\(s.droneCount) drones detected"
+        default:
+            // Aggregate every active engine's count so the subtitle reflects
+            // all running radios, not just the primary mode.
+            var parts: [String] = []
+            let showsUnique = s.mode == .wardrive || s.mode == .wardriveFlock || s.uniqueCount > 0
+            if showsUnique { parts.append("\(s.uniqueCount) unique") }
+            if s.flockCount > 0 { parts.append("\(s.flockCount) cameras") }
+            if s.droneCount > 0 { parts.append("\(s.droneCount) drones") }
+            if s.detectorHits > 0 { parts.append("\(s.detectorHits) hits") }
+            if s.distanceKm > 0 { parts.append("\(s.distanceValueOnly)\(s.distanceUnitLabel)") }
+            return parts.isEmpty ? "Scanning" : parts.joined(separator: " \u{00b7} ")
         }
     }
 }
