@@ -125,8 +125,13 @@ class WardriveController extends ChangeNotifier {
     _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
     _awayLiveSub = _ble.awayLiveDetections.listen(_onAwayLiveDetection);
     _spoolImportSub = _ble.spoolImport.listen(_onSpoolProgress);
-    _loadPrefs();
+    _prefsLoaded = _loadPrefs();
   }
+
+  /// Completes when [_loadPrefs] has restored [selectedTargets] from disk.
+  /// [_adoptFirmwareState] awaits this so a fast BLE reconnect can't strip
+  /// wigle before saved targets are loaded (which would re-add it).
+  Future<void>? _prefsLoaded;
 
   Future<void> _loadPrefs() async {
     final p = await SharedPreferences.getInstance();
@@ -150,9 +155,6 @@ class WardriveController extends ChangeNotifier {
                 .cast<WardriveTarget?>()
                 .firstWhere((t) => t != null, orElse: () => null))
             .whereType<WardriveTarget>());
-      if ((p.getBool('offlineScanEnabled') ?? false)) {
-        selectedTargets.remove(WardriveTarget.wigle);
-      }
     }
     if (!(p.getBool('wd_dwellMaxNets_v4') ?? false)) {
       _wifiScanInterval = 350;
@@ -459,6 +461,74 @@ class WardriveController extends ChangeNotifier {
     }
     notifyListeners();
     _savePrefs();
+  }
+
+  /// Wardrive-screen chip tap. [liveTargets] is the set of targets whose engines
+  /// are actually scanning in firmware right now (derived from live engine
+  /// state, the same source the home screen uses).
+  ///
+  /// When nothing is scanning this is a pending pre-run selection (START
+  /// launches the session). When firmware IS scanning — an active session or a
+  /// keep-running session adopted while the phone was away — the tap controls
+  /// the live engine and adopts a running session so counts/logging attach,
+  /// mirroring the home-screen engine cards. This is what lets the user turn
+  /// WIGLE on after returning in keep-running mode.
+  Future<void> onChipTap(WardriveTarget t, Set<WardriveTarget> liveTargets) async {
+    if (!isActive && liveTargets.isEmpty) {
+      toggleTarget(t);
+      return;
+    }
+    if (state != WardriveState.running) {
+      _userStopped = false;
+      selectedTargets
+        ..clear()
+        ..addAll(liveTargets);
+      state = WardriveState.running;
+      await _ensureLoggingAttached();
+      notifyListeners();
+    }
+    if (liveTargets.contains(t)) {
+      await _removeTargetLive(t);
+    } else {
+      await _addTargetLive(t);
+    }
+  }
+
+  /// Enable a target's engine(s) on a running session (chip checked while
+  /// firmware is scanning, e.g. turning WIGLE on after returning in keep-running
+  /// mode). Firmware then reports the engine active and the chip + home screen
+  /// light up from live engine state.
+  Future<void> _addTargetLive(WardriveTarget t) async {
+    selectedTargets.add(t);
+    _savePrefs();
+    notifyListeners();
+    await _ensureLoggingAttached();
+    final engines =
+        _ble.isManagerConnected ? t.engines(WardriveRadio.both) : t.engines(radio);
+    await _enableEnginesSequentially(engines);
+    notifyListeners();
+    DebugLog.log('WARDRIVE: added target $t live -> $activeLabel');
+  }
+
+  /// Disable a target's engine(s) on a running session, keeping engines still
+  /// needed by other targets. Does not tear the session down — STOP owns that.
+  Future<void> _removeTargetLive(WardriveTarget t) async {
+    selectedTargets.remove(t);
+    final keep = <Engine>{};
+    for (final rt in selectedTargets) {
+      keep.addAll(rt.engines(radio));
+    }
+    final toStop = t.engines(radio).toSet()..removeAll(keep);
+    for (final e in toStop) {
+      try {
+        await _ble.disableEngine(e);
+      } catch (err) {
+        DebugLog.log('WARDRIVE: removeTargetLive $e error: $err');
+      }
+    }
+    _savePrefs();
+    notifyListeners();
+    DebugLog.log('WARDRIVE: removed target $t live -> $activeLabel');
   }
 
   void setTarget(WardriveTarget t) {
@@ -1061,6 +1131,7 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> _adoptFirmwareState() async {
+    await _prefsLoaded;
     if (_ble.offlineScanEnabled) {
       if (selectedTargets.remove(WardriveTarget.wigle)) {
         DebugLog.log('WARDRIVE: keep-running on — wigle chip deselected (wigle not running)');

@@ -1495,19 +1495,16 @@ class _IdleControls extends StatelessWidget {
             children: [
               Row(
                 children: WardriveController.selectableTargets.map((m) {
-                  final sel = m == WardriveTarget.wigle
-                      ? wd.isTargetSelected(m)
-                      : (wd.isTargetSelected(m) ||
-                          _targetEngineRunning(appEngines, m));
-                  final wigleLocked =
-                      m == WardriveTarget.wigle && enginesRunning;
+                  final liveTargets = {
+                    for (final x in WardriveController.selectableTargets)
+                      if (_targetEngineRunning(appEngines, x)) x
+                  };
+                  final sel = _targetEngineRunning(appEngines, m) ||
+                      (liveTargets.isEmpty && wd.isTargetSelected(m));
                   return Expanded(
-                    child: Opacity(
-                      opacity: wigleLocked ? 0.35 : 1.0,
-                      child: GestureDetector(
-                      onTap: wigleLocked
-                          ? null
-                          : () => ref.read(wardriveProvider).toggleTarget(m),
+                    child: GestureDetector(
+                      onTap: () =>
+                          ref.read(wardriveProvider).onChipTap(m, liveTargets),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1551,7 +1548,6 @@ class _IdleControls extends StatelessWidget {
                           ],
                         ),
                       ),
-                    ),
                     ),
                   );
                 }).toList(),
@@ -1712,8 +1708,19 @@ class _IdleControls extends StatelessWidget {
             else
               _Pill(
                 label: 'START',
-                color: t.color,
+                color: wd.selectedTargets.isEmpty
+                    ? t.color.withValues(alpha: 0.35)
+                    : t.color,
                 onTap: () {
+                  if (wd.selectedTargets.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Select at least one target to scan'),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                    return;
+                  }
                   ref.read(gpsProvider).onMessage = (msg) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -2464,131 +2471,6 @@ class _ClusterPainter extends CustomPainter {
       old.neon != neon;
 }
 
-class _PriorityPin extends StatelessWidget {
-  const _PriorityPin({
-    required this.color,
-    required this.icon,
-    required this.headSize,
-    required this.leaderLength,
-  });
-  final Color color;
-  final IconData icon;
-  final double headSize;
-  final double leaderLength;
-
-  @override
-  Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: _PriorityPinPainter(
-          color: color,
-          headSize: headSize,
-          leaderLength: leaderLength,
-        ),
-        child: SizedBox(
-          width: headSize + leaderLength + 12,
-          height: headSize + leaderLength + 12,
-          child: Stack(
-            children: [
-              Positioned(
-                right: 2,
-                top: 2,
-                child: Container(
-                  width: headSize,
-                  height: headSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color,
-                    border: Border.all(
-                      color: Colors.black.withValues(alpha: 0.8),
-                      width: 1.6,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.6),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
-                      const BoxShadow(
-                        color: Color(0x77000000),
-                        blurRadius: 4,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    icon,
-                    size: headSize * 0.58,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PriorityPinPainter extends CustomPainter {
-  _PriorityPinPainter({
-    required this.color,
-    required this.headSize,
-    required this.leaderLength,
-  });
-  final Color color;
-  final double headSize;
-  final double leaderLength;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final headCenter = Offset(
-      size.width - 2 - headSize / 2,
-      2 + headSize / 2,
-    );
-
-    final ringPaint = Paint()
-      ..color = color.withValues(alpha: 0.55)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-    canvas.drawCircle(center, 5, ringPaint);
-    ringPaint.color = color.withValues(alpha: 0.32);
-    ringPaint.strokeWidth = 1.6;
-    canvas.drawCircle(center, 9, ringPaint);
-    ringPaint.color = color.withValues(alpha: 0.18);
-    ringPaint.strokeWidth = 1.2;
-    canvas.drawCircle(center, 13, ringPaint);
-
-    final dotPaint = Paint()..color = color;
-    canvas.drawCircle(center, 3, dotPaint);
-    final dotBorder = Paint()
-      ..color = Colors.black.withValues(alpha: 0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-    canvas.drawCircle(center, 3, dotBorder);
-
-    final leaderPaint = Paint()
-      ..color = color.withValues(alpha: 0.95)
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
-    final leaderShadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.45)
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(center, headCenter, leaderShadow);
-    canvas.drawLine(center, headCenter, leaderPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PriorityPinPainter old) =>
-      old.color != color ||
-      old.headSize != headSize ||
-      old.leaderLength != leaderLength;
-}
-
 class _CompletedSessionBar extends ConsumerStatefulWidget {
   const _CompletedSessionBar({required this.wd, required this.onZoomDetection});
   final WardriveController wd;
@@ -3199,6 +3081,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
       }
       return;
     }
+    if (!context.mounted) return;
     final box = context.findRenderObject() as RenderBox?;
     final origin = box != null
         ? box.localToGlobal(Offset.zero) & box.size
@@ -3510,6 +3393,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
     final sessions = await db.getWardriveSessions();
     final completed = sessions.where((s) => s.endedAt != null).toList();
     if (completed.isEmpty) return;
+    if (!context.mounted) return;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -3580,6 +3464,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
     final wd = ref.read(wardriveProvider);
     final file = await wd.getCsvFile(sid);
     if (file != null) {
+      if (!context.mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       final origin = box != null
           ? box.localToGlobal(Offset.zero) & box.size
@@ -3664,7 +3549,6 @@ Future<bool> _confirmWigleUpload(BuildContext context) async {
 
 class _SessionRow extends ConsumerWidget {
   const _SessionRow({
-    super.key,
     required this.session,
     required this.onTap,
     required this.onShare,
@@ -4244,144 +4128,6 @@ class _NodeStatsOverlay extends ConsumerWidget {
   }
 }
 
-class _NodeRow extends StatelessWidget {
-  const _NodeRow({
-    required this.name,
-    required this.count,
-    required this.isSelf,
-    required this.t,
-  });
-  final String name;
-  final int count;
-  final bool isSelf;
-  final ResolvedTheme t;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5, height: 5,
-            decoration: BoxDecoration(
-              color: AppTheme.flockBle,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              name,
-              style: TextStyle(
-                color: t.textSecondary,
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$count',
-            style: TextStyle(
-              color: t.textPrimary,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-class _WardriveThemeButton extends StatelessWidget {
-  const _WardriveThemeButton({required this.ref, required this.theme});
-  final WidgetRef ref;
-  final WardriveThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return PopupMenuButton<WardriveTheme>(
-      initialValue: theme.theme,
-      onSelected: (v) => ref.read(wardriveThemeProvider.notifier).setTheme(v),
-      offset: const Offset(0, 40),
-      color: t.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: t.border),
-      ),
-      itemBuilder: (_) => WardriveTheme.values.map((th) {
-        final data = wardriveThemes[th]!;
-        final selected = th == theme.theme;
-        return PopupMenuItem<WardriveTheme>(
-          value: th,
-          height: 44,
-          child: Row(children: [
-            Container(
-              width: 18, height: 18,
-              decoration: BoxDecoration(
-                color: data.accent,
-                shape: BoxShape.circle,
-                boxShadow: [BoxShadow(
-                  color: data.accent.withValues(alpha: 0.5),
-                  blurRadius: 6,
-                )],
-              ),
-              child: Icon(data.icon, size: 11, color: Colors.white),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.label,
-                  style: TextStyle(
-                    color: selected ? data.accent : t.textPrimary,
-                    fontSize: 12,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  data.tagline,
-                  style: TextStyle(
-                    color: t.textDim,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-            if (selected) ...[
-              const SizedBox(width: 8),
-              Icon(Icons.check, size: 14, color: data.accent),
-            ],
-          ]),
-        );
-      }).toList(),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: t.surface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: theme.accent.withValues(alpha: 0.55)),
-          boxShadow: [BoxShadow(
-            color: theme.accent.withValues(alpha: 0.25),
-            blurRadius: 6,
-          )],
-        ),
-        child: Icon(theme.icon, size: 16, color: theme.accent),
-      ),
-    );
-  }
-}
-
 class _CurrentPosMarker extends StatefulWidget {
   const _CurrentPosMarker({required this.theme});
   final WardriveThemeData theme;
@@ -4612,7 +4358,7 @@ class _SynthwaveSkyPainter extends CustomPainter {
 
     // Stars — animated twinkle via phase.
     final starPaint = Paint()..color = Colors.white;
-    final rng = (int seed) => ((seed * 9301 + 49297) % 233280) / 233280.0;
+    double rng(int seed) => ((seed * 9301 + 49297) % 233280) / 233280.0;
     for (var i = 0; i < 60; i++) {
       final sx = rng(i * 7) * size.width;
       final sy = rng(i * 11) * horizonY * 0.7;
@@ -4713,7 +4459,7 @@ class _SpeedLinesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final vp = Offset(size.width / 2, horizonY);
-    final rng = (int seed) => ((seed * 9301 + 49297) % 233280) / 233280.0;
+    double rng(int seed) => ((seed * 9301 + 49297) % 233280) / 233280.0;
     const count = 22;
     for (var i = 0; i < count; i++) {
       final t = ((i / count) + phase) % 1.0;
