@@ -42,7 +42,7 @@ OUI-SPY APEX is a fork of the OUI-SPY unified firmware, rebuilt around two ideas
 > [!IMPORTANT]
 > Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked.
 
-- APEX doesn't auto-connect unless you opt in (*Settings → App → Connection*). On launch it drops stale links and waits for you to choose a device. 
+- APEX doesn't auto-connect unless you opt in (*Settings → Config → Connection → Auto-connect on launch*). Off: it drops stale links on launch and waits for you to pick a device. On: it reconnects straight to your last board by saved ID — no rescan. Either way, it re-links automatically after you walk out of BLE range and back.
 
 ---
 
@@ -106,6 +106,9 @@ Packet capture with no SD card — frames stream over BLE and the app writes a `
 - **BLE LL** — adverts and scan request/response with synthesized link-layer headers.
 - **Auto-PCAP** — when a detection engine fires, the board automatically captures for 3–120 s (with a cooldown and a per-MAC rediscover window), then goes back to scanning. Each capture is auto-labeled with the engine and MAC that triggered it.
 
+### Offline Scan (experimental)
+*Settings → Config → Hardware → Offline Scan.* Turn on **Keep scanning while disconnected** and the board keeps its detection engines running after you close the app or walk out of BLE range, buffering matching hits to on-board flash (a deep buffer on PSRAM boards, a smaller one on the manager). Reconnect and the buffered hits import automatically — the status bar shows **SYNC** and a banner reports how many detections arrived while you were away. A sub-toggle — **Tag away detections with last GPS** — stamps those hits with your phone's last-known position, flagged as approximate. WiGLE wardriving can't buffer offline, so its target chip is dropped automatically while this is on. Off by default.
+
 ### Over-the-Air Updates
 *Settings → Updates → Check for Update.* Update over **WiFi** (fast — give credentials once) or **BLE** (works anywhere, slower). No cables after the first flash. In node mode, each live node updates the same way, one at a time.
 
@@ -128,7 +131,7 @@ Flash one board as a **manager** (`mgr-xiao_s3` recommended — its PSRAM keeps 
 - On a WiGLE wardrive **START**, a popup lets you set each node to **WiFi / BLE / Both**.
 - **PCAP** captures from a single node you select.
 
-Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio) push to every node and **override** their local copies — one place drives the whole swarm. Turning an engine off or closing the app stops the nodes; nothing scans unattended.
+Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio) push to every node and **override** their local copies — one place drives the whole swarm. Turning an engine off or closing the app stops the nodes — unless you enable **Offline Scan**, which lets each board keep scanning and buffer hits until you reconnect.
 
 ---
 
