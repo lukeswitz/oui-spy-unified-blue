@@ -4,19 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/debug_log.dart';
 
-/// iOS Live Activity / Dynamic Island integration.
-///
-/// Shows a compact live indicator in the Dynamic Island (iPhone 14 Pro+)
-/// or Lock Screen Live Activity on older devices.
-///
-/// Engine priority for primary icon (highest wins):
-///   wardrive > foxhunter > flockBle/flockWifi > skySpy > detector > uniPwn
-///
-/// Combined counts from ALL active engines shown in expanded view regardless
-/// of which engine is primary for the icon.
-///
-/// Requires iOS 16.1+ Widget Extension target (OuiSpyLiveActivity).
-/// Falls back gracefully to no-op on unsupported platforms.
 class LiveActivityService {
   LiveActivityService();
 
@@ -48,12 +35,6 @@ class LiveActivityService {
     }
   }
 
-  /// Start or update the Live Activity with combined engine state.
-  ///
-  /// [primaryMode] is the engine that gets the icon/label (determined by
-  /// priority: wardrive > foxhunter > flock > skySpy > detector > uniPwn).
-  ///
-  /// All count fields represent the combined totals across ALL active engines.
   Future<void> update({
     required String primaryMode,
     String activeLabel = '',
@@ -132,8 +113,6 @@ class LiveActivityService {
     }
   }
 
-  /// End every Live Activity of our type (including any stale ones from
-  /// prior runs the Dart side doesn't know about). Safe to call any time.
   Future<void> endAll() async {
     if (!Platform.isIOS) return;
     try {
@@ -148,16 +127,6 @@ class LiveActivityService {
     }
   }
 
-  /// Determine primary display mode from set of active engines.
-  ///
-  /// Combinations collapse to dedicated modes so the title reflects every
-  /// active radio path:
-  ///   wardrive + flock*       → wardriveFlock (WIGLE+FLOCK)
-  ///   flockBle + flockWifi    → flockDual     (FLOCK WiFi+BLE)
-  ///
-  /// Priority for singletons:
-  ///   foxhunter(with target) > wardriveFlock > wardrive > flockDual >
-  ///   flockBle > flockWifi > skySpy > detector > uniPwn
   static String resolvePrimaryMode(Set<String> activeEngines, {String? foxhuntTarget}) {
     final hasWardrive = activeEngines.contains('wardrive');
     final hasFlockBle = activeEngines.contains('flockBle');

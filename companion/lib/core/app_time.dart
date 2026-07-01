@@ -2,12 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Display-time formatting that honors the user's 12h/24h preference.
-///
-/// [use24Hour] is a synchronously-readable mirror of the persisted pref so
-/// plain (non-Consumer) widgets can format without threading a ref through.
-/// Live list screens rebuild frequently, so a toggle change is reflected on
-/// the next rebuild.
 class AppTime {
   static bool use24Hour = false;
 

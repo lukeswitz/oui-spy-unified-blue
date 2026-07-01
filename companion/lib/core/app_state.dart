@@ -225,8 +225,6 @@ class AppState extends ChangeNotifier {
   bool isManagerNode(String id) =>
       _meshManagerNodeIds.contains(canonicalNodeId(id));
 
-  /// Firmware version a node last reported over mesh heartbeat, as "maj.min.pat"
-  /// (e.g. "0.4.7"), or null if not yet heard.
   String? nodeFwVersion(String id) {
     final v = _nodeFwVersion[canonicalNodeId(id)];
     if (v == null || v == 0) return null;
@@ -248,10 +246,6 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Push the whole per-node radio map to the firmware. The manager applies
-  /// each node's radio while slicing channels (manager mode); in solo a single
-  /// node uses the global wardrive radio (set by the caller). Pushing the map
-  /// to a solo node is a harmless no-op.
   Future<void> _pushNodeRadioRoles() async {
     try {
       await _ble.setNodeRadioRoles(_nodeWardriveRadio);
@@ -269,8 +263,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Bulk-set per-node radio roles (from the wardrive-start popup), persist,
-  /// and push once to the firmware.
   Future<void> applyNodeRadioRoles(Map<String, int> roles) async {
     roles.forEach((id, mask) {
       final canon = canonicalNodeId(id);
@@ -496,8 +488,6 @@ class AppState extends ChangeNotifier {
       _upsertDetection(det);
       _recordDroneTrack(det);
 
-      // Fire notification only for first-seen MACs per engine, and never
-      // inside an exclusion geofence (no alert route while in the zone).
       if (isNewMac &&
           !_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
         _notificationService.onDetection(det);
@@ -663,10 +653,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remove every feed entry belonging to the same logical detection as [d].
-  /// Drones broadcast on multiple MACs under one UAS-ID, so deleting a single
-  /// row left the group intact; this removes all members (by UAS-ID for
-  /// Remote-ID, else by MAC) plus their tracks and unique-count membership.
   void removeDetectionGroup(Detection d) {
     final uav = d.odid?.uavId;
     final byUav = uav != null && uav.isNotEmpty;
@@ -770,9 +756,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Stable key for a drone's flight track. Remote-ID drones rotate their MAC
-  /// per advert, so keying tracks by MAC yields one point per key (no path).
-  /// Key by UAS-ID when present so successive positions accumulate.
   static String droneTrackKey(Detection d) {
     final id = d.odid?.uavId;
     return (id != null && id.isNotEmpty) ? id : d.macAddress;

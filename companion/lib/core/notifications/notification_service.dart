@@ -19,14 +19,6 @@ class NotifChannel {
   static const wardrive = 'wardrive_status';
 }
 
-/// Manages local notifications for detection events.
-///
-/// Intelligent alerting:
-/// - Per-engine enable/disable
-/// - Per-MAC cooldown to avoid spam (configurable)
-/// - Grouped notifications per engine type
-/// - Sound/vibration preferences
-/// - Automatic throttling under high detection rates
 class NotificationService extends ChangeNotifier {
   NotificationService() {
     _loadPrefs();
@@ -66,8 +58,6 @@ class NotificationService extends ChangeNotifier {
   // Rate limiter: timestamps of recent notifications
   final List<DateTime> _recentNotifications = [];
 
-  /// Initialize the notification plugin and request permissions.
-  /// Safe to call multiple times — re-checks permission every call.
   Future<void> init() async {
     if (!_initialized) {
       const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -96,11 +86,6 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-query OS for current permission state. Called by RETRY button after
-  /// user toggles permission in system settings. iOS/macOS: calling
-  /// requestPermissions after the first prompt returns the current grant state
-  /// without re-prompting. Android 13+: checkPermission if available, fall
-  /// back to request.
   Future<void> _refreshPermission() async {
     if (Platform.isIOS) {
       final ios = _plugin.resolvePlatformSpecificImplementation<

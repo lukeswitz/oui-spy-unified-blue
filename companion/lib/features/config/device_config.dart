@@ -4298,9 +4298,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await prefs.setString(_nodeBoardPrefKey, v);
   }
 
-  /// When the user has opted into auto-connect, enable WiFi STA on the manager
-  /// before a WiFi OTA so it joins the saved network for the download (and
-  /// rejoins after the reboot). No-op without saved credentials.
   Future<void> _ensureWifiForUpdate() async {
     return;
   }
@@ -4505,11 +4502,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await ota.performWifiUpdate(release);
   }
 
-  /// Fleet WiFi update: the manager broadcasts its saved WiFi creds + the node
-  /// firmware URL to every node over mesh. Each node saves the creds, reboots
-  /// into WiFi-OTA mode, joins the network, downloads + flashes itself, then
-  /// rejoins the mesh. The phone stays on the manager (BLE) the whole time.
-  /// Nodes go offline from the mesh while they self-update.
   Future<bool> _pushWifiFleet(_FleetItem nodesItem) async {
     final ble = ref.read(bleManagerProvider);
     final nodeRelease = _nodeRelease;
@@ -4642,8 +4634,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     try {
       if (hasNodes) {
         await _pushWifiFleet(fleet.first);
-        // Let the manager finish broadcasting creds+URL to the nodes before it
-        // reboots into its own WiFi update below (the push runs ~3.5s on-device).
         await Future<void>.delayed(const Duration(seconds: 6));
       }
 

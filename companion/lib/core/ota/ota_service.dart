@@ -8,14 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 
-/// GitHub release fetcher + chunked DFU writer for OUI-SPY firmware.
-///
-/// Wire protocol matches firmware src/ota_handler.cpp:
-///   START:  opcode(0x01)[1] + total_length[4] + crc32[4]   = 9 bytes
-///   DATA:   opcode(0x02)[1] + seq_num[2] + payload[N]      = 3+N bytes
-///   COMMIT: opcode(0x03)[1]                                = 1 byte
-///   ABORT:  opcode(0x04)[1]                                = 1 byte
-///   ACK:    opcode(0x05)[1] + seq_num[2] + status[1]       = 4 bytes (notify)
 class OtaRelease {
   OtaRelease({
     required this.tag,
@@ -81,10 +73,6 @@ class OtaService {
   bool _running = false;
   bool get isRunning => _running;
 
-  /// True while an OTA is mid-flight INCLUDING the device's reboot/reconnect
-  /// window. The UI watches this so a firmware-update BLE drop shows the
-  /// progress stepper ("rebooting → reconnecting") instead of the global
-  /// "no node connected" screen. Auto-clears after a TTL as a safety net.
   final ValueNotifier<bool> otaActive = ValueNotifier<bool>(false);
   Timer? _activeTimer;
 
@@ -99,9 +87,6 @@ class OtaService {
     otaActive.value = false;
   }
 
-  /// Parse N-part dotted version: "v0.0.3.8.1" → [0,0,3,8,1].
-  /// Strips leading "v", accepts any number of components.
-  /// Returns null on parse failure.
   static List<int>? parseVersion(String v) {
     final cleaned = v.trim().toLowerCase().replaceFirst(RegExp(r'^v'), '');
     if (cleaned.isEmpty) return null;
@@ -116,9 +101,6 @@ class OtaService {
     return out.isEmpty ? null : out;
   }
 
-  /// Returns >0 if a > b, <0 if a < b, 0 if equal.
-  /// Compares component-wise; missing trailing components treated as 0
-  /// (so [0,0,3,8] == [0,0,3,8,0]).
   static int compareVersion(List<int> a, List<int> b) {
     final n = a.length > b.length ? a.length : b.length;
     for (int i = 0; i < n; i++) {
@@ -129,11 +111,6 @@ class OtaService {
     return 0;
   }
 
-  /// Pick best asset matching board+role, falling back to generic.
-  /// Asset naming convention:
-  ///   oui-spy-{role}-{board}-v{ver}.bin   (e.g. oui-spy-mgr-wroom-v0.4.0.bin)
-  ///   oui-spy-{board}-v{ver}.bin          (board-only, role-agnostic)
-  ///   oui-spy-v{ver}.bin                  (legacy single-asset)
   static int _scoreAsset(String name, String board, String role) {
     final n = name.toLowerCase();
     if (!n.endsWith('.bin')) return -1;
@@ -234,11 +211,6 @@ class OtaService {
     return _releaseFromJson(data, board, role);
   }
 
-  /// One GitHub round-trip that resolves BOTH the connected device's asset
-  /// (board/role) and the node asset (xiao_s3/node) from the same release —
-  /// avoids a second redundant request (and second timeout/rate-limit risk)
-  /// when a manager + nodes are connected. Catches network errors internally
-  /// and returns them in `error` so the caller can show one status line.
   Future<({OtaRelease? primary, OtaRelease? node, String? error})> fetchLatestPair({
     String board = '',
     String role = '',
@@ -278,8 +250,6 @@ class OtaService {
     return (primary: primary, node: node, error: null);
   }
 
-  /// Compares latest GitHub release version to current firmware.
-  /// Returns null if up to date, the release if newer is available.
   Future<OtaRelease?> checkForUpdate(String currentVersion, {String board = '', String role = ''}) async {
     _progress.add(const OtaProgress(
       phase: OtaPhase.checking,
@@ -369,13 +339,6 @@ class OtaService {
     }
   }
 
-  /// Trigger device-side WiFi OTA. Device persists URL+flag to NVS,
-  /// reboots into WiFi-OTA mode (BLE skipped), downloads via HTTPS,
-  /// reboots into the new image. Total time ~15-30s depending on WiFi.
-  ///
-  /// Device is offline from BLE for the entire operation. UI must show
-  /// the disconnection as expected. App's reconnect loop catches device
-  /// when it comes back.
   Future<bool> performWifiUpdate(OtaRelease release) async {
     if (_running) return false;
     _running = true;
@@ -433,8 +396,6 @@ class OtaService {
       return false;
     }
 
-    // ESP32 app image magic byte = 0xE9. Reject anything else BEFORE sending
-    // — saves a round-trip and prevents writing garbage to flash.
     if (image.isEmpty || image[0] != 0xE9) {
       final got = image.isEmpty ? 'empty' : '0x${image[0].toRadixString(16)}';
       DebugLog.log('OTA: bad magic byte: $got (expected 0xE9)');
@@ -477,8 +438,6 @@ class OtaService {
       final mtu = _ble.mtu;
       final chunkSize = (mtu - 3).clamp(20, 244);
 
-      // START: write WITH response so we know firmware accepted the session
-      // before streaming chunks.
       final start = ByteData(9);
       start.setUint8(0, 0x01);
       start.setUint32(1, image.length, Endian.little);
@@ -490,12 +449,6 @@ class OtaService {
       ));
       await dfuData.write(start.buffer.asUint8List(), withoutResponse: false);
 
-      // DATA: write WITHOUT response. Drops L2CAP ACK roundtrip — ~5-10x
-      // faster. flutter_blue_plus internally awaits Core Bluetooth's
-      // canSendWriteWithoutResponse on iOS so we don't overflow the queue.
-      // Every 128 chunks, send one WRITE-with-response as a sync barrier
-      // so firmware can apply backpressure (if RX buffer fills, that write
-      // blocks until processed).
       final stopwatch = Stopwatch()..start();
       int offset = 0;
       int seq = 0;

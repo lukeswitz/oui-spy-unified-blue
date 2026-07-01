@@ -514,8 +514,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       _fittedSessionId = null;
     }
 
-    // Idle (no active session, no loaded session): center once on first GPS fix
-    // so the self-dot and live detections are visible without a wardrive run.
     if (!wd.isActive &&
         loadedId == null &&
         !_idleCenteredDone &&
@@ -1406,10 +1404,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   static double _metersPerPixel(double lat, double zoom) =>
       156543.03392 * cos(lat * pi / 180) / pow(2, zoom);
 
-  /// Wigle-style density ramp keyed off cluster network count.
-  /// Sparse clusters render cold (blue/cyan/green), dense clusters hot
-  /// (yellow/orange/red/magenta). Percentile-anchored so the gradient adapts
-  /// to whatever range the current session actually spans.
   static const List<Color> _densityStops = [
     Color(0xFF3B82F6), // blue     — singletons / very sparse
     Color(0xFF06B6D4), // cyan
@@ -5130,9 +5124,6 @@ class _CaptureFlashPainter extends CustomPainter {
       old.phase != phase || old.color != color;
 }
 
-/// A wardrive target counts as running if any engine behind it is enabled on
-/// the device — so engines turned on from the home screen show as active chips
-/// on the wardrive screen too, not only ones started via wardrive's own picker.
 bool _targetEngineRunning(AppState app, WardriveTarget m) {
   bool on(Engine e) => app.getEngineState(e) != EngineState.disabled;
   return switch (m) {

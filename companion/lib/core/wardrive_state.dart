@@ -100,10 +100,6 @@ Set<WardriveTarget> targetsFromEngineMask(int mask) {
   return targets;
 }
 
-/// Targets after reconciling to the node: flock/drone/detector come from the
-/// firmware [mask]; wigle is user-controlled (never in the mask) so it is
-/// preserved from [current] — EXCEPT under keep-running, where wigle cannot run
-/// (the node drops it) so it is always deselected.
 Set<WardriveTarget> reconciledTargets(
     int mask, Set<WardriveTarget> current, bool keepRunning) {
   final t = targetsFromEngineMask(mask);
@@ -128,9 +124,6 @@ class WardriveController extends ChangeNotifier {
     _prefsLoaded = _loadPrefs();
   }
 
-  /// Completes when [_loadPrefs] has restored [selectedTargets] from disk.
-  /// [_adoptFirmwareState] awaits this so a fast BLE reconnect can't strip
-  /// wigle before saved targets are loaded (which would re-add it).
   Future<void>? _prefsLoaded;
 
   Future<void> _loadPrefs() async {
@@ -204,13 +197,8 @@ class WardriveController extends ChangeNotifier {
   bool _spoolDone = false;
   bool _spoolConfirmed = false;
 
-  /// Imperial-units flag mirrored from [unitSystemProvider]. Used by
-  /// [_updateLiveActivity] so the iOS Live Activity matches the in-app setting.
   bool isImperial = false;
 
-  /// When on, while-away detections (spool import + node-relayed away-live) that
-  /// arrive with no GPS are tagged with the phone's last-known position and
-  /// flagged approximate. Gated by the Offline Scan sub-toggle.
   bool offlineGpsTag = false;
 
   WardriveState state = WardriveState.idle;
@@ -273,8 +261,6 @@ class WardriveController extends ChangeNotifier {
   int get channelEnd => _channelEnd;
   set channelEnd(int v) { _channelEnd = v.clamp(_channelStart, 14); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
-  /// Byte payload firmware `wardriveConfig()` parses (radio + WiFi dwell +
-  /// BLE duty + channel range).
   Uint8List get _wardriveConfigPayload => Uint8List.fromList([
         radioBitmask,
         wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
@@ -285,8 +271,6 @@ class WardriveController extends ChangeNotifier {
         channelEnd,
       ]);
 
-  /// Push scan-timing changes to a wardrive engine that is already running so
-  /// mid-session edits take effect without a stop/restart.
   void _pushWardriveConfigLive() {
     if (!isActive) return;
     if (!activeEngines.contains(Engine.wardrive)) return;
@@ -340,8 +324,6 @@ class WardriveController extends ChangeNotifier {
   String? foxhuntTarget;
   String sessionId = '';
 
-  /// Pending zoom target set from other screens (e.g. feed tap).
-  /// Consumed once by the wardrive map, then cleared.
   LatLng? pendingZoomTarget;
 
   /// Request the wardrive map to zoom to a specific location.
@@ -372,9 +354,6 @@ class WardriveController extends ChangeNotifier {
   List<Detection>? _cachedDetectorDetections;
   final List<LatLng> routePoints = [];
   double distanceKm = 0;
-  /// Median coord of the active/loaded session. Used to reject GPS outliers
-  /// (e.g. a fix that lands in Antarctica when the rest of the session is in
-  /// California). Null when no plausible coords have been seen yet.
   LatLng? sessionCenter;
   double _sessionOutlierKm = 200.0;
   GpsPosition? lastGpsForDistance;
@@ -463,16 +442,6 @@ class WardriveController extends ChangeNotifier {
     _savePrefs();
   }
 
-  /// Wardrive-screen chip tap. [liveTargets] is the set of targets whose engines
-  /// are actually scanning in firmware right now (derived from live engine
-  /// state, the same source the home screen uses).
-  ///
-  /// When nothing is scanning this is a pending pre-run selection (START
-  /// launches the session). When firmware IS scanning — an active session or a
-  /// keep-running session adopted while the phone was away — the tap controls
-  /// the live engine and adopts a running session so counts/logging attach,
-  /// mirroring the home-screen engine cards. This is what lets the user turn
-  /// WIGLE on after returning in keep-running mode.
   Future<void> onChipTap(WardriveTarget t, Set<WardriveTarget> liveTargets) async {
     if (!isActive && liveTargets.isEmpty) {
       toggleTarget(t);
@@ -494,10 +463,6 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  /// Enable a target's engine(s) on a running session (chip checked while
-  /// firmware is scanning, e.g. turning WIGLE on after returning in keep-running
-  /// mode). Firmware then reports the engine active and the chip + home screen
-  /// light up from live engine state.
   Future<void> _addTargetLive(WardriveTarget t) async {
     selectedTargets.add(t);
     _savePrefs();
@@ -510,8 +475,6 @@ class WardriveController extends ChangeNotifier {
     DebugLog.log('WARDRIVE: added target $t live -> $activeLabel');
   }
 
-  /// Disable a target's engine(s) on a running session, keeping engines still
-  /// needed by other targets. Does not tear the session down — STOP owns that.
   Future<void> _removeTargetLive(WardriveTarget t) async {
     selectedTargets.remove(t);
     final keep = <Engine>{};
@@ -547,11 +510,6 @@ class WardriveController extends ChangeNotifier {
     _savePrefs();
   }
 
-  /// Stop a single engine that the active wardrive session owns (e.g. user
-  /// toggled its card off on the home screen). Drops the owning target(s) and
-  /// disables the engine(s) that only those targets needed; if nothing is left
-  /// to scan, tears down the whole session. Keeps [selectedTargets] intact for
-  /// the next run when the session is stopped.
   Future<void> stopOwnedEngine(Engine e) async {
     if (!isActive) return;
     if (e == Engine.wardrive) {
@@ -594,9 +552,6 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remove every map/session member of the same logical detection as [d]
-  /// (by UAS-ID for Remote-ID drones, else by MAC) from the in-memory overlay
-  /// and from the database, so a deleted drone/device does not reappear.
   Future<void> removeDetectionGroup(Detection d) async {
     final uav = d.odid?.uavId;
     final byUav = uav != null && uav.isNotEmpty;
@@ -815,8 +770,6 @@ class WardriveController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// True when (lat, lon) is inside the loaded session's outlier radius.
-  /// Always true when no session center is known (live capture, empty session).
   bool isWithinSession(double lat, double lon) {
     final c = sessionCenter;
     if (c == null) return true;
@@ -1008,8 +961,6 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  /// Get CSV file for a session. Always regenerates from DB to ensure
-  /// latest WiGLE format. Uses human-readable filename based on session date.
   Future<File?> getCsvFile(String sid) async {
     final dir = await _wardriveDir();
     final filename = await _csvFilename(sid);
@@ -1393,9 +1344,6 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  /// Push combined state to iOS Live Activity / Dynamic Island.
-  /// Resolves primary display mode from active engines + foxhunt target,
-  /// then sends all cross-engine counts so expanded view shows everything.
   void _updateLiveActivity() {
     final engineNames = activeEngines.map((e) => e.name).toSet();
     if (foxhuntTarget != null) engineNames.add('foxhunter');
@@ -1655,9 +1603,6 @@ class WardriveController extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Reject coords that are null, non-finite, exact (0,0), or pole-locked.
-  /// Mirrors the map-render filter in wardrive_screen so the in-memory route
-  /// stays clean too (no polyline darting to Null Island / Antarctica).
   static bool _isPlausibleCoord(double? lat, double? lon) {
     if (lat == null || lon == null) return false;
     if (!lat.isFinite || !lon.isFinite) return false;

@@ -5,8 +5,6 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 
-/// Generate WiGLE-compatible CSV (format 1.6)
-/// Spec: https://api.wigle.net/csvFormat.html
 class WigleCsv {
   const WigleCsv._();
 
@@ -90,8 +88,6 @@ class WigleCsv {
     return buffer.toString();
   }
 
-  /// WiGLE capabilities from firmware auth_mode byte.
-  /// Firmware values: 0=OPEN, 1=WEP, 2=WPA, 3=WPA2, 4=WPA_WPA2, 5=WPA2_ENT, 6=WPA3
   static String _capabilities(Detection d) {
     final isBle = d.isBleDetection;
     if (isBle) return '[LE]';

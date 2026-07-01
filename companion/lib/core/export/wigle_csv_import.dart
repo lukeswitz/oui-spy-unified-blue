@@ -236,8 +236,6 @@ class WigleCsvImport {
     return null;
   }
 
-  /// Map WiGLE AuthMode string back to firmware authMode byte.
-  /// 0=OPEN 1=WEP 2=WPA 3=WPA2 4=WPA_WPA2 5=WPA2_ENT 6=WPA3
   static int _parseAuthMode(String s) {
     final u = s.toUpperCase();
     if (u.contains('WPA3')) return 6;

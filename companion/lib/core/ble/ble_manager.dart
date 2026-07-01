@@ -414,8 +414,6 @@ class BleManager {
 
   Future<void> stopScan() async => FlutterBluePlus.stopScan();
 
-  /// Scan and return the first device whose advertised/platform name matches
-  /// [exactName] (case-insensitive). Null if not seen within [timeout].
   Future<BluetoothDevice?> scanForDeviceNamed(String exactName,
       {Duration timeout = const Duration(seconds: 12)}) async {
     final target = exactName.toUpperCase();
@@ -441,8 +439,6 @@ class BleManager {
     return found;
   }
 
-  /// Connect to [device], mark it primary, and resolve true once the link
-  /// reaches `ready` (or false on disconnect / timeout).
   Future<bool> connectAndReady(BluetoothDevice device,
       {Duration timeout = const Duration(seconds: 25)}) async {
     final completer = Completer<bool>();
@@ -537,9 +533,6 @@ class BleManager {
 
     _currentState = NodeConnectionState.negotiating; _connectionState.add(NodeConnectionState.negotiating);
 
-    // Negotiate MTU. Android: requestMtu works. iOS/macOS: automatic — read
-    // the stream value instead. Falling back to 23 on iOS would cap OTA
-    // payload at 17 bytes/chunk and make firmware uploads take hours.
     try {
       _mtu = await device.requestMtu(512);
       DebugLog.log('BLE: MTU negotiated=$_mtu');
@@ -554,8 +547,6 @@ class BleManager {
       _mtu = 23;
     }
 
-    // Request high connection priority — drops conn interval to ~15ms on
-    // Android, big win for OTA throughput. No-op on iOS (Apple chooses).
     try {
       await device.requestConnectionPriority(
         connectionPriorityRequest: ConnectionPriority.high,
@@ -715,8 +706,6 @@ class BleManager {
       }
     }
 
-    // Subscribe to systemControl notifications: OTA confirm ACKs +
-    // WiFi OTA progress (opcode 0x06).
     if (_systemControl != null) {
       await _systemControl!.setNotifyValue(true);
       _subscriptions.add(
@@ -741,9 +730,6 @@ class BleManager {
       );
     }
 
-    // Confirm previously-flashed OTA image (idempotent — no-op unless image is
-    // PENDING_VERIFY on the firmware side). Successful GATT handshake means
-    // the new image works; cancel rollback.
     if (_systemControl != null) {
       try {
         await _systemControl!.write(
@@ -803,8 +789,6 @@ class BleManager {
     DebugLog.log('BLE: spool clear sent after DB commit');
   }
 
-  /// Push WiFi STA credentials to device. Format:
-  /// [ssid_len][ssid bytes][pass_len][pass bytes]
   Future<void> writeWifiConfig(String ssid, String pass) async {
     if (_wifiConfig == null) {
       throw StateError('WiFi config characteristic not found — firmware too old');
@@ -872,8 +856,6 @@ class BleManager {
     await _ignoreList!.write(bytes, withoutResponse: false);
   }
 
-  /// Push per-node radio roles to the manager. Wire format:
-  /// [count][id:4 ascii][radio:1] per entry (radio 0x01=WiFi,0x02=BLE,0x03=Both).
   Future<void> setNodeRadioRoles(Map<String, int> roles) async {
     if (_nodeRadio == null) return;
     final valid = roles.entries.where((e) => e.key.length == 4).toList();
@@ -948,10 +930,6 @@ class BleManager {
     await _systemControl!.write(payload, withoutResponse: false);
   }
 
-  /// Tell the manager to fleet-update all nodes: it downloads the node image
-  /// once over WiFi, then byte-relays it to every node over ESP-NOW. The phone
-  /// stays connected to the manager throughout; progress arrives via
-  /// [fleetOtaUpdates].
   Future<void> triggerFleetOta(String nodeUrl) async {
     if (_systemControl == null) {
       throw StateError('System control characteristic not found');
@@ -965,12 +943,6 @@ class BleManager {
     await _systemControl!.write(payload, withoutResponse: false);
   }
 
-  /// Fleet WiFi OTA: manager broadcasts its saved WiFi creds + the node firmware
-  /// URL to every node over mesh. Each node saves the creds, reboots into its
-  /// WiFi-OTA boot mode, joins the network, downloads + flashes itself, and
-  /// rejoins the mesh. Phone stays on the manager (BLE). Status arrives on
-  /// [fleetOtaUpdates] (phase 2 = pushed, 0x80 = manager has no WiFi creds,
-  /// 0x81 = creds+url too large for one mesh packet).
   Future<void> triggerFleetWifiOta(String nodeUrl) async {
     if (_systemControl == null) {
       throw StateError('System control characteristic not found');
@@ -1347,9 +1319,6 @@ class BleManager {
     _connectionState.add(NodeConnectionState.disconnected);
   }
 
-  /// Launch-time auto-connect runs a scan before it can call connect(); this
-  /// surfaces a "reconnecting" state during that window so the UI shows a
-  /// searching animation instead of the manual CONNECT button.
   void signalAutoReconnect(bool active) {
     if (_currentState == NodeConnectionState.ready ||
         _currentState == NodeConnectionState.connecting ||
@@ -1404,10 +1373,6 @@ class BleManager {
 
   // -- PCAP --
 
-  /// Start PCAP capture. mode 0 = WiFi radiotap, 1 = BLE LL PHDR.
-  /// channelStart/End used only in WiFi mode (1..14).
-  /// In manager mode, MGR broadcasts to all nodes; PCAPNG returned by MGR
-  /// contains one interface per node (IDB-per-source).
   Future<void> startPcap({
     int mode = 0,
     int channelStart = 1,
@@ -1523,10 +1488,6 @@ class BleManager {
     }
   }
 
-  /// One genuine while-away capture arrived (manager spool flush, or a
-  /// node-relayed spool detection flagged DET_FLAG_AWAY). Accumulate and
-  /// finalize the banner a few seconds after the last one — counts only
-  /// real away captures, never live re-announcements of present devices.
   void _noteAway(Detection detection) {
     _awaySeen++;
     _awayByEngine[detection.engine.name] =

@@ -3,9 +3,6 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
-/// WiGLE API v2 client.
-/// Auth: Basic Auth with API Name (username) + API Token (password).
-/// Docs: https://api.wigle.net
 class WigleApi {
   WigleApi({required String apiName, required String apiToken})
       : _dio = Dio(BaseOptions(

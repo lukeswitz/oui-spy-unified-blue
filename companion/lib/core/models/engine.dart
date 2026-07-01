@@ -84,8 +84,6 @@ int commandedEngineMask(List<EngineState> states) {
 class EngineCompatibility {
   const EngineCompatibility._();
 
-  /// WiFi engines are mutually exclusive — except wardrive+flockWifi which
-  /// coexist via firmware passive mode (flockWifi rides wardrive's sniffer).
   static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive, Engine.pcap};
 
   static bool _wifiCompatible(Engine a, Engine b) {

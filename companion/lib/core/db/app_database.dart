@@ -237,10 +237,6 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.read(mac)!).toList();
   }
 
-  /// Get all flock + detector + drone (Sky Spy / Remote ID) detections across
-  /// all sessions, ordered by timestamp descending. Deduped to latest per
-  /// MAC+engine, except drones which dedupe by UAS-ID when present (their MAC
-  /// rotates per advert, so MAC keying would yield one row per advert).
   Future<List<Map<String, dynamic>>> getFlockDetectorDetections() async {
     final rows = await (select(detections)
           ..where((d) => d.engine.isIn([
@@ -279,9 +275,6 @@ class AppDatabase extends _$AppDatabase {
       } else {
         (existing['memberMacs'] as Set<String>).add(r.macAddress);
         if (method.isNotEmpty) (existing['transports'] as Set<String>).add(method);
-        // Latest row is the representative (rows are time-desc), but a single
-        // drone's positions ride on its NAN/Beacon adverts — fill GPS from an
-        // earlier member if the representative advert carried none.
         if (isDrone && existing['latitude'] == null && r.latitude != null) {
           existing['latitude'] = r.latitude;
           existing['longitude'] = r.longitude;
@@ -303,8 +296,6 @@ class AppDatabase extends _$AppDatabase {
         ..where((d) => d.engine.isIn(['flockBle', 'flockWifi', 'detector', 'skySpy'])))
       .go();
 
-  /// Delete all detections in [sessionId] whose MAC is in [macs]. Used to drop
-  /// a whole logical detection (all MACs of one drone/device) at once.
   Future<void> deleteDetectionsByMacs(String sessionId, List<String> macs) {
     if (macs.isEmpty) return Future.value();
     return (delete(detections)

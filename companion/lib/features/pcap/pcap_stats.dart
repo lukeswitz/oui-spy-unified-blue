@@ -70,8 +70,6 @@ class PcapStats {
   /// Remaining cooldown in ms. 0 when not in cooldown.
   final int autoCooldownRemainingMs;
 
-  /// Node id that owns the capture. Empty = local (this device).
-  /// Set when banner reflects a mesh-relayed auto-pcap from another node.
   final String sourceNodeId;
 
   PcapMode get modeEnum => mode == 1 ? PcapMode.ble : PcapMode.wifi;
