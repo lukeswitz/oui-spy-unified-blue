@@ -100,6 +100,19 @@ Set<WardriveTarget> targetsFromEngineMask(int mask) {
   return targets;
 }
 
+/// Targets after reconciling to the node: flock/drone/detector come from the
+/// firmware [mask]; wigle is user-controlled (never in the mask) so it is
+/// preserved from [current] — EXCEPT under keep-running, where wigle cannot run
+/// (the node drops it) so it is always deselected.
+Set<WardriveTarget> reconciledTargets(
+    int mask, Set<WardriveTarget> current, bool keepRunning) {
+  final t = targetsFromEngineMask(mask);
+  if (current.contains(WardriveTarget.wigle) && !keepRunning) {
+    t.add(WardriveTarget.wigle);
+  }
+  return t;
+}
+
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
@@ -120,19 +133,33 @@ class WardriveController extends ChangeNotifier {
     offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false;
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
-    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 250;
-    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 110;
+    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
+    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
     _channelEnd = p.getInt('wd_channelEnd') ?? 11;
     radio = radioFromMask(p.getInt('wd_radio') ?? 0x03);
-    if (!(p.getBool('wd_dwellFastReset_v2') ?? false)) {
-      _wifiScanInterval = 250;
-      _wifiDwellPerCh = 110;
+    final savedTargets = p.getStringList('wd_targets');
+    if (savedTargets != null) {
+      selectedTargets
+        ..clear()
+        ..addAll(savedTargets
+            .map((n) => WardriveTarget.values
+                .where((t) => t.name == n)
+                .cast<WardriveTarget?>()
+                .firstWhere((t) => t != null, orElse: () => null))
+            .whereType<WardriveTarget>());
+      if ((p.getBool('offlineScanEnabled') ?? false)) {
+        selectedTargets.remove(WardriveTarget.wigle);
+      }
+    }
+    if (!(p.getBool('wd_dwellMaxNets_v4') ?? false)) {
+      _wifiScanInterval = 350;
+      _wifiDwellPerCh = 150;
       await p.setInt('wd_wifiScanInterval', _wifiScanInterval);
       await p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
-      await p.setBool('wd_dwellFastReset_v2', true);
+      await p.setBool('wd_dwellMaxNets_v4', true);
     }
     notifyListeners();
   }
@@ -148,6 +175,7 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_channelStart', _channelStart);
     p.setInt('wd_channelEnd', _channelEnd);
     p.setInt('wd_radio', radioBitmask);
+    p.setStringList('wd_targets', selectedTargets.map((t) => t.name).toList());
   }
 
   /// Map a radio mask (0x01/0x02/0x03) to the [WardriveRadio] enum.
@@ -184,6 +212,7 @@ class WardriveController extends ChangeNotifier {
   bool offlineGpsTag = false;
 
   WardriveState state = WardriveState.idle;
+  bool _userStopped = false;
   final Set<WardriveTarget> selectedTargets = {};
   static const List<WardriveTarget> selectableTargets = [
     WardriveTarget.flock,
@@ -192,6 +221,7 @@ class WardriveController extends ChangeNotifier {
     WardriveTarget.detector,
   ];
   bool isTargetSelected(WardriveTarget t) => selectedTargets.contains(t);
+  bool get keepRunningEnabled => _ble.offlineScanEnabled;
   WardriveTarget get primaryTarget {
     for (final t in selectableTargets) {
       if (selectedTargets.contains(t)) return t;
@@ -217,11 +247,11 @@ class WardriveController extends ChangeNotifier {
   int get bleRssiRelogDb => _bleRssiRelogDb;
   set bleRssiRelogDb(int v) { _bleRssiRelogDb = v; notifyListeners(); _savePrefs(); }
 
-  int _wifiScanInterval = 250;
+  int _wifiScanInterval = 350;
   int get wifiScanInterval => _wifiScanInterval;
   set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
-  int _wifiDwellPerCh = 110;
+  int _wifiDwellPerCh = 150;
   int get wifiDwellPerCh => _wifiDwellPerCh;
   set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
@@ -423,11 +453,12 @@ class WardriveController extends ChangeNotifier {
   void toggleTarget(WardriveTarget t) {
     if (isActive) return;
     if (selectedTargets.contains(t)) {
-      if (selectedTargets.length > 1) selectedTargets.remove(t);
+      selectedTargets.remove(t);
     } else {
       selectedTargets.add(t);
     }
     notifyListeners();
+    _savePrefs();
   }
 
   void setTarget(WardriveTarget t) {
@@ -436,6 +467,7 @@ class WardriveController extends ChangeNotifier {
       ..clear()
       ..add(t);
     notifyListeners();
+    _savePrefs();
   }
 
   void setRadio(WardriveRadio r) {
@@ -533,6 +565,10 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> startSession() async {
+    if (selectedTargets.isEmpty) {
+      DebugLog.log('WARDRIVE: start ignored — no targets selected');
+      return;
+    }
     final gpsOk = await _gps.start();
     if (!gpsOk) {
       DebugLog.log('WARDRIVE: GPS failed to start — check permissions/services');
@@ -572,6 +608,7 @@ class WardriveController extends ChangeNotifier {
     ));
 
     state = WardriveState.running;
+    _userStopped = false;
 
     _detSub = _ble.detections.listen(_onDetection);
     _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
@@ -595,6 +632,7 @@ class WardriveController extends ChangeNotifier {
 
   Future<void> stopSession() async {
     state = WardriveState.idle;
+    _userStopped = true;
     notifyListeners();
 
     _detSub?.cancel();
@@ -975,6 +1013,7 @@ class WardriveController extends ChangeNotifier {
   void resumeSession() {
     state = WardriveState.running;
     notifyListeners();
+    _reEnableEngines();
   }
 
   /// Toggle flock display filter (does NOT control engines).
@@ -1022,6 +1061,33 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> _adoptFirmwareState() async {
+    if (_ble.offlineScanEnabled) {
+      if (selectedTargets.remove(WardriveTarget.wigle)) {
+        DebugLog.log('WARDRIVE: keep-running on — wigle chip deselected (wigle not running)');
+        _savePrefs();
+        notifyListeners();
+      }
+      try {
+        await _ble.disableEngine(Engine.wardrive);
+      } catch (e) {
+        DebugLog.log('WARDRIVE: keep-running wardrive-disable error: $e');
+      }
+    }
+    if (state == WardriveState.paused) return;
+    if (state == WardriveState.running) {
+      if (_ble.offlineScanEnabled) {
+        await _reconcileTargetsToFirmware();
+      } else {
+        _reEnableEngines();
+      }
+      return;
+    }
+
+    if (!_ble.offlineScanEnabled || _userStopped) {
+      await _disableStaleEngines();
+      return;
+    }
+
     var mask = await _ble.readCommandedEngineMask();
     for (var i = 0; mask < 0 && i < 3; i++) {
       await Future.delayed(const Duration(milliseconds: 300));
@@ -1029,43 +1095,75 @@ class WardriveController extends ChangeNotifier {
     }
     if (mask < 0) return;
 
-    final restore = state != WardriveState.running;
-    final wigleAlive = (mask & Engine.wardrive.bitmask) != 0;
-    if (restore) {
-      selectedTargets.remove(WardriveTarget.wigle);
-      if (wigleAlive) {
-        try {
-          await _ble.disableEngine(Engine.wardrive);
-        } catch (e) {
-          DebugLog.log('WARDRIVE: adopt disable wardrive error: $e');
-        }
-      }
-    }
-
     const klass = [
       Engine.flockWifi,
       Engine.flockBle,
       Engine.skySpy,
       Engine.detector,
     ];
-    final running = klass.any((e) => (mask & e.bitmask) != 0);
-    if (!running) {
-      if (state == WardriveState.running) {
-        state = WardriveState.idle;
-        notifyListeners();
-      } else if (restore) {
-        notifyListeners();
-      }
-      DebugLog.log('WARDRIVE: firmware reports no keep-alive engines — staying idle');
+    if (!klass.any((e) => (mask & e.bitmask) != 0)) {
+      DebugLog.log('WARDRIVE: firmware idle — nothing to adopt');
       return;
     }
+    final adopted =
+        reconciledTargets(mask, selectedTargets, _ble.offlineScanEnabled);
     selectedTargets
       ..clear()
-      ..addAll(targetsFromEngineMask(mask));
+      ..addAll(adopted);
     await _ensureLoggingAttached();
     state = WardriveState.running;
     notifyListeners();
     DebugLog.log('WARDRIVE: adopted firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
+  }
+
+  Future<void> _reconcileTargetsToFirmware() async {
+    var mask = await _ble.readCommandedEngineMask();
+    for (var i = 0; mask < 0 && i < 3; i++) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      mask = await _ble.readCommandedEngineMask();
+    }
+    if (mask < 0) return;
+    final t =
+        reconciledTargets(mask, selectedTargets, _ble.offlineScanEnabled);
+    if (t.isEmpty) return;
+    if (t.length == selectedTargets.length && selectedTargets.containsAll(t)) {
+      return;
+    }
+    selectedTargets
+      ..clear()
+      ..addAll(t);
+    _savePrefs();
+    notifyListeners();
+    DebugLog.log('WARDRIVE: reconciled targets to firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
+  }
+
+  Future<void> _disableStaleEngines() async {
+    const stale = [
+      Engine.wardrive,
+      Engine.flockWifi,
+      Engine.flockBle,
+      Engine.skySpy,
+      Engine.detector,
+      Engine.foxhunter,
+    ];
+    for (final e in stale) {
+      try {
+        await _ble.disableEngine(e);
+      } catch (err) {
+        DebugLog.log('WARDRIVE: stale-disable $e error: $err');
+      }
+    }
+    DebugLog.log('WARDRIVE: idle — disabled stale node engines to match UI');
+  }
+
+  void _reEnableEngines() {
+    DebugLog.log('WARDRIVE: re-enabling engines after reconnect');
+    _enableEnginesSequentially(activeEngines).then((_) {
+      if (foxhuntTarget != null) {
+        _ble.enableEngine(Engine.foxhunter);
+        _ble.setFoxhunterTarget(foxhuntTarget!);
+      }
+    });
   }
 
   Future<void> _ensureLoggingAttached() async {
@@ -1085,7 +1183,7 @@ class WardriveController extends ChangeNotifier {
   Future<String> _resolveSpoolSessionId() async {
     if (sessionId.isNotEmpty) return sessionId;
     final rows = await _db.getWardriveSessions();
-    if (rows.isNotEmpty) return rows.first.id;
+    if (rows.isNotEmpty && rows.first.endedAt == null) return rows.first.id;
     final newId = const Uuid().v4();
     await _db.insertSession(SessionsCompanion(
       id: drift.Value(newId),
