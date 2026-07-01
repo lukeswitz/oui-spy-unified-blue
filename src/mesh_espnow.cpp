@@ -1225,6 +1225,15 @@ bool meshTimeSlicingActive(void) {
     return meshCurrentConfig.enabled && meshManagerJoined() && meshNodeHopsWifi();
 }
 
+static bool meshIsStandalone(void) {
+    if (meshManagerJoined()) return false;
+    MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+    size_t n = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
+    for (size_t i = 0; i < n; i++)
+        if (ln[i].role != MESH_ROLE_MANAGER) return false;
+    return true;
+}
+
 #if defined(OUISPY_AUTOPCAP_SELFTEST) || defined(OUISPY_WATCHDOG_SELFTEST)
 void meshDebugForceManager(void) {
     recordLiveNode("MGRX", MESH_ROLE_MANAGER, 0);
@@ -1237,6 +1246,10 @@ static void meshSchedTaskFn(void* arg) {
     for (;;) {
         g_meshWindow = false;
         g_ridWindow = false;
+        if (meshIsStandalone()) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
         bool ridScan = false;
         if (meshSkyspyOwnsChannel() && txMutex &&
             xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE) {

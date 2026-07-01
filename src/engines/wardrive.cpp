@@ -31,7 +31,7 @@ static uint8_t channelStart = 1;
 static uint8_t channelEnd   = 11;
 static unsigned long lastChannelHop = 0;
 
-static uint16_t priorityDwellMs = 250;
+static uint16_t priorityDwellMs = 350;
 static uint16_t normalDwellMs   = 150;
 
 static uint8_t  hopSchedule[32];
@@ -524,7 +524,7 @@ static void wardriveStart(void) {
         };
         esp_wifi_set_promiscuous_ctrl_filter(&ctrl_filter);
 
-        esp_wifi_set_ps(WIFI_PS_NONE);
+        wifiSnifferApplyPs();
         wifiCoexRegister(wardriveWifiCb,
                          WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
         esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
@@ -586,7 +586,24 @@ uint32_t wardriveGetHopCount(void) { return g_wdHopCount; }
 uint32_t wardriveGetMeshSkipCount(void) { return g_wdMeshSkip; }
 
 static void wardriveLoop(void) {
-    if (meshIsEnabled() && (meshInMeshWindow() || meshInRidWindow())) { g_wdMeshSkip++; return; }
+#ifdef OUISPY_SWEEPLOG
+    {
+        static uint32_t lastDiag = 0;
+        uint32_t nowd = millis();
+        if (nowd - lastDiag >= 2000) {
+            lastDiag = nowd;
+            uint8_t pri = 0;
+            wifi_second_chan_t sec = WIFI_SECOND_CHAN_NONE;
+            esp_wifi_get_channel(&pri, &sec);
+            Serial.printf("[WDDIAG] active=%d radio=0x%02X ch=%u schedLen=%u meshEn=%d meshWin=%d ridWin=%d mgrJoined=%d skip=%lu hops=%lu\n",
+                          wardriveActive ? 1 : 0, wardriveRadio, pri, hopScheduleLen,
+                          meshIsEnabled() ? 1 : 0, meshInMeshWindow() ? 1 : 0,
+                          meshInRidWindow() ? 1 : 0, meshManagerJoined() ? 1 : 0,
+                          (unsigned long)g_wdMeshSkip, (unsigned long)g_wdHopCount);
+        }
+    }
+#endif
+    if (meshManagerJoined() && (meshInMeshWindow() || meshInRidWindow())) { g_wdMeshSkip++; return; }
     if (!wardriveActive) return;
     unsigned long now = millis();
 
@@ -599,14 +616,17 @@ static void wardriveLoop(void) {
         uint16_t maxDwell = currentSlotDwellMs();
         uint16_t minDwell = maxDwell < kAdaptiveMinDwellMs ? maxDwell : kAdaptiveMinDwellMs;
         uint32_t elapsed = now - lastChannelHop;
-#ifdef OUISPY_FIXED_DWELL
-        (void)minDwell;
-        bool due = (elapsed >= maxDwell);
-#else
+#ifdef OUISPY_ADAPTIVE_DWELL
         bool due = (elapsed >= maxDwell) ||
                    (elapsed >= minDwell && (uint32_t)(now - wifiLastNetMs) >= kAdaptiveQuietMs);
+#else
+        (void)minDwell;
+        bool due = (elapsed >= maxDwell);
 #endif
         if (due) {
+#ifdef OUISPY_SWEEPLOG
+            Serial.printf("[HOP] ch=%u dwelt=%lums\n", currentChannel, (unsigned long)elapsed);
+#endif
             g_wdHopCount++;
             hopIdx++;
             if (hopIdx >= hopScheduleLen) hopIdx = 0;
@@ -632,8 +652,16 @@ static void wardriveLoop(void) {
             if (now - lastBleScan >= bleScanIntervalMs && !pWardriveScan->isScanning()) {
                 lastBleScan = now;
                 pWardriveScan->start(0, wardriveBleOnComplete, false);
+#ifdef OUISPY_SWEEPLOG
+                Serial.printf("[BLEDUTY] ON  t=%lu (dur=%u int=%u)\n",
+                              (unsigned long)now, bleScanDurationMs, bleScanIntervalMs);
+#endif
             } else if (pWardriveScan->isScanning() && (now - lastBleScan >= bleScanDurationMs)) {
                 pWardriveScan->stop();
+#ifdef OUISPY_SWEEPLOG
+                Serial.printf("[BLEDUTY] OFF t=%lu (on for %lums)\n",
+                              (unsigned long)now, (unsigned long)(now - lastBleScan));
+#endif
             }
         }
     }

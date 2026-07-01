@@ -398,6 +398,7 @@ static void detectionNotifyTask(void* param) {
             // Only emit when the TX buffer has room — a full USB-CDC/UART
             // buffer would block this drain task and back up detectionQueue,
             // causing the WiFi ISR to drop captures.
+#ifndef OUISPY_SWEEPLOG
             if (Serial.availableForWrite() >= 96) {
                 if (evt.engine_id == ENGINE_FLOCK_WIFI) {
                     Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d,\"auth\":%d}\n",
@@ -408,6 +409,7 @@ static void detectionNotifyTask(void* param) {
                                   evt.engine_id, macStr, evt.rssi, evt.channel, evt.method);
                 }
             }
+#endif
         }
     }
 }
@@ -1101,6 +1103,10 @@ void setup() {
 #ifdef OUISPY_SKYSPY_MESH_TEST
     xTaskCreatePinnedToCore(skyspyMeshTestTask, "skytest", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] SKYSPY MESH TEST armed (real manager)");
+#endif
+#ifdef OUISPY_SPOOL_E2E
+    bleGattSpoolE2EStart();
+    Serial.println("[INIT] SPOOL E2E armed (standalone node: engines + spool-while-away + flush)");
 #endif
 #ifdef OUISPY_ENGINE_DIAG
     xTaskCreatePinnedToCore(engineDiagTask, "engdiag", 6144, NULL, 1, NULL, 1);

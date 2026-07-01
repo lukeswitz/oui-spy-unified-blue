@@ -464,7 +464,15 @@ void engineLoopAll(void) {
     autoPcapTick();
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (states[i] != ESTATE_DISABLED && engines[i] != nullptr && engines[i]->loop) {
+#ifdef OUISPY_SWEEPLOG
+            uint32_t t0 = millis();
             engines[i]->loop();
+            uint32_t dt = millis() - t0;
+            if (dt > 80) Serial.printf("[LOOPT] engine %d (%s) loop took %lums\n",
+                                       i, engines[i]->name, (unsigned long)dt);
+#else
+            engines[i]->loop();
+#endif
         }
     }
 }
@@ -489,10 +497,9 @@ void engineProcessCommand(const EngineCommand* cmd) {
                 Serial.printf("[ENGINE] enable engine %d denied (fan-out)\n", cmd->engine_id);
                 break;
             }
-            if (autoPcapPausedMask & ENGINE_BITMASK(cmd->engine_id)) {
+            if (engineEnable((EngineId)cmd->engine_id)) {
                 autoPcapPausedMask &= ~ENGINE_BITMASK(cmd->engine_id);
             }
-            engineEnable((EngineId)cmd->engine_id);
             break;
         case 0x00: // Disable
             if (autoPcapPausedMask & ENGINE_BITMASK(cmd->engine_id)) {

@@ -343,7 +343,7 @@ static void skyspyStart(void) {
         }
         // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
         // bury the callback in irrelevant traffic and miss drone beacons.
-        esp_wifi_set_ps(WIFI_PS_NONE);
+        wifiSnifferApplyPs();
         wifiCoexRegister(wifiCallback, WIFI_PROMIS_FILTER_MASK_MGMT);
         esp_wifi_set_channel(SKYSPY_WIFI_CH, WIFI_SECOND_CHAN_NONE);
     }
@@ -368,6 +368,8 @@ static void skyspyStop(void) {
     Serial.println("[SKYSPY] Stopped");
 }
 
+static void skyspyScanComplete(NimBLEScanResults results) { (void)results; }
+
 static void skyspyLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
     if (!scanning) return;
@@ -388,7 +390,7 @@ static void skyspyLoop(void) {
         engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED &&
         millis() - lastScanStart >= 1500) {
         if (!bleScan->isScanning()) {
-            bleScan->start(1, false);
+            bleScan->start(1, skyspyScanComplete, false);
             lastScanStart = millis();
         }
     }

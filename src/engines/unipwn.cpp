@@ -82,6 +82,8 @@ static void unipwnStop(void) {
     Serial.println("[UNIPWN] Stopped");
 }
 
+static void unipwnScanComplete(NimBLEScanResults results) { (void)results; }
+
 static void unipwnLoop(void) {
     if (!scanning || !bleScan) return;
     // Yield the shared scan to wardrive's duty cycle when it owns the radio;
@@ -89,7 +91,7 @@ static void unipwnLoop(void) {
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (millis() - lastScanStart >= 2000) {
         if (!bleScan->isScanning()) {
-            bleScan->start(1, false);
+            bleScan->start(1, unipwnScanComplete, false);
             lastScanStart = millis();
         }
     }

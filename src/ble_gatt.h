@@ -49,6 +49,9 @@ void mgrDebugSetCommanded(uint8_t mask);
 #ifdef OUISPY_WIGLE_OFFLINE_SELFTEST
 void bleGattWigleOfflineSelfTest(void);
 #endif
+#ifdef OUISPY_SPOOL_E2E
+void bleGattSpoolE2EStart(void);
+#endif
 #ifdef OUISPY_E2E_SMOKETEST
 void bleGattE2ESmokeStart(void);
 #endif
