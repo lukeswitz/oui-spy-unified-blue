@@ -16,6 +16,7 @@ import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
+import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -121,6 +122,7 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
+    ref.watch(use24HourTimeProvider); // loads AppTime.use24Hour at startup
     return MaterialApp.router(
       title: 'OUI-SPY',
       theme: AppTheme.lightTheme,

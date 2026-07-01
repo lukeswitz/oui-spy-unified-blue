@@ -281,7 +281,9 @@ class NotificationService extends ChangeNotifier {
     final (title, body, channel) = switch (det.engine) {
       Engine.flockBle || Engine.flockWifi => (
           'Flock Camera Detected',
-          '${_formatMac(det.macAddress)} ${det.engine == Engine.flockBle ? "BLE" : "WiFi"} ch${det.channel} ${det.rssi}dBm',
+          det.engine == Engine.flockBle
+              ? '${_formatMac(det.macAddress)} BLE ${det.rssi}dBm'
+              : '${_formatMac(det.macAddress)} WiFi ch${det.channel} ${det.rssi}dBm',
           NotifChannel.flock,
         ),
       Engine.detector => (

@@ -880,7 +880,9 @@ class _SpoolImportBannerState extends State<_SpoolImportBanner> {
       final suffix = p.dropped > 0
           ? ' (buffer was full, oldest ${p.dropped} dropped)'
           : '';
-      message = 'Imported ${p.seen} detection(s) while away$suffix';
+      final breakdown = _spoolBreakdown(p.byEngine);
+      message = 'Imported ${p.seen} detection(s) while away'
+          '${breakdown.isNotEmpty ? ' — $breakdown' : ''}$suffix';
       color = AppTheme.accent;
       icon = Icons.check_circle_outline;
     }
@@ -892,6 +894,26 @@ class _SpoolImportBannerState extends State<_SpoolImportBanner> {
       ),
     );
   }
+}
+
+String _spoolBreakdown(Map<String, int> byEngine) {
+  if (byEngine.isEmpty) return '';
+  const label = {
+    'flockBle': 'flock',
+    'flockWifi': 'flock',
+    'skySpy': 'drone',
+    'detector': 'watchlist',
+    'wardrive': 'wardrive',
+    'foxhunter': 'foxhunt',
+  };
+  final tally = <String, int>{};
+  byEngine.forEach((k, v) {
+    final name = label[k] ?? k;
+    tally[name] = (tally[name] ?? 0) + v;
+  });
+  final parts = tally.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  return parts.map((e) => '${e.value} ${e.key}').join(' · ');
 }
 
 class _SpoolBanner extends StatelessWidget {

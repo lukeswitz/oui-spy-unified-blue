@@ -23,6 +23,14 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
         var robotType: String
         var exploitStatus: String
         var isImperial: Bool = false
+        var activeLabel: String = ""
+
+        /// Title text: prefer the app-supplied multi-engine label (e.g.
+        /// "WiGLE+Flock+Drone") so every active radio path shows; fall back to
+        /// the single-mode label for older payloads.
+        var displayLabel: String {
+            activeLabel.isEmpty ? mode.label : activeLabel.uppercased()
+        }
 
         var distanceDisplay: String {
             if isImperial {
@@ -61,7 +69,8 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             intervalMs: Int,
             robotType: String,
             exploitStatus: String,
-            isImperial: Bool = false
+            isImperial: Bool = false,
+            activeLabel: String = ""
         ) {
             self.mode = mode
             self.uniqueCount = uniqueCount
@@ -76,6 +85,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             self.robotType = robotType
             self.exploitStatus = exploitStatus
             self.isImperial = isImperial
+            self.activeLabel = activeLabel
         }
 
         // Backward-compatible decoder: tolerate ContentState payloads written
@@ -83,7 +93,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
         private enum CodingKeys: String, CodingKey {
             case mode, uniqueCount, flockCount, droneCount, detectorHits,
                  distanceKm, speedKmh, targetMac, rssi, intervalMs,
-                 robotType, exploitStatus, isImperial
+                 robotType, exploitStatus, isImperial, activeLabel
         }
 
         init(from decoder: Decoder) throws {
@@ -101,6 +111,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             robotType = try c.decode(String.self, forKey: .robotType)
             exploitStatus = try c.decode(String.self, forKey: .exploitStatus)
             isImperial = try c.decodeIfPresent(Bool.self, forKey: .isImperial) ?? false
+            activeLabel = try c.decodeIfPresent(String.self, forKey: .activeLabel) ?? ""
         }
     }
 

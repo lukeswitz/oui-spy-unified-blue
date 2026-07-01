@@ -56,6 +56,7 @@ class LiveActivityService {
   /// All count fields represent the combined totals across ALL active engines.
   Future<void> update({
     required String primaryMode,
+    String activeLabel = '',
     required int uniqueCount,
     int flockCount = 0,
     int droneCount = 0,
@@ -73,6 +74,7 @@ class LiveActivityService {
 
     final payload = <String, Object?>{
       'mode': primaryMode,
+      'activeLabel': activeLabel,
       'uniqueCount': uniqueCount,
       'flockCount': flockCount,
       'droneCount': droneCount,

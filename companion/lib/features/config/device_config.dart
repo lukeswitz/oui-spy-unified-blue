@@ -34,6 +34,7 @@ import 'dart:io';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
+import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DeviceConfigScreen extends ConsumerStatefulWidget {
@@ -248,6 +249,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final isDark = themeMode == ThemeMode.dark;
     final unitSystem = ref.watch(unitSystemProvider);
     final isImperial = unitSystem == UnitSystem.imperial;
+    final use24Hour = ref.watch(use24HourTimeProvider);
     final t = AppTheme.of(context);
 
     return ListView(
@@ -282,6 +284,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
                   v ? UnitSystem.imperial : UnitSystem.metric,
                 );
           },
+        ),
+        ConfigToggleRow(
+          icon: Icons.schedule,
+          label: '24-Hour Time',
+          subtitle: use24Hour ? 'Times shown as 20:13' : 'Times shown as 8:13 PM',
+          color: AppTheme.accent,
+          value: use24Hour,
+          onChanged: (v) => ref.read(use24HourTimeProvider.notifier).set(v),
         ),
 
         const SizedBox(height: 16),
@@ -3387,7 +3397,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     final channel = det['channel'] as int? ?? 0;
     final method = det['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(det['appTimestamp'] as int);
-    final timeStr = DateFormat('MMM d yyyy HH:mm').format(ts);
+    final timeStr = AppTime.dateTime(ts);
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
     final lat = det['latitude'] as double?;
     final lon = det['longitude'] as double?;
@@ -3829,7 +3839,7 @@ class _DetectionRow extends ConsumerWidget {
     final channel = data['channel'] as int? ?? 0;
     final method = data['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
-    final timeStr = DateFormat('MMM d yyyy HH:mm').format(ts);
+    final timeStr = AppTime.dateTime(ts);
     final hasGps = data['latitude'] != null && data['longitude'] != null;
     final deviceName = data['deviceName'] as String? ?? '';
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
@@ -5389,7 +5399,7 @@ class _PcapInlineSectionState extends ConsumerState<_PcapInlineSection> {
                       ],
                     ),
                     subtitle: Text(
-                      "${_humanBytes(e.size)}  ·  ${DateFormat("MM-dd HH:mm:ss").format(e.modified)}",
+                      "${_humanBytes(e.size)}  ·  ${AppTime.dateTimeSeconds(e.modified)}",
                       style: TextStyle(color: t.textDim, fontSize: 10),
                     ),
                     trailing: deleting

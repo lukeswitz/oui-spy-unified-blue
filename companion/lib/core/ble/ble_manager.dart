@@ -23,12 +23,14 @@ class SpoolImportProgress {
   final int dropped;
   final bool done;
   final bool aborted;
+  final Map<String, int> byEngine;
   const SpoolImportProgress({
     required this.seen,
     required this.total,
     required this.dropped,
     required this.done,
     required this.aborted,
+    this.byEngine = const {},
   });
 }
 
@@ -106,6 +108,7 @@ class BleManager {
 
   bool _importing = false;
   int _awaySeen = 0;
+  final Map<String, int> _awayByEngine = {};
   Timer? _awaySettle;
   int _importTotal = 0;
   int _importSeen = 0;
@@ -755,6 +758,7 @@ class BleManager {
 
     _awaySettle?.cancel();
     _awaySeen = 0;
+    _awayByEngine.clear();
     if (_offlineScanEnabled) {
       await requestSpoolFlush();
     }
@@ -1498,7 +1502,7 @@ class BleManager {
       );
       _importSeen++;
       _importedDetections.add(detection);
-      _noteAway();
+      _noteAway(detection);
       return;
     }
     final isAway = data.isNotEmpty && (data[0] & 0x80) != 0;
@@ -1514,7 +1518,7 @@ class BleManager {
     );
     _detections.add(detection);
     if (isAway) {
-      _noteAway();
+      _noteAway(detection);
       _awayLiveDetections.add(detection);
     }
   }
@@ -1523,15 +1527,20 @@ class BleManager {
   /// node-relayed spool detection flagged DET_FLAG_AWAY). Accumulate and
   /// finalize the banner a few seconds after the last one — counts only
   /// real away captures, never live re-announcements of present devices.
-  void _noteAway() {
+  void _noteAway(Detection detection) {
     _awaySeen++;
+    _awayByEngine[detection.engine.name] =
+        (_awayByEngine[detection.engine.name] ?? 0) + 1;
     _awaySettle?.cancel();
     _awayImport.add(SpoolImportProgress(
-        seen: _awaySeen, total: 0, dropped: _importDropped, done: false, aborted: false));
+        seen: _awaySeen, total: 0, dropped: _importDropped, done: false,
+        aborted: false, byEngine: Map.of(_awayByEngine)));
     _awaySettle = Timer(const Duration(seconds: 3), () {
       _awayImport.add(SpoolImportProgress(
-          seen: _awaySeen, total: _awaySeen, dropped: _importDropped, done: true, aborted: false));
+          seen: _awaySeen, total: _awaySeen, dropped: _importDropped, done: true,
+          aborted: false, byEngine: Map.of(_awayByEngine)));
       _awaySeen = 0;
+      _awayByEngine.clear();
     });
   }
 

@@ -397,7 +397,7 @@ static void pcapStart(void) {
         wifi_country_t country = { .cc = "JP", .schan = 1, .nchan = 14,
                                     .policy = WIFI_COUNTRY_POLICY_MANUAL };
         esp_wifi_set_country(&country);
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        esp_wifi_set_ps(WIFI_PS_NONE);
         wifiCoexRegister(pcapWifiCb,
                          WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA |
                          WIFI_PROMIS_FILTER_MASK_CTRL);

@@ -13,7 +13,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/debug_log.dart';
-import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
@@ -34,6 +33,7 @@ import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/features/wardrive/wardrive_theme.dart';
+import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -3702,7 +3702,7 @@ class _SessionRow extends ConsumerWidget {
     final wd = ref.watch(wardriveProvider);
     final isRescanning = wd.rescanSessionId == session.id;
     final start = DateTime.fromMillisecondsSinceEpoch(session.startedAt);
-    final dateStr = DateFormat('MMM d, yyyy  HH:mm').format(start);
+    final dateStr = AppTime.dateTime(start);
     final duration = session.endedAt != null
         ? Duration(milliseconds: session.endedAt! - session.startedAt)
         : Duration.zero;

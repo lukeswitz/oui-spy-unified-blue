@@ -125,7 +125,8 @@ class WardriveController extends ChangeNotifier {
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
-    _channelEnd = p.getInt('wd_channelEnd') ?? 14;
+    _channelEnd = p.getInt('wd_channelEnd') ?? 11;
+    radio = radioFromMask(p.getInt('wd_radio') ?? 0x03);
     if (!(p.getBool('wd_dwellFastReset_v2') ?? false)) {
       _wifiScanInterval = 250;
       _wifiDwellPerCh = 110;
@@ -146,6 +147,7 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_bleScanInterval', _bleScanInterval);
     p.setInt('wd_channelStart', _channelStart);
     p.setInt('wd_channelEnd', _channelEnd);
+    p.setInt('wd_radio', radioBitmask);
   }
 
   /// Map a radio mask (0x01/0x02/0x03) to the [WardriveRadio] enum.
@@ -217,27 +219,47 @@ class WardriveController extends ChangeNotifier {
 
   int _wifiScanInterval = 250;
   int get wifiScanInterval => _wifiScanInterval;
-  set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); }
+  set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _wifiDwellPerCh = 110;
   int get wifiDwellPerCh => _wifiDwellPerCh;
-  set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); }
+  set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _bleScanDuration = 800;
   int get bleScanDuration => _bleScanDuration;
-  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); }
+  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _bleScanInterval = 3000;
   int get bleScanInterval => _bleScanInterval;
-  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); }
+  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
   int _channelStart = 1;
   int get channelStart => _channelStart;
-  set channelStart(int v) { _channelStart = v.clamp(1, 14); notifyListeners(); _savePrefs(); }
+  set channelStart(int v) { _channelStart = v.clamp(1, 14); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
-  int _channelEnd = 14;
+  int _channelEnd = 11;
   int get channelEnd => _channelEnd;
-  set channelEnd(int v) { _channelEnd = v.clamp(_channelStart, 14); notifyListeners(); _savePrefs(); }
+  set channelEnd(int v) { _channelEnd = v.clamp(_channelStart, 14); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
+
+  /// Byte payload firmware `wardriveConfig()` parses (radio + WiFi dwell +
+  /// BLE duty + channel range).
+  Uint8List get _wardriveConfigPayload => Uint8List.fromList([
+        radioBitmask,
+        wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
+        wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
+        bleScanDuration & 0xFF, (bleScanDuration >> 8) & 0xFF,
+        bleScanInterval & 0xFF, (bleScanInterval >> 8) & 0xFF,
+        channelStart,
+        channelEnd,
+      ]);
+
+  /// Push scan-timing changes to a wardrive engine that is already running so
+  /// mid-session edits take effect without a stop/restart.
+  void _pushWardriveConfigLive() {
+    if (!isActive) return;
+    if (!activeEngines.contains(Engine.wardrive)) return;
+    _ble.sendEngineConfig(Engine.wardrive, _wardriveConfigPayload);
+  }
 
   double get markerDistanceM => _markerDistanceM;
   set markerDistanceM(double v) {
@@ -420,6 +442,7 @@ class WardriveController extends ChangeNotifier {
     if (isActive) return;
     radio = r;
     notifyListeners();
+    _savePrefs();
   }
 
   /// Stop a single engine that the active wardrive session owns (e.g. user
@@ -987,18 +1010,7 @@ class WardriveController extends ChangeNotifier {
     for (final engine in engineList) {
       if (state == WardriveState.idle) return;
       if (engine == Engine.wardrive) {
-        await _ble.sendEngineConfig(
-          engine,
-          Uint8List.fromList([
-            radioBitmask,
-            wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
-            wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
-            bleScanDuration & 0xFF, (bleScanDuration >> 8) & 0xFF,
-            bleScanInterval & 0xFF, (bleScanInterval >> 8) & 0xFF,
-            channelStart,
-            channelEnd,
-          ]),
-        );
+        await _ble.sendEngineConfig(engine, _wardriveConfigPayload);
         await Future.delayed(const Duration(milliseconds: 100));
       }
       if (state == WardriveState.idle) return;
@@ -1224,14 +1236,30 @@ class WardriveController extends ChangeNotifier {
     );
     _liveActivity.update(
       primaryMode: mode,
+      activeLabel: _liveActivityLabel(engineNames),
       uniqueCount: uniqueMacs.length,
       flockCount: _flockMacs.length,
       droneCount: droneCount,
+      detectorHits: includesDetector ? detectorCount : 0,
       distanceKm: distanceKm,
       speedKmh: currentPosition?.speedKmh ?? 0,
       targetMac: foxhuntTarget ?? '',
       isImperial: isImperial,
     );
+  }
+
+  /// Human label listing every active radio path, e.g. "WiGLE+Flock+Drone".
+  String _liveActivityLabel(Set<String> engineNames) {
+    final parts = <String>[];
+    if (engineNames.contains('wardrive')) parts.add('WiGLE');
+    if (engineNames.contains('flockBle') || engineNames.contains('flockWifi')) {
+      parts.add('Flock');
+    }
+    if (engineNames.contains('skySpy')) parts.add('Drone');
+    if (engineNames.contains('detector')) parts.add('Detect');
+    if (engineNames.contains('foxhunter')) parts.add('Foxhunt');
+    if (engineNames.contains('uniPwn')) parts.add('UniPwn');
+    return parts.isEmpty ? 'Scanning' : parts.join('+');
   }
 
   SessionStats get currentStats {
