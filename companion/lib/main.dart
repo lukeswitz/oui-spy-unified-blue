@@ -8,7 +8,6 @@ import 'package:oui_spy/app.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
-import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
@@ -117,6 +116,19 @@ Future<void> _autoConnect(ProviderContainer container) async {
       ble.markAsPrimary();
       await _onConnected(container, already.remoteId.toString());
       return;
+    }
+
+    if (lastPrimaryId != null && lastPrimaryId.isNotEmpty) {
+      DebugLog.log('AUTO: fast reconnect by id $lastPrimaryId (no scan)');
+      final ble = container.read(bleManagerProvider);
+      final ok = await ble.connectByIdAndReady(lastPrimaryId,
+          timeout: const Duration(seconds: 12));
+      if (ok) {
+        ble.markAsPrimary();
+        await _onConnected(container, lastPrimaryId);
+        return;
+      }
+      DebugLog.log('AUTO: fast reconnect failed — falling back to scan');
     }
 
     DebugLog.log('AUTO: scanning (no filter, 8s)...');
