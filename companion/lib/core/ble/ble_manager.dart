@@ -337,14 +337,19 @@ class BleManager {
   String get role => _role;
   String? get connectedDeviceId => _primaryDeviceId ?? _lastDeviceId;
   bool get isManagerConnected =>
-      (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR');
+      _role == 'mgr' ||
+      (_role.isEmpty &&
+          (_device?.platformName ?? '').toUpperCase().contains('OUI-SPY-MGR'));
 
   void markAsPrimary() {
     _primaryDeviceId = _lastDeviceId;
     final id = _primaryDeviceId;
     if (id != null && id.isNotEmpty) {
-      SharedPreferences.getInstance()
-          .then((p) => p.setString('lastPrimaryDeviceId', id));
+      final mgr = isManagerConnected;
+      SharedPreferences.getInstance().then((p) {
+        p.setString('lastPrimaryDeviceId', id);
+        p.setBool('lastPrimaryIsManager', mgr);
+      });
     }
   }
 
@@ -635,7 +640,9 @@ class BleManager {
           _engineStates.add(BleProtocol.decodeEngineStatus(data));
         }),
       );
-      final isMgr = (device.platformName.toUpperCase()).contains('OUI-SPY-MGR');
+      final isMgr = _role == 'mgr' ||
+          (_role.isEmpty &&
+              device.platformName.toUpperCase().contains('OUI-SPY-MGR'));
       if (!isMgr && !_offlineScanEnabled) {
         await _engineControl!.write(BleProtocol.encodeDisableAll());
         DebugLog.log('BLE: sent DISABLE_ALL on connect (node)');

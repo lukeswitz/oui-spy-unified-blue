@@ -5664,7 +5664,7 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
 class _VersionRow extends StatelessWidget {
   const _VersionRow();
 
-  static const String appVersion = '0.4.7';
+  static const String appVersion = '0.4.8';
 
   @override
   Widget build(BuildContext context) {

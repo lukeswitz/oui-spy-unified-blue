@@ -108,18 +108,18 @@ Future<void> _autoConnect(ProviderContainer container) async {
         connNode ??= device;
       }
     }
-    final already = connMgr ?? connNode;
-    if (already != null) {
-      DebugLog.log('AUTO: reconnecting to system-remembered ${already.platformName}');
+    if (connMgr != null) {
+      DebugLog.log('AUTO: reconnecting to system-remembered manager ${connMgr.platformName}');
       final ble = container.read(bleManagerProvider);
-      await ble.connect(already, sessionId: const Uuid().v4());
+      await ble.connect(connMgr, sessionId: const Uuid().v4());
       ble.markAsPrimary();
-      await _onConnected(container, already.remoteId.toString());
+      await _onConnected(container, connMgr.remoteId.toString());
       return;
     }
 
-    if (lastPrimaryId != null && lastPrimaryId.isNotEmpty) {
-      DebugLog.log('AUTO: fast reconnect by id $lastPrimaryId (no scan)');
+    final lastPrimaryIsManager = prefs.getBool('lastPrimaryIsManager') ?? false;
+    if (lastPrimaryIsManager && lastPrimaryId != null && lastPrimaryId.isNotEmpty) {
+      DebugLog.log('AUTO: fast reconnect by id $lastPrimaryId (manager, no scan)');
       final ble = container.read(bleManagerProvider);
       final ok = await ble.connectByIdAndReady(lastPrimaryId,
           timeout: const Duration(seconds: 12));
@@ -179,7 +179,8 @@ Future<void> _autoConnect(ProviderContainer container) async {
     FlutterBluePlus.startScan(timeout: const Duration(seconds: 8));
 
     final found = await completer.future
-        .timeout(const Duration(seconds: 10), onTimeout: () => preferredDevice);
+        .timeout(const Duration(seconds: 10),
+            onTimeout: () => preferredDevice ?? connNode);
 
     await sub.cancel();
     await FlutterBluePlus.stopScan();

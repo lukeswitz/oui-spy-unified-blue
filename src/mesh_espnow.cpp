@@ -1137,6 +1137,7 @@ static void onEspNowSend(const uint8_t* macAddr, esp_now_send_status_t status) {
 #define MESH_REACQUIRE_MS 3000
 #define MESH_RID_WINDOW_MS 250
 #define MESH_RID_SCAN_MS 500
+#define MESH_DISCOVER_MS 30000
 static volatile bool g_meshWindow = false;
 static volatile bool g_ridWindow = false;
 static volatile uint32_t g_lastHomeMs = 0;
@@ -1243,10 +1244,19 @@ void meshDebugForceManager(void) {
 #ifndef OUISPY_ROLE_MANAGER
 static void meshSchedTaskFn(void* arg) {
     (void)arg;
+    uint32_t discoverStartMs = millis();
+    uint8_t lastMask = engineGetActiveMask();
+    bool wasJoined = false;
     for (;;) {
         g_meshWindow = false;
         g_ridWindow = false;
-        if (meshIsStandalone()) {
+        uint8_t curMask = engineGetActiveMask();
+        if (curMask != lastMask) { lastMask = curMask; discoverStartMs = millis(); }
+        bool joinedNow = meshManagerJoined();
+        if (wasJoined && !joinedNow) discoverStartMs = millis();
+        wasJoined = joinedNow;
+        if (meshIsStandalone() &&
+            (uint32_t)(millis() - discoverStartMs) >= MESH_DISCOVER_MS) {
             vTaskDelay(pdMS_TO_TICKS(200));
             continue;
         }
