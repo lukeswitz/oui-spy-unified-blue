@@ -29,6 +29,7 @@ bool wifiOtaSaveCreds(const char* ssid, const char* pass);
 bool wifiOtaLoadCreds(char* ssidOut, size_t ssidLen, char* passOut, size_t passLen);
 bool wifiOtaWipeCreds(void);
 void wifiStaDisconnect(void);
+void wifiStaReleaseForScan(void);
 
 bool wifiStaConnect(void);
 void wifiStaConnectAsync(void);

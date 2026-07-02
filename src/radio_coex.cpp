@@ -1,6 +1,7 @@
 #include "radio_coex.h"
 #include "engine_registry.h"
 #include "protocol.h"
+#include "wifi_ota_handler.h"
 #include <Arduino.h>
 #include "esp_bt.h"
 
@@ -56,6 +57,7 @@ void wifiCoexRegister(WifiRxParser parser, uint32_t filterMask) {
 
     wifiCoexApplyFilter();
     if (first) {
+        wifiStaReleaseForScan();
         esp_wifi_set_promiscuous(true);
         esp_wifi_set_promiscuous_rx_cb(wifiCoexDispatch);
     }

@@ -309,6 +309,17 @@ extern "C" void wifiStaDisconnect(void) {
     }
 }
 
+extern "C" void wifiStaReleaseForScan(void) {
+    if (!g_staWanted && !g_staConnected && WiFi.status() != WL_CONNECTED) return;
+    Serial.println("[WIFI] releasing STA for promiscuous scan");
+    g_staWanted = false;
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false, false);
+    g_staConnected = false;
+    g_staIp = 0;
+    g_staSsid[0] = '\0';
+}
+
 extern "C" bool wifiStaIsEnabled(void) {
     Preferences p;
     if (!p.begin(NS, true)) return false;
