@@ -36,6 +36,7 @@ namespace {
 
 WifiOtaNotifyFn g_notifyFn = nullptr;
 volatile bool   g_staConnected = false;
+volatile bool   g_staWanted = false;
 char            g_staSsid[33] = {0};
 uint32_t        g_staIp = 0;
 bool            g_sntpStarted = false;
@@ -65,10 +66,12 @@ void wifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
                           WiFi.localIP().toString().c_str(), WiFi.RSSI());
             break;
         case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-            if (g_staConnected) Serial.println("[WIFI] STA dropped, reconnecting");
             g_staConnected = false;
             g_staIp = 0;
-            WiFi.reconnect();
+            if (g_staWanted) {
+                Serial.println("[WIFI] STA dropped, reconnecting");
+                WiFi.reconnect();
+            }
             break;
         default:
             break;
@@ -111,6 +114,7 @@ bool joinStation(const char* ssid, const char* pass) {
     WiFi.setAutoReconnect(false);
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     WiFi.mode(WIFI_STA);
+    g_staWanted = true;
     WiFi.begin(ssid, pass);
     uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED) {
@@ -224,6 +228,10 @@ extern "C" void wifiOtaSetNotifyCallback(WifiOtaNotifyFn fn) {
 }
 
 extern "C" void wifiStaConnectAsync(void) {
+#ifdef OUISPY_ROLE_MANAGER
+    Serial.println("[WIFI] manager: creds saved for fleet relay; not associating (mesh owns radio)");
+    return;
+#else
     if (!wifiStaIsEnabled()) {
         Serial.println("[WIFI] STA disabled in settings; not connecting");
         return;
@@ -240,9 +248,11 @@ extern "C" void wifiStaConnectAsync(void) {
     WiFi.setAutoReconnect(true);
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     WiFi.mode(WIFI_STA);
+    g_staWanted = true;
     strncpy(g_staSsid, ssid, sizeof(g_staSsid) - 1);
     g_staSsid[sizeof(g_staSsid) - 1] = '\0';
     WiFi.begin(ssid, pass);
+#endif
 }
 
 extern "C" bool wifiOtaSaveCreds(const char* ssid, const char* pass) {
@@ -282,10 +292,17 @@ extern "C" bool wifiOtaWipeCreds(void) {
 }
 
 extern "C" void wifiStaDisconnect(void) {
+    g_staWanted = false;
+    WiFi.setAutoReconnect(false);
     if (g_staConnected || WiFi.status() == WL_CONNECTED) {
         Serial.println("[WIFI] STA disconnect");
         WiFi.disconnect(true, true);
+#ifdef OUISPY_ROLE_MANAGER
+        WiFi.mode(WIFI_AP_STA);
+        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+#else
         WiFi.mode(WIFI_OFF);
+#endif
         g_staConnected = false;
         g_staIp = 0;
         g_staSsid[0] = '\0';
