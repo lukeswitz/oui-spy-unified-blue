@@ -55,6 +55,7 @@ void bleGattSpoolE2EStart(void);
 #ifdef OUISPY_E2E_SMOKETEST
 void bleGattE2ESmokeStart(void);
 #endif
+void bleGattNodeGraceTick(void);
 
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);

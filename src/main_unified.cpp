@@ -460,6 +460,7 @@ static void statusHeartbeatTask(void* param) {
 
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
+        bleGattNodeGraceTick();
 
 #ifdef OUISPY_SPOOL_LIVETEST
         Serial.printf("[SPOOL-LIVE] count=%u dropped=%u active=0x%02X rawSeen=%lu\n",

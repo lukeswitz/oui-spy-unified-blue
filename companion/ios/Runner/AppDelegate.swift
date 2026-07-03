@@ -11,7 +11,13 @@ import UIKit
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     if #available(iOS 16.2, *) {
-      Task { await LiveActivityHandler.endAllActivitiesNow() }
+      Task {
+        for _ in 0..<10 {
+          await LiveActivityHandler.endAllActivitiesNow()
+          if Activity<OuiSpyLiveActivityAttributes>.activities.isEmpty { break }
+          try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+      }
     }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

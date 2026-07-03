@@ -106,6 +106,8 @@ class BleManager {
   bool _offlineScanEnabled = false;
   bool get offlineScanEnabled => _offlineScanEnabled;
 
+  bool wardriveSessionActive = false;
+
   bool _importing = false;
   int _awaySeen = 0;
   final Map<String, int> _awayByEngine = {};
@@ -643,10 +645,12 @@ class BleManager {
       final isMgr = _role == 'mgr' ||
           (_role.isEmpty &&
               device.platformName.toUpperCase().contains('OUI-SPY-MGR'));
-      if (!isMgr && !_offlineScanEnabled) {
+      if (!isMgr && !_offlineScanEnabled && !wardriveSessionActive) {
         await _engineControl!.write(BleProtocol.encodeDisableAll());
         DebugLog.log('BLE: sent DISABLE_ALL on connect (node)');
         await Future.delayed(const Duration(milliseconds: 300));
+      } else if (!isMgr && wardriveSessionActive) {
+        DebugLog.log('BLE: reconnect into active session — keeping grace-preserved engines, no DISABLE_ALL');
       } else if (!isMgr) {
         DebugLog.log('BLE: offline-scan on — adopting running scan, no DISABLE_ALL');
       } else {

@@ -88,9 +88,24 @@ private struct MinimalView: View {
     let state: OuiSpyLiveActivityAttributes.ContentState
 
     var body: some View {
-        Image(systemName: state.mode.sfSymbol)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundColor(engineColor(state.mode))
+        switch state.mode {
+        case .foxhunter:
+            Text("\(state.rssi)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(rssiColor(state.rssi))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+        case .uniPwn:
+            Image(systemName: state.mode.sfSymbol)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(engineColor(state.mode))
+        default:
+            Text("\(state.uniqueCount)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(engineColor(state.mode))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+        }
     }
 }
 

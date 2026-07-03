@@ -59,10 +59,12 @@ static bool phoneConnected = false;
 static volatile bool pcapDownloadRunning = false;
 static volatile uint32_t mgrPhoneGoneMs = 0;
 static volatile bool mgrTornDown = false;
+static volatile uint32_t nodePhoneGoneMs = 0;
 static bool offlineScanEnabled = false;
 bool bleGattOfflineScanEnabled() { return offlineScanEnabled; }
 void offlineScanEnabledSetFromPref(bool v) { offlineScanEnabled = v; }
 #define MGR_PHONE_GRACE_MS 8000
+#define NODE_PHONE_GRACE_MS 8000
 
 #ifdef OUISPY_ROLE_MANAGER
 static volatile uint8_t  mgrCommandedMask = 0;
@@ -715,6 +717,30 @@ void bleGattReconcileEngines(void) {
 #endif
 }
 
+#ifndef OUISPY_ROLE_MANAGER
+static void nodePhoneDisconnected(void) {
+    nodePhoneGoneMs = millis();
+    if (offlineScanEnabled) {
+        engineDisable(ENGINE_WARDRIVE);
+        Serial.println("[BLE] Phone disconnected — offline scan, wigle off, targeted engines kept");
+    } else {
+        Serial.println("[BLE] Phone disconnected — teardown deferred (grace)");
+    }
+}
+void bleGattNodeGraceTick(void) {
+    if (nodePhoneGoneMs != 0 && !phoneConnected &&
+        (millis() - nodePhoneGoneMs) > NODE_PHONE_GRACE_MS) {
+        if (!offlineScanEnabled) {
+            engineDisableAll();
+            Serial.println("[BLE] phone gone (grace expired) — node engines off");
+        }
+        nodePhoneGoneMs = 0;
+    }
+}
+#else
+void bleGattNodeGraceTick(void) {}
+#endif
+
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
         phoneConnected = true;
@@ -722,6 +748,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         mgrPhoneGoneMs = 0;
         mgrTornDown = false;
         g_meshManagerActive = true;
+#else
+        nodePhoneGoneMs = 0;
 #endif
         NimBLEScan* scan = NimBLEDevice::getScan();
         if (scan && scan->isScanning()) {
@@ -749,13 +777,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
         }
 #else
-        if (!offlineScanEnabled) {
-            engineDisableAll();
-            Serial.println("[BLE] Phone disconnected — engines off");
-        } else {
-            engineDisable(ENGINE_WARDRIVE);
-            Serial.println("[BLE] Phone disconnected — offline scan, wigle off, targeted engines kept");
-        }
+        nodePhoneDisconnected();
 #endif
         NimBLEDevice::startAdvertising();
     }

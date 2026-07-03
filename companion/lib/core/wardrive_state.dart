@@ -109,6 +109,25 @@ Set<WardriveTarget> reconciledTargets(
   return t;
 }
 
+Future<void> reconcileDanglingWardriveSessions(AppDatabase db) async {
+  final rows = await db.getWardriveSessions();
+  for (final s in rows) {
+    if (s.endedAt != null) continue;
+    final dets = await db.getDetectionsForSession(s.id);
+    if (dets.isEmpty) {
+      await db.deleteSession(s.id);
+      continue;
+    }
+    final uniq = await db.uniqueMacCount(s.id);
+    await db.updateSession(SessionsCompanion(
+      id: drift.Value(s.id),
+      endedAt: drift.Value(dets.first.appTimestamp),
+      detectionCount: drift.Value(dets.length),
+      uniqueMacCount: drift.Value(uniq),
+    ));
+  }
+}
+
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
@@ -122,8 +141,10 @@ class WardriveController extends ChangeNotifier {
     _awayLiveSub = _ble.awayLiveDetections.listen(_onAwayLiveDetection);
     _spoolImportSub = _ble.spoolImport.listen(_onSpoolProgress);
     _prefsLoaded = _loadPrefs();
+    _reconciled = reconcileDanglingWardriveSessions(_db);
   }
 
+  late final Future<void> _reconciled;
   Future<void>? _prefsLoaded;
 
   Future<void> _loadPrefs() async {
@@ -634,6 +655,7 @@ class WardriveController extends ChangeNotifier {
 
     state = WardriveState.running;
     _userStopped = false;
+    _ble.wardriveSessionActive = true;
 
     _detSub = _ble.detections.listen(_onDetection);
     _gpsSub = _gps.positionStream.listen(_onGpsUpdate);
@@ -658,6 +680,7 @@ class WardriveController extends ChangeNotifier {
   Future<void> stopSession() async {
     state = WardriveState.idle;
     _userStopped = true;
+    _ble.wardriveSessionActive = false;
     notifyListeners();
 
     _detSub?.cancel();
@@ -1134,6 +1157,7 @@ class WardriveController extends ChangeNotifier {
       ..addAll(adopted);
     await _ensureLoggingAttached();
     state = WardriveState.running;
+    _ble.wardriveSessionActive = true;
     notifyListeners();
     DebugLog.log('WARDRIVE: adopted firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
   }
@@ -1204,6 +1228,7 @@ class WardriveController extends ChangeNotifier {
 
   Future<String> _resolveSpoolSessionId() async {
     if (sessionId.isNotEmpty) return sessionId;
+    await _reconciled;
     final rows = await _db.getWardriveSessions();
     if (rows.isNotEmpty && rows.first.endedAt == null) return rows.first.id;
     final newId = const Uuid().v4();
