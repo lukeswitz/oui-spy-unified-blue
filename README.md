@@ -23,7 +23,7 @@
 
 
 > [!NOTE]
-> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks. Not affiliated with OUI-SPY. Beta software — expect bugs.
+> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks. **Not affiliated with OUI-SPY**.  Beta software — expect bugs.
 
 ---
 
@@ -42,7 +42,7 @@ OUI-SPY APEX is a fork of the OUI-SPY unified firmware, rebuilt around two ideas
 > [!IMPORTANT]
 > Some versions of Android will not prompt for location permissions. Location > Allow Always is required for the app to scan in background when app is not on screen/device locked.
 
-- APEX doesn't auto-connect unless you opt in (*Settings → Config → Connection → Auto-connect on launch*). Off: it drops stale links on launch and waits for you to pick a device. On: it reconnects straight to your last board by saved ID — no rescan. Either way, it re-links automatically after you walk out of BLE range and back.
+APEX doesn’t auto-connect unless you opt in (*Settings → Config → Connection → Auto-connect on launch*). Off: It drops stale links and waits for you to select a device. On: It reconnects to your last board by saved ID without rescanning. It automatically re-links after you leave and return to BLE range.
 
 ---
 
@@ -73,7 +73,7 @@ Cross-Platform Flutter app for iOS, macOS, and Android
 
 
 ### Home
-One card per engine. Tap a card to toggle the engine or open its settings. The status bar shows connection state, GPS fix, and node count.
+One card per engine. Tap a card to toggle or open its settings. The status bar shows connection state, GPS fix, and node count.
 
 ### Live Feed
 Every detection from every engine, in one stream.
@@ -82,18 +82,18 @@ Every detection from every engine, in one stream.
 - **Export** the current filtered view to WiGLE CSV.
 - **Tap** a row to foxhunt or map that device; **long-press** for the full detail sheet (MAC, vendor, RSSI, channel, manufacturer data).
 
-### Wardrive Map
-The headline feature.
+### Wardrive & Map
 
 
 <img width="709" alt="App home" src="https://github.com/user-attachments/assets/62470061-c382-4724-8d86-72cb4dd4c1df" />
+
 Pick any mix of targets — **WiGLE, Flock, Drone, Detector** — plus a radio (**WiFi, BLE, or Both**), then hit **START**. The chosen engines run together and plot hits live, color-graded by signal density, with your route trailing behind you.
 
 - **Drones** plot at their broadcast Remote ID position. When a drone reports no fix (0/0), it draws an RSSI range ring around you instead. Drone and pilot trails are tracked separately.
-- **Stacked pins** (overlapping Flock / drone / detector hits) fan out on leader lines so each stays readable.
-- The top bar tallies hits per engine in real time.
+
 - **Geofences** — draw an excluded zone and everything inside it goes silent: no feed entry, no logging, no CSV, no beep, and the radios pause entirely. Scanning resumes the moment you leave the zone.
-- Sessions save as WiGLE CSV and upload directly to WiGLE with your API key. Saved sessions replay on the map.
+
+- Sessions save as WiGLE CSV and upload directly to WiGLE with your API key. Saved sessions replay on the map. Import your own CSVs for simple detection analysis. 
 
 <img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
 
@@ -104,10 +104,15 @@ Packet capture with no SD card — frames stream over BLE and the app writes a `
 
 - **WiFi 802.11 (radiotap)** — beacons, probes, deauth, data, control, and management frames across a channel range.
 - **BLE LL** — adverts and scan request/response with synthesized link-layer headers.
-- **Auto-PCAP** — when a detection engine fires, the board automatically captures for 3–120 s (with a cooldown and a per-MAC rediscover window), then goes back to scanning. Each capture is auto-labeled with the engine and MAC that triggered it.
+- **Auto-PCAP** — when a detection engine fires, the board can automatically capture for 3–120 s (with a cooldown and a per-MAC rediscover window), then go back to scanning. Each capture is auto-labeled with the engine and MAC that triggered it.
 
 ### Offline Scan (experimental)
-*Settings → Config → Hardware → Offline Scan.* Turn on **Keep scanning while disconnected** and the board keeps its detection engines running after you close the app or walk out of BLE range, buffering matching hits to on-board flash (a deep buffer on PSRAM boards, a smaller one on the manager). Reconnect and the buffered hits import automatically — the status bar shows **SYNC** and a banner reports how many detections arrived while you were away. A sub-toggle — **Tag away detections with last GPS** — stamps those hits with your phone's last-known position, flagged as approximate. WiGLE wardriving can't buffer offline, so its target chip is dropped automatically while this is on. Off by default.
+*Settings → Config → Hardware → Offline Scan.* Turn on **Keep scanning while disconnected** and the board keeps its detection engines running after you close the app or walk out of BLE range. 
+ 
+
+— The status bar shows **SYNC** and a banner reports how many detections arrived while you were away. 
+- Option to **Tag away detections with last GPS** — stamps those hits with your phone's last-known position, flagged as approximate.
+
 
 ### Over-the-Air Updates
 *Settings → Updates → Check for Update.* Update over **WiFi** (fast — give credentials once) or **BLE** (works anywhere, slower). No cables after the first flash. In node mode, each live node updates the same way, one at a time.
@@ -165,7 +170,7 @@ FAA Remote ID drones — BLE scan for **Open Drone ID** adverts plus WiFi promis
 Unitree robots by BLE name prefix (`Go2_`, `G1_`, `H1_`, `B2_`, `X1_`). Detect → connect → exploitation actions: enable SSH, change root password, read serial/system info, reboot, arbitrary command exec.
 
 ### Wardrive
-Logs every AP it hears — SSID, BSSID (addr3), channel, and decoded auth mode from beacons and probe-responses — stamped with GPS, WiGLE-style.
+Logs every AP & BLE device it sees — SSID, BSSID (addr3), channel, and decoded auth mode from beacons and probe-responses — stamped with GPS, WiGLE.net integration.
 
 ---
 
