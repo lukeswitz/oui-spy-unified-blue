@@ -90,6 +90,10 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
             strncpy(evt.ext.flock.raven_fw, tnSerial,
                     sizeof(evt.ext.flock.raven_fw) - 1);
         }
+        if (!name.empty()) {
+            strncpy(evt.ext.flock.name, name.c_str(),
+                    sizeof(evt.ext.flock.name) - 1);
+        }
         pushDetection(&evt);
 
         std::string addrStr = dev->getAddress().toString();

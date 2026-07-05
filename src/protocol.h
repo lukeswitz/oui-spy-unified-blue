@@ -161,6 +161,7 @@ typedef struct __attribute__((packed)) {
             uint8_t is_raven;
             char    raven_fw[16];
             uint8_t auth_mode;
+            char    name[32];
         } flock;
 
         // Sky Spy ODID

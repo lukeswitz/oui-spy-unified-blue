@@ -442,6 +442,10 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
                     strncpy(fEvt.ext.flock.raven_fw, tnSerial,
                             sizeof(fEvt.ext.flock.raven_fw) - 1);
                 }
+                if (!name.empty()) {
+                    strncpy(fEvt.ext.flock.name, name.c_str(),
+                            sizeof(fEvt.ext.flock.name) - 1);
+                }
                 pushDetection(&fEvt);
             }
         }
