@@ -5,3 +5,4 @@ void bleCoexRegister(NimBLEAdvertisedDeviceCallbacks* cb, bool activeScan);
 void bleCoexUnregister(NimBLEAdvertisedDeviceCallbacks* cb);
 NimBLEScan* bleCoexScan(void);
 bool bleCoexActive(void);
+void bleCoexEnsureScanning(void);

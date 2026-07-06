@@ -170,16 +170,7 @@ static void flockBleLoop(void) {
     if (!scanning) return;
     if (!flockBleRadioGate) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
-    if (!bleScan) return;
-    unsigned long now = millis();
-    if (now - lastScanStart >= scanIntervalMs && !bleScan->isScanning()) {
-        scanDurationMs = wardriveGetBleScanDurationMs();
-        scanIntervalMs = wardriveGetBleScanIntervalMs();
-        bleScan->start(0, flockBleScanComplete, false);
-        lastScanStart = now;
-    } else if (bleScan->isScanning() && (now - lastScanStart >= scanDurationMs)) {
-        bleScan->stop();
-    }
+    bleCoexEnsureScanning();
 }
 
 static void flockBleConfig(const uint8_t* payload, uint8_t len) {

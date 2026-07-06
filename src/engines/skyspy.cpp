@@ -389,17 +389,9 @@ static void skyspyLoop(void) {
         }
     }
 
-    // BLE scan cycle. When wardrive owns the radio it duty-cycles the shared
-    // NimBLE scan (bleScanDuration/Interval); our bleCb still receives adverts
-    // via the ble_coex dispatch, so RID detection continues. Driving start()
-    // ourselves here would pin the scan near-continuous and starve WiFi.
-    if (bleScan && (skyspyRadioMask & 0x02) &&
-        engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED &&
-        millis() - lastScanStart >= 1500) {
-        if (!bleScan->isScanning()) {
-            bleScan->start(1, skyspyScanComplete, false);
-            lastScanStart = millis();
-        }
+    if ((skyspyRadioMask & 0x02) &&
+        engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
+        bleCoexEnsureScanning();
     }
 
     // Expire old drones (30s timeout)

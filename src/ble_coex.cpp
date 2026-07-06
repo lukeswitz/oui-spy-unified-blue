@@ -45,6 +45,16 @@ void bleCoexRegister(NimBLEAdvertisedDeviceCallbacks* cb, bool activeScan) {
     Serial.printf("[BLE-COEX] register (count=%d)\n", count);
 }
 
+void bleCoexEnsureScanning(void) {
+    if (g_count == 0) return;
+    NimBLEScan* s = NimBLEDevice::getScan();
+    if (s->isScanning()) return;
+    s->setActiveScan(g_wantActive);
+    s->setInterval(100);
+    s->setWindow(99);
+    s->start(0, nullptr, false);
+}
+
 void bleCoexUnregister(NimBLEAdvertisedDeviceCallbacks* cb) {
     if (!cb) return;
     portENTER_CRITICAL(&g_mux);

@@ -325,12 +325,7 @@ static void foxhunterLoop(void) {
         }
     }
 
-    if (bleScan && millis() - lastScanStart >= 1500) {
-        if (!bleScan->isScanning()) {
-            bleScan->start(1, false);
-            lastScanStart = millis();
-        }
-    }
+    bleCoexEnsureScanning();
 }
 
 static void foxhunterConfigCb(const uint8_t* payload, uint8_t len) {

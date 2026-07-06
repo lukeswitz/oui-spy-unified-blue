@@ -382,12 +382,7 @@ static void detectorLoop(void) {
         if (meshIsEnabled() && channels[channelIdx] == 1) meshNoteOnHome();
     }
 
-    if (bleScan && millis() - lastScanStart >= SCAN_INTERVAL_MS) {
-        if (!bleScan->isScanning()) {
-            bleScan->start(SCAN_DURATION_S, false);
-            lastScanStart = millis();
-        }
-    }
+    if (detectorRadioMask & 0x02) bleCoexEnsureScanning();
 }
 
 static void detectorApplyPrefs(void) {

@@ -77,7 +77,6 @@ static void unipwnStart(void) {
 
 static void unipwnStop(void) {
     bleCoexUnregister(&scanCb);
-    if (bleScan && bleScan->isScanning()) bleScan->stop();
     scanning = false;
     Serial.println("[UNIPWN] Stopped");
 }
@@ -89,12 +88,7 @@ static void unipwnLoop(void) {
     // Yield the shared scan to wardrive's duty cycle when it owns the radio;
     // our scanCb still gets adverts via ble_coex dispatch.
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
-    if (millis() - lastScanStart >= 2000) {
-        if (!bleScan->isScanning()) {
-            bleScan->start(1, unipwnScanComplete, false);
-            lastScanStart = millis();
-        }
-    }
+    bleCoexEnsureScanning();
 }
 
 static void unipwnApplyPrefs(void) {
