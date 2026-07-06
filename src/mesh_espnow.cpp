@@ -811,7 +811,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
             EngineCommand ec = {};
             ec.command = cmd.command;
             ec.engine_id = cmd.engine_id;
-            ec.payload_len = cmd.payload_len > sizeof(ec.payload) ? sizeof(ec.payload) : cmd.payload_len;
+            ec.payload_len = cmd.payload_len;
+            if (ec.payload_len > sizeof(ec.payload)) ec.payload_len = sizeof(ec.payload);
+            if (ec.payload_len > sizeof(cmd.payload)) ec.payload_len = sizeof(cmd.payload);
             if (ec.payload_len > 0) memcpy(ec.payload, cmd.payload, ec.payload_len);
             engineProcessCommand(&ec);
         } else if (targetMatch) {

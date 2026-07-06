@@ -1008,11 +1008,11 @@ void setup() {
     engineCmdQueue = xQueueCreate(8, sizeof(EngineCommand));
     chimeQueue = xQueueCreate(1, sizeof(uint8_t));
 
-    if (detectionQueue == NULL || engineCmdQueue == NULL) {
+    if (detectionQueue == NULL || engineCmdQueue == NULL || chimeQueue == NULL) {
         Serial.println("[FATAL] Queue creation failed!");
         while (1) delay(1000);
     }
-    Serial.println("[INIT] Queues created (det=64, cmd=8)");
+    Serial.println("[INIT] Queues created (det=128, cmd=8)");
 
     // Initialize engine registry
     engineRegistryInit();

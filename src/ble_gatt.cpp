@@ -728,6 +728,13 @@ static void nodePhoneDisconnected(void) {
     }
 }
 void bleGattNodeGraceTick(void) {
+    if (!phoneConnected) {
+        NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+        if (adv && !adv->isAdvertising()) {
+            NimBLEDevice::startAdvertising();
+            Serial.println("[NODE] advertising was DOWN — restarted (watchdog)");
+        }
+    }
     if (nodePhoneGoneMs != 0 && !phoneConnected &&
         (millis() - nodePhoneGoneMs) > NODE_PHONE_GRACE_MS) {
         if (!offlineScanEnabled) {

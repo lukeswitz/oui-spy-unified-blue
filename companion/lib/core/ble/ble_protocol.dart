@@ -468,8 +468,8 @@ class BleProtocol {
     if (ext.isEmpty) {
       return const UnipwnExtension(robotType: 'unknown');
     }
-    final robotType = _extractString(ext, 0, 4);
-    final exploited = ext.length > 4 && ext[4] == 1;
+    final robotType = _extractString(ext, 0, 8);
+    final exploited = ext.length > 8 && ext[8] == 1;
     return UnipwnExtension(robotType: robotType, exploited: exploited);
   }
 

@@ -66,6 +66,7 @@ Future<void> _forceCleanBleState() async {
     await Future.delayed(const Duration(milliseconds: 500));
     final connected = FlutterBluePlus.connectedDevices;
     for (final d in connected) {
+      if (d.platformName.contains('OUI-SPY')) continue;
       try {
         await d.disconnect(queue: false);
         DebugLog.log('BLE: force-disconnect on launch ${d.platformName}');

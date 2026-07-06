@@ -255,7 +255,7 @@ typedef struct {
 // ============================================================================
 // Queues (extern, created in main.cpp)
 // ============================================================================
-extern QueueHandle_t detectionQueue;   // DetectionEvent, depth 64
+extern QueueHandle_t detectionQueue;   // DetectionEvent, depth 128
 extern QueueHandle_t engineCmdQueue;   // EngineCommand, depth 8
 
 // ============================================================================
