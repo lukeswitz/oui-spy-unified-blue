@@ -3322,7 +3322,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       final lon = d['longitude'] as double;
       final engineStr = d['engine'] as String;
       final color = _engineColor(engineStr);
-      final mac = (d['macAddress'] as String).toUpperCase();
 
       return Marker(
         point: LatLng(lat, lon),
