@@ -15,7 +15,6 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
-import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/debug_log.dart';
@@ -5102,7 +5101,8 @@ class _WifiEnableToggleState extends ConsumerState<_WifiEnableToggle> {
       final r = await ref.read(bleManagerProvider).readWifiConfig();
       if (!mounted) return;
       setState(() => _enabled = r.enabled);
-    } on Exception {
+    } on Exception catch (e) {
+      DebugLog.log('WiFi refresh failed: $e');
     }
   }
 

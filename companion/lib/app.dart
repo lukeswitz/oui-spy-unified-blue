@@ -11,7 +11,6 @@ import 'package:oui_spy/features/feed/feed_screen.dart';
 import 'package:oui_spy/features/home/home_screen.dart';
 import 'package:oui_spy/features/onboarding/scan_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_screen.dart';
-import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';

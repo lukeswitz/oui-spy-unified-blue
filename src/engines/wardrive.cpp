@@ -191,6 +191,7 @@ static uint8_t IRAM_ATTR parseAuthFromFrame(const uint8_t* p, int len) {
     if (hasRSN && hasWPA)   return 4;  // WPA_WPA2
     if (hasRSN)             return 3;  // WPA2
     if (hasWPA)             return 2;  // WPA
+    if (len >= 36 && (p[34] & 0x10)) return 1;  // WEP (Privacy bit set, no RSN/WPA)
     return 0;                           // Open
 }
 
