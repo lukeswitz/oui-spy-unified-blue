@@ -18,7 +18,8 @@
 
 #define MAX_UAVS 32
 
-static ODID_UAS_Data UAS_data;
+static ODID_UAS_Data UAS_data_ble;
+static ODID_UAS_Data UAS_data_wifi;
 
 struct DroneData {
     uint8_t  mac[6];
@@ -125,7 +126,7 @@ static void pushDroneDetection(DroneData* d, uint8_t method) {
     pushDetection(&evt);
 }
 
-static void applyOdidData(DroneData* d) {
+static void applyOdidData(DroneData* d, const ODID_UAS_Data& UAS_data) {
     if (UAS_data.BasicIDValid[0]) {
         strncpy(d->uavId, (char*)UAS_data.BasicID[0].UASID, ODID_ID_SIZE);
         d->uaType = (uint8_t)UAS_data.BasicID[0].UAType;
@@ -192,6 +193,7 @@ static bool odidIsPlausible(const ODID_UAS_Data* u) {
 class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
         g_engRawSeen++;
+        ODID_UAS_Data& UAS_data = UAS_data_ble;
         int len = dev->getPayloadLength();
         uint8_t* payload = dev->getPayload();
         if (!payload || len < 6 + (int)sizeof(ODID_BasicID_encoded)) return;
@@ -241,7 +243,7 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         if (d == nullptr) return;
         d->lastSeen = millis();
         d->rssi = dev->getRSSI();
-        applyOdidData(d);
+        applyOdidData(d, UAS_data);
 
         pushDroneDetection(d, METHOD_ODID_BLE);
 
@@ -259,6 +261,7 @@ static SkySkyBLECallback bleCb;
 static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     g_engRawSeen++;
     if (type != WIFI_PKT_MGMT) return;
+    ODID_UAS_Data& UAS_data = UAS_data_wifi;
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* payload = pkt->payload;
@@ -278,7 +281,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
             }
             d->rssi = pkt->rx_ctrl.rssi;
             d->lastSeen = millis();
-            applyOdidData(d);
+            applyOdidData(d, UAS_data);
             pushDroneDetection(d, METHOD_ODID_NAN);
         }
         return;
@@ -287,7 +290,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
     // Beacon frame with vendor-specific ODID element
     if (payload[0] == 0x80) {
         int offset = 36;
-        while (offset < length) {
+        while (offset + 1 < length) {
             int typ = payload[offset];
             int len = payload[offset + 1];
             if (typ == 0xdd && offset + 4 < length &&
@@ -307,7 +310,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
                     }
                     d->rssi = pkt->rx_ctrl.rssi;
                     d->lastSeen = millis();
-                    applyOdidData(d);
+                    applyOdidData(d, UAS_data);
                     pushDroneDetection(d, METHOD_ODID_BEACON);
                 }
                 return;
