@@ -15,6 +15,7 @@ static uint8_t g_engineDenyMask = 0;
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
 static bool initialized[ENGINE_COUNT] = {false};
+static SemaphoreHandle_t engineMux = nullptr;
 
 // WiFi engines are mutually exclusive
 static bool isWifiEngine(EngineId id) {
@@ -65,6 +66,7 @@ uint32_t engineGetNotifyCooldownMs(void) { return g_notifyCooldownMs; }
 uint32_t engineGetRediscoverMs(void)     { return g_rediscoverMs; }
 
 void engineRegistryInit(void) {
+    if (!engineMux) engineMux = xSemaphoreCreateRecursiveMutex();
     for (int i = 0; i < ENGINE_COUNT; i++) {
         engines[i] = nullptr;
         states[i] = ESTATE_DISABLED;
@@ -111,6 +113,7 @@ static void autoPcapCancelDeadlineTimer(void) {
 }
 
 void engineDisableAll(void) {
+    if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
     autoPcapCancelDeadlineTimer();
     autoPcapPending = false;
     autoPcapObservedActive = false;
@@ -132,6 +135,7 @@ void engineDisableAll(void) {
         Serial.println("[ENGINE] Force-stopped BLE scan");
     }
     Serial.println("[ENGINE] All engines disabled");
+    if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
 
 void engineRegister(EngineId id, const EngineCallbacks* callbacks) {
@@ -141,7 +145,7 @@ void engineRegister(EngineId id, const EngineCallbacks* callbacks) {
     Serial.printf("[ENGINE] Registered: %s (id=%d)\n", callbacks->name, id);
 }
 
-bool engineEnable(EngineId id) {
+static bool engineEnableImpl(EngineId id) {
     if (id >= ENGINE_COUNT || engines[id] == nullptr) return false;
 
     // Already active?
@@ -193,7 +197,7 @@ bool engineEnable(EngineId id) {
     return true;
 }
 
-bool engineDisable(EngineId id) {
+static bool engineDisableImpl(EngineId id) {
     if (id >= ENGINE_COUNT || engines[id] == nullptr) return false;
     if (states[id] == ESTATE_DISABLED) return true;
 
@@ -205,6 +209,20 @@ bool engineDisable(EngineId id) {
     return true;
 }
 
+bool engineEnable(EngineId id) {
+    if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
+    bool r = engineEnableImpl(id);
+    if (engineMux) xSemaphoreGiveRecursive(engineMux);
+    return r;
+}
+
+bool engineDisable(EngineId id) {
+    if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
+    bool r = engineDisableImpl(id);
+    if (engineMux) xSemaphoreGiveRecursive(engineMux);
+    return r;
+}
+
 EngineState engineGetState(EngineId id) {
     if (id >= ENGINE_COUNT) return ESTATE_DISABLED;
     return states[id];
@@ -212,7 +230,9 @@ EngineState engineGetState(EngineId id) {
 
 void engineSetState(EngineId id, EngineState state) {
     if (id >= ENGINE_COUNT) return;
+    if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
     states[id] = state;
+    if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
 
 uint8_t engineGetActiveMask(void) {
@@ -461,6 +481,7 @@ static void autoPcapTick(void) {
 }
 
 void engineLoopAll(void) {
+    if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
     autoPcapTick();
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (states[i] != ESTATE_DISABLED && engines[i] != nullptr && engines[i]->loop) {
@@ -475,6 +496,7 @@ void engineLoopAll(void) {
 #endif
         }
     }
+    if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
 
 void engineSetDenyMask(uint8_t mask) {
