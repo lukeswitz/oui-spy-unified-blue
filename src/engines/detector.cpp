@@ -211,6 +211,12 @@ void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* d
 
 int detectorFilterCount(void) { return filterCount; }
 
+const char* detectorLookupDesc(const uint8_t* mac) {
+    if (!mac) return "";
+    const TargetFilter* f = matchFilterBytes(mac);
+    return f ? f->desc : "";
+}
+
 size_t detectorSerialize(uint8_t* out, size_t maxLen) {
     if (out == nullptr || maxLen < 1) return 0;
     size_t off = 1;

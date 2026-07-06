@@ -1078,6 +1078,16 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         memcpy(&evt.ext, pkt.ext_data, pkt.ext_len);
     }
 
+#ifdef OUISPY_ROLE_MANAGER
+    if ((evt.engine_id & 0x7F) == ENGINE_DETECTOR && evt.ext.detector.filter_desc[0] == '\0') {
+        const char* dsc = detectorLookupDesc(evt.mac);
+        if (dsc && dsc[0]) {
+            strncpy(evt.ext.detector.filter_desc, dsc,
+                    sizeof(evt.ext.detector.filter_desc) - 1);
+        }
+    }
+#endif
+
     pushDetection(&evt);
     recordLiveSeen(pkt.source_node_id);
 #ifdef OUISPY_NETCOUNT

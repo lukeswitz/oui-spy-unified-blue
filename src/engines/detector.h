@@ -18,6 +18,7 @@ void detectorClearFilters(void);
 void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* desc);
 void detectorAddUuidFilter(uint16_t uuid, const char* desc);
 int detectorFilterCount(void);
+const char* detectorLookupDesc(const uint8_t* mac);
 size_t detectorSerialize(uint8_t* out, size_t maxLen);
 void detectorSetFilters(const uint8_t* data, size_t len);
 void detectorHostSuspend(bool suspend);
