@@ -3,6 +3,8 @@
 #include <string.h>
 #include <esp_heap_caps.h>
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #if defined(OUISPY_ROLE_MANAGER) && !defined(BOARD_HAS_PSRAM)
 #define SPOOL_CAP 120
@@ -32,6 +34,7 @@ static uint16_t s_cap = 0;
 static bool s_dirty = false;
 static bool s_ready = false;
 static uint32_t s_lastFlushMs = 0;
+static SemaphoreHandle_t s_mutex = nullptr;
 
 bool engineSpoolable(uint8_t engine_id) {
     return engine_id != ENGINE_WARDRIVE && engine_id != ENGINE_PCAP;
@@ -71,6 +74,7 @@ static void persist() {
 }
 
 void detSpoolInit() {
+    if (!s_mutex) s_mutex = xSemaphoreCreateMutex();
     if (s_ready) return;
     s_cap = SPOOL_CAP;
     size_t bytes = (size_t)s_cap * sizeof(SpoolSlot);
@@ -107,40 +111,53 @@ void detSpoolInit() {
 
 void detSpoolAppend(const DetectionEvent* evt) {
     if (!s_ready || !s_slots || !evt) return;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
     int idx = findSlot(evt->engine_id, evt->mac);
     if (idx >= 0) {
         uint16_t hc = s_slots[idx].hit_count;
         s_slots[idx].evt = *evt;
         s_slots[idx].hit_count = (hc < 0xFFFF) ? (uint16_t)(hc + 1) : hc;
+        s_dirty = true;
     } else if (s_count < s_cap) {
         s_slots[s_count].evt = *evt;
         s_slots[s_count].hit_count = 1;
         s_count++;
+        s_dirty = true;
     } else {
         int o = oldestSlot();
-        if (o < 0) return;
-        s_slots[o].evt = *evt;
-        s_slots[o].hit_count = 1;
-        if (s_dropped < 0xFFFF) s_dropped++;
+        if (o >= 0) {
+            s_slots[o].evt = *evt;
+            s_slots[o].hit_count = 1;
+            if (s_dropped < 0xFFFF) s_dropped++;
+            s_dirty = true;
+        }
     }
-    s_dirty = true;
+    if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
 uint16_t detSpoolCount() { return s_count; }
 uint16_t detSpoolDroppedCount() { return s_dropped; }
 
 bool detSpoolReadSlot(uint16_t i, DetectionEvent* out, uint16_t* hitCount) {
-    if (!s_ready || i >= s_count || !out) return false;
-    *out = s_slots[i].evt;
-    if (hitCount) *hitCount = s_slots[i].hit_count;
-    return true;
+    if (!s_ready || !out) return false;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool ok = false;
+    if (i < s_count) {
+        *out = s_slots[i].evt;
+        if (hitCount) *hitCount = s_slots[i].hit_count;
+        ok = true;
+    }
+    if (s_mutex) xSemaphoreGive(s_mutex);
+    return ok;
 }
 
 void detSpoolClear() {
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
     if (s_ready) LittleFS.remove(SPOOL_PATH);
     s_count = 0;
     s_dropped = 0;
     s_dirty = false;
+    if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
 void detSpoolFlushIfDirty() {
@@ -148,7 +165,9 @@ void detSpoolFlushIfDirty() {
     uint32_t now = millis();
     if (now - s_lastFlushMs < SPOOL_FLUSH_MS) return;
     s_lastFlushMs = now;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
     persist();
+    if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
 #ifdef OUISPY_SPOOL_SELFTEST

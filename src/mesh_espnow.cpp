@@ -27,6 +27,7 @@ static volatile uint32_t g_mgrPhoneSeenMs = 0;
 volatile uint32_t g_spoolStressAwayRx = 0;
 #endif
 static SemaphoreHandle_t meshMutex = NULL;
+static SemaphoreHandle_t gcmMutex = NULL;
 
 #define MESH_CMD_PENDING_MAX  16
 #define MESH_CMD_RETRY_MS     300
@@ -337,6 +338,7 @@ static bool encryptPacket(const uint8_t* plain, size_t plainLen,
     uint8_t tag[MESH_TAG_LEN];
     memcpy(out, nonce, MESH_NONCE_LEN);
 
+    if (gcmMutex) xSemaphoreTake(gcmMutex, portMAX_DELAY);
     int ret = mbedtls_gcm_crypt_and_tag(
         &gcmCtx, MBEDTLS_GCM_ENCRYPT,
         plainLen,
@@ -346,6 +348,7 @@ static bool encryptPacket(const uint8_t* plain, size_t plainLen,
         out + MESH_NONCE_LEN,
         MESH_TAG_LEN, tag
     );
+    if (gcmMutex) xSemaphoreGive(gcmMutex);
 
     if (ret != 0) {
         Serial.printf("[MESH] Encrypt failed: %d\n", ret);
@@ -372,6 +375,7 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
     const uint8_t* cipher = data + MESH_NONCE_LEN;
     const uint8_t* tag = data + MESH_NONCE_LEN + cipherLen;
 
+    if (gcmMutex) xSemaphoreTake(gcmMutex, portMAX_DELAY);
     int ret = mbedtls_gcm_auth_decrypt(
         &gcmCtx,
         cipherLen,
@@ -381,6 +385,7 @@ static bool decryptPacket(const uint8_t* data, size_t dataLen,
         cipher,
         out
     );
+    if (gcmMutex) xSemaphoreGive(gcmMutex);
 
     if (ret != 0) {
         Serial.printf("[MESH] Decrypt failed: %d\n", ret);
@@ -1317,6 +1322,7 @@ static void meshSchedTaskFn(void* arg) {
 
 void meshInit(void) {
     meshMutex = xSemaphoreCreateMutex();
+    gcmMutex = xSemaphoreCreateMutex();
     pendingMutex = xSemaphoreCreateMutex();
     inviteMutex = xSemaphoreCreateMutex();
     txMutex = xSemaphoreCreateMutex();
@@ -1383,16 +1389,17 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
     xSemaphoreGive(meshMutex);
 
     if (cfg->encryption_enabled) {
+        if (gcmMutex) xSemaphoreTake(gcmMutex, portMAX_DELAY);
         mbedtls_gcm_free(&gcmCtx);
         mbedtls_gcm_init(&gcmCtx);
         int ret = mbedtls_gcm_setkey(&gcmCtx, MBEDTLS_CIPHER_ID_AES,
                                       cfg->key, 256);
+        gcmReady = (ret == 0);
+        if (gcmMutex) xSemaphoreGive(gcmMutex);
         if (ret != 0) {
             Serial.printf("[MESH] GCM setkey failed: %d\n", ret);
-            gcmReady = false;
             return;
         }
-        gcmReady = true;
         Serial.println("[MESH] AES-256-GCM encryption enabled");
     } else {
         gcmReady = false;
