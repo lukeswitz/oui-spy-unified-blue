@@ -80,7 +80,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
               value: isActive,
               onChanged: _toggleEngine,
               activeTrackColor: AppTheme.uniPwn.withValues(alpha: 0.3),
-              activeColor: AppTheme.uniPwn,
+              activeThumbColor: AppTheme.uniPwn,
             ),
           ),
         ],

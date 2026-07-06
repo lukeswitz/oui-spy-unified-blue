@@ -44,7 +44,7 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
               value: isActive,
               onChanged: _toggleEngine,
               activeTrackColor: AppTheme.detector.withValues(alpha: 0.3),
-              activeColor: AppTheme.detector,
+              activeThumbColor: AppTheme.detector,
             ),
           ),
           IconButton(icon: const Icon(Icons.add), onPressed: _showAddDialog, tooltip: 'Add target'),

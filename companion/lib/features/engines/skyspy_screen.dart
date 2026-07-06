@@ -39,7 +39,7 @@ class SkySpyScreen extends ConsumerWidget {
                 }
               },
               activeTrackColor: AppTheme.skySpy.withValues(alpha: 0.3),
-              activeColor: AppTheme.skySpy,
+              activeThumbColor: AppTheme.skySpy,
             ),
           ),
         ],
