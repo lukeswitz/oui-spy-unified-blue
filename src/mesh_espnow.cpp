@@ -860,6 +860,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         if (memcmp(il.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
         uint8_t n = il.len;
         if (n > MESH_IGNORELIST_MAX) n = MESH_IGNORELIST_MAX;
+        size_t availIl = cp > offsetof(MeshIgnoreListPacket, data)
+                           ? cp - offsetof(MeshIgnoreListPacket, data) : 0;
+        if (n > availIl) n = (uint8_t)availIl;
         ignoreListSet(il.data, n);
         return;
     }
@@ -871,6 +874,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         if (memcmp(il.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
         uint8_t n = il.len;
         if (n > MESH_IGNORELIST_MAX) n = MESH_IGNORELIST_MAX;
+        size_t availIl = cp > offsetof(MeshIgnoreListPacket, data)
+                           ? cp - offsetof(MeshIgnoreListPacket, data) : 0;
+        if (n > availIl) n = (uint8_t)availIl;
         detectorSetFilters(il.data, n);
         return;
     }
@@ -882,6 +888,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         if (memcmp(cp.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
         uint8_t n = cp.len;
         if (n > MESH_CONFIG_MAX) n = MESH_CONFIG_MAX;
+        size_t availCfg = c > offsetof(MeshConfigPacket, data)
+                            ? c - offsetof(MeshConfigPacket, data) : 0;
+        if (n > availCfg) n = (uint8_t)availCfg;
         if (cp.cfg_kind == MESH_CFG_KIND_HW)         hardwareConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_ALERT) alertConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_AUTOPCAP) autoPcapConfigApply(cp.data, n);
@@ -2056,6 +2065,7 @@ void meshForwardPcapRecord(const uint8_t* record, size_t len) {
     const size_t fragData = (size_t)MESH_RAW_PAYLOAD_MAX - 1u;
     uint8_t totalFrags = (uint8_t)((len + fragData - 1) / fragData);
     if (totalFrags == 0) totalFrags = 1;
+    if (!meshTxQueue) return;
     if (uxQueueSpacesAvailable(meshTxQueue) < totalFrags) return;
     size_t off = 0;
     for (uint8_t idx = 0; idx < totalFrags; idx++) {

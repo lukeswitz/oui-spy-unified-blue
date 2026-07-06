@@ -330,6 +330,8 @@ static void spoolE2EInjectTask(void* arg) {
 }
 #endif
 
+static volatile uint32_t g_ledOffAtMs = 0;
+
 static void detectionNotifyTask(void* param) {
     DetectionEvent evt;
     Serial.println("[TASK] Detection notify task started");
@@ -369,6 +371,7 @@ static void detectionNotifyTask(void* param) {
                 Serial.printf("[CHIME] engine=%d\n", evt.engine_id);
                 requestChime();
                 if (hwLedEnabled) {
+                    g_ledOffAtMs = millis() + 80;
                     OUISPY_LED_ON();
                 }
             }
@@ -385,10 +388,6 @@ static void detectionNotifyTask(void* param) {
             if (evt.source_node_id[0] == '\0')
                 engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel, evt.mac);
 
-            // LED off after notification sent
-            if (hwLedEnabled) {
-                OUISPY_LED_OFF();
-            }
 
             // Also print to serial (for debugging / Flask compatibility)
             char macStr[18];
@@ -458,6 +457,10 @@ static void statusHeartbeatTask(void* param) {
                       meshTimeSlicingActive() ? 1 : 0);
 #endif
 
+        if (g_ledOffAtMs != 0 && (int32_t)(millis() - g_ledOffAtMs) >= 0) {
+            OUISPY_LED_OFF();
+            g_ledOffAtMs = 0;
+        }
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
         bleGattNodeGraceTick();
