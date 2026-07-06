@@ -36,6 +36,7 @@ struct DroneData {
     uint8_t  uaType, idType, opIdType, opLocType, classification;
     uint8_t  categoryEu, classEu, heightType, status;
     uint8_t  horizAcc, vertAcc, baroAcc, speedAcc, selfIdType;
+    uint32_t lastPushed;
     bool     active;
 };
 
@@ -76,6 +77,9 @@ static DroneData* findActiveDroneByUavId(const char* uid) {
 }
 
 static void pushDroneDetection(DroneData* d, uint8_t method) {
+    uint32_t nowMs = millis();
+    if (d->lastPushed != 0 && (nowMs - d->lastPushed) < engineGetRediscoverMs()) return;
+    d->lastPushed = nowMs;
     DetectionEvent evt;
     memset(&evt, 0, sizeof(evt));
     evt.engine_id = ENGINE_SKYSPY;
