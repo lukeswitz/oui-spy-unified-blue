@@ -24,12 +24,7 @@ import UIKit
 
   override func applicationWillTerminate(_ application: UIApplication) {
     if #available(iOS 16.2, *) {
-      let semaphore = DispatchSemaphore(value: 0)
-      Task {
-        await LiveActivityHandler.endAllActivitiesNow()
-        semaphore.signal()
-      }
-      _ = semaphore.wait(timeout: .now() + 2.0)
+      Task { await LiveActivityHandler.endAllActivitiesNow() }
     }
     super.applicationWillTerminate(application)
   }

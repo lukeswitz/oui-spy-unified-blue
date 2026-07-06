@@ -46,13 +46,16 @@ class LiveActivityHandler {
         let state = contentState(from: args)
         let attributes = OuiSpyLiveActivityAttributes()
 
-        do {
-            let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
-            let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
-            currentActivity = activity
-            result(activity.id)
-        } catch {
-            result(FlutterError(code: "START_FAILED", message: error.localizedDescription, details: nil))
+        Task {
+            await Self.endAllActivitiesNow()
+            do {
+                let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
+                let activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
+                currentActivity = activity
+                result(activity.id)
+            } catch {
+                result(FlutterError(code: "START_FAILED", message: error.localizedDescription, details: nil))
+            }
         }
     }
 
