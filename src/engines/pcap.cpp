@@ -314,6 +314,8 @@ static void drainBuffersOverBle(void) {
     }
 }
 
+static void freeBuffers(void);
+
 static void pcapSenderTask(void* /*arg*/) {
     while (true) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
@@ -321,6 +323,7 @@ static void pcapSenderTask(void* /*arg*/) {
         drainBuffersOverBle();
     }
     drainBuffersOverBle();
+    freeBuffers();
     pcapSenderHandle = nullptr;
     vTaskDelete(NULL);
 }
@@ -444,12 +447,14 @@ static void pcapStop(void) {
         esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
     }
 
-    if (pcapSenderHandle) xTaskNotifyGive(pcapSenderHandle);
-    for (int i = 0; i < 15 && pcapSenderHandle != nullptr; i++) {
-        vTaskDelay(pdMS_TO_TICKS(20));
+    if (pcapSenderHandle) {
+        xTaskNotifyGive(pcapSenderHandle);
+        for (int i = 0; i < 100 && pcapSenderHandle != nullptr; i++) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+    } else {
+        freeBuffers();
     }
-
-    freeBuffers();
     if (pcapState != 2) pcapState = 0;
     engineSetState(ENGINE_PCAP, ESTATE_DISABLED);
     bleGattNotifyPcapStats();
