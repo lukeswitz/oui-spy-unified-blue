@@ -56,6 +56,7 @@ static NimBLECharacteristic* chrPcapStats = nullptr;
 static NimBLECharacteristic* chrPcapData = nullptr;
 
 static bool phoneConnected = false;
+static SemaphoreHandle_t chrDetMutex = nullptr;
 static volatile bool pcapDownloadRunning = false;
 static volatile uint32_t mgrPhoneGoneMs = 0;
 static volatile bool mgrTornDown = false;
@@ -1968,6 +1969,7 @@ static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
 // ============================================================================
 void bleGattInit(void) {
     Serial.println("[BLE] Initializing NimBLE...");
+    if (!chrDetMutex) chrDetMutex = xSemaphoreCreateMutex();
 #ifdef OUISPY_ROLE_MANAGER
     mgrAutoPcapLoad();
     mgrNodeRadioLoad();
@@ -2255,8 +2257,10 @@ static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
 
 static void bleGattNotifyRaw(const uint8_t* data, size_t len) {
     if (chrDetectionEvents == nullptr) return;
+    if (chrDetMutex) xSemaphoreTake(chrDetMutex, portMAX_DELAY);
     chrDetectionEvents->setValue((uint8_t*)data, len);
     chrDetectionEvents->notify();
+    if (chrDetMutex) xSemaphoreGive(chrDetMutex);
 }
 
 static void streamSpoolToPhone(void) {
@@ -2304,8 +2308,10 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
     if (chrDetectionEvents == nullptr) return;
     uint8_t buf[200];
     size_t len = packDetection(evt, buf);
+    if (chrDetMutex) xSemaphoreTake(chrDetMutex, portMAX_DELAY);
     chrDetectionEvents->setValue(buf, len);
     chrDetectionEvents->notify();
+    if (chrDetMutex) xSemaphoreGive(chrDetMutex);
 }
 
 void bleGattNotifyFoxhunterRssi(int8_t rssi, uint16_t intervalMs) {
