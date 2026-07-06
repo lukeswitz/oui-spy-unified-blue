@@ -139,6 +139,7 @@ class BleManager {
   String? _lastDeviceId;
   String? _primaryDeviceId;
   bool _userInitiatedDisconnect = false;
+  bool _isReconnect = false;
 
   // -- Public streams --
 
@@ -496,6 +497,7 @@ class BleManager {
       await _doConnect(device, sessionId: sessionId);
     } finally {
       _connecting = false;
+      _isReconnect = false;
     }
   }
 
@@ -645,12 +647,12 @@ class BleManager {
       final isMgr = _role == 'mgr' ||
           (_role.isEmpty &&
               device.platformName.toUpperCase().contains('OUI-SPY-MGR'));
-      if (!isMgr && !_offlineScanEnabled && !wardriveSessionActive) {
+      if (!isMgr && !_offlineScanEnabled && !wardriveSessionActive && !_isReconnect) {
         await _engineControl!.write(BleProtocol.encodeDisableAll());
-        DebugLog.log('BLE: sent DISABLE_ALL on connect (node)');
+        DebugLog.log('BLE: sent DISABLE_ALL on fresh connect (node)');
         await Future.delayed(const Duration(milliseconds: 300));
-      } else if (!isMgr && wardriveSessionActive) {
-        DebugLog.log('BLE: reconnect into active session — keeping grace-preserved engines, no DISABLE_ALL');
+      } else if (!isMgr && (_isReconnect || wardriveSessionActive)) {
+        DebugLog.log('BLE: reconnect/active session — adopting firmware engine state, no DISABLE_ALL');
       } else if (!isMgr) {
         DebugLog.log('BLE: offline-scan on — adopting running scan, no DISABLE_ALL');
       } else {
@@ -1352,6 +1354,7 @@ class BleManager {
     final dev = _lastDevice;
     if (dev == null) return;
     _userInitiatedDisconnect = false;
+    _isReconnect = true;
     signalAutoReconnect(true);
     DebugLog.log('BLE: resume — reconnecting to ${dev.platformName}');
     try {
@@ -1547,6 +1550,7 @@ class BleManager {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () async {
       if (_device == null || _userInitiatedDisconnect) return;
+      _isReconnect = true;
       try {
         await connect(_device!, sessionId: _sessionId);
       } catch (e) {

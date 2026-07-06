@@ -64,8 +64,8 @@ static volatile uint32_t nodePhoneGoneMs = 0;
 static bool offlineScanEnabled = false;
 bool bleGattOfflineScanEnabled() { return offlineScanEnabled; }
 void offlineScanEnabledSetFromPref(bool v) { offlineScanEnabled = v; }
-#define MGR_PHONE_GRACE_MS 8000
-#define NODE_PHONE_GRACE_MS 8000
+#define MGR_PHONE_GRACE_MS 30000
+#define NODE_PHONE_GRACE_MS 30000
 
 #ifdef OUISPY_ROLE_MANAGER
 static volatile uint8_t  mgrCommandedMask = 0;
