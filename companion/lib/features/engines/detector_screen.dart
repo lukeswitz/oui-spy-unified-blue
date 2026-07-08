@@ -5,6 +5,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
+import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DetectorScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,7 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final watchlist = ref.watch(watchlistProvider);
+    final sigMask = ref.watch(detectorSigMaskProvider);
     final detections = state.detectionsForEngine(Engine.detector);
     final isActive = state.isEngineActive(Engine.detector);
 
@@ -46,6 +48,12 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
               activeTrackColor: AppTheme.detector.withValues(alpha: 0.3),
               activeThumbColor: AppTheme.detector,
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Clear detections',
+            onPressed: () =>
+                ref.read(appStateProvider).clearDetectionsForEngine(Engine.detector),
           ),
           IconButton(icon: const Icon(Icons.add), onPressed: _showAddDialog, tooltip: 'Add target'),
         ],
@@ -74,6 +82,50 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
                       onDelete: () => ref.read(watchlistProvider).remove(e),
                     )).toList(),
                   ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Signatures section
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: t.surface,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('SIGNATURES', style: TextStyle(
+                  color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2,
+                )),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6, runSpacing: 6,
+                  children: detectorSignatures.map((s) {
+                    final on = (sigMask & s.bit) != 0;
+                    return Tooltip(
+                      message: s.desc,
+                      child: FilterChip(
+                        label: Text(s.label, style: TextStyle(
+                          fontSize: 11,
+                          color: on ? AppTheme.detector : t.textDim,
+                          fontWeight: FontWeight.w600,
+                        )),
+                        selected: on,
+                        showCheckmark: false,
+                        backgroundColor: t.background,
+                        selectedColor: AppTheme.detector.withValues(alpha: 0.18),
+                        side: BorderSide(
+                          color: on
+                              ? AppTheme.detector.withValues(alpha: 0.5)
+                              : t.border,
+                        ),
+                        onSelected: (v) => ref
+                            .read(detectorSigMaskProvider.notifier)
+                            .setBit(s.bit, v),
+                      ),
+                    );
+                  }).toList(),
+                ),
               ],
             ),
           ),
@@ -172,7 +224,10 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
           ],
         ),
       ),
-    );
+    ).then((_) {
+      idController.dispose();
+      descController.dispose();
+    });
   }
 }
 

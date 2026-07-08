@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
@@ -80,6 +81,12 @@ class BleManager {
 
   void setWatchlistGetter(List<WatchlistEntry> Function() getter) {
     _watchlistGetter = getter;
+  }
+
+  int Function()? _sigMaskGetter;
+
+  void setDetectorSigMaskGetter(int Function() getter) {
+    _sigMaskGetter = getter;
   }
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
@@ -719,6 +726,15 @@ class BleManager {
       }
     }
 
+    final sigGetter = _sigMaskGetter;
+    if (sigGetter != null && _detectorConfig != null) {
+      try {
+        await setDetectorSigMask(sigGetter());
+      } catch (e) {
+        DebugLog.log('BLE: sigmask sync failed: $e');
+      }
+    }
+
     if (_systemControl != null) {
       await _systemControl!.setNotifyValue(true);
       _subscriptions.add(
@@ -1055,6 +1071,16 @@ class BleManager {
       pushed++;
     }
     DebugLog.log('BLE: synced $pushed/${entries.length} watchlist entries to detector');
+  }
+
+  Future<void> setDetectorSigMask(int mask) async {
+    if (_detectorConfig == null) {
+      DebugLog.log('BLE: detectorConfig char missing; skip sigmask');
+      return;
+    }
+    await _detectorConfig!
+        .write(Uint8List.fromList([0x03, mask & 0xFF]), withoutResponse: false);
+    DebugLog.log('BLE: detector sigmask=0x${(mask & 0xFF).toRadixString(16)}');
   }
 
   static int? _parseUuid16(String s) {
@@ -1587,6 +1613,12 @@ final bleManagerProvider = Provider<BleManager>((ref) {
   ref.listen(watchlistProvider, (prev, next) {
     if (manager.currentConnectionState == NodeConnectionState.ready) {
       manager.syncDetectorWatchlist(next.enabledEntries);
+    }
+  });
+  manager.setDetectorSigMaskGetter(() => ref.read(detectorSigMaskProvider));
+  ref.listen(detectorSigMaskProvider, (prev, next) {
+    if (manager.currentConnectionState == NodeConnectionState.ready) {
+      manager.setDetectorSigMask(next);
     }
   });
   ref.onDispose(manager.dispose);

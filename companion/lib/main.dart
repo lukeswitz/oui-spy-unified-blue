@@ -20,6 +20,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DebugLog.init();
 
+  FlutterError.onError = (details) {
+    DebugLog.log('FLUTTER ERROR: ${details.exceptionAsString()}');
+    FlutterError.presentError(details);
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    DebugLog.log('UNCAUGHT: $error\n$stack');
+    return true;
+  };
+
   // System UI overlay adapts per-theme in MaterialApp; set transparent here.
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

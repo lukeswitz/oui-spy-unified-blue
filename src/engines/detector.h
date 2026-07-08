@@ -21,6 +21,8 @@ int detectorFilterCount(void);
 const char* detectorLookupDesc(const uint8_t* mac);
 size_t detectorSerialize(uint8_t* out, size_t maxLen);
 void detectorSetFilters(const uint8_t* data, size_t len);
+void detectorSetSigMask(uint8_t mask);
+uint8_t detectorGetSigMask(void);
 void detectorHostSuspend(bool suspend);
 
 #endif

@@ -35,7 +35,7 @@ class BleProtocol {
     final method = bytes[13];
 
     const v31Sizes = {31: false, 36: true, 37: true, 69: true, 96: false, 101: true, 23: false, 28: true, 47: false, 52: true, 74: true, 155: true};
-    final isV31 = v31Sizes[bytes.length] ?? (bytes.length >= 19 && engine == Engine.wardrive);
+    final isV31 = v31Sizes[bytes.length] ?? (bytes.length >= 19);
 
     final headerLen = isV31 ? 19 : 14;
     final sourceNodeId = isV31 ? _extractString(bytes, 14, 5) : '';
@@ -66,7 +66,6 @@ class BleProtocol {
           odid = _decodeOdidExtension(ext);
         case Engine.uniPwn:
           unipwn = _decodeUnipwnExtension(ext);
-          deviceName = _extractString(ext, 5, 20);
         case Engine.detector:
           detector = _decodeDetectorExtension(ext);
         case Engine.wardrive:
@@ -407,7 +406,15 @@ class BleProtocol {
           'odid_nan',
           'odid_beacon',
         ][method.clamp(0, 2)],
-      Engine.detector => const ['ble_watchlist', 'wifi_watchlist'][method.clamp(0, 1)],
+      Engine.detector => const [
+          'ble_watchlist',
+          'wifi_watchlist',
+          'tracker',
+          'flipper',
+          'deauth_storm',
+          'probe_ssid',
+          'pwnagotchi',
+        ][method.clamp(0, 6)],
       Engine.foxhunter => const ['ble_proximity', 'wifi_proximity'][method.clamp(0, 1)],
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => const ['wifi_ap', 'ble_adv'][method.clamp(0, 1)],

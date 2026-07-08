@@ -87,6 +87,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   void dispose() {
     _connStateSub?.cancel();
     _tabController.dispose();
+    _ssidController.dispose();
+    _passController.dispose();
     super.dispose();
   }
 
@@ -102,6 +104,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       final hwChar = ble.getCharacteristic(GattUuids.hardwareConfig);
       if (hwChar != null) {
         final hw = await hwChar.read();
+        if (!mounted) return;
         if (hw.length >= 3) {
           setState(() {
             _buzzerEnabled = hw[0] != 0;
@@ -121,6 +124,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       final alertChar = ble.getCharacteristic(GattUuids.alertConfig);
       if (alertChar != null) {
         final al = await alertChar.read();
+        if (!mounted) return;
         if (al.length >= 8) {
           setState(() {
             _cooldownMs = al[0] | (al[1] << 8);
@@ -136,6 +140,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       final infoChar = ble.getCharacteristic(GattUuids.deviceInfo);
       if (infoChar != null) {
         final info = await infoChar.read();
+        if (!mounted) return;
         if (info.isNotEmpty) {
           final nullIdx = info.indexOf(0);
           _fwVersion = String.fromCharCodes(
@@ -163,6 +168,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       DebugLog.log('CONFIG: read error: $e');
     }
 
+    if (!mounted) return;
     setState(() => _loading = false);
   }
 
@@ -1089,26 +1095,44 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     await ref.read(bleManagerProvider).factoryReset();
   }
 
-  void _writeHardwareConfig() {
-    ref.read(bleManagerProvider).writeHardwareConfig(
-          buzzer: _buzzerEnabled,
-          led: _ledEnabled,
-          neopixelBrightness: _neopixelBrightness,
-          buzzerVolume: _buzzerVolume,
-          extendedOui: _flockExtendedOui,
-          offlineScan: _offlineScanEnabled,
-        );
-    ref.read(sharedPreferencesProvider)
-        .setBool('offlineScanEnabled', _offlineScanEnabled);
+  Future<void> _writeHardwareConfig() async {
+    try {
+      await ref.read(bleManagerProvider).writeHardwareConfig(
+            buzzer: _buzzerEnabled,
+            led: _ledEnabled,
+            neopixelBrightness: _neopixelBrightness,
+            buzzerVolume: _buzzerVolume,
+            extendedOui: _flockExtendedOui,
+            offlineScan: _offlineScanEnabled,
+          );
+      ref.read(sharedPreferencesProvider)
+          .setBool('offlineScanEnabled', _offlineScanEnabled);
+    } catch (e) {
+      DebugLog.log('CONFIG: writeHardwareConfig failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('Hardware config write failed — resyncing: $e')),
+      );
+      _readDeviceConfig();
+    }
   }
 
-  void _writeAlertConfig() {
-    ref.read(bleManagerProvider).writeAlertConfig(
-          cooldownMs: _cooldownMs,
-          heartbeatMs: _heartbeatMs,
-          rediscoverMs: _rediscoverMs,
-          hbActiveMs: _hbActiveMs,
-        );
+  Future<void> _writeAlertConfig() async {
+    try {
+      await ref.read(bleManagerProvider).writeAlertConfig(
+            cooldownMs: _cooldownMs,
+            heartbeatMs: _heartbeatMs,
+            rediscoverMs: _rediscoverMs,
+            hbActiveMs: _hbActiveMs,
+          );
+    } catch (e) {
+      DebugLog.log('CONFIG: writeAlertConfig failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('Alert config write failed — resyncing: $e')),
+      );
+      _readDeviceConfig();
+    }
   }
 }
 
@@ -2748,6 +2772,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -3837,7 +3862,7 @@ class _DetectionRow extends ConsumerWidget {
     final channel = data['channel'] as int? ?? 0;
     final method = data['detectionMethod'] as String? ?? '';
     final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
-    final timeStr = AppTime.dateTime(ts);
+    final timeStr = AppTime.dateTimeShort(ts);
     final hasGps = data['latitude'] != null && data['longitude'] != null;
     final deviceName = data['deviceName'] as String? ?? '';
     final vendor = ref.read(ouiLookupProvider).lookup(mac);
@@ -3951,69 +3976,75 @@ class _DetectionRow extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             child: Row(
               children: [
-                // Engine badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: engineColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        // Engine badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: engineColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(engineLabel, style: TextStyle(
+                            color: engineColor, fontSize: 10,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                          )),
+                        ),
+                        const SizedBox(width: 8),
+                        // Method
+                        if (method.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: t.textDim.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(_detMethodLabel(method),
+                              softWrap: false,
+                              style: TextStyle(
+                                color: t.textSecondary, fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              )),
+                          ),
+                        if (channel > 0) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.cell_tower, size: 14, color: t.textDim),
+                          const SizedBox(width: 3),
+                          Text('$channel', style: TextStyle(
+                            color: t.textSecondary, fontSize: 12,
+                            fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                          )),
+                        ],
+                        if ((data['authMode'] as int? ?? 0) > 0) ...[
+                          const SizedBox(width: 8),
+                          _ConfigAuthPill(authMode: data['authMode'] as int),
+                        ],
+                        if (!hasGps) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.location_off, size: 12, color: AppTheme.gpsNone),
+                          const SizedBox(width: 3),
+                          Text('NO GPS', style: TextStyle(
+                            color: AppTheme.gpsNone, fontSize: 10,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                          )),
+                        ],
+                      ],
+                    ),
                   ),
-                  child: Text(engineLabel, style: TextStyle(
-                    color: engineColor, fontSize: 10,
-                    fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                  )),
                 ),
                 const SizedBox(width: 8),
-                // Method
-                if (method.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: t.textDim.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(_detMethodLabel(method),
-                      softWrap: false,
-                      style: TextStyle(
-                        color: t.textSecondary, fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      )),
-                  ),
-                if (channel > 0) ...[
-                  const SizedBox(width: 8),
-                  Icon(Icons.cell_tower, size: 14, color: t.textDim),
-                  const SizedBox(width: 3),
-                  Text('$channel', style: TextStyle(
-                    color: t.textSecondary, fontSize: 12,
-                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                  )),
-                ],
-                if ((data['authMode'] as int? ?? 0) > 0) ...[
-                  const SizedBox(width: 8),
-                  _ConfigAuthPill(authMode: data['authMode'] as int),
-                ],
-                if (!hasGps) ...[
-                  const SizedBox(width: 8),
-                  Icon(Icons.location_off, size: 12, color: AppTheme.gpsNone),
-                  const SizedBox(width: 3),
-                  Text('NO GPS', style: TextStyle(
-                    color: AppTheme.gpsNone, fontSize: 10,
-                    fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                  )),
-                ],
-                const Spacer(),
                 // Timestamp
                 Icon(Icons.access_time, size: 12, color: t.textDim),
                 const SizedBox(width: 4),
-                Flexible(
-                  child: Text(timeStr,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                    style: TextStyle(
-                      color: t.textDim, fontSize: 11,
-                      fontFamily: 'monospace',
-                    )),
-                ),
+                Text(timeStr,
+                  softWrap: false,
+                  style: TextStyle(
+                    color: t.textDim, fontSize: 11,
+                    fontFamily: 'monospace',
+                  )),
               ],
             ),
           ),

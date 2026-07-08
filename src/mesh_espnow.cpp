@@ -1852,6 +1852,18 @@ static void sendOnHome(const uint8_t* data, size_t len) {
     if (txMutex) xSemaphoreGive(txMutex);
 }
 
+static void sendOnHomeRestore(const uint8_t* data, size_t len) {
+    if (txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(200)) != pdTRUE) return;
+    uint8_t saved_ch = 0; wifi_second_chan_t sec;
+    esp_wifi_get_channel(&saved_ch, &sec);
+    esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+    esp_now_send(kBroadcastDst, data, len);
+    vTaskDelay(pdMS_TO_TICKS(3));
+    esp_now_send(kBroadcastDst, data, len);
+    esp_wifi_set_channel(saved_ch != 0 ? saved_ch : MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+    if (txMutex) xSemaphoreGive(txMutex);
+}
+
 static void sendAckPacket(const MeshCommandPacket* cmd) {
     MeshAckPacket ack = {};
     ack.pkt_type = MESH_PKT_ACK;
@@ -1862,7 +1874,7 @@ static void sendAckPacket(const MeshCommandPacket* cmd) {
     uint8_t enc[64];
     size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&ack, sizeof(MeshAckPacket), enc, &encLen)) return;
-    sendOneSweep(enc, encLen);
+    sendOnHomeRestore(enc, encLen);
     Serial.printf("[MESH-ACK-TX] seq=%u cmd=0x%02x engine=%u\n",
         ack.ack_seq, ack.ack_cmd, ack.ack_engine_id);
 }

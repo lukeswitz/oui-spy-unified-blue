@@ -310,8 +310,6 @@ class AppState extends ChangeNotifier {
     if (added) {
       _persistSeenNodes();
       notifyListeners();
-    } else {
-      _persistSeenNodes();
     }
   }
 
@@ -484,7 +482,8 @@ class AppState extends ChangeNotifier {
       final isNewMac = !(_uniqueMacsPerEngine[det.engine]?.contains(det.macAddress) ?? false);
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
-      (_recentDetectionTimes[det.engine] ??= []).add(DateTime.now());
+      final rt = (_recentDetectionTimes[det.engine] ??= [])..add(DateTime.now());
+      if (rt.length > 2000) rt.removeRange(0, rt.length - 2000);
       _upsertDetection(det);
       _recordDroneTrack(det);
 
@@ -562,7 +561,19 @@ class AppState extends ChangeNotifier {
   int countForEngine(Engine engine) => _uniqueMacsPerEngine[engine]?.length ?? 0;
 
   List<Detection> detectionsForEngine(Engine engine) {
-    return recentDetections.where((d) => d.engine == engine).toList();
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
+    return recentDetections
+        .where((d) => d.engine == engine && d.appTimestamp.isAfter(cutoff))
+        .toList();
+  }
+
+  void clearDetectionsForEngine(Engine engine) {
+    recentDetections.removeWhere((d) => d.engine == engine);
+    _dedupeIndex.clear();
+    for (int i = 0; i < recentDetections.length; i++) {
+      _dedupeIndex['${recentDetections[i].macAddress}|${recentDetections[i].engine.name}'] = i;
+    }
+    notifyListeners();
   }
 
 

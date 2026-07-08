@@ -433,14 +433,18 @@
       </div>
 
       <div id="mainContent">
+        <div style="font-size:0.65rem;line-height:1.7;color:var(--text-secondary);margin-bottom:12px;letter-spacing:0.3px;">
+          <strong style="color:var(--success);">NODE</strong> = scanner. Detects WiFi/BLE/drones/trackers on its own. <strong>Use this for a single device.</strong><br>
+          <strong style="color:var(--accent);">MANAGER</strong> = hub for a multi-node mesh. It coordinates &amp; aggregates nodes and <strong>does not scan by itself</strong> — only flash this if you are running 2+ boards.
+        </div>
         <select id="targetSelect" onchange="setTarget(this.value)"
                 style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface-light);color:var(--text-primary);border:1px solid var(--border);font-family:inherit;font-size:13px;">
-          <option value="node-xiao_s3">XIAO ESP32-S3 (node)</option>
-          <option value="node-s3_devkitc">ESP32-S3 N16R8 DevKitC (node)</option>
-          <option value="mgr-xiao_s3">XIAO ESP32-S3 (manager) — recommended</option>
-          <option value="mgr-s3_devkitc">ESP32-S3 N16R8 DevKitC (manager)</option>
-          <option value="mgr-xiao_c3">XIAO ESP32-C3 (manager)</option>
-          <option value="mgr-wroom">ESP32 WROOM (manager)</option>
+          <option value="node-xiao_s3">XIAO ESP32-S3 — NODE (scanner) — recommended</option>
+          <option value="node-s3_devkitc">ESP32-S3 N16R8 DevKitC — NODE (scanner)</option>
+          <option value="mgr-xiao_s3">XIAO ESP32-S3 — MANAGER (multi-node hub, no scan)</option>
+          <option value="mgr-s3_devkitc">ESP32-S3 N16R8 DevKitC — MANAGER (multi-node hub, no scan)</option>
+          <option value="mgr-xiao_c3">XIAO ESP32-C3 — MANAGER (multi-node hub, no scan)</option>
+          <option value="mgr-wroom">ESP32 WROOM — MANAGER (multi-node hub, no scan)</option>
         </select>
         <button class="flash-btn" id="flashBtn" onclick="startFlash()">
           CONNECT &amp; FLASH
@@ -512,7 +516,7 @@
         flashSize: '16MB', flashMode: 'qio', flashFreq: '80m',
       },
       'mgr-xiao_s3': {
-        label: 'XIAO ESP32-S3 (manager) — recommended',
+        label: 'XIAO ESP32-S3 — MANAGER (multi-node hub)',
         path: 'mgr-xiao_s3/',
         flashSize: '8MB', flashMode: 'qio', flashFreq: '80m',
       },

@@ -115,6 +115,7 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
       ref.read(notificationServiceProvider).cancelAll();
     } else if (state == AppLifecycleState.resumed) {
       ref.read(bleManagerProvider).resyncOnResume();
+      ref.read(notificationServiceProvider).refreshPermission();
     }
   }
 

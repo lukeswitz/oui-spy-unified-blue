@@ -240,7 +240,7 @@ class WigleCsvImport {
     final u = s.toUpperCase();
     if (u.contains('WPA3')) return 6;
     if (u.contains('WPA2_EAP') || u.contains('EAP')) return 5;
-    if (u.contains('WPA_WPA2') || (u.contains('WPA') && u.contains('WPA2'))) {
+    if (u.contains('WPA_WPA2')) {
       return 4;
     }
     if (u.contains('WPA2')) return 3;

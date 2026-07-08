@@ -34,6 +34,14 @@ void bleGattMaybeResliceWardrive(void);
 
 // Manager: re-send desired engines to any node whose reported mask lacks them
 void bleGattReconcileEngines(void);
+void bleGattMgrPersistOfflineTick(void);
+void bleGattMgrRestoreOffline(void);
+#ifdef OUISPY_MGR_DET_TEST
+void bleGattMgrCommandDetectorTest(void);
+#endif
+#ifdef OUISPY_WD_CYCLE_TEST
+void bleGattWdCycleTick(void);
+#endif
 
 // Apply device-wide config (callable from BLE write or relayed mesh packet)
 void hardwareConfigApply(const uint8_t* data, size_t len);

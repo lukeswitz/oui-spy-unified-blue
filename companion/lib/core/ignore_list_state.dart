@@ -200,7 +200,7 @@ class IgnoreListState extends ChangeNotifier {
     _ouiHexCache.clear();
     for (int i = 0; i < _entries.length; i++) {
       if (_entries[i].type == IgnoreType.oui) {
-        _ouiHexCache[i] = _entries[i].value.replaceAll(':', '');
+        _ouiHexCache[i] = _entries[i].value.toLowerCase().replaceAll(_macStripRegex, '');
       }
     }
   }

@@ -382,8 +382,12 @@ void bleGattNetcountDrive(void) {
 static void mgrPushEngineState(void) {
 #ifdef OUISPY_ROLE_MANAGER
     if (!meshIsEnabled()) return;
+    static uint8_t lastPushedMask = 0xFF;
+    static uint16_t stateVer = 0;
     uint8_t em = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
-    meshBroadcastConfig(MESH_CFG_KIND_ENGINE, &em, 1);
+    if (em != lastPushedMask) { stateVer++; lastPushedMask = em; }
+    uint8_t out[3] = { em, (uint8_t)(stateVer & 0xFF), (uint8_t)(stateVer >> 8) };
+    meshBroadcastConfig(MESH_CFG_KIND_ENGINE, out, sizeof(out));
 #endif
 }
 
@@ -409,6 +413,109 @@ static void mgrReconcileDropWigle(void) {
     meshBroadcastCommand(0x00, ENGINE_WARDRIVE, nullptr, 0);
     Serial.println("[MGR] reconcile: node still running wigle while uncommanded — re-disabling");
 }
+
+void bleGattMgrPersistOfflineTick(void) {
+    if (!offlineScanEnabled) return;
+    static uint8_t lastMask = 0xFF;
+    static int lastFiltCount = -1;
+    uint8_t m = mgrCommandedMask;
+    int fc = detectorFilterCount();
+    if (m == lastMask && fc == lastFiltCount) return;
+    Preferences po;
+    po.begin("ouispy-off", false);
+    po.putUChar("mgr_mask", m);
+    uint8_t fb[512];
+    size_t fn = detectorSerialize(fb, sizeof(fb));
+    po.putBytes("mgr_filt", fb, fn);
+    po.end();
+    lastMask = m;
+    lastFiltCount = fc;
+    Serial.printf("[OFFLINE-MGR] persisted mask=0x%02X filt=%d\n", m, fc);
+}
+
+void bleGattMgrRestoreOffline(void) {
+    if (!offlineScanEnabled) return;
+    Preferences po;
+    po.begin("ouispy-off", true);
+    uint8_t savedMask = po.getUChar("mgr_mask", 0);
+    uint8_t fb[512];
+    size_t fn = po.getBytes("mgr_filt", fb, sizeof(fb));
+    po.end();
+    if (fn > 0) detectorSetFilters(fb, fn);
+    savedMask &= (uint8_t)~ENGINE_BITMASK(ENGINE_WARDRIVE);
+    if (savedMask != 0) {
+        mgrCommandedMask = savedMask;
+        for (int i = 0; i < ENGINE_COUNT; i++) {
+            mgrCommandedStates[i] = (savedMask & (1u << i)) ? (uint8_t)ESTATE_SCANNING
+                                                            : (uint8_t)ESTATE_DISABLED;
+            if ((savedMask & (1u << i)) && i != ENGINE_PCAP) meshMarkNodesEngine((uint8_t)i, true);
+        }
+        g_meshManagerActive = true;
+        Serial.printf("[OFFLINE-MGR] restored mask=0x%02X filt=%uB — re-commanding nodes\n",
+                      savedMask, (unsigned)fn);
+    }
+}
+
+#ifdef OUISPY_MGR_DET_TEST
+void bleGattMgrCommandDetectorTest(void) {
+    uint8_t f[8] = {1, 6, 0xC0, 0xFF, 0xEE, 0x00, 0x00, 0x01};
+    detectorSetFilters(f, sizeof(f));
+    uint8_t db[256];
+    size_t dn = detectorSerialize(db, sizeof(db));
+    meshBroadcastDetectorList(db, dn);
+    delay(120);
+    mgrCommandedMask |= ENGINE_BITMASK(ENGINE_DETECTOR);
+    mgrCommandedStates[ENGINE_DETECTOR] = (uint8_t)ESTATE_SCANNING;
+    meshMarkNodesEngine((uint8_t)ENGINE_DETECTOR, true);
+    meshBroadcastCommand(0x01, ENGINE_DETECTOR, nullptr, 0);
+    Serial.println("[MGR-DET-TEST] pushed watchlist + commanded DETECTOR on nodes");
+}
+#endif
+
+#ifdef OUISPY_WD_CYCLE_TEST
+void bleGattWdCycleTick(void) {
+    static uint32_t t = 0;
+    static int cycle = 0, okc = 0, failc = 0;
+    static bool driven = false, started = false;
+    uint32_t now = millis();
+    MeshLiveNode ln[8];
+    size_t n = meshGetLiveNodes(ln, 8, 30000);
+    if (!started) {
+        if (n == 0 || now < 8000) return;
+        started = true;
+        t = now;
+    }
+    if (cycle >= 15) return;
+    if (!driven) {
+        if (now - t < 3000) return;
+        driven = true;
+        t = now;
+        mgrCommandedMask |= ENGINE_BITMASK(ENGINE_WARDRIVE);
+        mgrCommandedStates[ENGINE_WARDRIVE] = (uint8_t)ESTATE_SCANNING;
+        mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
+        delay(120);
+        meshBroadcastCommand(0x01, ENGINE_WARDRIVE, nullptr, 0);
+        Serial.printf("[WD-CYCLE] cycle %d: START wardrive -> nodes\n", cycle);
+    } else {
+        if (now - t < 5000) return;
+        bool nodeWd = false;
+        for (size_t i = 0; i < n; i++)
+            if (ln[i].role == MESH_ROLE_NODE &&
+                (ln[i].active_engines & ENGINE_BITMASK(ENGINE_WARDRIVE))) nodeWd = true;
+        if (nodeWd) okc++; else failc++;
+        Serial.printf("[WD-CYCLE] cycle %d: node wardrive=%s (ok=%d fail=%d)\n",
+                      cycle, nodeWd ? "ON" : "OFF-FAIL", okc, failc);
+        mgrCommandedMask &= (uint8_t)~ENGINE_BITMASK(ENGINE_WARDRIVE);
+        mgrCommandedStates[ENGINE_WARDRIVE] = (uint8_t)ESTATE_DISABLED;
+        meshBroadcastCommand(0x00, ENGINE_WARDRIVE, nullptr, 0);
+        cycle++;
+        driven = false;
+        t = now;
+        if (cycle >= 15)
+            Serial.printf("[WD-CYCLE] === DONE: %d ok, %d fail of %d ===\n", okc, failc, cycle);
+    }
+}
+#endif
 #endif
 
 #ifdef OUISPY_SPOOL_E2E
@@ -767,9 +874,9 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         // Request tight conn params for OTA throughput.
         // iOS honors within its limits — Apple accepts 15ms minimum for
         // peripherals. Units: interval * 1.25ms, timeout * 10ms.
-        // min=12 (15ms), max=24 (30ms), latency=0, timeout=400 (4s).
+        // min=12 (15ms), max=24 (30ms), latency=0, timeout=600 (6s, Apple max).
         uint16_t connHandle = server->getPeerInfo(0).getConnHandle();
-        server->updateConnParams(connHandle, 12, 24, 0, 400);
+        server->updateConnParams(connHandle, 12, 24, 0, 600);
         Serial.println("[BLE] Phone connected, requested fast conn params");
     }
 
@@ -1220,6 +1327,12 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
                 detectorAddUuidFilter(uuid, desc);
                 break;
             }
+            case 0x03:
+                if (val.length() >= 2) {
+                    detectorSetSigMask(data[1]);
+                    Serial.printf("[BLE] Detector signatures mask=0x%02x\n", data[1]);
+                }
+                break;
             default:
                 Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
                 break;

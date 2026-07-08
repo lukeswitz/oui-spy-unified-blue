@@ -84,6 +84,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     if (state == AppLifecycleState.resumed) {
       DebugLog.log('WardriveScreen: resumed, priming permissions');
       _primeLocationPermission().then((success) {
+        if (!mounted) return;
         DebugLog.log('WardriveScreen: prime permission success=$success');
         if (success && ref.read(wardriveProvider).isActive) {
           DebugLog.log('WardriveScreen: session active, restarting GPS');

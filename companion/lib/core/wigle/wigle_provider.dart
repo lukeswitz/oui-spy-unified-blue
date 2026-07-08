@@ -153,7 +153,7 @@ class WigleProvider extends ChangeNotifier {
         networksAccepted: drift.Value(result.totalNetworks),
         networksNew: drift.Value(result.totalNewNetworks),
         status: const drift.Value('completed'),
-      ));
+      )).catchError((e) => DebugLog.log('WIGLE: insertWigleUpload failed: $e'));
 
       // Refresh stats after upload
       refreshStats();

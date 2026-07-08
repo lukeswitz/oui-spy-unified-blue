@@ -105,10 +105,10 @@ class _EngineCardState extends ConsumerState<EngineCard>
     if (!value && ownedByWardrive) {
       setState(() => _optimisticValue = false);
       _optimisticTimer?.cancel();
-      _optimisticTimer = Timer(const Duration(seconds: 3), () {
+      wd.stopOwnedEngine(widget.engine).catchError((e) {
+        DebugLog.log('ENGINE: home stopOwned ${widget.engine.name} FAILED: $e');
         if (mounted) setState(() => _optimisticValue = null);
       });
-      wd.stopOwnedEngine(widget.engine);
       DebugLog.log('ENGINE: home stop ${widget.engine.name} via wardrive session');
       return;
     }
@@ -133,9 +133,6 @@ class _EngineCardState extends ConsumerState<EngineCard>
         : null;
     setState(() => _optimisticValue = value);
     _optimisticTimer?.cancel();
-    _optimisticTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _optimisticValue = null);
-    });
     final fut = value
         ? ble.enableEngine(widget.engine, targetNodeId: targetNode,
             radio: appState.engineRadio[widget.engine])

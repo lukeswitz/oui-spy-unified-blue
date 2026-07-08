@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -46,6 +46,14 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 4) {
           await m.addColumn(detections, detections.approxGps);
+        }
+        if (from < 5) {
+          final existing = await customSelect(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='wigle_uploads'",
+          ).get();
+          if (existing.isEmpty) {
+            await m.createTable(wigleUploads);
+          }
         }
       },
     );

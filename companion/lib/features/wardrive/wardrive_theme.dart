@@ -142,7 +142,9 @@ final Map<WardriveTheme, WardriveThemeData> wardriveThemes = {
 };
 
 class WardriveThemeNotifier extends StateNotifier<WardriveTheme> {
-  WardriveThemeNotifier() : super(WardriveTheme.classic);
+  WardriveThemeNotifier() : super(WardriveTheme.classic) {
+    _load();
+  }
   static const _key = 'wardrive_theme';
 
   Future<void> _load() async {
@@ -172,6 +174,5 @@ final wardriveThemeProvider =
 });
 
 final wardriveThemeDataProvider = Provider<WardriveThemeData>((ref) {
-  final t = ref.watch(wardriveThemeProvider);
-  return wardriveThemes[t]!;
+  return wardriveThemes[WardriveTheme.classic]!;
 });

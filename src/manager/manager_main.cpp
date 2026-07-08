@@ -52,6 +52,7 @@ static void heartbeatTask(void*) {
         tick++;
         bleGattMaybeResliceWardrive();
         bleGattReconcileEngines();
+        bleGattMgrPersistOfflineTick();
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
         // A node just joined — push the full current config now instead of
@@ -187,6 +188,11 @@ void setup() {
         meshEnable(&cfg);
     }
 
+#ifdef OUISPY_MGR_DET_TEST
+    offlineScanEnabledSetFromPref(true);
+#endif
+    bleGattMgrRestoreOffline();
+
     xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(heartbeatTask,       "hb",         6144, NULL, 1, NULL, 1);
 
@@ -195,6 +201,8 @@ void setup() {
     Serial.printf("[INIT] MAC %02X:%02X:%02X:%02X:%02X:%02X ch=%d heap=%u\n",
         mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], MESH_CH, (unsigned)ESP.getFreeHeap());
     Serial.println("[INIT] *** MANAGER READY ***");
+    Serial.println("[INIT] NOTE: MANAGER is a coordinator/aggregator and does NOT scan or detect on its own.");
+    Serial.println("[INIT] For standalone detection flash NODE firmware; MANAGER needs 1+ NODE(s) meshed to it.");
 #ifdef OUISPY_WIGLE_OFFLINE_SELFTEST
     bleGattWigleOfflineSelfTest();
 #endif
@@ -205,6 +213,19 @@ void setup() {
 
 void loop() {
     delay(50);
+#ifdef OUISPY_WD_CYCLE_TEST
+    bleGattWdCycleTick();
+#endif
+#ifdef OUISPY_MGR_DET_TEST
+    static bool dtOn = false;
+    if (!dtOn && millis() > 8000) {
+        MeshLiveNode ln[8];
+        if (meshGetLiveNodes(ln, 8, 30000) > 0) {
+            dtOn = true;
+            bleGattMgrCommandDetectorTest();
+        }
+    }
+#endif
 #ifdef OUISPY_PCAP_SELFTEST
     static bool stEnabled = false;
     static bool stDisabled = false;

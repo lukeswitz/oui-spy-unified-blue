@@ -563,26 +563,26 @@ class _SummaryStrip extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          _StatItem(
+          Expanded(child: _StatItem(
             value: '${state.totalDetections}',
             label: 'UNIQUE',
             color: AppTheme.accent,
-          ),
+          )),
           _divider(t),
-          _StatItem(
+          Expanded(child: _StatItem(
             value: '$activeCount/${Engine.values.length}',
             label: 'ENGINES',
             color: activeCount > 0 ? AppTheme.success : t.textDim,
-          ),
+          )),
           _divider(t),
-          _StatItem(
+          Expanded(child: _StatItem(
             value: '${state.totalRate}',
             label: '/MIN',
             color: state.totalRate > 0 ? AppTheme.warning : t.textDim,
-          ),
+          )),
           if (state.isManagerConnected) ...[
             _divider(t),
-            Builder(builder: (_) {
+            Expanded(child: Builder(builder: (_) {
               final selfId = AppState.canonicalNodeId(state.nodeId);
               final nodeCount = state.liveKnownNodes
                   .where((id) => id != selfId && !state.isManagerNode(id))
@@ -612,7 +612,7 @@ class _SummaryStrip extends ConsumerWidget {
                   ),
                 ),
               );
-            }),
+            })),
           ],
         ],
       ),

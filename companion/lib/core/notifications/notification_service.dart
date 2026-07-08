@@ -54,6 +54,7 @@ class NotificationService extends ChangeNotifier {
 
   // Cooldown tracking: mac+engine → last notification time
   final Map<String, DateTime> _cooldownMap = {};
+  DateTime? _lastFoxhuntNotif;
 
   // Rate limiter: timestamps of recent notifications
   final List<DateTime> _recentNotifications = [];
@@ -84,6 +85,11 @@ class NotificationService extends ChangeNotifier {
     await _refreshPermission();
     DebugLog.log('NOTIF: initialized=$_initialized permission=$_permissionGranted');
     notifyListeners();
+  }
+
+  Future<void> refreshPermission() async {
+    if (!_initialized) return;
+    await _refreshPermission();
   }
 
   Future<void> _refreshPermission() async {
@@ -200,9 +206,15 @@ class NotificationService extends ChangeNotifier {
   }) {
     if (!_initialized || !_permissionGranted) return;
     if (!foxhuntEnabled) return;
+    final now = DateTime.now();
+    if (_lastFoxhuntNotif != null &&
+        now.difference(_lastFoxhuntNotif!) < const Duration(seconds: 15)) {
+      return;
+    }
 
     // Alert on significant RSSI jumps toward target (getting closer)
     if (rssi > -50 && previousRssi <= -50) {
+      _lastFoxhuntNotif = now;
       _fireNotification(
         id: _notifId(NotifChannel.foxhunt),
         channel: NotifChannel.foxhunt,
@@ -211,6 +223,7 @@ class NotificationService extends ChangeNotifier {
         groupKey: NotifChannel.foxhunt,
       );
     } else if (rssi > -65 && previousRssi <= -65) {
+      _lastFoxhuntNotif = now;
       _fireNotification(
         id: _notifId(NotifChannel.foxhunt),
         channel: NotifChannel.foxhunt,

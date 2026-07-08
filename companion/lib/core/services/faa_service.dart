@@ -121,6 +121,7 @@ class FaaService extends ChangeNotifier {
   static const _homepagePath = '/listdocs';
   static const _apiPath = '/api/v1/serialNumbers';
   static const _cacheKeyPrefix = 'faa_cache_';
+  static const _cacheTtl = Duration(days: 30);
   static const _maxRetries = 3;
 
   late final Dio _dio;
@@ -230,7 +231,12 @@ class FaaService extends ChangeNotifier {
     if (raw == null) return null;
     try {
       final json = jsonDecode(raw) as Map<String, dynamic>;
-      return FaaRegistration.fromJson(json);
+      final reg = FaaRegistration.fromJson(json);
+      if (DateTime.now().difference(reg.cachedAt) > _cacheTtl) {
+        await prefs.remove('$_cacheKeyPrefix$uasId');
+        return null;
+      }
+      return reg;
     } on FormatException catch (e) {
       DebugLog.log('FAA: corrupt cache for $uasId: $e');
       await prefs.remove('$_cacheKeyPrefix$uasId');

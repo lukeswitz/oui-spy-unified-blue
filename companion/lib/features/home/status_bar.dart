@@ -80,7 +80,8 @@ class _StatusBarState extends ConsumerState<StatusBar> {
           ),
           const Spacer(),
           // Device name + node count — tap to switch device
-          InkWell(
+          Flexible(
+            child: InkWell(
             onTap: state.isConnected
                 ? () async {
                     await ref.read(bleManagerProvider).disconnect();
@@ -93,8 +94,11 @@ class _StatusBarState extends ConsumerState<StatusBar> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  Flexible(
+                    child: Text(
                     state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
@@ -104,6 +108,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                           ? AppTheme.accent
                           : t.textDim,
                     ),
+                  ),
                   ),
                   const SizedBox(width: 4),
                   Icon(
@@ -116,6 +121,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                 ],
               ),
             ),
+          ),
           ),
         ],
       ),

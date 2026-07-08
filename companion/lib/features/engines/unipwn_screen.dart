@@ -139,6 +139,8 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                               const Spacer(),
                               Text(
                                 r.unipwn?.robotType ?? '?',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: selected ? AppTheme.uniPwn : t.textPrimary,
                                   fontSize: 18,
@@ -146,7 +148,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                                 ),
                               ),
                               Text(
-                                r.macAddress.substring(0, 8),
+                                r.macAddress.length >= 8 ? r.macAddress.substring(0, 8) : r.macAddress,
                                 style: TextStyle(
                                   color: t.textDim, fontSize: 10, fontFamily: 'monospace',
                                 ),
@@ -290,19 +292,23 @@ class _UnipwnNodePicker extends ConsumerWidget {
           const SizedBox(width: 8),
           Text('EXEC NODE',
               style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 1.5)),
-          const Spacer(),
-          DropdownButton<String>(
-            value: nodes.contains(selected) ? selected : null,
-            hint: const Text('— Pick Node —'),
-            underline: const SizedBox.shrink(),
-            onChanged: enabled ? onChanged : null,
-            items: nodes.map((id) {
-              final label = appState.labelForNode(id);
-              return DropdownMenuItem(
-                value: id,
-                child: Text(label == id ? id : '$label ($id)'),
-              );
-            }).toList(),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: nodes.contains(selected) ? selected : null,
+              hint: const Text('— Pick Node —'),
+              underline: const SizedBox.shrink(),
+              onChanged: enabled ? onChanged : null,
+              items: nodes.map((id) {
+                final label = appState.labelForNode(id);
+                return DropdownMenuItem(
+                  value: id,
+                  child: Text(label == id ? id : '$label ($id)',
+                      overflow: TextOverflow.ellipsis, maxLines: 1),
+                );
+              }).toList(),
+            ),
           ),
         ],
       ),

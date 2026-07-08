@@ -465,6 +465,25 @@ static void statusHeartbeatTask(void* param) {
         bleGattSpoolFlushPump();
         bleGattNodeGraceTick();
 
+        if (bleGattOfflineScanEnabled() && !meshManagerJoined()) {
+            static uint8_t lastMask = 0xFF;
+            static int lastFiltCount = -1;
+            uint8_t m = engineGetActiveMask();
+            int fc = detectorFilterCount();
+            if (m != lastMask || fc != lastFiltCount) {
+                Preferences po;
+                po.begin("ouispy-off", false);
+                po.putUChar("eng_mask", m);
+                uint8_t fb[512];
+                size_t fn = detectorSerialize(fb, sizeof(fb));
+                po.putBytes("det_filt", fb, fn);
+                po.end();
+                lastMask = m;
+                lastFiltCount = fc;
+                Serial.printf("[OFFLINE] persisted eng=0x%02X filt=%d\n", m, fc);
+            }
+        }
+
 #ifdef OUISPY_SPOOL_LIVETEST
         Serial.printf("[SPOOL-LIVE] count=%u dropped=%u active=0x%02X rawSeen=%lu\n",
                       detSpoolCount(), detSpoolDroppedCount(), engineGetActiveMask(),
@@ -1120,6 +1139,25 @@ void setup() {
     xTaskCreatePinnedToCore(engineSelftestTask, "selftest", 8192, NULL, 1, NULL, 1);
     Serial.println("[INIT] ENGINE SELF-TEST mode (mesh disabled)");
 #endif
+
+    if (bleGattOfflineScanEnabled()) {
+        Preferences po;
+        po.begin("ouispy-off", true);
+        uint8_t savedMask = po.getUChar("eng_mask", 0);
+        uint8_t fb[512];
+        size_t fn = po.getBytes("det_filt", fb, sizeof(fb));
+        po.end();
+        if (fn > 0) detectorSetFilters(fb, fn);
+        if (savedMask != 0) {
+            for (int i = 0; i < ENGINE_COUNT; i++) {
+                if ((savedMask & (1 << i)) && engineSpoolable((uint8_t)i)) {
+                    engineEnable((EngineId)i);
+                }
+            }
+            Serial.printf("[OFFLINE] restored engines=0x%02X filt=%uB — resuming persistent scan\n",
+                          savedMask, (unsigned)fn);
+        }
+    }
 
     Serial.println("\n[INIT] *** OUI-SPY READY ***");
     Serial.println("[INIT] Waiting for phone connection via BLE OR mesh command...");

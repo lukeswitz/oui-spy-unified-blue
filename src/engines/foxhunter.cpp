@@ -316,7 +316,7 @@ static void foxhunterLoop(void) {
         bool isPriority = (currentChannel == hintChannel) ||
                           currentChannel == 1 || currentChannel == 6 || currentChannel == 11;
         uint16_t dwell = isPriority ? PRIORITY_DWELL_MS : NORMAL_DWELL_MS;
-        if (millis() - lastChannelHop >= dwell) {
+        if (wifiCoexShouldHop(ENGINE_FOXHUNTER) && millis() - lastChannelHop >= dwell) {
             currentChannel++;
             if (currentChannel > 14) currentChannel = 1;
             esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);

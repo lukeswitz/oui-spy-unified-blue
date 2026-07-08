@@ -339,7 +339,7 @@ class OtaService {
   }
 
   Future<bool> performWifiUpdate(OtaRelease release) async {
-    if (_running) return false;
+    if (_running || otaActive.value) return false;
     _running = true;
     markOtaActive(ttl: const Duration(seconds: 150));
     try {

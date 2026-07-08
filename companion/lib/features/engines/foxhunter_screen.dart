@@ -15,6 +15,7 @@ class FoxhunterScreen extends ConsumerStatefulWidget {
 
 class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
   final _macController = TextEditingController();
+  String? _lastSyncedTarget;
 
   @override
   void dispose() {
@@ -62,9 +63,10 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
         ? t.textDim
         : Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
 
-    if (target != null && _macController.text.isEmpty) {
+    if (target != null && target != _lastSyncedTarget) {
       _macController.text = target;
     }
+    _lastSyncedTarget = target;
 
     return Scaffold(
       backgroundColor: t.background,
@@ -240,19 +242,23 @@ class _NodeTargetPicker extends ConsumerWidget {
           const SizedBox(width: 8),
           Text('HUNT FROM',
               style: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 1.5)),
-          const Spacer(),
-          DropdownButton<String>(
-            value: nodes.contains(selected) ? selected : null,
-            hint: const Text('— Pick Node —'),
-            underline: const SizedBox.shrink(),
-            onChanged: enabled ? onChanged : null,
-            items: nodes.map((id) {
-              final label = appState.labelForNode(id);
-              return DropdownMenuItem(
-                value: id,
-                child: Text(label == id ? id : '$label ($id)'),
-              );
-            }).toList(),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: nodes.contains(selected) ? selected : null,
+              hint: const Text('— Pick Node —'),
+              underline: const SizedBox.shrink(),
+              onChanged: enabled ? onChanged : null,
+              items: nodes.map((id) {
+                final label = appState.labelForNode(id);
+                return DropdownMenuItem(
+                  value: id,
+                  child: Text(label == id ? id : '$label ($id)',
+                      overflow: TextOverflow.ellipsis, maxLines: 1),
+                );
+              }).toList(),
+            ),
           ),
         ],
       ),

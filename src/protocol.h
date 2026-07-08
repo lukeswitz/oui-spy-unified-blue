@@ -142,6 +142,22 @@ enum EngineState : uint8_t {
 #define METHOD_WIFI_AP         0
 #define METHOD_BLE_ADV         1
 
+// Detector methods
+#define METHOD_DET_BLE_WATCH   0
+#define METHOD_DET_WIFI_WATCH  1
+#define METHOD_DET_TRACKER     2
+#define METHOD_DET_FLIPPER     3
+#define METHOD_DET_DEAUTH      4
+#define METHOD_DET_PROBE       5
+#define METHOD_DET_PWNAGOTCHI  6
+
+#define SIG_TRACKER    0x01
+#define SIG_FLIPPER    0x02
+#define SIG_DEAUTH     0x04
+#define SIG_PROBE      0x08
+#define SIG_PWNAGOTCHI 0x10
+#define SIG_ALL        0x1F
+
 // ============================================================================
 // Detection Event — produced by engines, consumed by GATT notification task
 // ============================================================================

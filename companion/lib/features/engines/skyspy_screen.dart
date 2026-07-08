@@ -139,7 +139,7 @@ class _DroneRow extends StatelessWidget {
             ]),
             const SizedBox(height: 4),
             Row(children: [
-              if (odid.droneLat != null && odid.droneLat != 0)
+              if (odid.droneLat != null && odid.droneLat != 0 && odid.droneLon != null)
                 _Chip('POS', '${odid.droneLat!.toStringAsFixed(4)}, ${odid.droneLon!.toStringAsFixed(4)}')
               else
                 _Chip('RANGE',
@@ -151,7 +151,7 @@ class _DroneRow extends StatelessWidget {
               const SizedBox(height: 4),
               _Chip('DESC', odid.selfId!),
             ],
-            if (odid.pilotLat != null && odid.pilotLat != 0) ...[
+            if (odid.pilotLat != null && odid.pilotLat != 0 && odid.pilotLon != null) ...[
               const SizedBox(height: 4),
               _Chip('PILOT', '${odid.pilotLat!.toStringAsFixed(4)}, ${odid.pilotLon!.toStringAsFixed(4)}'),
             ],

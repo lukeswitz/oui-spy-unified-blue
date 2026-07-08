@@ -110,9 +110,10 @@ class WatchlistState extends ChangeNotifier {
   }
 
   Future<void> _load() async {
+    if (_loaded) return;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
-    if (raw != null) {
+    if (raw != null && entries.isEmpty) {
       try {
         final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
         entries

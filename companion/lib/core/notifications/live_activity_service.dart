@@ -94,6 +94,7 @@ class LiveActivityService {
       }
     } catch (e) {
       _startInFlight = null;
+      _activityId = null;
       DebugLog.log('LIVE_ACTIVITY: update error: $e');
     }
   }

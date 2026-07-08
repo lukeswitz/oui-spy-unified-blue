@@ -549,8 +549,16 @@ void engineProcessCommand(const EngineCommand* cmd) {
 
 void engineStateConfigApply(const uint8_t* data, uint8_t len) {
     if (len < 1) return;
+    static uint16_t s_lastVer = 0;
+    static bool s_haveVer = false;
     uint8_t desired = (uint8_t)(data[0] & ~g_engineDenyMask & ~ENGINE_BITMASK(ENGINE_PCAP));
     uint8_t current = (uint8_t)(engineGetActiveMask() & ~ENGINE_BITMASK(ENGINE_PCAP));
+    if (len >= 3) {
+        uint16_t ver = (uint16_t)data[1] | ((uint16_t)data[2] << 8);
+        if (s_haveVer && ver == s_lastVer && desired == current) return;
+        s_lastVer = ver;
+        s_haveVer = true;
+    }
     if (desired == current) return;
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (i == ENGINE_PCAP) continue;

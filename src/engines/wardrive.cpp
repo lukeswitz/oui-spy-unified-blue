@@ -628,7 +628,7 @@ static void wardriveLoop(void) {
         (void)minDwell;
         bool due = (elapsed >= maxDwell);
 #endif
-        if (due) {
+        if (due && wifiCoexShouldHop(ENGINE_WARDRIVE)) {
 #ifdef OUISPY_SWEEPLOG
             Serial.printf("[HOP] ch=%u dwelt=%lums\n", currentChannel, (unsigned long)elapsed);
 #endif

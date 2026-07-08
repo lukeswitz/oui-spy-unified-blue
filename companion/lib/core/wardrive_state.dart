@@ -213,6 +213,7 @@ class WardriveController extends ChangeNotifier {
   StreamSubscription<Detection>? _awayLiveSub;
   StreamSubscription<SpoolImportProgress>? _spoolImportSub;
   String? _spoolSessionId;
+  Future<String>? _spoolSessionIdFuture;
   int _spoolInserted = 0;
   int _spoolExpectedTotal = -1;
   bool _spoolDone = false;
@@ -651,7 +652,7 @@ class WardriveController extends ChangeNotifier {
       nodeId: const drift.Value('default'),
       startedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
       isWardrive: const drift.Value(true),
-    ));
+    )).catchError((e) => DebugLog.log('WARDRIVE: insertSession failed: $e'));
 
     state = WardriveState.running;
     _userStopped = false;
@@ -712,13 +713,17 @@ class WardriveController extends ChangeNotifier {
     }
 
     if (sessionId.isNotEmpty && startTime != null) {
-      _db.updateSession(SessionsCompanion(
-        id: drift.Value(sessionId),
-        endedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
-        detectionCount: drift.Value(detections.length),
-        uniqueMacCount: drift.Value(uniqueMacs.length),
-        distanceKm: drift.Value(distanceKm),
-      ));
+      try {
+        await _db.updateSession(SessionsCompanion(
+          id: drift.Value(sessionId),
+          endedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+          detectionCount: drift.Value(detections.length),
+          uniqueMacCount: drift.Value(uniqueMacs.length),
+          distanceKm: drift.Value(distanceKm),
+        ));
+      } catch (e) {
+        DebugLog.log('WARDRIVE: updateSession finalize failed for $sessionId: $e');
+      }
 
       await _saveCsv(sessionId, detections);
 
@@ -1204,7 +1209,7 @@ class WardriveController extends ChangeNotifier {
 
   void _reEnableEngines() {
     DebugLog.log('WARDRIVE: re-enabling engines after reconnect');
-    _enableEnginesSequentially(activeEngines).then((_) {
+    _enableEnginesSequentially(_fleetEngines).then((_) {
       if (foxhuntTarget != null) {
         _ble.enableEngine(Engine.foxhunter);
         _ble.setFoxhunterTarget(foxhuntTarget!);
@@ -1254,7 +1259,7 @@ class WardriveController extends ChangeNotifier {
   }
 
   Future<void> _onImportedDetection(Detection detection) async {
-    _spoolSessionId ??= await _resolveSpoolSessionId();
+    _spoolSessionId ??= await (_spoolSessionIdFuture ??= _resolveSpoolSessionId());
     final sid = _spoolSessionId!;
     final deviceNow = _ble.importDeviceNowMs;
     final offsetMs = deviceNow - detection.deviceTimestampMs;
@@ -1262,34 +1267,42 @@ class WardriveController extends ChangeNotifier {
         ? DateTime.now()
         : DateTime.now().subtract(Duration(milliseconds: offsetMs));
     final g = _tagGps(detection);
-    await _db.insertDetection(DetectionsCompanion(
-      sessionId: drift.Value(sid),
-      nodeId: const drift.Value('default'),
-      macAddress: drift.Value(detection.macAddress),
-      deviceName: drift.Value(detection.deviceName),
-      engine: drift.Value(detection.engine.name),
-      detectionMethod: drift.Value(detection.method),
-      rssi: drift.Value(detection.rssi),
-      channel: drift.Value(detection.channel),
-      deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
-      appTimestamp: drift.Value(wallClock.millisecondsSinceEpoch),
-      latitude: drift.Value(g.lat),
-      longitude: drift.Value(g.lon),
-      accuracy: drift.Value(g.acc),
-      approxGps: drift.Value(g.approx),
-      ssid: drift.Value(detection.ssid),
-      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
-      uavId: drift.Value(detection.odid?.uavId),
-      operatorId: drift.Value(detection.odid?.operatorId),
-      droneLat: drift.Value(detection.odid?.droneLat),
-      droneLon: drift.Value(detection.odid?.droneLon),
-      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
-      heightAgl: drift.Value(detection.odid?.heightAgl),
-      droneSpeed: drift.Value(detection.odid?.droneSpeed),
-      droneHeading: drift.Value(detection.odid?.droneHeading),
-      pilotLat: drift.Value(detection.odid?.pilotLat),
-      pilotLon: drift.Value(detection.odid?.pilotLon),
-    ));
+    try {
+      await _db.insertDetection(DetectionsCompanion(
+        sessionId: drift.Value(sid),
+        nodeId: const drift.Value('default'),
+        macAddress: drift.Value(detection.macAddress),
+        deviceName: drift.Value(detection.deviceName),
+        engine: drift.Value(detection.engine.name),
+        detectionMethod: drift.Value(detection.method),
+        rssi: drift.Value(detection.rssi),
+        channel: drift.Value(detection.channel),
+        deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
+        appTimestamp: drift.Value(wallClock.millisecondsSinceEpoch),
+        latitude: drift.Value(g.lat),
+        longitude: drift.Value(g.lon),
+        accuracy: drift.Value(g.acc),
+        altitude: drift.Value(detection.altitude),
+        speed: drift.Value(detection.speed),
+        heading: drift.Value(detection.heading),
+        satelliteCount: drift.Value(detection.satelliteCount),
+        approxGps: drift.Value(g.approx),
+        ssid: drift.Value(detection.ssid),
+        authMode: drift.Value(detection.wardrive?.authMode ?? 0),
+        uavId: drift.Value(detection.odid?.uavId),
+        operatorId: drift.Value(detection.odid?.operatorId),
+        droneLat: drift.Value(detection.odid?.droneLat),
+        droneLon: drift.Value(detection.odid?.droneLon),
+        altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
+        heightAgl: drift.Value(detection.odid?.heightAgl),
+        droneSpeed: drift.Value(detection.odid?.droneSpeed),
+        droneHeading: drift.Value(detection.odid?.droneHeading),
+        pilotLat: drift.Value(detection.odid?.pilotLat),
+        pilotLon: drift.Value(detection.odid?.pilotLon),
+      ));
+    } catch (e) {
+      DebugLog.log('SPOOL: insert failed for ${detection.macAddress}: $e');
+    }
     _spoolInserted++;
     DebugLog.log('SPOOL: inserted ${detection.macAddress} → session $sid wallClock=${wallClock.toIso8601String()} ($_spoolInserted/$_spoolExpectedTotal)');
     _maybeConfirmSpool();
@@ -1297,36 +1310,44 @@ class WardriveController extends ChangeNotifier {
 
   Future<void> _onAwayLiveDetection(Detection detection) async {
     if (state == WardriveState.running) return;
-    final sid = _spoolSessionId ??= await _resolveSpoolSessionId();
+    final sid = _spoolSessionId ??= await (_spoolSessionIdFuture ??= _resolveSpoolSessionId());
     final g = _tagGps(detection);
-    await _db.insertDetection(DetectionsCompanion(
-      sessionId: drift.Value(sid),
-      nodeId: const drift.Value('default'),
-      macAddress: drift.Value(detection.macAddress),
-      deviceName: drift.Value(detection.deviceName),
-      engine: drift.Value(detection.engine.name),
-      detectionMethod: drift.Value(detection.method),
-      rssi: drift.Value(detection.rssi),
-      channel: drift.Value(detection.channel),
-      deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
-      appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
-      latitude: drift.Value(g.lat),
-      longitude: drift.Value(g.lon),
-      accuracy: drift.Value(g.acc),
-      approxGps: drift.Value(g.approx),
-      ssid: drift.Value(detection.ssid),
-      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
-      uavId: drift.Value(detection.odid?.uavId),
-      operatorId: drift.Value(detection.odid?.operatorId),
-      droneLat: drift.Value(detection.odid?.droneLat),
-      droneLon: drift.Value(detection.odid?.droneLon),
-      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
-      heightAgl: drift.Value(detection.odid?.heightAgl),
-      droneSpeed: drift.Value(detection.odid?.droneSpeed),
-      droneHeading: drift.Value(detection.odid?.droneHeading),
-      pilotLat: drift.Value(detection.odid?.pilotLat),
-      pilotLon: drift.Value(detection.odid?.pilotLon),
-    ));
+    try {
+      await _db.insertDetection(DetectionsCompanion(
+        sessionId: drift.Value(sid),
+        nodeId: const drift.Value('default'),
+        macAddress: drift.Value(detection.macAddress),
+        deviceName: drift.Value(detection.deviceName),
+        engine: drift.Value(detection.engine.name),
+        detectionMethod: drift.Value(detection.method),
+        rssi: drift.Value(detection.rssi),
+        channel: drift.Value(detection.channel),
+        deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
+        appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
+        latitude: drift.Value(g.lat),
+        longitude: drift.Value(g.lon),
+        accuracy: drift.Value(g.acc),
+        altitude: drift.Value(detection.altitude),
+        speed: drift.Value(detection.speed),
+        heading: drift.Value(detection.heading),
+        satelliteCount: drift.Value(detection.satelliteCount),
+        approxGps: drift.Value(g.approx),
+        ssid: drift.Value(detection.ssid),
+        authMode: drift.Value(detection.wardrive?.authMode ?? 0),
+        uavId: drift.Value(detection.odid?.uavId),
+        operatorId: drift.Value(detection.odid?.operatorId),
+        droneLat: drift.Value(detection.odid?.droneLat),
+        droneLon: drift.Value(detection.odid?.droneLon),
+        altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
+        heightAgl: drift.Value(detection.odid?.heightAgl),
+        droneSpeed: drift.Value(detection.odid?.droneSpeed),
+        droneHeading: drift.Value(detection.odid?.droneHeading),
+        pilotLat: drift.Value(detection.odid?.pilotLat),
+        pilotLon: drift.Value(detection.odid?.pilotLon),
+      ));
+    } catch (e) {
+      DebugLog.log('AWAY-LIVE: insert failed for ${detection.macAddress}: $e');
+    }
     DebugLog.log('AWAY-LIVE: persisted ${detection.macAddress} → session $sid');
   }
 
@@ -1337,6 +1358,7 @@ class WardriveController extends ChangeNotifier {
       _spoolDone = false;
       _spoolConfirmed = false;
       _spoolSessionId = null;
+      _spoolSessionIdFuture = null;
       DebugLog.log('SPOOL: batch header total=${p.total}');
       return;
     }
@@ -1347,6 +1369,7 @@ class WardriveController extends ChangeNotifier {
       _spoolExpectedTotal = -1;
       _spoolConfirmed = false;
       _spoolSessionId = null;
+      _spoolSessionIdFuture = null;
       return;
     }
     if (p.done) {
@@ -1366,6 +1389,7 @@ class WardriveController extends ChangeNotifier {
       _spoolExpectedTotal = -1;
       _spoolConfirmed = false;
       _spoolSessionId = null;
+      _spoolSessionIdFuture = null;
     }
   }
 
@@ -1530,6 +1554,10 @@ class WardriveController extends ChangeNotifier {
       latitude: drift.Value(detection.latitude),
       longitude: drift.Value(detection.longitude),
       accuracy: drift.Value(detection.accuracy),
+      altitude: drift.Value(detection.altitude),
+      speed: drift.Value(detection.speed),
+      heading: drift.Value(detection.heading),
+      satelliteCount: drift.Value(detection.satelliteCount),
       ssid: drift.Value(detection.ssid),
       authMode: drift.Value(detection.wardrive?.authMode ?? 0),
       uavId: drift.Value(detection.odid?.uavId),
@@ -1542,7 +1570,7 @@ class WardriveController extends ChangeNotifier {
       droneHeading: drift.Value(detection.odid?.droneHeading),
       pilotLat: drift.Value(detection.odid?.pilotLat),
       pilotLon: drift.Value(detection.odid?.pilotLon),
-    ));
+    )).catchError((e) => DebugLog.log('WARDRIVE: insertDetection failed: $e'));
 
     notifyListeners();
   }

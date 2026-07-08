@@ -1,0 +1,226 @@
+=== PHASE A: node running, driver configures it, node persists to NVS ===
+[   0.4] [BLE] Phone connected, requested fast c
+[   0.7] [HB] tx id=871D ch=1 slicing=0
+[   1.3] [CFG] Hardware: buzzer=0 vol=100 led=0 brightness=0 flock_ext=0
+[   1.7] [BLE] Engine command: CONFIG engine 0
+[   1.7] [DETECTOR] Config radio mask=0x02
+[   2.1] [DETECTOR] Filters clear
+[   2.2] [HB] tx id=871D ch=1 slicing=0
+[   2.3] [DETECTOR] +filter c0:ff:ee len=6 desc= (total=1)
+[   2.4] [ENGINE] Initializing Detector...
+[   2.4] [BLE] Engine command: ENABLE engine 0
+[   2.4] [DETECTOR] Initialized (preserved filters=1)
+[   2.4] [ENGINE] Starting Detector
+[   2.4] [BLE-COEX] register (count=1)
+[   2.4] [DETECTOR] Started (BLE only) filters=1
+[   3.0] [CHIME] engine=0
+[   3.0] [DET] SIG d1:e4:f9:6d:28:43 RSSI:-77 [Find My / AirTag]
+[   3.0] {"engine":0,"mac":"d1:e4:f9:6d:28:43","rssi":-77,"ch":0,"method":2}
+[   3.0] [CHIME] engine=0
+[   3.0] [DETECTOR] SIG c9:99:c0:f4:87:a9 RSSI:-76 [Find My / AirTag]
+[   3.0] {"engine":0,"mac":"c9:99:c0:f4:87:a9","rssi":-76,"ch":0,"method":2}
+[   3.7] [HB] tx id=871D ch=1 slicing=1
+[   4.1] [CHIME] engine=0
+[   4.1] [DETECTOR]{"engine":0,"mac":"da:1f:b7:5a:46:df","rssi":-60,"ch":0,"method":2}
+[   4.6] [CHIME] engine=0
+[   4.6] [DETECTOR] SIG c5:90:eb:21:8f:4c RSSI:-63 [Find My / AirTag]
+[   4.6] {"engine":0,"mac":"c5:90:eb:21:8f:4c","rssi":-63,"ch":0,"method":2}
+[   5.2] [HB] tx id=871D ch=1 slicing=1
+[   6.2] [CHIME] engine=0
+[   6.2] {"engine":0,"mac":"f1:20:78:33:73:40","rssi":-71,"ch":0,"method":2}
+[   6.3] [CHIME] engine=0
+[   6.3] [DETECTOR] SIG cd:52:f0:4a:26:6b RSSI:-83 [Find My / AirTag]
+[   6.3] {"engine":0,"mac":"cd:52:f0:4a:26:6b","rssi":-83,"ch":0,"method":2}
+[   6.7] [HB] tx id=871D ch=1 slicing=1
+[   8.2] [HB] tx id=871D ch=1 slicing=1
+[   9.7] [HB] tx id=871D ch=1 slicing=1
+[  11.0] [CHIME] engine=0
+[  11.0] [DETECTOR] SIG e7:36:cb:81:cd:00 RSSI:-83 [Find My / AirTag]
+[  11.0] {"engine":0,"mac":"e7:36:cb:81:cd:00","rssi":-83,"ch":0,"method":2}
+[  11.2] [HB] tx id=871D ch=1 slicing=1
+[  12.7] [HB] tx id=871D ch=1 slicing=1
+[  13.0] [CHIME] engine=0
+[  13.0] [DETECTOR] SIG d1:e4:f9:6d:28:43 RSSI:-73 [Find My / AirTag]
+[  13.0] {"engine":0,"mac":"d1:e4:f9:6d:28:43","rssi":-73,"ch":0,"method":2}
+[  13.0] [CHIME] engine=0
+[  13.0] [DETECTOR] SIG c9:99:c0:f4:87:a9 RSSI:-78 [Find My / AirTag]
+[  13.0] {"engine":0,"mac":"c9:99:c0:f4:87:a9","rssi":-78,"ch":0,"method":2}
+[  14.1] [CHIME] engine=0
+[  14.1] [DET da:1f:b7:5a:46:df RSSI:-54 [Find My / AirTag]
+[  14.1] {"engine":0,"mac":"da:1f:b7:5a:46:df","rssi":-54,"ch":0,"method":2}
+[  14.2] [HB] tx id=871D ch=1 slicing=1
+[  14.5] [BLE] Phone disconnected — offngines kept
+[  14.6] [CHIME] engine=0
+[  14.6] [DE5:90:eb:21:8f:4c RSSI:-69 [Find My / AirTag]
+[  14.6] {"engine":0,"mac":"c5:90:eb:21:8f:4c","rssi":-69,"ch":0,"method":2}
+[  15.7] [HB] tx id=871D ch=1 slicing=1
+[  16.3] [CHIME] engine=0
+[  16.3] [DETECTOR] SIG f1:20:78:33:73:40 RSSI:-65 [Find My / AirTag]
+[  16.3] {"engine":0,"mac":"f1:20:78:33:73:40","rssi":-65,"ch":0,"method":2}
+[  16.3] [CHIME] engine=0
+[  16.3] [DETECT{"engine":0,"mac":"cd:52:f0:4a:26:6b","rssi":-73,"ch":0,"method":2}
+[  17.2] [HB] tx id=871D ch=1 slicing=1
+[  18.7] [HB] tx id=871D ch=1 slicing=1
+[  20.2] [HB] tx id=871D ch=1 slicing=1
+[  21.0] [CHIME] engine=0
+[  21.0] [DETECTOR] SIG e7:36:cb:81:cd:00 RSSI:-88 [Find My / AirTag]
+[  21.0] {"engine":0,"mac":"e7:36:cb:81:cd:00","rssi":-88,"ch":0,"method":2}
+[  21.7] [HB] tx id=871D ch=1 slicing=1
+[  23.0] [CHIME] engine=0
+[  23.0] [DETECTOR] SIG d1:e4:f9:6d:28:43 RSSI:-74 [Find My / AirTag]
+[  23.0] {"engine":0,"mac":"d1:e4:f9:6d:28:43","rssi":-74,"ch":0,"method":2}
+[  23.0] [CHIME] engine=0
+[  23.0] [DETECTOR]{"engine":0,"mac":"c9:99:c0:f4:87:a9","rssi":-77,"ch":0,"method":2}
+[  23.2] [HB] tx id=871D ch=1 slicing=1
+[  24.2] [CHIME] engine=0
+[  24.2] [DETECTOR]{"engine":0,"mac":"da:1f:b7:5a:46:df","rssi":-57,"ch":0,"method":2}
+[  24.6] [CHIME] engine=0
+[  24.6] [DETECTOR] SIG c5:90:eb:21:8f:4c RSSI:-68 [Find My / AirTag]
+[  24.6] {"engine":0,"mac":"c5:90:eb:21:8f:4c","rssi":-68,"ch":0,"method":2}
+[  24.7] [HB] tx id=871D ch=1 slicing=1
+[  26.3] [HB] tx id=871D ch=1[DETECTOR] SIG cd:52:f0:4a:26:6b RSSI:-82 [Find My / AirTag]
+[  26.3] {"engine":0,"mac":"cd:52:f0:4a:26:6b","rssi":-82,"ch":0,"method":2}
+[  26.6] [BLE] Phone connected, requested fast conn params
+[  27.7] [HB] tx id=871D ch=1 slicing=1
+[  27.9] [OFFLINE] persisted eng=0x01 filt=1
+[  28.3] [CHIME] engine=0
+[  28.3] [DETECTOR] SIG f1:20:78:33:73:40 RSSI:-86 [Find My / AirTag]
+[  28.3] {"engine":0,"mac":"f1:20:78:33:73:40","rssi":-86,"ch":0,"method":2}
+[  29.2] [HB] tx id=871D ch=1 slicing=0
+[  30.7] [HB] tx id=871D ch=1 slicing=0
+[  31.1] [CHIME] engine=0
+[  31.1] [DETECTOR] SIG e7:36:cb:81:cd:00 RSSI:-92 [Find My / AirTag]
+[  31.1] {"engine":0,"mac":"e7:36:cb:81:cd:00","rssi":-92,"ch":0,"method":2}
+[  32.2] [HB] tx id=871D ch=1 slicing=0
+[  33.1] [CHIME] engine=0
+[  33.1] [DETECTOR] SIG c9:99:c0:f4:87:a9 RSSI:-98 [Find My / AirTag]
+[  33.1] {"engine":0,"mac":"c9:99:c0:f4:87:a9","rssi":-98,"ch":0,"method":2}
+[  33.7] [HB] tx id=871D ch=1 slicing=0
+[  34.2] [CHIME] engine=0
+[  34.2] [DETECTOR] SIG da:1f:b7:5a:46:df RSSI:-50 [Find My / AirTag]
+[  34.2] {"engine":0,"mac":"da:1f:b7:5a:46:df","rssi":-50,"ch":0,"method":2}
+[  34.6] [CHIME] engine=0
+[  34.6] [DETECTOR] SIG c5:90:eb:21:8f:4c RSSI:-73 [Find My / AirTag]
+[  34.6] {"engine":0,"mac":"c5:90:eb:21:8f:4c","rssi":-73,"ch":0,"method":2}
+[  35.2] [HB] tx id=871D ch=1 slicing=0
+[  36.4] [CHIME] engine=0
+[  36.4] SIG cd:52:f0:4a:26:6b RSSI:-83 [Find My / AirTag]
+[  36.4] {"engine":0,"mac":"cd:52:f0:4a:26:6b","rssi":-83,"ch":0,"method":2}
+[  36.7] [HB] tx id=871D ch=1 slicing=0
+[  37.0] [CHIME] engine=0
+[  37.0] [DETECTOR] SIG d1:e4:f9:6d:28:43 RSSI:-74 [Find My / AirTag]
+[  37.0] {"engine":0,"mac":"d1:e4:f9:6d:28:43","rssi":-74,"ch":0,"method":2}
+[  38.2] [HB] tx id=871D ch=1 slicing=0
+[  39.0] [BLE] Phone discongines kept
+[  39.7] [HB] tx id=871D ch=1 slicing=0
+[  41.2] [CHIME] engine=0
+[  41.2] [DETECTOR] SIG f1:20:78:33:73:40 RSSI:-89 [Find My / AirTag]
+[  41.2] {"engine":0,"mac":"f1:20:78:33:73:40","rssi":-89,"ch":0,"method":2}
+
+=== PHASE B: node REBOOTED (esptool hard reset) — does it come back scanning with NO phone? ===
+[   0.1] E (236) esp_core_dump_flash: No core dump partition found!
+[   0.1] E (236) esp_core_dump_flash: No core dump partition found!
+[   0.3] 
+[   0.3] ========================================
+[   0.3]   OUI-SPY v3.0 — App-Controlled Mode
+[   0.3]   No boot selector. BLE GATT only.
+[   0.3] ========================================
+[   0.3] 
+[   0.3] [VERSION] OUI-SPY FW=0.4.8 (0x000408)
+[   0.4] [WIFI] sta_enabled=0
+[   0.4] [HW] Pins initialized
+[   0.4] [SPOOL] ready cap=1000 loaded=23 dropped=0
+[   0.4] [HW] Config: buzzer=0 vol=100 led=0 neo=0 flock_ext=0
+[   0.4] [INIT] Queues created (det=128, cmd=8)
+[   0.4] [AUTO-PCAP] loaded en=0 dur=10s cool=0s
+[   0.4] [ENGINE] Alert prefs loaded: notifyCool=5000ms rediscover=10000ms
+[   0.4] [ENGINE] Registry initialized (all engines disabled)
+[   0.4] [ENGINE] Registered: Detector (id=0)
+[   0.4] [ENGINE] Registered: Flock-BLE (id=1)
+[   0.4] [ENGINE] Registered: Flock-WiFi (id=2)
+[   0.4] [ENGINE] Registered: Foxhunter (id=3)
+[   0.4] [ENGINE] Registered: Sky Spy (id=4)
+[   0.4] [ENGINE] Registered: UniPwn (id=5)
+[   0.4] [ENGINE] Registered: Wardrive (id=6)
+[   0.4] [ENGINE] Registered: PCAP (id=7)
+[   0.4] [ENGINE] All engines disabled
+[   0.4] [INIT] Active mask after boot disable: 0x00
+[   0.4] [MESH] Initialized, localNodeId=871D
+[   0.4] [BLE] Initializing NimBLE...
+[   0.4] [BLE] device name: OUI-SPY-871D
+[   0.4] [OTA] Running from ota_0, boot=ota_0
+[   0.4] [BLE] GATT server started, advertising as OUI-SPY
+[   0.4] [INIT] WiFi STA reserved for OTA mode only — mesh stays on ch1
+[   0.4] [TASK] Detection notify task started
+[   0.4] [INIT] Tasks created
+[   0.4] [TASK] Engine command task started
+[   0.4] [TASK] Status heartbeat task started
+[   1.0] [MESH] Encryption disabled, plaintext mode
+[   1.1] [MESH] Enabled with 0 peers
+[   1.1] [INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)
+[   1.1] [DETECTOR] Filters cleared
+[   1.1] [DETECTOR] +filter c0:ff:ee len=6 desc= (total=1)
+[   1.1] [CFG] Detector watchlist: 1 mac + 0 uuid filters
+[   1.1] [ENGINE] Initializing Detector...
+[   1.1] [DETECTOR] Initialized (preserved filters=1)
+[   1.1] [ENGINE] Starting Detector
+[   1.1] [BLE-COEX] register (count=1)
+[   1.1] [COEX] wifi register (count=1)
+[   1.1] [DETECTOR] Started (WiFi+BLE) filters=1
+[   1.1] [OFFLINE] restored engines=0x01 filt=9B — resuming persistent scan
+[   1.1] 
+[   1.1] [INIT] *** OUI-SPY READY ***
+[   1.1] [INIT] Waiting for phone connection via BLE OR mesh command...
+[   1.1] [INIT] Free heap: 8246419 bytes
+[   1.4] [HB] tx id=871D ch=2 slicing=0
+[   1.8] [CHIME] engine=0
+[   1.8] [DETECTOR] SIG c5:90:eb:21:8f:4c RSSI:-67 [Find My / AirTag]
+[   1.8] {"engine":0,"mac":"c5:90:eb:21:8f:4c","rssi":-67,"ch":0,"method":2}
+[   2.2] [CHIME] engine=0
+[   2.2] [DETECTOR] SIG d1:e4:f9:6d:28:43 RSSI:-73 [Find My / AirTag]
+[   2.2] {"engine":0,"mac":"d1:e4:f9:6d:28:43","rssi":-73,"ch":0,"method":2}
+[   2.3] [CHIME] engine=0
+[   2.3] [DETECTOR] SIG e7:36:cb:81:cd:00 RSSI:-87 [Find My / AirTag]
+[   2.3] {"engine":0,"mac":"e7:36:cb:81:cd:00","rssi":-87,"ch":0,"method":2}
+[   2.9] [HB] tx id=871D ch=1 slicing=0
+[   3.5] [CHIME] engine=0
+[   3.5] [DETECTOR] SIG da:1f:b7:5a:46:df RSSI:-64 [Find My / AirTag]
+[   3.5] {"engine":0,"mac":"da:1f:b7:5a:46:df","rssi":-64,"ch":0,"method":2}
+[   4.4] [HB] tx id=871D ch=13 slicing=0
+[   4.4] [CHIME] engine=0
+[   4.4] [DETECTOR] SIG f1:20:78:33:73:40 RSSI:-83 [Find My / AirTag]
+[   4.4] {"engine":0,"mac":"f1:20:78:33:73:40","rssi":-83,"ch":0,"method":2}
+[   4.6] [CHIME] engine=0
+[   4.6] {"engine":0,"mac":"ce:a5:11:b7:8b:a2","rssi":-67,"ch":1,"method":5}
+[   5.6] [OFFLINE][DETECTOR] SIG cd:52:f0:4a:26:6b RSSI:-80 [Find My / AirTag]
+[   5.6] {"engine":0,"mac":"cd:52:f0:4a:26:6b","rssi":-80,"ch":0,"method":2}
+[   5.9] [HB] tx id=871D ch=12 slicing=0
+[   6.1] [CHIME] engine=0
+[   6.1] [DETECTOR] SIG c9:99:c0:f4:87:a9 RSSI:-87 [Find My / AirTag]
+[   6.1] {"engine":0,"mac":"c9:99:c0:f4:87:a9","rssi":-87,"ch":0,"method":2}
+[   7.4] [HB] tx id=871D ch=10 slicing=0
+[   8.5] [BLE] Phone connecte
+[   8.9] [HB] tx id=871D ch=8 slicing=0
+[  10.4] [HB] tx id=871D ch=7 slicing=0
+[  11.9] [HB] tx id=871D ch=5 slicing=0
+[  11.9] [CHIME] engine=0
+[  11.9] [DETECTOR] SIG c5:90:eb:21:8f:4c RSSI:-65 [Find My / AirTag]
+[  11.9] {"engine":0,"mac":"c5:90:eb:21:8f:4c","rssi":-65,"ch":0,"method":2}
+[  12.3] [CHIME] engine=0
+[  12.3] [DETECTOR] SIG e7:36:cb:81:cd:00 RSSI:-94 [Find My / AirTag]
+[  12.3] {"engine":0,"mac":"e7:36:cb:81:cd:00","rssi":-94,"ch":0,"method":2}
+[  13.4] [HB] tx id=871D ch=4 slicing=0
+[  13.5] [CHIME] engine=0
+[  13.5] [DETECTOR] SIG da:1f:b7:5a:46:df RSSI:-82 [Find My / AirTag]
+[  13.5] {"engine":0,"mac":"da:1f:b7:5a:46:df","rssi":-82,"ch":0,"method":2}
+[  14.3] [CHIME] engine=0
+[  14.3] [DETECTOR] SIG d1:e4:f9:6d:28:43 RSSI:-74 [Find My / AirTag]
+[  14.3] {"engine":0,"mac":"d1:e4:f9:6d:28:43","rssi":-74,"ch":0,"method":2}
+[  14.4] [CHIME] engine=0
+[  14.4] [DETAirTag]
+[  14.4] {"engine":0,"mac":"f1:20:78:33:73:40","rssi":-86,"ch":0,"method":2}
+[  14.9] [HB] tx id=871D ch=2 slicing=0
+[  15.6] [CHIME] engine=0
+[  15.6] [DETECTOR] SIG cd:52:f0:4a:26:6b RSSI:-77 [Find My / AirTag]
+[  15.6] {"engine":0,"mac":"cd:52:f0:4a:26:6b","rssi":-77,"ch":0,"method":2}
+[  16.1] [CHIME] engine=0
