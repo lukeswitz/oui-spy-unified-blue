@@ -379,15 +379,38 @@ void bleGattNetcountDrive(void) {
 }
 #endif
 
+#define MGR_ENG_PUSH_SETTLE_MS 400
+#ifdef OUISPY_ROLE_MANAGER
+static uint16_t g_engStateVer = 0;
+#endif
 static void mgrPushEngineState(void) {
 #ifdef OUISPY_ROLE_MANAGER
     if (!meshIsEnabled()) return;
     static uint8_t lastPushedMask = 0xFF;
-    static uint16_t stateVer = 0;
+    static uint8_t lastSeenMask = 0xFF;
+    static uint32_t maskChangedMs = 0;
     uint8_t em = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
-    if (em != lastPushedMask) { stateVer++; lastPushedMask = em; }
-    uint8_t out[3] = { em, (uint8_t)(stateVer & 0xFF), (uint8_t)(stateVer >> 8) };
+    uint32_t now = millis();
+    if (em != lastSeenMask) { lastSeenMask = em; maskChangedMs = now; }
+    if (em != lastPushedMask && (uint32_t)(now - maskChangedMs) < MGR_ENG_PUSH_SETTLE_MS) return;
+    if (em != lastPushedMask) { g_engStateVer++; lastPushedMask = em; }
+    uint8_t out[3] = { em, (uint8_t)(g_engStateVer & 0xFF), (uint8_t)(g_engStateVer >> 8) };
+#ifdef OUISPY_E2E_SMOKETEST
+    Serial.printf("[ENG-PUSH] em=0x%02X ver=%u cmdMask=0x%02X\n", em, g_engStateVer, mgrCommandedMask);
+#endif
     meshBroadcastConfig(MESH_CFG_KIND_ENGINE, out, sizeof(out));
+#endif
+}
+
+void bleGattMgrSyncNodeEngineState(uint8_t nodeReportedMask) {
+#ifdef OUISPY_ROLE_MANAGER
+    if (!meshIsEnabled()) return;
+    uint8_t em = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
+    if ((uint8_t)(nodeReportedMask & ~ENGINE_BITMASK(ENGINE_PCAP)) == em) return;
+    uint8_t out[3] = { em, (uint8_t)(g_engStateVer & 0xFF), (uint8_t)(g_engStateVer >> 8) };
+    meshBroadcastConfig(MESH_CFG_KIND_ENGINE, out, sizeof(out));
+#else
+    (void)nodeReportedMask;
 #endif
 }
 
@@ -698,9 +721,10 @@ static void e2eEnableEngine(uint8_t eng) {
     mgrCommandedStates[eng] = (uint8_t)ESTATE_SCANNING;
     if (eng == ENGINE_WARDRIVE) {
         mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
-        delay(120);
+    } else if (eng == ENGINE_DETECTOR || eng == ENGINE_SKYSPY ||
+               eng == ENGINE_FLOCK_WIFI || eng == ENGINE_FLOCK_BLE) {
+        mgrBroadcastNodeRadioConfig(eng);
     }
-    meshBroadcastCommand(0x01, eng, nullptr, 0);
 }
 
 static void e2eSmokeTask(void* arg) {
@@ -995,14 +1019,7 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
             if (cmd.engine_id == ENGINE_WARDRIVE &&
                 (cmd.command == 0x10 || cmd.command == 0x01)) {
                 mgrBroadcastWardriveSliced(mgrWardriveCfg, mgrWardriveCfgLen);
-                if (cmd.command == 0x01) {
-                    meshBroadcastCommand(cmd.command, cmd.engine_id,
-                        cmd.payload_len > 0 ? cmd.payload : nullptr, cmd.payload_len);
-                }
-            } else {
-                meshBroadcastCommand(cmd.command, cmd.engine_id,
-                    cmd.payload_len > 0 ? cmd.payload : nullptr,
-                    cmd.payload_len);
+            } else if (cmd.command == 0x01 || cmd.command == 0x00) {
                 if (cmd.command == 0x01 &&
                     (cmd.engine_id == ENGINE_DETECTOR ||
                      cmd.engine_id == ENGINE_SKYSPY ||
@@ -1010,6 +1027,10 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                      cmd.engine_id == ENGINE_FLOCK_BLE)) {
                     mgrBroadcastNodeRadioConfig(cmd.engine_id);
                 }
+            } else {
+                meshBroadcastCommand(cmd.command, cmd.engine_id,
+                    cmd.payload_len > 0 ? cmd.payload : nullptr,
+                    cmd.payload_len);
             }
         }
         bleGattNotifyEngineState();
@@ -1132,6 +1153,7 @@ static uint8_t mgrHwCfg[8]    = {0}; static uint8_t mgrHwCfgLen = 0;
 static uint8_t mgrAlertCfg[8] = {0}; static uint8_t mgrAlertCfgLen = 0;
 static uint8_t mgrApCfg[5]    = {0}; static uint8_t mgrApCfgLen = 0;
 static uint8_t mgrFoxCfg[7]   = {0}; static uint8_t mgrFoxCfgLen = 0;
+static uint8_t mgrSigCfg[1]   = {0}; static uint8_t mgrSigCfgLen = 0;
 
 static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len) {
     if (kind == MESH_CFG_KIND_HW) {
@@ -1146,6 +1168,9 @@ static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len) {
     } else if (kind == MESH_CFG_KIND_FOXHUNTER) {
         mgrFoxCfgLen = len > sizeof(mgrFoxCfg) ? sizeof(mgrFoxCfg) : (uint8_t)len;
         memcpy(mgrFoxCfg, data, mgrFoxCfgLen);
+    } else if (kind == MESH_CFG_KIND_SIGMASK) {
+        mgrSigCfgLen = len > sizeof(mgrSigCfg) ? sizeof(mgrSigCfg) : (uint8_t)len;
+        memcpy(mgrSigCfg, data, mgrSigCfgLen);
     }
 }
 
@@ -1165,6 +1190,7 @@ void bleGattRebroadcastConfigs(void) {
     if (mgrAlertCfgLen) meshBroadcastConfig(MESH_CFG_KIND_ALERT, mgrAlertCfg, mgrAlertCfgLen);
     if (mgrApCfgLen)    meshBroadcastConfig(MESH_CFG_KIND_AUTOPCAP, mgrApCfg, mgrApCfgLen);
     if (mgrFoxCfgLen)   meshBroadcastConfig(MESH_CFG_KIND_FOXHUNTER, mgrFoxCfg, mgrFoxCfgLen);
+    if (mgrSigCfgLen)   meshBroadcastConfig(MESH_CFG_KIND_SIGMASK, mgrSigCfg, mgrSigCfgLen);
 
     uint8_t m = mgrCommandedMask;
     if (m & ENGINE_BITMASK(ENGINE_FLOCK_WIFI)) mgrBroadcastNodeRadioConfig(ENGINE_FLOCK_WIFI);
@@ -1331,6 +1357,14 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
                 if (val.length() >= 2) {
                     detectorSetSigMask(data[1]);
                     Serial.printf("[BLE] Detector signatures mask=0x%02x\n", data[1]);
+#ifdef OUISPY_ROLE_MANAGER
+                    {
+                        uint8_t sm = data[1];
+                        mgrCacheConfig(MESH_CFG_KIND_SIGMASK, &sm, 1);
+                        if (meshIsEnabled())
+                            meshBroadcastConfig(MESH_CFG_KIND_SIGMASK, &sm, 1);
+                    }
+#endif
                 }
                 break;
             default:

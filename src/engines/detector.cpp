@@ -50,7 +50,7 @@ static volatile unsigned long lastDeauthAlert = 0;
 static const uint16_t DEAUTH_THRESHOLD = 10;
 static const unsigned long DEAUTH_ALERT_COOLDOWN_MS = 10000;
 static volatile unsigned long lastPwnAlert = 0;
-static uint8_t sigMask = SIG_ALL;
+static uint8_t sigMask = 0;
 
 static void detectorStart(void);
 static void detectorStop(void);
@@ -85,8 +85,8 @@ struct FindMyTrack {
     bool     alerted;
 };
 static FindMyTrack fmTracks[16];
-static const uint32_t FM_PERSIST_MS = 60000;
-static const uint16_t FM_MIN_HITS   = 8;
+static const uint32_t FM_PERSIST_MS = 3000;
+static const uint16_t FM_MIN_HITS   = 3;
 static const uint32_t FM_STALE_MS   = 120000;
 
 static void findMyObserve(const uint8_t* mac, int rssi) {
@@ -135,15 +135,25 @@ static void findMyObserve(const uint8_t* mac, int rssi) {
 static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* mac, int rssi) {
     if (dev->haveManufacturerData()) {
         std::string md = dev->getManufacturerData();
+#ifdef OUISPY_FM_DEBUG
         if (md.size() >= 4 && (uint8_t)md[0] == 0x4C && (uint8_t)md[1] == 0x00 &&
-            (uint8_t)md[2] == 0x12) {
+            ((uint8_t)md[2] == 0x12 || (uint8_t)md[2] == 0x07)) {
+            Serial.printf("[FM-DBG] %02x:%02x:%02x:%02x:%02x:%02x type=0x%02x len=0x%02x size=%u rssi=%d sig=0x%02x\n",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+                (uint8_t)md[2], (uint8_t)md[3], (unsigned)md.size(), rssi, sigMask);
+        }
+#endif
+        if (md.size() >= 24 && (uint8_t)md[0] == 0x4C && (uint8_t)md[1] == 0x00 &&
+            (uint8_t)md[2] == 0x12 && (uint8_t)md[3] == 0x19) {
             if (sigMask & SIG_TRACKER) findMyObserve(mac, rssi);
             return;
         }
     }
-    if ((sigMask & SIG_FLIPPER) && dev->haveName()) {
-        std::string nm = dev->getName();
-        if (nm.rfind("Flipper", 0) == 0) {
+    if (sigMask & SIG_FLIPPER) {
+        bool flip = dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3081)) ||
+                    dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3082)) ||
+                    dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3083));
+        if (flip) {
             if (sigDedup.check(mac)) return;
             DetectionEvent evt = {};
             evt.engine_id = ENGINE_DETECTOR;
@@ -155,6 +165,33 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetection(&evt);
             Serial.printf("[DETECTOR] SIG %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [Flipper Zero]\n",
+                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi);
+        }
+    }
+    if (sigMask & SIG_GLASSES) {
+        bool metaMfg = false;
+        if (dev->haveManufacturerData()) {
+            std::string gm = dev->getManufacturerData();
+            if (gm.size() >= 2) {
+                uint16_t cid = (uint16_t)((uint8_t)gm[0] | ((uint8_t)gm[1] << 8));
+                metaMfg = (cid == 0x01AB || cid == 0x058E || cid == 0x0D53);
+            }
+        }
+        bool metaSvc = dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFD5F)) ||
+                       dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFEB7)) ||
+                       dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFEB8));
+        if (metaMfg || metaSvc) {
+            if (sigDedup.check(mac)) return;
+            DetectionEvent evt = {};
+            evt.engine_id = ENGINE_DETECTOR;
+            memcpy(evt.mac, mac, 6);
+            evt.rssi = rssi;
+            evt.timestamp_ms = millis();
+            evt.method = METHOD_DET_GLASSES;
+            strncpy(evt.ext.detector.filter_desc, "Meta smart glasses",
+                    sizeof(evt.ext.detector.filter_desc) - 1);
+            pushDetection(&evt);
+            Serial.printf("[DETECTOR] SIG %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [Meta glasses]\n",
                           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi);
         }
     }
@@ -398,7 +435,6 @@ size_t detectorSerialize(uint8_t* out, size_t maxLen) {
         }
         out[ucntPos] = ucnt;
     }
-    if (off < maxLen) out[off++] = sigMask;
     return off;
 }
 
@@ -425,13 +461,27 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
             off += 2;
         }
     }
-    if (off < len) sigMask = data[off++];
     Serial.printf("[CFG] Detector watchlist: %u mac + %u uuid filters sig=0x%02X\n",
                   detectorFilterCount(), uuidFilterCount, sigMask);
 }
 
-void detectorSetSigMask(uint8_t mask) { sigMask = mask; }
+void detectorSetSigMask(uint8_t mask) {
+    const uint8_t wifiBits = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI;
+    bool prevWifi = (sigMask & wifiBits) != 0;
+    sigMask = mask;
+    bool newWifi = (sigMask & wifiBits) != 0;
+    if (scanning && prevWifi != newWifi &&
+        engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
+        detectorStop();
+        detectorStart();
+    }
+}
 uint8_t detectorGetSigMask(void) { return sigMask; }
+
+bool detectorUsesWifi(void) {
+    return (detectorRadioMask & 0x01) != 0 &&
+           (sigMask & (SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI)) != 0;
+}
 
 static void detectorInit(void) {
     dedup.reset();
@@ -445,7 +495,8 @@ static void detectorStart(void) {
     wifiDedupISR.setCooldownMs(engineGetRediscoverMs());
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
     bool wantBle  = (detectorRadioMask & 0x02) != 0;
-    bool wantWifi = (detectorRadioMask & 0x01) != 0;
+    bool wantWifi = (detectorRadioMask & 0x01) != 0 &&
+                    (sigMask & (SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI)) != 0;
 
     if (!wardriveOwns && wantBle) {
         bleScan = NimBLEDevice::getScan();
@@ -461,8 +512,7 @@ static void detectorStart(void) {
             WiFi.mode(WIFI_STA);
         }
         wifiSnifferApplyPs();
-        wifiCoexRegister(wifiSnifferCb,
-                         WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
+        wifiCoexRegister(wifiSnifferCb, WIFI_PROMIS_FILTER_MASK_MGMT);
         esp_wifi_set_channel(channels[0], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
         wifiActive = true;
@@ -522,11 +572,11 @@ void detectorHostSuspend(bool suspend) {
             bleScan = NimBLEDevice::getScan();
             bleCoexRegister(&scanCb, true);
         }
-        if (detectorRadioMask & 0x01) {
+        if ((detectorRadioMask & 0x01) &&
+            (sigMask & (SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI))) {
             if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
             wifiSnifferApplyPs();
-            wifiCoexRegister(wifiSnifferCb,
-                             WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA);
+            wifiCoexRegister(wifiSnifferCb, WIFI_PROMIS_FILTER_MASK_MGMT);
         }
     }
 }

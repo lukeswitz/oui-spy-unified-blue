@@ -34,6 +34,7 @@ void bleGattMaybeResliceWardrive(void);
 
 // Manager: re-send desired engines to any node whose reported mask lacks them
 void bleGattReconcileEngines(void);
+void bleGattMgrSyncNodeEngineState(uint8_t nodeReportedMask);
 void bleGattMgrPersistOfflineTick(void);
 void bleGattMgrRestoreOffline(void);
 #ifdef OUISPY_MGR_DET_TEST

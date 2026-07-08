@@ -11,7 +11,7 @@ void meshSendInvite(void);
 void meshBroadcastDetection(const DetectionEvent* evt, bool spooled = false);
 void meshFlushPendingTxAllChannels(void);
 void meshEnqueueWardriveRecord(const DetectionEvent* evt);
-void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len, uint8_t maxRetries = 20);
+void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len, uint8_t maxRetries = 3);
 void meshBroadcastAutoPcapEvent(uint8_t trigger_src, const uint8_t mac[6],
                                 uint8_t channel, uint16_t duration_sec,
                                 uint8_t paused_mask, uint8_t mode);

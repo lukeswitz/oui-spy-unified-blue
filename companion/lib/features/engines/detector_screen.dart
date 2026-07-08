@@ -92,36 +92,61 @@ class _DetectorScreenState extends ConsumerState<DetectorScreen> {
             padding: const EdgeInsets.all(12),
             color: t.surface,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text('SIGNATURES', style: TextStyle(
                   color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2,
                 )),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6, runSpacing: 6,
+                Row(
                   children: detectorSignatures.map((s) {
                     final on = (sigMask & s.bit) != 0;
-                    return Tooltip(
-                      message: s.desc,
-                      child: FilterChip(
-                        label: Text(s.label, style: TextStyle(
-                          fontSize: 11,
-                          color: on ? AppTheme.detector : t.textDim,
-                          fontWeight: FontWeight.w600,
-                        )),
-                        selected: on,
-                        showCheckmark: false,
-                        backgroundColor: t.background,
-                        selectedColor: AppTheme.detector.withValues(alpha: 0.18),
-                        side: BorderSide(
-                          color: on
-                              ? AppTheme.detector.withValues(alpha: 0.5)
-                              : t.border,
+                    final c = on ? AppTheme.detector : t.textDim;
+                    return Expanded(
+                      child: Tooltip(
+                        message: s.desc,
+                        child: InkWell(
+                          onTap: () => ref
+                              .read(detectorSigMaskProvider.notifier)
+                              .setBit(s.bit, !on),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: on
+                                        ? AppTheme.detector.withValues(alpha: 0.18)
+                                        : t.background,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: on
+                                          ? AppTheme.detector.withValues(alpha: 0.5)
+                                          : t.border,
+                                    ),
+                                  ),
+                                  child: Icon(s.icon, size: 20, color: c),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  s.short,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    height: 1.1,
+                                    color: c,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        onSelected: (v) => ref
-                            .read(detectorSigMaskProvider.notifier)
-                            .setBit(s.bit, v),
                       ),
                     );
                   }).toList(),

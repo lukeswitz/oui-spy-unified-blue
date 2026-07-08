@@ -495,6 +495,9 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }));
 
+    _subs.add(_ble.importedDetections.listen(_ingestOfflineDetection));
+    _subs.add(_ble.awayLiveDetections.listen(_ingestOfflineDetection));
+
     // Foxhunter RSSI
     _subs.add(_ble.foxhunterRssi.listen((data) {
       final previousRssi = foxhunterRssi;
@@ -576,6 +579,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+
+  void _ingestOfflineDetection(Detection det) {
+    if (det.sourceNodeId.isNotEmpty) _recordSeenNode(det.sourceNodeId);
+    _upsertDetection(det);
+    _recordDroneTrack(det);
+    notifyListeners();
+  }
 
   void _upsertDetection(Detection det) {
     final key = '${det.macAddress}|${det.engine.name}';

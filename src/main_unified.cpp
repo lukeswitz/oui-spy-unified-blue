@@ -545,7 +545,13 @@ static void statusHeartbeatTask(void* param) {
         static bool wasManaged = false;
         if (meshIsEnabled()) {
             if (meshManagerJoined()) {
-                wasManaged = true;
+                if (!wasManaged) {
+                    if (engineGetActiveMask() != 0 && !bleGattIsConnected()) {
+                        Serial.println("[MESH] manager joined — drop solo offline engines, yield radio to manager");
+                        engineDisableAll();
+                    }
+                    wasManaged = true;
+                }
             } else if (wasManaged && engineGetActiveMask() != 0) {
                 if (!bleGattOfflineScanEnabled() && !bleGattIsConnected()) {
                     Serial.println("[WATCHDOG] manager lost — self-idle all engines");

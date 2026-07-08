@@ -43,6 +43,7 @@ struct PendingCmd {
     uint8_t  payload_len;
     uint32_t last_send_ms;
     uint8_t  retries_left;
+    uint8_t  max_retries;
     bool     acked;
     uint8_t  acks;
     uint8_t  expected;
@@ -848,6 +849,11 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
                 g_mgrPhoneConnected = hb.phone_connected != 0;
                 g_mgrPhoneSeenMs = millis();
             }
+#ifdef OUISPY_ROLE_MANAGER
+            else {
+                bleGattMgrSyncNodeEngineState(hb.active_engines_mask);
+            }
+#endif
         }
         if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
@@ -900,6 +906,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         else if (cp.cfg_kind == MESH_CFG_KIND_ALERT) alertConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_AUTOPCAP) autoPcapConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_FOXHUNTER) foxhunterConfigApply(cp.data, n);
+        else if (cp.cfg_kind == MESH_CFG_KIND_SIGMASK) { if (n >= 1) detectorSetSigMask(cp.data[0]); }
 #ifndef OUISPY_ROLE_MANAGER
         else if (cp.cfg_kind == MESH_CFG_KIND_ENGINE) {
             if (!bleGattIsConnected()) engineStateConfigApply(cp.data, n);
@@ -1224,11 +1231,11 @@ static uint32_t meshMgrSilenceMs(void) {
 static bool meshNodeHopsWifi(void) {
     uint8_t m = engineGetActiveMask();
     const uint8_t wifiHop = ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
-                          | ENGINE_BITMASK(ENGINE_DETECTOR)
                           | ENGINE_BITMASK(ENGINE_FOXHUNTER)
                           | ENGINE_BITMASK(ENGINE_SKYSPY)
                           | ENGINE_BITMASK(ENGINE_PCAP);
     if (m & wifiHop) return true;
+    if ((m & ENGINE_BITMASK(ENGINE_DETECTOR)) && detectorUsesWifi()) return true;
     if ((m & ENGINE_BITMASK(ENGINE_WARDRIVE)) && (wardriveGetRadio() & 0x01)) return true;
     return false;
 }
@@ -1881,6 +1888,7 @@ static void sendAckPacket(const MeshCommandPacket* cmd) {
 
 void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len, uint8_t maxRetries) {
     if (!meshCurrentConfig.enabled) return;
+    if (command == 0x00 || command == 0x01 || command == 0x0F) maxRetries = 0;
 
     uint8_t seq;
     if (xSemaphoreTake(pendingMutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
@@ -1906,6 +1914,7 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     p.last_send_ms = millis();
     p.created_ms = millis();
     p.retries_left = maxRetries;
+    p.max_retries = maxRetries;
     p.acked = false;
     p.acks = 0;
     {
@@ -1938,7 +1947,7 @@ void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* pay
     sendOnHome(encrypted, encLen);
 
     Serial.printf("[MESH-CMD-TX] seq=%u cmd=0x%02x engine=%u retries=%u\n",
-        seq, command, engine_id, MESH_CMD_MAX_RETRIES);
+        seq, command, engine_id, maxRetries);
 
     if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
@@ -1999,7 +2008,7 @@ static void retryTaskFn(void* arg) {
             }
             if (p.retries_left == 0) {
                 Serial.printf("[MESH-CMD-TIMEOUT] seq=%u cmd=0x%02x engine=%u — %u/%u nodes acked after %u tries\n",
-                    p.seq, p.command, p.engine_id, p.acks, p.expected, MESH_CMD_MAX_RETRIES);
+                    p.seq, p.command, p.engine_id, p.acks, p.expected, p.max_retries);
                 pendingCmds[i].in_use = false;
                 xSemaphoreGive(pendingMutex);
                 MeshLiveNode ln[MESH_LIVE_NODES_MAX];

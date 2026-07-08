@@ -150,13 +150,15 @@ enum EngineState : uint8_t {
 #define METHOD_DET_DEAUTH      4
 #define METHOD_DET_PROBE       5
 #define METHOD_DET_PWNAGOTCHI  6
+#define METHOD_DET_GLASSES     7
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
 #define SIG_DEAUTH     0x04
 #define SIG_PROBE      0x08
 #define SIG_PWNAGOTCHI 0x10
-#define SIG_ALL        0x1F
+#define SIG_GLASSES    0x20
+#define SIG_ALL        0x3F
 
 // ============================================================================
 // Detection Event — produced by engines, consumed by GATT notification task
@@ -468,6 +470,7 @@ typedef struct __attribute__((packed)) {
 #define MESH_CFG_KIND_AUTOPCAP 3
 #define MESH_CFG_KIND_FOXHUNTER 4
 #define MESH_CFG_KIND_ENGINE 5
+#define MESH_CFG_KIND_SIGMASK 6
 #define MESH_CONFIG_MAX     32
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;          // MESH_PKT_CONFIG
