@@ -672,7 +672,7 @@ class WardriveController extends ChangeNotifier {
     WakelockPlus.enable();
 
     // Start iOS Live Activity (Dynamic Island / Lock Screen)
-    _updateLiveActivity();
+    _updateLiveActivity(allowStart: true);
 
     notifyListeners();
     DebugLog.log('WARDRIVE: started $sessionId targets=$activeLabel radio=${radio.label}');
@@ -1228,7 +1228,7 @@ class WardriveController extends ChangeNotifier {
     final cached = _gps.lastPosition;
     if (cached != null) currentPosition = cached;
     WakelockPlus.enable();
-    _updateLiveActivity();
+    _updateLiveActivity(allowStart: true);
   }
 
   Future<String> _resolveSpoolSessionId() async {
@@ -1393,7 +1393,7 @@ class WardriveController extends ChangeNotifier {
     }
   }
 
-  void _updateLiveActivity() {
+  void _updateLiveActivity({bool allowStart = false}) {
     final engineNames = activeEngines.map((e) => e.name).toSet();
     if (foxhuntTarget != null) engineNames.add('foxhunter');
     final mode = LiveActivityService.resolvePrimaryMode(
@@ -1402,6 +1402,7 @@ class WardriveController extends ChangeNotifier {
     );
     _liveActivity.update(
       primaryMode: mode,
+      allowStart: allowStart,
       activeLabel: _liveActivityLabel(engineNames),
       uniqueCount: uniqueMacs.length,
       flockCount: _flockMacs.length,

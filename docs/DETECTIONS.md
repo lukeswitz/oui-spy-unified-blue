@@ -15,8 +15,8 @@ detector detection event (no wire-format change, old nodes stay compatible).
 - **Matches:** BLE advertisement carrying Apple's Find My / offline-finding manufacturer data
   (`0x4C 0x00 0x12`). That is what AirTags — and any separated Find My device (including a nearby
   iPhone/Watch acting as a finder) — broadcast so they can be located.
-- **Behavior:** persistence-gated, **not** per-advert. A tracker MAC must be seen continuously for
-  **≥ 60 s** (≥ 8 adverts) before it alerts — i.e. something that is *staying with you*, not a device
+- **Behavior:** persistence-gated, **not** per-advert. A tracker MAC must be seen for **≥ 3 s**
+  (≥ 3 adverts) before it alerts — i.e. something that is *staying with you*, not a device
   you walk past. One alert per tracker.
 - **Feed label:** `Find My tracker following <N>s`.
 - **Read it as:** anti-stalking. "A Find My tracker has been near you for N seconds."

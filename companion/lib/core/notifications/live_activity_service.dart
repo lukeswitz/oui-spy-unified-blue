@@ -50,6 +50,7 @@ class LiveActivityService {
     String robotType = '',
     String exploitStatus = '',
     bool isImperial = false,
+    bool allowStart = false,
   }) async {
     if (!_supported) return;
 
@@ -85,6 +86,7 @@ class LiveActivityService {
         }
         return;
       }
+      if (!allowStart) return;
       _startInFlight = _channel.invokeMethod<String>('startActivity', payload);
       try {
         _activityId = await _startInFlight!;

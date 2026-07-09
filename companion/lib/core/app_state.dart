@@ -512,6 +512,7 @@ class AppState extends ChangeNotifier {
         );
         _liveActivity.update(
           primaryMode: 'foxhunter',
+          allowStart: true,
           uniqueCount: totalDetections,
           targetMac: foxhunterTarget!,
           rssi: data.rssi,

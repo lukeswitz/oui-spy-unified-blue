@@ -56,7 +56,7 @@ Eight engines, toggled from the home screen. They run together on whatever radio
 
 | Engine | Radio | What it detects |
 |---|---|---|
-| **Detector** | WiFi + BLE | Your watchlist (MAC / OUI prefix / name / BLE service UUID) **plus** built-in signatures: Find My/AirTag trackers, Flipper Zero, WiFi deauth storms, directed probe-requests, Pwnagotchi |
+| **Detector** | WiFi + BLE | Your watchlist (MAC / OUI prefix / name / BLE service UUID) **plus** six toggleable signatures: Find My/AirTag trackers, Flipper Zero, WiFi deauth storms, directed probe-requests, Pwnagotchi, Meta smart glasses |
 | **Flock BLE** | BLE | Flock Safety cameras + Raven gunshot sensors by BLE fingerprint |
 | **Flock WiFi** | WiFi | Flock Safety cameras by 802.11 traffic |
 | **Foxhunter** | WiFi + BLE | One chosen target — buzzer speeds up as you close in |
@@ -116,7 +116,7 @@ Flash the board you connect the app to as a **manager** (`mgr-xiao_s3` — its P
 
 802.11 frames carry three MAC fields — **addr1** (receiver), **addr2** (transmitter), **addr3** (BSSID). Several engines check all three so a target is caught in any role.
 
-**Detector** — your watchlist (full MACs, OUI prefixes, name patterns, 16-bit BLE service UUIDs), matched on BLE adverts and WiFi promiscuous frames. Alongside it, built-in signatures fire with no config: Find My/AirTag offline-finding adverts, Flipper Zero (`Flipper` name), WiFi deauth/disassoc storms (rate-gated), directed probe-request SSIDs, and the Pwnagotchi beacon. Each is labeled in the feed by what it is.
+**Detector** — your watchlist (full MACs, OUI prefixes, name patterns, 16-bit BLE service UUIDs), matched on BLE adverts and WiFi promiscuous frames. Alongside it, six built-in signatures — each toggled from the Signatures panel, off by default: Find My/AirTag offline-finding adverts (persistence-gated, ~3 s, anti-stalking), Flipper Zero (`Flipper` name), WiFi deauth/disassoc storms (rate-gated), directed probe-request SSIDs, the Pwnagotchi beacon, and Meta smart glasses (BLE mfg/service ID). Each is labeled in the feed by what it is; toggles sync to firmware and propagate to mesh nodes.
 
 **Flock** — both engines share an OUI table (`flock_oui.h`). A field-tested **core set** is always on; an **extended set** (broad cellular/WiFi/control-chip vendor OUIs) is off by default because those prefixes appear on countless non-Flock devices — enable it under *Settings → Hardware → Flock Detection* when you want max coverage and will triage noise. Flock WiFi runs 802.11 promiscuous on channels 1/6/11, firing a wildcard probe on each hop, matching the OUI table on addr2/addr1/addr3 and decoding AP auth mode. Flock BLE matches on OUI, advertised name (`Penguin`, `Flock`, `FlockCam`, `FS-`, …), manufacturer ID `0x09C8` (XUNTONG), and Raven gunshot-detector GATT UUIDs.
 
