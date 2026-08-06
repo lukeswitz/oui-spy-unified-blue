@@ -82,7 +82,7 @@ static const FlockOui FLOCK_OUI_TABLE[] = {
     { {0xf0,0x82,0xc0}, 1 },
     { {0xf4,0x6a,0xdd}, 0 },
     { {0xf4,0xcf,0xa2}, 1 }, // Espressif
-    { {0xf8,0xa2,0xd6}, 0 },
+    { {0xf8,0xa2,0xd6}, 1 },
     { {0xfc,0xf5,0xc4}, 1 }, // Espressif
 };
 static const int FLOCK_OUI_COUNT = sizeof(FLOCK_OUI_TABLE) / sizeof(FLOCK_OUI_TABLE[0]);

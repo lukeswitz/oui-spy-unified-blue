@@ -34,7 +34,7 @@ const List<DetectorSignature> detectorSignatures = [
   DetectorSignature(sigGlasses, 'Meta glasses', 'Meta glasses', Icons.visibility,
       'Ray-Ban / Oakley Meta smart glasses — Luxottica CID 0x0D53, service 0xFD5F, name or frame OUI (excludes Quest/Portal)'),
   DetectorSignature(sigAxon, 'Axon (Law Enforcement)', 'Axon', Icons.local_police,
-      'Axon Enterprise hardware — Taser, body cameras, Signal (BLE + promiscuous WiFi OUI 00:25:DF)'),
+      'Axon Enterprise hardware — Taser, body cameras, Signal (BLE CID 0x034D, service 0xFC81, or OUI 00:25:DF; promiscuous WiFi OUI 00:25:DF)'),
 ];
 
 class DetectorSigMaskNotifier extends StateNotifier<int> {

@@ -238,7 +238,17 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
         }
     }
     if (sigMask & SIG_AXON) {
-        if (memcmp(mac, AXON_OUI, 3) == 0 && !sigDedup.check(mac)) {
+        bool axonMfg = false;
+        if (dev->haveManufacturerData()) {
+            std::string am = dev->getManufacturerData();
+            if (am.size() >= 2) {
+                uint16_t cid = (uint16_t)((uint8_t)am[0] | ((uint8_t)am[1] << 8));
+                axonMfg = (cid == 0x034D);
+            }
+        }
+        bool axonSvc = dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFC81));
+        bool axonMac = (memcmp(mac, AXON_OUI, 3) == 0);
+        if ((axonMac || axonMfg || axonSvc) && !sigDedup.check(mac)) {
             DetectionEvent evt = {};
             evt.engine_id = ENGINE_DETECTOR;
             memcpy(evt.mac, mac, 6);
