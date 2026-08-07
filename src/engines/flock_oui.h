@@ -14,12 +14,15 @@
 // Entries MUST be sorted by first byte (bucket lookup assumes contiguous runs).
 struct FlockOui { uint8_t b[3]; uint8_t ext; };
 
+// Upstream flock-you RSSI_MIN: frames weaker than this are dropped.
+#define FLOCK_RSSI_MIN (-95)
+
 extern volatile bool g_flockExtendedOui;
 
 static const FlockOui FLOCK_OUI_TABLE[] = {
     { {0x00,0x18,0x0a}, 1 }, // Murata
     { {0x00,0x23,0x6c}, 1 }, // Sierra Wireless
-    { {0x00,0x40,0x8c}, 0 }, // Flock BLE (@NitekryDPaul Jul 2026 LE CSV)
+    { {0x00,0x40,0x8c}, 1 }, // Flock BLE (@NitekryDPaul Jul 2026 LE CSV)
     { {0x00,0xf4,0x8d}, 0 }, // Cradlepoint
     { {0x04,0x0d,0x84}, 1 }, // Cradlepoint
     { {0x08,0x3a,0x88}, 0 },
@@ -59,7 +62,7 @@ static const FlockOui FLOCK_OUI_TABLE[] = {
     { {0xa0,0xc9,0xa0}, 1 }, // Murata
     { {0xa4,0xcf,0x12}, 0 }, // Espressif
     { {0xac,0x67,0xb2}, 1 }, // Espressif
-    { {0xac,0xcc,0x8e}, 0 }, // Flock BLE (@NitekryDPaul Jul 2026 LE CSV)
+    { {0xac,0xcc,0x8e}, 1 }, // Flock BLE (@NitekryDPaul Jul 2026 LE CSV)
     { {0xb4,0x1e,0x52}, 1 }, // Flock Group Inc. (direct)
     { {0xb4,0xe3,0xf9}, 1 },
     { {0xb8,0x1e,0xa4}, 0 },

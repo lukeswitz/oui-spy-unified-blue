@@ -108,6 +108,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     uint8_t* p = pkt->payload;
     int len = pkt->rx_ctrl.sig_len;
     if (len < 24) return;
+    if (pkt->rx_ctrl.rssi < FLOCK_RSSI_MIN) return;
 
     uint8_t frameType = (p[0] >> 2) & 0x03;
     uint8_t frameSubtype = (p[0] >> 4) & 0x0F;

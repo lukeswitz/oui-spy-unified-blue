@@ -345,7 +345,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
 
     // ----- Flock-WiFi OUI fast-path (any frame type) -----
     // Cheap: bucket-indexed OUI table, ISR-safe dedup, no allocs.
-    if (wdFlockWifiActive) {
+    if (wdFlockWifiActive && pkt->rx_ctrl.rssi >= FLOCK_RSSI_MIN) {
         uint8_t fMethod = 0xFF;
         const uint8_t* fMac = NULL;
         if (flockMatchOuiISR(addr2)) {
