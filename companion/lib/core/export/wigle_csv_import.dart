@@ -5,7 +5,6 @@ import 'package:drift/drift.dart' as drift;
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/oui/flock_oui.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -130,7 +129,6 @@ class WigleCsvImport {
       maxTs = maxTs == null || ts > maxTs ? ts : maxTs;
 
       final isBle = type == 'BLE' || auth.toUpperCase().contains('LE');
-      final isFlock = FlockOui.match(mac);
       final wlHit = wlIndex.match(mac, ssid);
       final Engine engine;
       final String method;
@@ -139,9 +137,6 @@ class WigleCsvImport {
         method = isBle
             ? (wlHit.byName ? 'name_match' : 'ble_watchlist')
             : 'wifi_watchlist';
-      } else if (isFlock) {
-        engine = isBle ? Engine.flockBle : Engine.flockWifi;
-        method = isBle ? 'oui_match' : 'oui_addr3';
       } else {
         engine = Engine.wardrive;
         method = isBle ? 'ble_adv' : 'wifi_ap';
@@ -173,7 +168,6 @@ class WigleCsvImport {
             : const drift.Value.absent(),
       ));
       uniqueMacs.add(mac);
-      if (isFlock) flockMacs.add(mac);
       if (wlHit != null) detectorMacs.add(mac);
     }
 
@@ -298,22 +292,10 @@ class WigleRescanResult {
   final int newFlockMacs;
 }
 
-const _kFlockGranular = {
-  'oui_addr1',
-  'oui_addr2',
-  'oui_addr3',
-  'ssid',
-  'wildcard_probe',
-  'oui_match',
-  'name_match',
-  'mfg_id',
-  'raven_uuid',
-};
-
 class WigleCsvRescan {
   const WigleCsvRescan._();
 
-  /// Promote generic Engine.wardrive rows to detector/flock when they match
+  /// Promote generic Engine.wardrive rows to detector when they match
   static Future<WigleRescanResult> rescanAll(
     AppDatabase db, {
     List<WatchlistEntry> watchlist = const [],
@@ -343,7 +325,6 @@ class WigleCsvRescan {
             method == 'raven_uuid';
 
         final wlHit = wlIndex.match(mac, name);
-        final isFlock = FlockOui.match(mac);
 
         String targetEngine;
         String targetMethod;
@@ -357,15 +338,6 @@ class WigleCsvRescan {
               : 'wifi_watchlist';
           targetDesc = wlHit.description.isNotEmpty ? wlHit.description : null;
           targetIsFullMac = wlHit.isFullMac;
-        } else if (isFlock) {
-          targetEngine =
-              isBleRow ? Engine.flockBle.name : Engine.flockWifi.name;
-          targetMethod = r.engine == Engine.wardrive.name &&
-                  !_kFlockGranular.contains(method)
-              ? (isBleRow ? 'oui_match' : 'oui_addr3')
-              : method;
-          targetDesc = null;
-          targetIsFullMac = null;
         } else {
           targetEngine = Engine.wardrive.name;
           targetMethod = isBleRow ? 'ble_adv' : 'wifi_ap';
@@ -439,7 +411,6 @@ class WigleCsvRescan {
           method == 'raven_uuid';
 
       final wlHit = wlIndex.match(mac, name);
-      final isFlock = FlockOui.match(mac);
 
       String targetEngine;
       String targetMethod;
@@ -453,15 +424,6 @@ class WigleCsvRescan {
             : 'wifi_watchlist';
         targetDesc = wlHit.description.isNotEmpty ? wlHit.description : null;
         targetIsFullMac = wlHit.isFullMac;
-      } else if (isFlock) {
-        targetEngine =
-            isBleRow ? Engine.flockBle.name : Engine.flockWifi.name;
-        targetMethod = r.engine == Engine.wardrive.name &&
-                !_kFlockGranular.contains(method)
-            ? (isBleRow ? 'oui_match' : 'oui_addr3')
-            : method;
-        targetDesc = null;
-        targetIsFullMac = null;
       } else {
         targetEngine = Engine.wardrive.name;
         targetMethod = isBleRow ? 'ble_adv' : 'wifi_ap';

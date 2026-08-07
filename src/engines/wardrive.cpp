@@ -366,9 +366,6 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
             fMethod = METHOD_OUI_ADDR1;
             fMac = addr1;
-        } else if (frameType == 0 && flockMatchOuiISR(addr3)) {
-            fMethod = METHOD_OUI_ADDR3;
-            fMac = addr3;
         }
         if (fMac) {
             if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {
@@ -495,18 +492,12 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
                 if (flockMatchBareSerialName(name.c_str())) sigMask |= FLOCK_SIG_SERIAL;
             }
 
-            if (sigMask & FLOCK_SIG_OUI) {
-                isFlock = true;
-                flockMethod = METHOD_OUI_MATCH;
-            } else if (sigMask & FLOCK_SIG_NAME) {
+            if (sigMask & FLOCK_SIG_NAME) {
                 isFlock = true;
                 flockMethod = METHOD_NAME_MATCH;
-            } else if ((sigMask & FLOCK_SIG_SERIAL) && (sigMask & FLOCK_SIG_MFG)) {
+            } else if ((sigMask & FLOCK_SIG_VALIDATED) == FLOCK_SIG_VALIDATED) {
                 isFlock = true;
                 flockMethod = METHOD_NAME_MATCH;
-            } else if (sigMask & FLOCK_SIG_MFG) {
-                isFlock = true;
-                flockMethod = METHOD_MFG_ID;
             }
             if (!isFlock && flockMatchRavenUuid(dev, &ravenFw)) {
                 isFlock = true;

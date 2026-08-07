@@ -26,7 +26,8 @@
 You need **one board** and the **app**.
 
 1. **Get a supported board** — most any ESP32-S3 works (full list below). Xiao C5 for 5G.  
-2. **Flash it** — open the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) in Chrome or Edge, plug the board in over USB-C, leave the target on **NODE**, and click **Connect & Flash**. You do this once — after that the app updates the board itself.
+2. **Flash it** — open the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) in Chrome or Edge, plug the board in over USB-C, leave the target on **NODE**, and click **Connect & Flash**.
+   You do this once. After that the app updates the board itself.
 3. **Install the app** — [Android](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) · [iPhone / Mac (TestFlight)](https://testflight.apple.com/join/5RCKgnJ2) · [Mac download](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest).
 4. **Connect** — open the app, tap **CONNECT**, and pick your board. That's it.
 
@@ -50,7 +51,9 @@ Turn any of these on from the home screen:
 - **Unitree robots** — detect (and connect to) Unitree robot dogs.
 
 > [!IMPORTANT]
-> The ALPR upstream OUI db (FlockYou) is used. This contains many false positives (Ubiquiti routers, Espressif, and other components found in consumer electronics). **Validate findings with your own eyes before submitting to sites like deflock.me** 
+> The ALPR upstream OUI db (FlockYou) is used.
+> It contains many false positives — Ubiquiti routers, Espressif, and other parts common in consumer electronics.
+> **Validate findings with your own eyes before submitting to sites like deflock.me**
 
 ---
 
@@ -60,7 +63,10 @@ Want a wider net? Add more boards.
 
 - Flash **one** board as a **MANAGER** (the one your phone connects to) and the rest as **NODES**.
 - Power them on — nodes join automatically in about 10 seconds, no pairing.
-- Put the manager in the **middle** and spread the nodes around it. Each node must be within range **of the manager** — up to about **200 m** in open line of sight (walls, metal, and bodies cut that down). They don't relay through each other, so you can't daisy-chain them. Up to **6 nodes** per manager.
+- Put the manager in the **middle** and spread the nodes around it.
+- Each node must be within range **of the manager** — up to about **200 m** in open line of sight (walls, metal, and bodies cut that down).
+- Nodes don't relay through each other, so you can't daisy-chain them.
+- Up to **6 nodes** per manager.
 
 The manager only gathers results; the nodes do the scanning.
 
@@ -83,7 +89,9 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 
 - **One board:** flash NODE (`node-xiao_s3`).
 - **Several boards:** flash MANAGER on the one your phone connects to (`mgr-xiao_s3`), NODE on the rest.
-- The **ESP32-C5** is the only board that also scans 5 GHz. It's newer and less tested — treat it as experimental. It runs **standalone only** (phone connects to it directly); it does **not** join a manager's mesh fleet, so it can't be a fleet node under a manager.
+- The **ESP32-C5** is the only board that also scans 5 GHz.
+- It's newer and less tested — treat it as experimental.
+- It runs **standalone only**: the phone connects to it directly, and it can't be a fleet node under a manager.
 
 </details>
 
@@ -92,26 +100,39 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 
 One Flutter app for iOS, macOS, and Android.
 
-**Home** — a card per engine; tap to toggle or open its settings. The status bar shows connection, GPS fix, and node count.
+**Home** — a card per engine; tap to toggle or open its settings.
+The status bar shows connection, GPS fix, and node count.
 
-**Live feed** — every detection in one stream. Filter by engine / preset / node, sort by time / signal / MAC, search, and export to WiGLE CSV. Tap a row to foxhunt or map it; long-press for full detail.
+**Live feed** — every detection in one stream.
+Filter by engine / preset / node, sort by time / signal / MAC, search, and export to WiGLE CSV.
+Tap a row to foxhunt or map it; long-press for full detail.
 
-**Wardrive & map** — pick your targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then **START**. Hits plot live, color-graded by density, with your route behind you. Drones show at their broadcast position. Sessions save as WiGLE CSV and upload to **WiGLE** and/or **[WDGWars](https://wdgwars.pl)** with your API key; saved runs replay on the map, and you can import CSVs.
+**Wardrive & map** — pick your targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then **START**.
+Hits plot live, color-graded by density, with your route behind you.
+Drones show at their broadcast position.
+Sessions save as WiGLE CSV and upload to **WiGLE** and/or **[WDGWars](https://wdgwars.pl)** with your API key.
+Saved runs replay on the map, and you can import CSVs.
 
 <img width="709" alt="App home" src="https://github.com/user-attachments/assets/62470061-c382-4724-8d86-72cb4dd4c1df" />
 <img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
 
-**Geofences** — draw a zone and everything inside goes silent (no feed, log, CSV, or beep; radios paused). Scanning resumes when you leave.
+**Geofences** — draw a zone and everything inside goes silent: no feed, log, CSV, or beep, radios paused.
+Scanning resumes when you leave.
 
-**PCAP** — no SD card; frames stream over Bluetooth and the app writes a Wireshark `.pcap`. **Auto-PCAP** records for 3–120 s whenever an engine fires, labeled by what triggered it, then goes back to scanning. A library screen keeps every capture.
+**PCAP** — no SD card: frames stream over Bluetooth and the app writes a Wireshark `.pcap`.
+**Auto-PCAP** records for 3–120 s whenever an engine fires, labeled by what triggered it, then goes back to scanning.
+A library screen keeps every capture.
 
 <img width="910" alt="PCAP" src="https://github.com/user-attachments/assets/4b34e73d-1341-4222-8ec2-d17a179f6faa" />
 
-**Offline scan** *(Settings → Config → Hardware)* — keep scanning after you close the app or walk out of range; hits buffer to flash and sync when you reconnect, and scanning survives a reboot with no phone attached.
+**Offline scan** *(Settings → Config → Hardware)* — keep scanning after you close the app or walk out of range.
+Hits buffer to flash and sync when you reconnect, and scanning survives a reboot with no phone attached.
 
-**OTA updates** *(Settings → Updates)* — update over Wi-Fi or Bluetooth. In a mesh, nodes update one at a time.
+**OTA updates** *(Settings → Updates)* — update over Wi-Fi or Bluetooth.
+In a mesh, nodes update one at a time.
 
-**Wardrive accounts** — link **WiGLE** and **WDGWars** at the top of *Settings → Config*; each shows live stats, with a strip on the home screen.
+**Wardrive accounts** — link **WiGLE** and **WDGWars** at the top of *Settings → Config*.
+Each shows live stats, with a strip on the home screen.
 
 **Settings** — appearance, units, scan timing, channels, Wi-Fi band, vendor database, accounts, buzzer/LED, watchlist, ignore list, factory reset, and database backup/restore.
 
@@ -124,23 +145,66 @@ One Flutter app for iOS, macOS, and Android.
 <details>
 <summary><b>How it works under the hood (technical)</b></summary>
 
-**Detection engines.** 802.11 frames carry three MAC fields — addr1 (receiver), addr2 (transmitter), addr3 (BSSID); several engines check all three so a target is caught in any role.
+**Detection engines.**
+802.11 frames carry three MAC fields: addr1 (receiver), addr2 (transmitter), addr3 (BSSID).
+Several engines check all three so a target is caught in any role.
 
-- **Detector** — your watchlist (MACs, OUI prefixes, name patterns, 16-bit BLE service UUIDs) on BLE adverts and Wi-Fi promiscuous frames, plus seven built-in signatures (off by default): Find My/AirTag (persistence-gated, anti-stalking), Flipper Zero (service UUIDs `0x3081`/`82`/`83`), Wi-Fi deauth/disassoc storms (rate-gated), directed probe SSIDs, Pwnagotchi, Meta Ray-Ban / Oakley glasses (Luxottica CID `0x0D53`, service `0xFD5F`, or name — excludes Quest/Portal), Axon / law enforcement (OUI `00:25:DF`, TASER International CID `0x034D`, or service `0xFC81` on BLE; OUI only on Wi-Fi).
-- **Flock** — shared OUI table (`flock_oui.h`); a core set is always on, an extended set (broad chipset vendors, plus entries upstream has since demoted — `f8:a2:d6` false-positives on a Sony media player) is off by default to avoid false positives. Wi-Fi runs promiscuous on 2.4 GHz **channels 1/6/11 only** (on the C5, plus non-DFS 5 GHz 36–48/149–165) with a wildcard probe per hop — a Flock camera on any other 2.4 channel will not be seen; BLE matches OUI, name (`Penguin`, `Flock`, `FS-`, `Pigvision`, …), manufacturer ID `0x09C8` (XUNTONG), and Raven GATT UUIDs. Post-March-2025 Penguin firmware dropped the `Penguin-` prefix and now advertises a bare 10-digit serial as its name; a bare 10-digit name is **not** standalone evidence (any device can advertise one) and only counts when the XUNTONG mfg ID corroborates it. Every predicate that hit rides along as a signal mask, and the app badges a detection **VALIDATED** when serial name + XUNTONG + TN serial are all present.
-- **Sky Spy** — Open Drone ID over BLE + Wi-Fi (NAN/beacon); decodes operator/UAV ID, position, altitude, speed, heading.
-- **Foxhunter** — one target MAC; buzzer cadence tracks RSSI across Wi-Fi and BLE. Law-enforcement devices (Axon OUI `00:25:DF`) can't be foxhunted — the target is refused and the feed/detail buttons are hidden.
-- **UniPwn** — Unitree robots by BLE name prefix (`Go2_`, `G1_`, `H1_`, …): detect → connect → exploit.
-- **Wardrive** — logs every AP + BLE device (SSID, BSSID, channel, auth mode), GPS-stamped, WiGLE-compatible. Sweeps your configured 2.4 GHz range (default 1–14) — **every channel in range, not just 1/6/11**; on the C5 a config toggle (**All / 1·6·11**) picks whether 2.4 covers the full range or only 1/6/11, and it also sweeps the full 5 GHz set (UNII-1/2/2e/3, 36–165 incl DFS).
+**Detector**
+- Matches your watchlist — MACs, OUI prefixes, name patterns, 16-bit BLE service UUIDs — on BLE adverts and Wi-Fi promiscuous frames.
+- Seven built-in signatures ship off by default:
+  - Find My / AirTag (persistence-gated, anti-stalking)
+  - Flipper Zero (service UUIDs `0x3081`/`82`/`83`)
+  - Wi-Fi deauth/disassoc storms (rate-gated)
+  - directed probe SSIDs
+  - Pwnagotchi
+  - Meta Ray-Ban / Oakley glasses (Luxottica CID `0x0D53`, service `0xFD5F`, or name — excludes Quest/Portal)
+  - Axon / law enforcement (OUI `00:25:DF`, TASER International CID `0x034D`, or service `0xFC81` on BLE; OUI only on Wi-Fi)
 
-**Mesh link.** Nodes talk to the manager over encrypted **ESP-NOW** (AES-GCM), broadcast on one shared channel (2.4 GHz **channel 1**). It's a single-hop star — every node reaches the manager directly, with no node-to-node relay (max 6 nodes, up to ~200 m per link in open line of sight). Scanning nodes weave back to channel 1 each sweep to pass traffic, so mesh chatter and channel-split scanning share the radio. A node silent for 45 s drops off and rejoins on its own when back in range. Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio, Wi-Fi band) push to every node and override their local copies. The **ESP32-C5 does not participate in the mesh** — it runs standalone (connected directly to your phone) and cannot be a fleet node under a manager.
+**Flock**
+- OUI table (`flock_oui.h`): core set always on, extended set off by default (broad chipset vendors, plus `f8:a2:d6`, demoted upstream after false-positiving a Sony media player).
+- Wi-Fi hops 2.4 GHz **1/6/11 only** (C5 adds non-DFS 5 GHz 36–48/149–165) with a wildcard probe per hop; a camera parked on any other 2.4 channel is invisible.
+- Wi-Fi matches the upstream FlockYou way: wildcard probe request from a listed `addr2`, any other frame from a listed `addr2`, or the `addr1` sleeper-catch (unicast, non-randomised).
+- `addr3`/BSSID is not checked — a consumer AP with a listed BSSID is not a camera.
+- BLE matches on an explicit name (`Penguin`, `Flock`, `FS-`, `Pigvision`, …), the Raven GATT UUIDs, or serial + XUNTONG (`0x09C8`) + TN serial together.
+- OUI or XUNTONG alone never reports.
+- Post-March-2025 Penguins advertise a bare 10-digit serial instead of the `Penguin-` prefix; that name alone proves nothing.
+- Every predicate that hit rides along as a signal mask; the app badges **VALIDATED** on serial + XUNTONG + TN.
+
+**Sky Spy**
+- Open Drone ID over BLE + Wi-Fi (NAN/beacon).
+- Decodes operator/UAV ID, position, altitude, speed, heading.
+
+**Foxhunter**
+- One target MAC; buzzer cadence tracks RSSI across Wi-Fi and BLE.
+- Law-enforcement devices (Axon OUI `00:25:DF`) can't be foxhunted — the target is refused and the feed/detail buttons are hidden.
+
+**UniPwn**
+- Unitree robots by BLE name prefix (`Go2_`, `G1_`, `H1_`, …): detect → connect → exploit.
+
+**Wardrive**
+- Logs every AP + BLE device (SSID, BSSID, channel, auth mode), GPS-stamped, WiGLE-compatible.
+- Sweeps your configured 2.4 GHz range (default 1–14) — **every channel in range, not just 1/6/11**.
+- On the C5 a config toggle (**All / 1·6·11**) picks whether 2.4 covers the full range or only 1/6/11.
+- The C5 also sweeps the full 5 GHz set (UNII-1/2/2e/3, 36–165 incl DFS).
+
+**Mesh link.**
+- Nodes talk to the manager over encrypted **ESP-NOW** (AES-GCM), broadcast on one shared channel (2.4 GHz **channel 1**).
+- It's a single-hop star: every node reaches the manager directly, with no node-to-node relay.
+- Max 6 nodes, up to ~200 m per link in open line of sight.
+- Scanning nodes weave back to channel 1 each sweep to pass traffic, so mesh chatter and channel-split scanning share the radio.
+- A node silent for 45 s drops off and rejoins on its own when back in range.
+- Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio, Wi-Fi band) push to every node and override their local copies.
+- The **ESP32-C5 does not participate in the mesh** — it runs standalone, connected directly to your phone.
 
 </details>
 
 <details>
 <summary><b>Optional GPS module</b></summary>
 
-A node normally gets location from your phone over Bluetooth. Wire a serial GPS module (NEO-6M / NEO-8M, 9600 baud) and it self-locates with no phone — handy for standalone offline wardriving. A module fix takes priority; unplug it and the node falls back to phone GPS automatically (5 s timeout).
+A node normally gets location from your phone over Bluetooth.
+Wire a serial GPS module (NEO-6M / NEO-8M, 9600 baud) and it self-locates with no phone — handy for standalone offline wardriving.
+A module fix takes priority.
+Unplug it and the node falls back to phone GPS automatically (5 s timeout).
 
 | GPS module | Board (XIAO ESP32-S3 default) |
 |---|---|
@@ -170,7 +234,8 @@ pio run -e v3_node_manager_wroom         # manager (ESP32 WROOM)
 pio run -e v3_app_controlled -t upload   # flash node
 pio device monitor                       # serial @ 115200
 ```
-Dependency: `NimBLE-Arduino`. The XIAO ESP32-C5 uses the pioarduino platform in an isolated core dir (`build_c5.sh`) so it never clobbers the shared toolchain.
+Dependency: `NimBLE-Arduino`.
+The XIAO ESP32-C5 uses the pioarduino platform in an isolated core dir (`build_c5.sh`) so it never clobbers the shared toolchain.
 
 **App (Flutter 3.32+)**
 
@@ -188,7 +253,8 @@ flutter build macos --release
 <details>
 <summary><b>Libraries, services & related projects</b></summary>
 
-**Firmware:** [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel), [ArduinoJson](https://github.com/bblanchon/ArduinoJson), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus). ESP-IDF Wi-Fi promiscuous + ESP-NOW + mbedTLS AES-GCM mesh.
+**Firmware:** [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel), [ArduinoJson](https://github.com/bblanchon/ArduinoJson), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus).
+Mesh runs on ESP-IDF Wi-Fi promiscuous + ESP-NOW + mbedTLS AES-GCM.
 
 **App:** flutter_blue_plus · flutter_map + latlong2 · drift + sqlite3 · geolocator · flutter_riverpod · go_router · flutter_local_notifications · dio · share_plus · flutter_secure_storage · wakelock_plus · permission_handler.
 
@@ -210,4 +276,6 @@ flutter build macos --release
 
 ## Disclaimer
 
-Security-research and privacy-auditing tool. Detecting surveillance hardware in public is legal in most jurisdictions; comply with local laws on wireless scanning and interception. Lawful use only — authors not responsible for misuse.
+Security-research and privacy-auditing tool.
+Detecting surveillance hardware in public is legal in most jurisdictions; comply with local laws on wireless scanning and interception.
+Lawful use only — authors not responsible for misuse.

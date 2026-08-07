@@ -114,7 +114,6 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     const uint8_t* addr1 = &p[4];
     const uint8_t* addr2 = &p[10];
-    const uint8_t* addr3 = &p[16];
 
     uint8_t method = 0xFF;
     const uint8_t* matchMac = NULL;
@@ -133,9 +132,6 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
         method = METHOD_OUI_ADDR1;
         matchMac = addr1;
-    } else if (frameType == 0 && flockMatchOuiISR(addr3)) {
-        method = METHOD_OUI_ADDR3;
-        matchMac = addr3;
     }
 
     if (method == 0xFF || !matchMac) return;

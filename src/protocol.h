@@ -134,8 +134,7 @@ enum EngineState : uint8_t {
 #define METHOD_RAVEN_UUID      3
 
 // Flock signal mask — every predicate that hit, not just the deciding one.
-// A bare 10-digit name (FLOCK_SIG_SERIAL) is not standalone evidence; it only
-// counts when corroborated by FLOCK_SIG_MFG.
+// BLE emits on NAME or RAVEN_UUID alone, else only on the full VALIDATED set.
 #define FLOCK_SIG_OUI          0x01
 #define FLOCK_SIG_NAME         0x02
 #define FLOCK_SIG_SERIAL       0x04

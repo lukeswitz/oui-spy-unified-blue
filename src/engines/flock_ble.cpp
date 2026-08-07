@@ -58,18 +58,12 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
             if (flockMatchBareSerialName(name.c_str())) sigMask |= FLOCK_SIG_SERIAL;
         }
 
-        if (sigMask & FLOCK_SIG_OUI) {
-            detected = true;
-            method = METHOD_OUI_MATCH;
-        } else if (sigMask & FLOCK_SIG_NAME) {
+        if (sigMask & FLOCK_SIG_NAME) {
             detected = true;
             method = METHOD_NAME_MATCH;
-        } else if ((sigMask & FLOCK_SIG_SERIAL) && (sigMask & FLOCK_SIG_MFG)) {
+        } else if ((sigMask & FLOCK_SIG_VALIDATED) == FLOCK_SIG_VALIDATED) {
             detected = true;
             method = METHOD_NAME_MATCH;
-        } else if (sigMask & FLOCK_SIG_MFG) {
-            detected = true;
-            method = METHOD_MFG_ID;
         }
 
         if (!detected) {

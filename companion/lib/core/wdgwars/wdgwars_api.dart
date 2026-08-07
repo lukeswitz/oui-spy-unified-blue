@@ -7,6 +7,8 @@ import 'package:dio/io.dart';
 import 'package:flutter/painting.dart' show Color;
 import 'package:latlong2/latlong.dart';
 
+enum WdgwarsUploadPhase { sending, queued }
+
 class WdgwarsApi {
   WdgwarsApi({required String apiKey})
       : _dio = Dio(BaseOptions(
@@ -55,6 +57,7 @@ class WdgwarsApi {
   Future<WdgwarsUploadResult> uploadCsv(
     File csvFile, {
     void Function(int sent, int total)? onProgress,
+    void Function(WdgwarsUploadPhase phase)? onPhase,
   }) async {
     final raw = await csvFile.readAsBytes();
     if (raw.isEmpty) throw WdgwarsApiException('CSV is empty — nothing to upload');
@@ -102,6 +105,7 @@ class WdgwarsApi {
     if (code == 202 || (code >= 200 && code < 300 && data['ok'] != false)) {
       final jobId = data['job_id']?.toString();
       if (jobId != null && jobId.isNotEmpty) {
+        onPhase?.call(WdgwarsUploadPhase.queued);
         return _awaitJob(jobId, data);
       }
       return WdgwarsUploadResult.fromJson(data);

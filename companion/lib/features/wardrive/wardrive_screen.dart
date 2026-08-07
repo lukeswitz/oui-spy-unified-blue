@@ -2843,6 +2843,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
     final isUploading = wigle.isUploading(sid);
     final wdgUploaded = wdg.isUploaded(sid);
     final wdgUploading = wdg.isUploading(sid);
+    final wdgQueued = wdg.isQueued(sid);
     final flockDets = wd.flockDetections;
     final detectorDets = wd.detectorDetections;
 
@@ -3118,7 +3119,10 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (wdgUploading)
+                        if (wdgQueued)
+                          const Icon(Icons.hourglass_top,
+                              size: 14, color: AppTheme.wdgwars)
+                        else if (wdgUploading)
                           const SizedBox(
                             width: 12, height: 12,
                             child: CircularProgressIndicator(
@@ -3133,7 +3137,11 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                           ),
                         const SizedBox(width: 4),
                         Text(
-                          wdgUploaded ? 'SENT' : 'WDG',
+                          wdgQueued
+                              ? 'QUEUED'
+                              : wdgUploading
+                                  ? 'SENDING'
+                                  : (wdgUploaded ? 'SENT' : 'WDG'),
                           style: TextStyle(
                             color: wdgUploaded ? AppTheme.success : AppTheme.wdgwars,
                             fontSize: 9,
@@ -3661,6 +3669,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                               : null,
                           wdgwarsUploaded: wdg.isUploaded(sid),
                           wdgwarsUploading: wdg.isUploading(sid),
+                          wdgwarsQueued: wdg.isQueued(sid),
                         );
                       },
                     );
@@ -4001,6 +4010,7 @@ class _SessionRow extends ConsumerWidget {
     this.onUploadWdgwars,
     this.wdgwarsUploaded = false,
     this.wdgwarsUploading = false,
+    this.wdgwarsQueued = false,
     this.flockCountFuture,
     this.detectorCountFuture,
     this.droneCountFuture,
@@ -4019,6 +4029,7 @@ class _SessionRow extends ConsumerWidget {
   final VoidCallback? onUploadWdgwars;
   final bool wdgwarsUploaded;
   final bool wdgwarsUploading;
+  final bool wdgwarsQueued;
   final Future<int>? flockCountFuture;
   final Future<int>? detectorCountFuture;
   final Future<int>? droneCountFuture;
@@ -4245,17 +4256,21 @@ class _SessionRow extends ConsumerWidget {
             final wdgwarsBtn = onUploadWdgwars == null
                 ? null
                 : _SessionIconBtn(
-                    icon: wdgwarsUploading
-                        ? Icons.cloud_sync
-                        : (wdgwarsUploaded
-                            ? Icons.cloud_done
-                            : Icons.sports_esports),
-                    label: wdgwarsUploading
-                        ? 'SENDING'
-                        : (wdgwarsUploaded ? 'SENT' : 'WDG'),
+                    icon: wdgwarsQueued
+                        ? Icons.hourglass_top
+                        : (wdgwarsUploading
+                            ? Icons.cloud_sync
+                            : (wdgwarsUploaded
+                                ? Icons.cloud_done
+                                : Icons.sports_esports)),
+                    label: wdgwarsQueued
+                        ? 'QUEUED'
+                        : (wdgwarsUploading
+                            ? 'SENDING'
+                            : (wdgwarsUploaded ? 'SENT' : 'WDG')),
                     color: wdgwarsUploaded ? AppTheme.success : AppTheme.wdgwars,
                     onTap: (wdgwarsUploaded || wdgwarsUploading) ? null : onUploadWdgwars,
-                    isLoading: wdgwarsUploading,
+                    isLoading: wdgwarsUploading && !wdgwarsQueued,
                   );
             final delBtn = _SessionIconBtn(
               icon: Icons.delete_forever_outlined,

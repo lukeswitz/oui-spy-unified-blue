@@ -30,6 +30,7 @@ class WdgwarsProvider extends ChangeNotifier {
   String? _error;
   final Set<String> _uploadedSessions = {};
   final Map<String, bool> _uploadingMap = {};
+  final Map<String, WdgwarsUploadPhase> _phaseMap = {};
 
   List<WdgwarsTerritory> _territories = const [];
   DateTime? _territoriesAt;
@@ -74,6 +75,8 @@ class WdgwarsProvider extends ChangeNotifier {
 
   bool isUploaded(String sessionId) => _uploadedSessions.contains(sessionId);
   bool isUploading(String sessionId) => _uploadingMap[sessionId] == true;
+  bool isQueued(String sessionId) =>
+      _phaseMap[sessionId] == WdgwarsUploadPhase.queued;
 
   Future<void> _loadCredentials() async {
     _apiKey = await _storage.read(key: _keyApiKey) ?? '';
@@ -149,6 +152,7 @@ class WdgwarsProvider extends ChangeNotifier {
 
     _error = null;
     _uploadingMap[sessionId] = true;
+    _phaseMap[sessionId] = WdgwarsUploadPhase.sending;
     notifyListeners();
 
     var sent = 0;
@@ -158,14 +162,22 @@ class WdgwarsProvider extends ChangeNotifier {
       if (file == null) {
         _error = 'No CSV data for this session';
         _uploadingMap.remove(sessionId);
+        _phaseMap.remove(sessionId);
         notifyListeners();
         return null;
       }
 
-      final result = await _api!.uploadCsv(file, onProgress: (s, t) {
-        sent = s;
-        total = t;
-      });
+      final result = await _api!.uploadCsv(
+        file,
+        onProgress: (s, t) {
+          sent = s;
+          total = t;
+        },
+        onPhase: (phase) {
+          _phaseMap[sessionId] = phase;
+          notifyListeners();
+        },
+      );
 
       _error = null;
       _uploadedSessions.add(sessionId);
@@ -174,6 +186,7 @@ class WdgwarsProvider extends ChangeNotifier {
 
       DebugLog.log('WDGWARS: uploaded $sessionId ($total B) — ${result.summary}');
       _uploadingMap.remove(sessionId);
+      _phaseMap.remove(sessionId);
       notifyListeners();
       return result;
     } on WdgwarsApiException catch (e) {
@@ -186,6 +199,7 @@ class WdgwarsProvider extends ChangeNotifier {
     }
 
     _uploadingMap.remove(sessionId);
+    _phaseMap.remove(sessionId);
     notifyListeners();
     return null;
   }
