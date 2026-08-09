@@ -3,6 +3,18 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
+Color _flockConfColor(FlockConfidence c) => switch (c) {
+  FlockConfidence.verified => AppTheme.success,
+  FlockConfidence.high => AppTheme.success,
+  FlockConfidence.suspected => AppTheme.warning,
+};
+
+String _flockConfShort(FlockConfidence c) => switch (c) {
+  FlockConfidence.verified => 'V',
+  FlockConfidence.high => 'H',
+  FlockConfidence.suspected => 'S',
+};
+
 /// Compact flock count badge. Tap to expand detail list.
 /// Receives pre-deduped flock detections (unique per MAC).
 class FlockPanel extends StatefulWidget {
@@ -157,6 +169,22 @@ class _Row extends StatelessWidget {
                   child: const Text('R',
                     style: TextStyle(color: AppTheme.warning, fontSize: 7, fontWeight: FontWeight.w700)),
                 ),
+              ],
+              if (d.flock != null) ...[
+                const SizedBox(width: 2),
+                Builder(builder: (_) {
+                  final fc = d.flock!.confidence(d.method);
+                  final cc = _flockConfColor(fc);
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
+                    decoration: BoxDecoration(
+                      color: cc.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: Text(_flockConfShort(fc),
+                      style: TextStyle(color: cc, fontSize: 7, fontWeight: FontWeight.w700)),
+                  );
+                }),
               ],
             ]),
           ),

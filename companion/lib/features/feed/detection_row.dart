@@ -200,6 +200,13 @@ class DetectionRow extends ConsumerWidget {
                   ),
                 ],
               ),
+              if (detection.flock != null) ...[
+                const SizedBox(height: 2),
+                _FlockConfidenceLine(
+                  confidence: detection.flock!.confidence(detection.method),
+                  method: detection.method,
+                ),
+              ],
             ],
           );
         }),
@@ -429,16 +436,13 @@ class _DetailSummary extends StatelessWidget {
     if (detection.flock?.isRaven == true) {
       rows.add(_detailRow(context, 'Type', 'Raven (ext battery)'));
     }
+    if (detection.flock != null) {
+      final fc = detection.flock!.confidence(detection.method);
+      rows.add(_detailRow(context, 'Confidence', fc.label(detection.method)));
+    }
     final flockSigs = _flockSignalLabels(detection.flock);
     if (flockSigs.isNotEmpty) {
       rows.add(_detailRow(context, 'Signals', flockSigs.join(', ')));
-      rows.add(_detailRow(
-        context,
-        'Validated',
-        detection.flock!.isValidated
-            ? 'Yes — serial name + XUNTONG mfg + TN serial'
-            : 'No — needs XUNTONG mfg ID corroboration',
-      ));
     }
     final odid = detection.odid;
     if (odid != null) {
@@ -760,6 +764,32 @@ String methodLabel(String method) => switch (method) {
   'pcap' => 'PCAP',
   _ => method.toUpperCase(),
 };
+
+Color _flockConfidenceColor(FlockConfidence c) => switch (c) {
+  FlockConfidence.verified => AppTheme.success,
+  FlockConfidence.high => AppTheme.success,
+  FlockConfidence.suspected => AppTheme.warning,
+};
+
+class _FlockConfidenceLine extends StatelessWidget {
+  const _FlockConfidenceLine({required this.confidence, required this.method});
+  final FlockConfidence confidence;
+  final String method;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _flockConfidenceColor(confidence);
+    return Text(
+      confidence.label(method),
+      style: TextStyle(
+        color: color,
+        fontSize: 11,
+        fontFamily: 'monospace',
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
 
 class _RssiBlock extends StatelessWidget {
   const _RssiBlock({required this.rssi});

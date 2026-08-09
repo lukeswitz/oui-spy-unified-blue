@@ -66,12 +66,35 @@ class FlockExtension with _$FlockExtension {
       _$FlockExtensionFromJson(json);
 }
 
+enum FlockConfidence { verified, high, suspected }
+
+extension FlockConfidenceX on FlockConfidence {
+  String label(String method) => switch (this) {
+    FlockConfidence.verified => 'Verified (XUNTONG Serial)',
+    FlockConfidence.high => switch (method) {
+      'wildcard_probe' => 'High (Flock Probe Captured)',
+      'raven_uuid' => 'High (Raven UUID)',
+      'name_match' => 'High (BLE Name)',
+      _ => 'High',
+    },
+    FlockConfidence.suspected => 'Suspected (Known OUI)',
+  };
+}
+
 extension FlockExtensionSignals on FlockExtension {
   bool hasSignal(int bit) => (signals & bit) != 0;
 
   /// Bare-serial name + XUNTONG mfg ID + TN serial all present.
   bool get isValidated =>
       (signals & FlockSignal.validated) == FlockSignal.validated;
+
+  FlockConfidence confidence(String method) {
+    if (isValidated) return FlockConfidence.verified;
+    if (hasSignal(FlockSignal.ravenUuid)) return FlockConfidence.high;
+    if (hasSignal(FlockSignal.name)) return FlockConfidence.high;
+    if (method == 'wildcard_probe') return FlockConfidence.high;
+    return FlockConfidence.suspected;
+  }
 }
 
 @freezed
