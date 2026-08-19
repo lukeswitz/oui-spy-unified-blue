@@ -87,7 +87,7 @@ class WigleCsv {
 
       buffer.writeln(
         '$mac,$ssid,$authMode,$firstSeen,$channel,'
-        '$frequency,$rssi,$lat,$lon,$alt,$acc,,,${type}',
+        '$frequency,$rssi,$lat,$lon,$alt,$acc,,,$type',
       );
     }
 

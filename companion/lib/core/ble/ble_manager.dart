@@ -63,18 +63,14 @@ class BleManager {
   BluetoothCharacteristic? _ignoreList;
   BluetoothCharacteristic? _nodeRadio;
   BluetoothCharacteristic? _foxhunterRssi;
-  BluetoothCharacteristic? _skySpyTelemetry;
-  BluetoothCharacteristic? _unipwnDevices;
   BluetoothCharacteristic? _unipwnCommand;
   BluetoothCharacteristic? _foxhunterConfig;
   BluetoothCharacteristic? _meshConfig;
   BluetoothCharacteristic? _meshStatus;
-  BluetoothCharacteristic? _orchestration;
   BluetoothCharacteristic? _dfuControl;
   BluetoothCharacteristic? _dfuData;
   BluetoothCharacteristic? _systemControl;
   BluetoothCharacteristic? _wifiConfig;
-  BluetoothCharacteristic? _pcapControl;
   BluetoothCharacteristic? _pcapStats;
   BluetoothCharacteristic? _pcapData;
   BluetoothCharacteristic? _detectorConfig;
@@ -164,7 +160,6 @@ class BleManager {
 
   File? _pcapFile;
   IOSink? _pcapSink;
-  int _pcapFileMode = 0;
   int _pcapBytesWritten = 0;
   Uint8List _pcapRx = Uint8List(0);
   int _pcapRxStart = 0;
@@ -229,7 +224,6 @@ class BleManager {
     _pcapSink = _pcapFile!.openWrite(mode: FileMode.writeOnly);
     final lt = mode == 1 ? _kPcapLtBle : _kPcapLtWifi;
     _pcapSink!.add(_buildPcapHeader(lt));
-    _pcapFileMode = mode;
     _pcapBytesWritten = 24;
     _pcapRx = Uint8List(0);
     _pcapRxStart = 0;
@@ -279,7 +273,7 @@ class BleManager {
       _pcapRx = compact;
       _pcapRxStart = 0;
     } else if (_pcapRx.length < _pcapRxStart + needed) {
-      int cap = _pcapRx.length == 0 ? 4096 : _pcapRx.length * 2;
+      int cap = _pcapRx.isEmpty ? 4096 : _pcapRx.length * 2;
       while (cap < _pcapRxStart + needed) {
         cap *= 2;
       }
@@ -634,18 +628,14 @@ class BleManager {
       if (c.uuid == GattUuids.ignoreList) _ignoreList = c;
       if (c.uuid == GattUuids.nodeRadio) _nodeRadio = c;
       if (c.uuid == GattUuids.foxhunterRssi) _foxhunterRssi = c;
-      if (c.uuid == GattUuids.skySpyTelemetry) _skySpyTelemetry = c;
-      if (c.uuid == GattUuids.unipwnDevices) _unipwnDevices = c;
       if (c.uuid == GattUuids.unipwnCommand) _unipwnCommand = c;
       if (c.uuid == GattUuids.foxhunterConfig) _foxhunterConfig = c;
       if (c.uuid == GattUuids.meshConfig) _meshConfig = c;
       if (c.uuid == GattUuids.meshStatus) _meshStatus = c;
-      if (c.uuid == GattUuids.orchestration) _orchestration = c;
       if (c.uuid == GattUuids.dfuControl) _dfuControl = c;
       if (c.uuid == GattUuids.dfuData) _dfuData = c;
       if (c.uuid == GattUuids.systemControl) _systemControl = c;
       if (c.uuid == GattUuids.wifiConfig) _wifiConfig = c;
-      if (c.uuid == GattUuids.pcapControl) _pcapControl = c;
       if (c.uuid == GattUuids.pcapStats) _pcapStats = c;
       if (c.uuid == GattUuids.pcapData) _pcapData = c;
       if (c.uuid == GattUuids.detectorConfig) _detectorConfig = c;

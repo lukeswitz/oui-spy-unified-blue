@@ -4293,8 +4293,8 @@ class _SessionRow extends ConsumerWidget {
             ];
             final buttons = <Widget>[
               csvBtn,
-              if (wigleBtn != null) wigleBtn,
-              if (wdgwarsBtn != null) wdgwarsBtn,
+              ?wigleBtn,
+              ?wdgwarsBtn,
               delBtn,
             ];
             final actionBar = Row(

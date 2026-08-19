@@ -88,7 +88,7 @@ class UnitFormatter {
 
   static String distanceShort(double km, UnitSystem units) {
     if (units == UnitSystem.imperial) {
-      return '${(km * 0.621371).toStringAsFixed(1)}';
+      return (km * 0.621371).toStringAsFixed(1);
     }
     return km.toStringAsFixed(1);
   }

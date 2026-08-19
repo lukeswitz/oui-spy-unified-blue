@@ -116,7 +116,9 @@ class OtaService {
     if (!n.contains('oui-spy')) return -1;
     if (n.contains('-bootloader') ||
         n.contains('-partitions') ||
-        n.contains('-boot_app0')) return -1;
+        n.contains('-boot_app0')) {
+      return -1;
+    }
     int score = 1;
     if (board.isNotEmpty && n.contains(board.toLowerCase())) score += 10;
     if (role.isNotEmpty && n.contains('-$role-')) score += 5;

@@ -31,7 +31,6 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   int? _autoDurationOverride;
   int _autoDurationSec = 10;
   int? _autoCooldownOverride;
-  int _autoCooldownSec = 0;
 
   File? _lastSaved;
   int _bytesWritten = 0;
@@ -247,7 +246,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                     try {
                       await ble.setAutoPcap(v);
                     } on Exception catch (e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         setState(() => _autoPcapOverride = null);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Auto-PCAP set failed: $e')),
@@ -263,7 +262,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                     try {
                       await ble.setAutoPcapDuration(v);
                     } on Exception catch (e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         setState(() => _autoDurationOverride = null);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Duration set failed: $e')),
@@ -274,12 +273,11 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                   onCooldown: (v) async {
                     setState(() {
                       _autoCooldownOverride = v;
-                      _autoCooldownSec = v;
                     });
                     try {
                       await ble.setAutoPcapCooldown(v);
                     } on Exception catch (e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         setState(() => _autoCooldownOverride = null);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Cooldown set failed: $e')),

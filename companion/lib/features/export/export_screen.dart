@@ -228,13 +228,13 @@ class ExportScreen extends ConsumerWidget {
   }
 
   Future<void> _shareFile(BuildContext context, String content, String filename) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$filename');
-    await file.writeAsString(content);
     final box = context.findRenderObject() as RenderBox?;
     final origin = box != null
         ? box.localToGlobal(Offset.zero) & box.size
         : const Rect.fromLTWH(0, 0, 100, 100);
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/$filename');
+    await file.writeAsString(content);
     await Share.shareXFiles(
       [XFile(file.path)],
       subject: 'OUI-SPY Export',

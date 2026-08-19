@@ -697,6 +697,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   Future<void> _exportCsv(BuildContext context, List<Detection> detections) async {
     final messenger = ScaffoldMessenger.of(context);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : const Rect.fromLTWH(0, 0, 100, 100);
     try {
       final csv = DetectionsCsv.generate(detections);
       final dir = await getTemporaryDirectory();
@@ -704,11 +708,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final filename = 'oui_spy_feed_$ts.csv';
       final file = File('${dir.path}/$filename');
       await file.writeAsString(csv);
-
-      final box = context.findRenderObject() as RenderBox?;
-      final origin = box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 100, 100);
       await Share.shareXFiles(
         [XFile(file.path)],
         subject: 'OUI-SPY Feed Export (${detections.length} detections)',
