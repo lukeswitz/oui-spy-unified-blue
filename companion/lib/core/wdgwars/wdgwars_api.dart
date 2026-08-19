@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/painting.dart' show Color;
 import 'package:latlong2/latlong.dart';
 
@@ -40,16 +41,28 @@ class WdgwarsApi {
 
   /// Gang territory hulls for the wardrive map (GET /api/territories).
   Future<List<WdgwarsTerritory>> getTerritories() async {
-    final resp = await _dio.get('/api/territories');
-    final raw = resp.data;
-    if (resp.statusCode != 200 || raw is! List) {
-      throw WdgwarsApiException('Territories unavailable (HTTP ${resp.statusCode})');
+    final resp = await _dio.get<String>(
+      '/api/territories',
+      options: Options(
+        followRedirects: false,
+        responseType: ResponseType.plain,
+        validateStatus: (s) => s != null && s < 500,
+      ),
+    );
+    final code = resp.statusCode ?? 0;
+    if (code >= 300 && code < 400) {
+      throw WdgwarsApiException(
+          'Territories redirected to ${resp.headers.value('location') ?? 'login'} '
+          '(HTTP $code)');
     }
-    return raw
-        .whereType<Map>()
-        .map((e) => WdgwarsTerritory.fromJson(e.cast<String, dynamic>()))
-        .where((t) => t.hull.length >= 3)
-        .toList();
+    final body = resp.data;
+    if (code != 200) {
+      throw WdgwarsApiException('Territories unavailable (HTTP $code)');
+    }
+    if (body == null || body.isEmpty) {
+      throw WdgwarsApiException('Territories returned an empty body');
+    }
+    return compute(_parseTerritories, body);
   }
 
   /// Upload a CSV via the documented async endpoint (POST /api/v2/upload-csv),
@@ -227,6 +240,19 @@ class WdgwarsApi {
 }
 
 /// One gang's claimed area — convex hull of its captures.
+List<WdgwarsTerritory> _parseTerritories(String body) {
+  final raw = jsonDecode(body);
+  if (raw is! List) {
+    throw WdgwarsApiException(
+        'Territories returned ${raw.runtimeType}, expected a list');
+  }
+  return raw
+      .whereType<Map>()
+      .map((e) => WdgwarsTerritory.fromJson(e.cast<String, dynamic>()))
+      .where((t) => t.hull.length >= 3)
+      .toList();
+}
+
 class WdgwarsTerritory {
   const WdgwarsTerritory({
     required this.gangId,

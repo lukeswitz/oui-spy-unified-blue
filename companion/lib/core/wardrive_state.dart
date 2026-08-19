@@ -255,6 +255,8 @@ class WardriveController extends ChangeNotifier {
   // Non-null while the radio is starting up / shutting down, for UI feedback
   // until the running header (or idle controls) is real. 'starting' | 'stopping'.
   String? radioTransition;
+  /// Detections dropped because they fell inside a wardrive-exclusion zone.
+  int geofenceSuppressed = 0;
   bool _userStopped = false;
   bool _droppedWhileRunning = false;
   bool pendingReconnectPrompt = false;
@@ -690,6 +692,7 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
+    geofenceSuppressed = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
     uniqueMacs.clear();
@@ -943,6 +946,7 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
+    geofenceSuppressed = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
     uniqueMacs.clear();
@@ -1182,8 +1186,23 @@ class WardriveController extends ChangeNotifier {
       if (state == WardriveState.idle) return;
       await _ble.enableEngine(engine, radio: radioBitmask);
       if (engine.isWifi) {
-        await Future.delayed(const Duration(milliseconds: 500));
+        await _awaitEngineUp(engine, const Duration(milliseconds: 500));
       }
+    }
+  }
+
+  /// Wait for the firmware to report [engine] running. The duration is a
+  /// ceiling, not a sleep: the device answers in well under 100ms.
+  Future<void> _awaitEngineUp(Engine engine, Duration ceiling) async {
+    try {
+      await _ble.engineStates
+          .firstWhere((s) =>
+              engine.index < s.states.length &&
+              s.states[engine.index] != EngineState.disabled)
+          .timeout(ceiling);
+    } on TimeoutException {
+      DebugLog.log('WARDRIVE: ${engine.name} state not confirmed in '
+          '${ceiling.inMilliseconds}ms, continuing');
     }
   }
 
@@ -1560,6 +1579,12 @@ class WardriveController extends ChangeNotifier {
 
     // Geofence exclusion: drop detections inside any wardrive-exclusion zone
     if (_geofenceFilter.isExcludedNullable(detection.latitude, detection.longitude)) {
+      geofenceSuppressed++;
+      if (geofenceSuppressed == 1 || geofenceSuppressed % 50 == 0) {
+        DebugLog.log('WARDRIVE: $geofenceSuppressed detections dropped inside '
+            'an exclusion zone');
+        notifyListeners();
+      }
       return;
     }
 

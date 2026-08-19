@@ -109,7 +109,6 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ref.read(configMenuWantedProvider.notifier).state = false;
-    ref.read(configMenuAutoOpenedProvider.notifier).state = false;
   }
 
   @override
@@ -251,11 +250,11 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _onNavTap(int i) {
-    if (i == _configIndex && !ref.read(configMenuAutoOpenedProvider)) {
-      ref.read(configMenuAutoOpenedProvider.notifier).state = true;
+    final alreadyHere = _routes[i] == GoRouterState.of(context).uri.path;
+    if (i == _configIndex && alreadyHere) {
       ref.read(configMenuWantedProvider.notifier).state = !_sectionSheetOpen;
     }
-    if (_routes[i] != GoRouterState.of(context).uri.path) {
+    if (!alreadyHere) {
       context.go(_routes[i]);
     }
   }

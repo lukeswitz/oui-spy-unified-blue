@@ -224,6 +224,8 @@ jobs:
 
             **Added**
             - Flock confidence (VERIFIED / HIGH / SUSPECTED) on feed and config detection rows, in the detection detail sheet, and as V/H/S chips in the wardrive flock panel, with a confidence filter group in the detections filter sheet
+            - DeFlock cross-reference: mapped ALPRs from OpenStreetMap on the wardrive map, and every flock detection with a fix is scored against them — `ON MAP` within 75 m of a mapped camera, `UNMAPPED` beyond 250 m, `NO MAP DATA` where nothing has been fetched. Tiles are cached on the phone, so a driven area keeps resolving offline
+            - Contributing an unmapped find to OpenStreetMap is offered only for a fully validated flock detection (name + XUNTONG 0x09C8 + TN serial); the link is copied for you to review and submit by hand, never posted by the app
             - WDGWars territory layer on the wardrive map (gang hulls, viewport-culled, 5 min cache, off by default)
             - WDGWars account stats: today / 7d / reinforced / credits / cracked, gang role, country / joined / bounties
             - CONFIG nav tap toggles the section sheet open and closed
@@ -283,6 +285,7 @@ jobs:
             - Boards: XIAO ESP32-S3 or ESP32-S3 N16R8 DevKitC (node); XIAO ESP32-S3 (recommended), ESP32-S3 N16R8 DevKitC, XIAO ESP32-C3, or ESP32 WROOM (manager)
             - BLE-capable phone/computer
             - GPS/Location for wardriving
+            - The DeFlock layer is off by default. Turning it on sends the map viewport bounding box to a public Overpass mirror (overpass-api.de, falling back to overpass.private.coffee), which discloses the area you are looking at. Detections never leave the phone.
 
             **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/v0.5.0...${{ github.ref_name }}
           files: |

@@ -42,15 +42,19 @@ class WdgwarsProvider extends ChangeNotifier {
   WdgwarsUserStats? get stats => _stats;
   String? get error => _error;
 
+  String? _territoryError;
+  String? get territoryError => _territoryError;
+
   List<WdgwarsTerritory> get territories => _territories;
   bool get territoriesLoading => _territoriesLoading;
   bool get showTerritories => _showTerritories && _isLoggedIn;
 
   Future<void> setShowTerritories(bool on) async {
     _showTerritories = on;
+    _territoryError = null;
     await _prefs.setBool(_keyTerritories, on);
     notifyListeners();
-    if (on) await loadTerritories();
+    if (on) await loadTerritories(force: true);
   }
 
   /// Gang hulls for the wardrive map. Server snapshot refreshes every 5 min.
@@ -67,6 +71,9 @@ class WdgwarsProvider extends ChangeNotifier {
       _territoriesAt = DateTime.now();
       DebugLog.log('WDGWARS: ${_territories.length} territories loaded');
     } catch (e) {
+      _territoryError = e is WdgwarsApiException ? e.message : e.toString();
+      _showTerritories = false;
+      await _prefs.setBool(_keyTerritories, false);
       DebugLog.log('WDGWARS: territory load failed: $e');
     }
     _territoriesLoading = false;
@@ -85,7 +92,6 @@ class WdgwarsProvider extends ChangeNotifier {
       _isLoggedIn = true;
       notifyListeners();
       refreshStats();
-      if (_showTerritories) loadTerritories();
     }
   }
 

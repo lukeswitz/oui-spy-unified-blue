@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -270,13 +271,22 @@ void detectionStartFoxhunt(
 
 void showDetectionDetails(
     BuildContext context, WidgetRef ref, Detection detection,
-    {bool showMapAction = true}) {
+    {bool showMapAction = true,
+    VoidCallback? onDelete,
+    VoidCallback? onShowMap}) {
     final nodeLabel = detection.sourceNodeId.isEmpty
         ? ''
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
     final t = AppTheme.of(context);
     final vendor = ref.read(ouiLookupProvider).lookup(detection.macAddress);
     final connected = ref.read(appStateProvider).isConnected;
+    if (detection.flock != null &&
+        detection.latitude != null &&
+        detection.longitude != null) {
+      ref
+          .read(deflockProvider)
+          .ensureAround(detection.latitude!, detection.longitude!);
+    }
     showModalBottomSheet(
       context: context,
       backgroundColor: t.surface,
@@ -337,7 +347,11 @@ void showDetectionDetails(
                     style: TextStyle(color: t.textDim, fontSize: 11)),
                 onTap: () {
                   Navigator.pop(ctx);
-                  detectionZoomOnMap(context, ref, detection);
+                  if (onShowMap != null) {
+                    onShowMap();
+                  } else {
+                    detectionZoomOnMap(context, ref, detection);
+                  }
                 },
               ),
             ListTile(
@@ -366,6 +380,10 @@ void showDetectionDetails(
                   style: TextStyle(color: t.textDim, fontSize: 11)),
               onTap: () {
                 Navigator.pop(ctx);
+                if (onDelete != null) {
+                  onDelete();
+                  return;
+                }
                 ref.read(appStateProvider).removeDetectionGroup(detection);
                 ref.read(wardriveProvider).removeDetectionGroup(detection);
               },
@@ -400,7 +418,7 @@ void showDetectionDetails(
 }
 
 /// Detail summary shown in bottom sheet.
-class _DetailSummary extends StatelessWidget {
+class _DetailSummary extends ConsumerWidget {
   const _DetailSummary({required this.detection, required this.t, this.manufacturer, this.nodeLabel = ''});
   final Detection detection;
   final ResolvedTheme t;
@@ -408,7 +426,7 @@ class _DetailSummary extends StatelessWidget {
   final String nodeLabel;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final rows = <Widget>[];
 
     if (manufacturer != null) {
@@ -443,6 +461,20 @@ class _DetailSummary extends StatelessWidget {
     final flockSigs = _flockSignalLabels(detection.flock);
     if (flockSigs.isNotEmpty) {
       rows.add(_detailRow(context, 'Signals', flockSigs.join(', ')));
+    }
+    final lat = detection.latitude;
+    final lon = detection.longitude;
+    if (detection.flock != null && lat != null && lon != null) {
+      final df = ref.watch(deflockProvider);
+      final match = df.match(lat, lon);
+      final busy = df.loading && match.verdict == AlprMapVerdict.unknown;
+      rows.add(_detailRow(context, 'DeFlock',
+          busy ? 'Checking the map…' : '${match.label} — ${match.detail}'));
+      if (osmContributionAllowed(
+          detection.flock!.confidence(detection.method), match.verdict)) {
+        rows.add(_detailRow(
+            context, 'Add to OSM', DeflockProvider.osmNoteUrl(lat, lon)));
+      }
     }
     final odid = detection.odid;
     if (odid != null) {

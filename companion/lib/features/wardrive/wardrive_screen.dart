@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -35,6 +34,8 @@ import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/features/wardrive/wardrive_theme.dart';
 import 'package:oui_spy/core/app_time.dart';
+import 'package:oui_spy/core/deflock/deflock_api.dart';
+import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -538,9 +539,78 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     ];
   }
 
+  GeoBounds? _visibleGeoBounds() {
+    try {
+      final v = _mapController.camera.visibleBounds;
+      return GeoBounds(
+        south: v.south,
+        west: v.west,
+        north: v.north,
+        east: v.east,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mapped ALPRs (OSM / DeFlock), culled to the visible viewport.
+  List<Widget> _alprLayers(DeflockProvider df) {
+    if (!df.showAlpr) return const [];
+    final view = _visibleGeoBounds();
+    if (view == null) return const [];
+    final nodes = df.nodesIn(view);
+    if (nodes.isEmpty) return const [];
+    return [
+      MarkerLayer(
+        markers: [
+          for (final n in nodes)
+            Marker(
+              point: n.position,
+              width: 22,
+              height: 22,
+              child: Tooltip(
+                message: n.label,
+                child: Icon(
+                  Icons.videocam_outlined,
+                  size: 18,
+                  color: n.isFlock ? AppTheme.flockWifi : AppTheme.textDim,
+                ),
+              ),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  void _refreshAlprForView() {
+    final df = ref.read(deflockProvider);
+    if (!df.showAlpr) return;
+    final view = _visibleGeoBounds();
+    if (view == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    df.ensureBounds(view).then((_) {
+      final err = df.error;
+      if (err == null || !mounted) return;
+      df.clearError();
+      messenger.showSnackBar(SnackBar(
+        content: Text(err),
+        backgroundColor: AppTheme.warning,
+        duration: const Duration(seconds: 3),
+      ));
+    });
+  }
+
   /// WDGWars gang territory hulls, culled to the visible viewport.
   List<Widget> _territoryLayers(WdgwarsProvider wdg) {
-    if (!wdg.showTerritories || wdg.territories.isEmpty) return const [];
+    if (!wdg.showTerritories) return const [];
+    if (wdg.territories.isEmpty) {
+      if (!wdg.territoriesLoading) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ref.read(wdgwarsProvider).loadTerritories();
+        });
+      }
+      return const [];
+    }
 
     LatLngBounds? view;
     try {
@@ -731,6 +801,12 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       setState(() => _currentZoom = z);
                     }
                   }
+                  if (event is MapEventMoveEnd ||
+                      event is MapEventFlingAnimationEnd ||
+                      event is MapEventDoubleTapZoomEnd ||
+                      event is MapEventScrollWheelZoom) {
+                    _refreshAlprForView();
+                  }
                   if (event is MapEventRotate || event is MapEventRotateEnd) {
                     final r = _mapController.camera.rotation;
                     if ((r - _currentRotation).abs() > 0.5) {
@@ -752,6 +828,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       : null,
                 ),
                 ..._territoryLayers(ref.watch(wdgwarsProvider)),
+                ..._alprLayers(ref.watch(deflockProvider)),
                 if (detectionLayers.heat.isNotEmpty)
                   CircleLayer(circles: detectionLayers.heat),
                 ..._exclusionZoneLayers(),
@@ -835,6 +912,31 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   child: _FocusedDetectionChip(
                     detection: _focusedDetection!,
                     onClear: _clearFocusedDetection,
+                  ),
+                ),
+              ),
+            if (wd.isActive && wd.geofenceSuppressed > 0)
+              Positioned(
+                top: horizonY + 8, left: 0, right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: t.surface.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                          color: AppTheme.warning.withValues(alpha: 0.7)),
+                    ),
+                    child: Text(
+                      '${wd.geofenceSuppressed} HIDDEN — INSIDE EXCLUSION ZONE',
+                      style: const TextStyle(
+                        color: AppTheme.warning,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1009,7 +1111,22 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   ? _statsHeight + 8
                   : (wd.hasSessionData ? _completedBarHeight + 8 : 8),
               left: 12,
-              child: _MapStyleButton(ref: ref, mapStyle: mapStyle),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _MapStyleButton(
+                    ref: ref,
+                    mapStyle: mapStyle,
+                    onAlprToggled: _refreshAlprForView,
+                  ),
+                  const SizedBox(width: 8),
+                  _LayerLoadingPill(
+                    alprLoading: ref.watch(deflockProvider).loading,
+                    territoriesLoading:
+                        ref.watch(wdgwarsProvider).territoriesLoading,
+                  ),
+                ],
+              ),
             ),
 
             // Idle: completed session summary (if map data present)
@@ -2162,22 +2279,90 @@ class _MeasuredBoxState extends State<_MeasuredBox> {
   }
 }
 
+const String _kAlprLayerAction = 'alpr-layer';
+const String _kTerritoryLayerAction = 'wdg-territory-layer';
+
+class _LayerLoadingPill extends StatelessWidget {
+  const _LayerLoadingPill({
+    required this.alprLoading,
+    required this.territoriesLoading,
+  });
+  final bool alprLoading;
+  final bool territoriesLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!alprLoading && !territoriesLoading) return const SizedBox.shrink();
+    final t = AppTheme.of(context);
+    final color = alprLoading ? AppTheme.flockWifi : AppTheme.wdgwars;
+    final label = alprLoading ? 'Loading ALPRs' : 'Loading territories';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: t.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 11,
+            height: 11,
+            child: CircularProgressIndicator(strokeWidth: 1.6, color: color),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MapStyleButton extends StatelessWidget {
-  const _MapStyleButton({required this.ref, required this.mapStyle});
+  const _MapStyleButton({
+    required this.ref,
+    required this.mapStyle,
+    this.onAlprToggled,
+  });
   final WidgetRef ref;
   final MapStyle mapStyle;
+  final VoidCallback? onAlprToggled;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final wdg = ref.watch(wdgwarsProvider);
-    return PopupMenuButton<MapStyle?>(
+    final df = ref.watch(deflockProvider);
+    return PopupMenuButton<Object?>(
       initialValue: mapStyle,
-      onSelected: (style) {
-        if (style == null) {
-          ref.read(wdgwarsProvider).setShowTerritories(!wdg.showTerritories);
-        } else {
-          ref.read(mapStyleProvider.notifier).setStyle(style);
+      onSelected: (choice) async {
+        if (choice is MapStyle) {
+          ref.read(mapStyleProvider.notifier).setStyle(choice);
+        } else if (choice == _kAlprLayerAction) {
+          final on = !df.showAlpr;
+          await ref.read(deflockProvider).setShowAlpr(on);
+          if (on) onAlprToggled?.call();
+        } else if (choice == _kTerritoryLayerAction) {
+          final messenger = ScaffoldMessenger.of(context);
+          final w = ref.read(wdgwarsProvider);
+          final turningOn = !wdg.showTerritories;
+          await w.setShowTerritories(turningOn);
+          if (!turningOn) return;
+          final err = w.territoryError;
+          messenger.showSnackBar(SnackBar(
+            content: Text(err ?? '${w.territories.length} territories loaded'),
+            backgroundColor: err != null ? AppTheme.warning : AppTheme.wdgwars,
+            duration: const Duration(seconds: 4),
+          ));
         }
       },
       offset: const Offset(0, 40),
@@ -2189,7 +2374,7 @@ class _MapStyleButton extends StatelessWidget {
       itemBuilder: (_) => [
         ...MapStyle.values.map((style) {
           final selected = style == mapStyle;
-          return PopupMenuItem<MapStyle?>(
+          return PopupMenuItem<Object?>(
             value: style,
             height: 36,
             child: Row(
@@ -2216,10 +2401,45 @@ class _MapStyleButton extends StatelessWidget {
             ),
           );
         }),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem<Object?>(
+          value: _kAlprLayerAction,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(
+                Icons.videocam_outlined,
+                size: 14,
+                color: df.showAlpr ? AppTheme.flockWifi : t.textDim,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'MAPPED ALPRs',
+                style: TextStyle(
+                  color: df.showAlpr ? AppTheme.flockWifi : t.textPrimary,
+                  fontSize: 12,
+                  fontWeight: df.showAlpr ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+              const Spacer(),
+              if (df.loading)
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppTheme.flockWifi,
+                  ),
+                )
+              else if (df.showAlpr)
+                Icon(Icons.check, size: 14, color: AppTheme.flockWifi),
+            ],
+          ),
+        ),
         if (wdg.isLoggedIn) ...[
           const PopupMenuDivider(height: 1),
-          PopupMenuItem<MapStyle?>(
-            value: null,
+          PopupMenuItem<Object?>(
+            value: _kTerritoryLayerAction,
             height: 36,
             child: Row(
               children: [
@@ -2438,62 +2658,8 @@ class _DetListRow extends ConsumerWidget {
   final Detection d;
   final void Function(Detection)? onTap;
 
-  void _showCopySheet(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
-    final vendor = ref.read(ouiLookupProvider).lookup(d.macAddress);
-    final items = <(String, String)>[
-      ('MAC', d.macAddress.toUpperCase()),
-      if (d.ssid.isNotEmpty) ('SSID', d.ssid),
-      if (d.deviceName.isNotEmpty) ('Name', d.deviceName),
-      if (vendor != null) ('Vendor', vendor),
-      if (d.odid?.uavId != null) ('UAV ID', d.odid!.uavId!),
-      if (d.latitude != null)
-        ('Location', '${d.latitude!.toStringAsFixed(5)}, ${d.longitude!.toStringAsFixed(5)}'),
-    ];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: t.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('COPY', style: TextStyle(
-              color: t.textDim, fontSize: 10,
-              fontWeight: FontWeight.w700, letterSpacing: 2,
-            )),
-            const SizedBox(height: 8),
-            for (final (label, value) in items)
-              ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                leading: Icon(Icons.copy, size: 14, color: t.textDim),
-                title: Text(label, style: TextStyle(color: t.textDim, fontSize: 10)),
-                subtitle: Text(value, style: TextStyle(
-                  color: t.textPrimary, fontSize: 12, fontFamily: 'monospace',
-                )),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: value));
-                  HapticFeedback.lightImpact();
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$label copied'),
-                      backgroundColor: t.surface,
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  void _showDetailSheet(BuildContext context, WidgetRef ref) =>
+      showDetectionDetails(context, ref, d);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2516,12 +2682,12 @@ class _DetListRow extends ConsumerWidget {
       onPointerDown: (event) {
         if (event.kind == PointerDeviceKind.mouse &&
             event.buttons == kSecondaryMouseButton) {
-          _showCopySheet(context, ref);
+          _showDetailSheet(context, ref);
         }
       },
       child: GestureDetector(
       onTap: hasGps && onTap != null ? () => onTap!(d) : null,
-      onLongPress: () => _showCopySheet(context, ref),
+      onLongPress: () => _showDetailSheet(context, ref),
       behavior: HitTestBehavior.opaque,
       child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -2779,58 +2945,8 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
   bool get _flockExpanded => wd.flockFilter;
   bool get _detectorExpanded => wd.detectorFilter;
 
-  void _showFlockCopySheet(BuildContext context, Detection d) {
-    final t = AppTheme.of(context);
-    final items = <(String, String)>[
-      ('MAC', d.macAddress.toUpperCase()),
-      if (d.deviceName.isNotEmpty) ('Name', d.deviceName),
-      if (d.latitude != null)
-        ('Location', '${d.latitude!.toStringAsFixed(5)}, ${d.longitude!.toStringAsFixed(5)}'),
-    ];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: t.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('COPY', style: TextStyle(
-              color: t.textDim, fontSize: 10,
-              fontWeight: FontWeight.w700, letterSpacing: 2,
-            )),
-            const SizedBox(height: 8),
-            for (final (label, value) in items)
-              ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                leading: Icon(Icons.copy, size: 14, color: t.textDim),
-                title: Text(label, style: TextStyle(color: t.textDim, fontSize: 10)),
-                subtitle: Text(value, style: TextStyle(
-                  color: t.textPrimary, fontSize: 12, fontFamily: 'monospace',
-                )),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: value));
-                  HapticFeedback.lightImpact();
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$label copied'),
-                      backgroundColor: t.surface,
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  void _showFlockDetailSheet(BuildContext context, Detection d) =>
+      showDetectionDetails(context, ref, d);
 
   @override
   Widget build(BuildContext context) {
@@ -3182,13 +3298,13 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                     onPointerDown: (event) {
                       if (event.kind == PointerDeviceKind.mouse &&
                           event.buttons == kSecondaryMouseButton) {
-                        _showFlockCopySheet(context, d);
+                        _showFlockDetailSheet(context, d);
                       }
                     },
                     child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: hasGps ? () => widget.onZoomDetection(d) : null,
-                    onLongPress: () => _showFlockCopySheet(context, d),
+                    onLongPress: () => _showFlockDetailSheet(context, d),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
@@ -3326,7 +3442,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: hasGps ? () => widget.onZoomDetection(d) : null,
-                    onLongPress: () => _showFlockCopySheet(context, d),
+                    onLongPress: () => _showFlockDetailSheet(context, d),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 6),

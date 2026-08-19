@@ -18,6 +18,7 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
+import 'package:oui_spy/features/feed/detection_row.dart' show showDetectionDetails;
 import 'package:oui_spy/core/models/detection.dart' show FlockExtension, FlockConfidence, FlockConfidenceX, FlockExtensionSignals;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/ota/ota_service.dart';
@@ -4905,90 +4906,28 @@ class _DetectionRow extends ConsumerWidget {
   final VoidCallback onFoxhunt;
   final VoidCallback onDelete;
 
-  void _showCopySheet(BuildContext context, WidgetRef ref) {
+  void _showDetailSheet(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
-    final mac = (data['macAddress'] as String).toUpperCase();
-    final deviceName = data['deviceName'] as String? ?? '';
-    final ssid = data['ssid'] as String? ?? '';
-    final vendor = ref.read(ouiLookupProvider).lookup(mac);
-    final lat = data['latitude'] as double?;
-    final lon = data['longitude'] as double?;
-
-    final items = <(String, String)>[
-      ('MAC', mac),
-      if (deviceName.isNotEmpty) ('Name', deviceName),
-      if (ssid.isNotEmpty) ('SSID', ssid),
-      if (vendor != null) ('Vendor', vendor),
-      if (lat != null && lon != null)
-        ('Location', '${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}'),
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: t.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('COPY', style: TextStyle(
-              color: t.textDim, fontSize: 10,
-              fontWeight: FontWeight.w700, letterSpacing: 2,
-            )),
-            const SizedBox(height: 8),
-            for (final (label, value) in items)
-              ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                leading: Icon(Icons.copy, size: 14, color: t.textDim),
-                title: Text(label, style: TextStyle(color: t.textDim, fontSize: 10)),
-                subtitle: Text(value, style: TextStyle(
-                  color: t.textPrimary, fontSize: 12, fontFamily: 'monospace',
-                )),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: value));
-                  HapticFeedback.lightImpact();
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$label copied'),
-                      backgroundColor: t.surface,
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
-              ),
-            const Divider(height: 1),
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              leading: const Icon(Icons.delete_outline, size: 16, color: AppTheme.error),
-              title: const Text('Delete Detection',
-                  style: TextStyle(color: AppTheme.error, fontSize: 12)),
-              onTap: () {
-                Navigator.pop(ctx);
-                final db = ref.read(databaseProvider);
-                final id = data['id'] as int;
-                final messenger = ScaffoldMessenger.of(context);
-                db.deleteDetectionById(id).then((_) {
-                  onDelete();
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: const Text('Detection removed'),
-                      backgroundColor: t.surface,
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                });
-              },
+    showDetectionDetails(
+      context,
+      ref,
+      detectionFromDbRow(data),
+      onShowMap: onShowMap,
+      onDelete: () {
+        final db = ref.read(databaseProvider);
+        final id = data['id'] as int;
+        final messenger = ScaffoldMessenger.of(context);
+        db.deleteDetectionById(id).then((_) {
+          onDelete();
+          messenger.showSnackBar(
+            SnackBar(
+              content: const Text('Detection removed'),
+              backgroundColor: t.surface,
+              duration: const Duration(seconds: 1),
             ),
-          ],
-        ),
-      ),
+          );
+        });
+      },
     );
   }
 
@@ -5013,15 +4952,15 @@ class _DetectionRow extends ConsumerWidget {
       onPointerDown: (event) {
         if (event.kind == PointerDeviceKind.mouse &&
             event.buttons == kSecondaryMouseButton) {
-          _showCopySheet(context, ref);
+          _showDetailSheet(context, ref);
         }
       },
       child: GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _showCopySheet(context, ref),
+      onTap: () => _showDetailSheet(context, ref),
       onLongPress: () {
         HapticFeedback.mediumImpact();
-        _showCopySheet(context, ref);
+        _showDetailSheet(context, ref);
       },
       child: Container(
       margin: const EdgeInsets.only(bottom: 6),
