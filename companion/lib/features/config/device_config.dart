@@ -18,6 +18,7 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
+import 'package:oui_spy/core/models/detection.dart' show FlockExtension, FlockConfidence, FlockConfidenceX, FlockExtensionSignals;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/ota/ota_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
@@ -914,11 +915,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       );
     }
     final widgets = <Widget>[];
-    for (final id in liveIds) widgets.add(row(id, online: true));
+    for (final id in liveIds) {
+      widgets.add(row(id, online: true));
+    }
     if (offlineIds.isNotEmpty) {
       widgets.add(const SizedBox(height: 8));
       widgets.add(const ConfigSectionHeader(label: 'OFFLINE'));
-      for (final id in offlineIds) widgets.add(row(id, online: false));
+      for (final id in offlineIds) {
+        widgets.add(row(id, online: false));
+      }
     }
     return widgets;
   }
@@ -1188,7 +1193,6 @@ class _ScanTimingSliders extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final wd = ref.watch(wardriveProvider);
 
     return Column(
@@ -3351,7 +3355,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
                 onChanged: (v) =>
                     ref.read(ignoreListProvider).toggleEnabled(entry, enabled: v),
                 activeTrackColor: AppTheme.accent.withValues(alpha: 0.3),
-                activeColor: AppTheme.accent,
+                activeThumbColor: AppTheme.accent,
               ),
             ),
           ],
@@ -3404,6 +3408,22 @@ String _detMethodLabel(String method) => switch (method) {
   _ => method.toUpperCase(),
 };
 
+FlockConfidence? _detFlockConfidence(Map<String, dynamic> d) {
+  final e = d['engine'] as String?;
+  if (e != 'flockBle' && e != 'flockWifi') return null;
+  return FlockExtension(signals: d['flockSignals'] as int? ?? 0)
+      .confidence(d['detectionMethod'] as String? ?? '');
+}
+
+String _confShort(FlockConfidence c) => switch (c) {
+  FlockConfidence.verified => 'VERIFIED',
+  FlockConfidence.high => 'HIGH',
+  FlockConfidence.suspected => 'SUSPECTED',
+};
+
+Color _confColor(FlockConfidence c) =>
+    c == FlockConfidence.suspected ? AppTheme.warning : AppTheme.success;
+
 class _DetectionsTab extends ConsumerStatefulWidget {
   const _DetectionsTab();
 
@@ -3421,6 +3441,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   bool _noGpsOnly = false;
   _RadioSel _radioFilter = _RadioSel.all;
   String? _methodFilter; // null = all, else a raw detectionMethod string
+  FlockConfidence? _confFilter; // null = all, else flock rows at that level
   bool _showMap = false;
   bool _searchOpen = false;
   final _searchCtrl = TextEditingController();
@@ -3530,6 +3551,11 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       list = list
           .where((d) => (d['detectionMethod'] as String?) == _methodFilter)
           .toList();
+    }
+
+    if (_confFilter != null) {
+      list =
+          list.where((d) => _detFlockConfidence(d) == _confFilter).toList();
     }
 
     final q = _search.trim().toLowerCase();
@@ -3718,16 +3744,16 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   Future<void> _exportCsv(
       BuildContext context, List<Map<String, dynamic>> items) async {
     final messenger = ScaffoldMessenger.of(context);
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null
+        ? box.localToGlobal(Offset.zero) & box.size
+        : const Rect.fromLTWH(0, 0, 100, 100);
     try {
       final csv = _buildCsv(items);
       final dir = await getTemporaryDirectory();
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final file = File('${dir.path}/oui_spy_detections_$ts.csv');
       await file.writeAsString(csv);
-      final box = context.findRenderObject() as RenderBox?;
-      final origin = box != null
-          ? box.localToGlobal(Offset.zero) & box.size
-          : const Rect.fromLTWH(0, 0, 100, 100);
       await Share.shareXFiles(
         [XFile(file.path)],
         subject: 'OUI-SPY Detections Export (${items.length} detections)',
@@ -3744,8 +3770,12 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     if (_noGpsOnly) n++;
     if (_radioFilter != _RadioSel.all) n++;
     if (_methodFilter != null) n++;
+    if (_confFilter != null) n++;
     return n;
   }
+
+  int _confCount(FlockConfidence c) =>
+      _detections.where((d) => _detFlockConfidence(d) == c).length;
 
   int _engineCount(String key) => switch (key) {
         'flock' => _detections.where((d) {
@@ -3762,6 +3792,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         _noGpsOnly = false;
         _radioFilter = _RadioSel.all;
         _methodFilter = null;
+        _confFilter = null;
       });
 
   void _toggleSearch() => setState(() {
@@ -3838,6 +3869,31 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                         onTap: () => apply(() => setState(() => _engineFilter =
                             _engineFilter == 'drone' ? null : 'drone')),
                       ),
+                    ],
+                  ),
+                ),
+                CommandSheetGroup(
+                  label: 'FLOCK CONFIDENCE',
+                  child: Wrap(
+                    spacing: barGap(ctx),
+                    runSpacing: barGap(ctx),
+                    children: [
+                      _FilterChip(
+                        label: 'ALL',
+                        selected: _confFilter == null,
+                        color: AppTheme.accent,
+                        onTap: () =>
+                            apply(() => setState(() => _confFilter = null)),
+                      ),
+                      for (final c in FlockConfidence.values)
+                        _FilterChip(
+                          label: _confShort(c),
+                          count: _confCount(c),
+                          selected: _confFilter == c,
+                          color: _confColor(c),
+                          onTap: () => apply(() => setState(
+                              () => _confFilter = _confFilter == c ? null : c)),
+                        ),
                     ],
                   ),
                 ),
@@ -4135,6 +4191,12 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           label: _detMethodLabel(_methodFilter!),
           color: AppTheme.accent,
           onClear: () => setState(() => _methodFilter = null),
+        ),
+      if (_confFilter != null)
+        _ActiveFilterChip(
+          label: _confShort(_confFilter!),
+          color: _confColor(_confFilter!),
+          onClear: () => setState(() => _confFilter = null),
         ),
       if (_noGpsOnly)
         _ActiveFilterChip(
@@ -4506,7 +4568,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       if (lat != null && lon != null) {
         wd.requestZoom(lat, lon, detection: detectionFromDbRow(det));
       }
-      if (context.mounted) context.go('/wardrive');
+      if (mounted) context.go('/wardrive');
     });
   }
 
@@ -4911,9 +4973,10 @@ class _DetectionRow extends ConsumerWidget {
                 Navigator.pop(ctx);
                 final db = ref.read(databaseProvider);
                 final id = data['id'] as int;
+                final messenger = ScaffoldMessenger.of(context);
                 db.deleteDetectionById(id).then((_) {
                   onDelete();
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(
                       content: const Text('Detection removed'),
                       backgroundColor: t.surface,
@@ -5062,19 +5125,41 @@ class _DetectionRow extends ConsumerWidget {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        // Engine badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: engineColor.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
+                        // Radio icon — how it was detected
+                        Tooltip(
+                          message: engineLabel,
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              color: engineColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Icon(
+                              _detRadioRank(data) == 0
+                                  ? Icons.bluetooth
+                                  : Icons.wifi,
+                              size: 13,
+                              color: engineColor,
+                            ),
                           ),
-                          child: Text(engineLabel, style: TextStyle(
-                            color: engineColor, fontSize: 10,
-                            fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                          )),
                         ),
                         const SizedBox(width: 8),
+                        // Engine badge
+                        if (data['engine'] != 'flockBle' &&
+                            data['engine'] != 'flockWifi') ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: engineColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(engineLabel, style: TextStyle(
+                              color: engineColor, fontSize: 10,
+                              fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                            )),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         // Method
                         if (method.isNotEmpty)
                           Container(
@@ -5090,6 +5175,27 @@ class _DetectionRow extends ConsumerWidget {
                                 fontWeight: FontWeight.w600,
                               )),
                           ),
+                        if (_detFlockConfidence(data) != null) ...[
+                          const SizedBox(width: 8),
+                          Builder(builder: (_) {
+                            final fc = _detFlockConfidence(data)!;
+                            final cc = _confColor(fc);
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: cc.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(fc.label(method),
+                                softWrap: false,
+                                style: TextStyle(
+                                  color: cc, fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                )),
+                            );
+                          }),
+                        ],
                         if (channel > 0) ...[
                           const SizedBox(width: 8),
                           Icon(Icons.cell_tower, size: 14, color: t.textDim),
@@ -5114,12 +5220,12 @@ class _DetectionRow extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 // Timestamp
-                Icon(Icons.access_time, size: 12, color: t.textDim),
-                const SizedBox(width: 4),
+                Icon(Icons.access_time, size: 10, color: t.textDim),
+                const SizedBox(width: 3),
                 Text(timeStr,
                   softWrap: false,
                   style: TextStyle(
-                    color: t.textDim, fontSize: 11,
+                    color: t.textDim, fontSize: 9,
                     fontFamily: 'monospace',
                   )),
               ],
@@ -5342,7 +5448,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   StreamSubscription<({int status, int bytesRead})>? _wifiSub;
   String? _checkStatus;
   bool _wifiConfigured = false;
-  String _wifiSsid = '';
   int _wifiBytesRead = 0;
   int? _wifiStatus;
   Timer? _wifiPoll;
@@ -5415,7 +5520,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
       if (!mounted) return;
       setState(() {
         _wifiConfigured = res.hasCreds;
-        _wifiSsid = res.ssid;
       });
     } on Exception catch (e) {
       // Older firmware: char absent — leave _wifiConfigured = false
@@ -6778,7 +6882,7 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
 class _VersionRow extends StatelessWidget {
   const _VersionRow();
 
-  static const String appVersion = '0.5.0';
+  static const String appVersion = '0.5.1';
 
   @override
   Widget build(BuildContext context) {

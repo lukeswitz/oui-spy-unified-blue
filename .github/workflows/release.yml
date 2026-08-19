@@ -220,6 +220,39 @@ jobs:
             > [!NOTE]
             > Early beta — file bugs in Issues.
 
+            ### What's new since v0.5.0
+
+            **Added**
+            - Flock confidence (VERIFIED / HIGH / SUSPECTED) on feed and config detection rows, in the detection detail sheet, and as V/H/S chips in the wardrive flock panel, with a confidence filter group in the detections filter sheet
+            - WDGWars territory layer on the wardrive map (gang hulls, viewport-culled, 5 min cache, off by default)
+            - WDGWars account stats: today / 7d / reinforced / credits / cracked, gang role, country / joined / bounties
+            - CONFIG nav tap toggles the section sheet open and closed
+
+            **Fixed — app**
+            - Wardrive sessions finalize on stop, on detach and on app shutdown; reconnect offers to continue or stop the open session
+            - Foxhunt blocked for law-enforcement targets (Axon 00:25:DF): the action icon is hidden on feed rows and a reason is shown if it is reached another way
+            - CSV import and rescan no longer promote a row to flock on an OUI match alone; wardrive rows promote to detector only
+            - App-side flock OUI table synced: 00:40:8C and AC:CC:8E added, Falcon false positives 94:2A:6F and F4:E2:C6 removed
+            - Tapping a detection isolates that pin instead of drawing the whole session; a finished session frames the whole track; config tab index survives rebuilds
+            - WDGWars upload moved to v2 gzip + job poll (10.2 MB CSV → 750 KB on the wire), buffered multipart body, QUEUED state while the job runs, stale error banner cleared
+            - WDGWars upload finishes with the server's own counts — `N imported · N new · N merged` — instead of a generic success, or the server's rejection reason on failure
+            - Feed search queries the database, not just the 500-row live buffer
+            - WiGLE and WDGWars send timeout scales with file size (60 s + 12 s/MB, capped at 900 s) and retries on a fresh connection
+            - CommandSheet close button (sheets were near-undismissable on mobile)
+
+            **Fixed — firmware**
+            - Detector signatures now run under wardrive: BLE checked pre-dedup, WiFi fed from the wardrive ISR
+            - `SIG_AXON` WiFi early-return no longer starves watchlist matching; a `sigDedup` hit no longer skips the remaining signature checks
+            - Axon matches BT SIG CID 0x034D and service UUID 0xFC81, not OUI alone
+            - Ray-Ban Meta criteria synced to upstream (CID 0x0D53, service 0xFD5F, names)
+            - Flock WiFi uses the upstream method only (addr3/BSSID match dropped), RSSI floor −95, wildcard probes no longer mislabeled `oui_addr2`
+            - Flock BLE emits on name or Raven service UUID alone, otherwise only on the full validated signal set
+            - Flock OUI list: Ubiquiti false positives dropped; f8:a2:d6, 00:40:8c and ac:cc:8e demoted to the extended list
+            - `detectorHostSuspend` resume left `wifiActive` false on S3
+
+            **Build**
+            - Built with Flutter 3.47.0 / Dart 3.13; analyzer clean, 53 tests pass
+
             ### Firmware
 
             Companion app picks the matching `.bin` automatically by board + role over BLE DFU.
@@ -251,7 +284,7 @@ jobs:
             - BLE-capable phone/computer
             - GPS/Location for wardriving
 
-            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/<PREVIOUS_TAG>...${{ github.ref_name }}
+            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/v0.5.0...${{ github.ref_name }}
           files: |
             artifacts/**/*.bin
             artifacts/**/*.tar.gz
