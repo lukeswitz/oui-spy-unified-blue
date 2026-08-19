@@ -55,6 +55,38 @@ Turn any of these on from the home screen:
 > It contains many false positives — Ubiquiti routers, Espressif, and other parts common in consumer electronics.
 > **Validate findings with your own eyes before submitting to sites like deflock.me**
 
+### Flock confidence
+
+Every flock hit carries the set of signals that matched, so you can tell a real camera from an OUI
+coincidence:
+
+| Tier | What matched |
+|------|--------------|
+| **VERIFIED** | The full validated set — bare-serial name + XUNTONG `0x09C8` manufacturer ID + TN serial |
+| **HIGH** | One strong signal on its own: Raven service UUID, the BLE name, or a captured Flock wildcard probe |
+| **SUSPECTED** | A known OUI and nothing else |
+
+The tier shows on feed rows, in the detection detail sheet, and on the Config → DETECTIONS list,
+which also has a FLOCK CONFIDENCE filter (ALL / VERIFIED / HIGH / SUSPECTED with counts).
+
+### Map layers
+
+The layers button (top-left of the wardrive map) toggles:
+
+- **MAPPED ALPRs** — cameras already recorded on OpenStreetMap, the dataset DeFlock renders. Off by
+  default. Flock hits with a GPS fix are scored against it: `ON MAP` within 75 m of a mapped camera,
+  `UNMAPPED` beyond 250 m, `NO MAP DATA` where nothing has been fetched for that area yet. Tiles are
+  cached on the phone, so an area you have driven keeps resolving with no signal.
+- **WDG TERRITORY** — gang territory hulls from a linked WDGWars account.
+
+Contributing an unmapped find to OpenStreetMap is offered only for a **VERIFIED** detection, and the
+link is copied for you to review and submit by hand — the app never posts anything.
+
+> [!NOTE]
+> Turning on MAPPED ALPRs sends the map's bounding box to a public Overpass mirror
+> (`overpass-api.de`, falling back to `overpass.private.coffee`), which tells that server what area
+> you are looking at. Your detections never leave the phone.
+
 ---
 
 ## Cover more area with extra boards
@@ -117,7 +149,8 @@ Saved runs replay on the map, and you can import CSVs.
 <img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
 
 **Geofences** — draw a zone and everything inside goes silent: no feed, log, CSV, or beep, radios paused.
-Scanning resumes when you leave.
+Scanning resumes when you leave. While wardriving inside one, the map shows how many detections the
+zone is holding back, so a quiet screen is never mistaken for a dead radio.
 
 **PCAP** — no SD card: frames stream over Bluetooth and the app writes a Wireshark `.pcap`.
 **Auto-PCAP** records for 3–120 s whenever an engine fires, labeled by what triggered it, then goes back to scanning.
