@@ -228,6 +228,13 @@ class AppDatabase extends _$AppDatabase {
     return rows.map(_detectionRowMap).toList();
   }
 
+  Future<List<Map<String, dynamic>>> getAllDetectionMaps() async {
+    final rows = await (select(detections)
+          ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))
+        .get();
+    return rows.map(_detectionRowMap).toList();
+  }
+
   Future<int> uniqueMacCount(String sessionId) async {
     final query = selectOnly(detections)
       ..where(detections.sessionId.equals(sessionId))

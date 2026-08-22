@@ -94,12 +94,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   /// Live feed rows plus stored-history hits the 500-row buffer no longer holds.
-  List<Detection> _withDbHits(List<Detection> live) {
-    if (_dbHits.isEmpty) return live;
+  List<Detection> _withDbHits(List<Detection> live) =>
+      _mergeHistory(live, _dbHits);
+
+  List<Detection> _mergeHistory(List<Detection> live, List<Detection> history) {
+    if (history.isEmpty) return live;
     final seen = <String>{
       for (final d in live) '${d.macAddress}|${d.engine.name}',
     };
-    final extra = _dbHits
+    final extra = history
         .where((d) => seen.add('${d.macAddress}|${d.engine.name}'))
         .toList();
     if (extra.isEmpty) return live;
@@ -334,7 +337,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 CommandBarAction(
                   icon: Icons.more_horiz,
                   label: 'MORE',
-                  onTap: () => _openActionSheet(filtered, state),
+                  onTap: () => _openActionSheet(state),
                 ),
               ],
             ),
@@ -620,7 +623,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         (FeedMetric.channel, false) => 'Highest channel first',
       };
 
-  Future<void> _openActionSheet(List<Detection> filtered, AppState state) {
+  Future<void> _openActionSheet(AppState state) {
     return showCommandSheet<void>(
       context: context,
       builder: (ctx) => CommandSheet(
@@ -651,13 +654,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             CommandSheetTile(
               icon: Icons.ios_share,
               label: 'EXPORT CSV',
-              subtitle: '${filtered.length} shown',
-              onTap: filtered.isEmpty
-                  ? null
-                  : () {
-                      Navigator.pop(ctx);
-                      _exportCsv(context, filtered);
-                    },
+              subtitle: 'Full stored history, current filters',
+              onTap: () {
+                Navigator.pop(ctx);
+                _exportCsv(context);
+              },
             ),
             CommandSheetTile(
               icon: Icons.delete_sweep,
@@ -695,13 +696,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     if (ok == true) ref.read(appStateProvider).resetCounts();
   }
 
-  Future<void> _exportCsv(BuildContext context, List<Detection> detections) async {
+  Future<void> _exportCsv(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final box = context.findRenderObject() as RenderBox?;
     final origin = box != null
         ? box.localToGlobal(Offset.zero) & box.size
         : const Rect.fromLTWH(0, 0, 100, 100);
     try {
+      final rows = await ref.read(databaseProvider).getAllDetectionMaps();
+      final history = rows.map(detectionFromDbRow).toList();
+      final live = _mergeFlockFromWardrive(
+        ref.read(appStateProvider).recentDetections,
+        ref.read(wardriveProvider),
+      );
+      final detections = _sorted(_filter(_mergeHistory(live, history)));
+      if (detections.isEmpty) {
+        messenger.showSnackBar(
+            const SnackBar(content: Text('Nothing to export')));
+        return;
+      }
       final csv = DetectionsCsv.generate(detections);
       final dir = await getTemporaryDirectory();
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
