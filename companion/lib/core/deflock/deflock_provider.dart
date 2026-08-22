@@ -142,9 +142,18 @@ class DeflockProvider extends ChangeNotifier {
     if (missing.isEmpty) return;
 
     if (missing.length > _maxTilesPerFetch) {
-      _error = 'Zoom in to load mapped ALPRs';
-      notifyListeners();
-      return;
+      final cx = (bounds.west + bounds.east) / 2;
+      final cy = (bounds.south + bounds.north) / 2;
+      double centerDist2(String k) {
+        final p = k.split('_');
+        final ty = (int.parse(p[0]) + 0.5) * _tileDeg;
+        final tx = (int.parse(p[1]) + 0.5) * _tileDeg;
+        final dy = ty - cy, dx = tx - cx;
+        return dy * dy + dx * dx;
+      }
+
+      missing.sort((a, b) => centerDist2(a).compareTo(centerDist2(b)));
+      missing.removeRange(_maxTilesPerFetch, missing.length);
     }
 
     _loading = true;

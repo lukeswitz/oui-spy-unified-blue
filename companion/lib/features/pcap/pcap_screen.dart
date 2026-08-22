@@ -202,8 +202,10 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
         initialData: ble.latestPcapStats,
         builder: (context, snap) {
           final s = snap.data ?? PcapStats.empty;
+          final isPaused = s.state == 4;
           final isCapturing = s.state == 1;
-          if ((_pendingStart && isCapturing) || (_pendingStop && !isCapturing)) {
+          final isActive = isCapturing || isPaused;
+          if ((_pendingStart && isCapturing) || (_pendingStop && !isActive)) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
                 _toggleTimeout?.cancel();
@@ -211,9 +213,9 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
               }
             });
           }
-          if (isCapturing) _heldStats = s;
-          final gridStats = isCapturing ? s : (_heldStats ?? s);
-          final activeMode = isCapturing ? s.modeEnum : _mode;
+          if (isActive) _heldStats = s;
+          final gridStats = isActive ? s : (_heldStats ?? s);
+          final activeMode = isActive ? s.modeEnum : _mode;
           final hasFile = _lastSaved != null && !isCapturing;
           if (_autoPcapOverride != null && _autoPcapOverride == s.autoEnabled) {
             _autoPcapOverride = null;
@@ -351,20 +353,37 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                   _BleStatsGrid(stats: gridStats, t: t),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
-                  onPressed: _toggling ? null : (isCapturing ? _stop : _start),
+                  onPressed: _toggling ? null : (isActive ? _stop : _start),
                   icon: _toggling
                       ? const SizedBox(width: 16, height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : Icon(isCapturing ? Icons.stop : Icons.fiber_manual_record),
+                      : Icon(isActive ? Icons.stop : Icons.fiber_manual_record),
                   label: Text(_toggling
-                      ? (isCapturing ? 'WRITING FILE…' : 'STARTING…')
-                      : (isCapturing ? 'STOP' : 'START')),
+                      ? (isActive ? 'WRITING FILE…' : 'STARTING…')
+                      : (isActive ? 'STOP' : 'START')),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: isCapturing ? AppTheme.error : AppTheme.success,
-                    side: BorderSide(color: isCapturing ? AppTheme.error : AppTheme.success),
+                    foregroundColor: isActive ? AppTheme.error : AppTheme.success,
+                    side: BorderSide(color: isActive ? AppTheme.error : AppTheme.success),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
+                if (isActive) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _toggling
+                        ? null
+                        : (isPaused
+                            ? () => ref.read(bleManagerProvider).resumePcap()
+                            : () => ref.read(bleManagerProvider).pausePcap()),
+                    icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
+                    label: Text(isPaused ? 'RESUME' : 'PAUSE'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.warning,
+                      side: const BorderSide(color: AppTheme.warning),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: hasFile ? () => _shareFile(_lastSaved!) : null,
@@ -403,6 +422,7 @@ class _StateCard extends StatelessWidget {
       case 1: stateColor = AppTheme.success;
       case 2: stateColor = AppTheme.warning;
       case 3: stateColor = AppTheme.error;
+      case 4: stateColor = AppTheme.warning;
       default: stateColor = t.textDim;
     }
     final uptimeS = stats.uptimeMs ~/ 1000;

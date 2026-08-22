@@ -3826,11 +3826,9 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
     if (confirm != true) return;
     final wd = ref.read(wardriveProvider);
     final toDelete = _selected.toList();
-    for (final sid in toDelete) {
-      await db.deleteSession(sid);
-      if (wd.loadedSessionId == sid) {
-        wd.clearLoadedSession();
-      }
+    await db.deleteSessions(toDelete);
+    if (toDelete.contains(wd.loadedSessionId)) {
+      wd.clearLoadedSession();
     }
     if (mounted) _exitSelectMode();
   }
@@ -3920,9 +3918,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
       ),
     );
     if (confirm == true) {
-      for (final s in completed) {
-        await db.deleteSession(s.id);
-      }
+      await db.deleteSessions([for (final s in completed) s.id]);
       ref.read(wardriveProvider).clearMapData();
     }
   }

@@ -162,6 +162,7 @@ class PcapStats {
         1 => 'CAPTURING',
         2 => 'FULL',
         3 => 'ERROR',
+        4 => 'PAUSED',
         _ => 'UNKNOWN',
       };
 

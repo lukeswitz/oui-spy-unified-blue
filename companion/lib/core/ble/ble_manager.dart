@@ -1502,6 +1502,26 @@ class BleManager {
     );
   }
 
+  Future<void> pausePcap() async {
+    if (_engineControl == null) return;
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x04]), // PCAP_CTRL_PAUSE
+      ),
+    );
+  }
+
+  Future<void> resumePcap() async {
+    if (_engineControl == null) return;
+    await _engineControl!.write(
+      BleProtocol.encodeEngineConfig(
+        engine: Engine.pcap,
+        payload: Uint8List.fromList([0x05]), // PCAP_CTRL_RESUME
+      ),
+    );
+  }
+
 
   // -- Private --
 

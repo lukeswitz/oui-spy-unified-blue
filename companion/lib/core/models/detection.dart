@@ -72,6 +72,7 @@ extension FlockConfidenceX on FlockConfidence {
   String label(String method) => switch (this) {
     FlockConfidence.verified => 'Verified (XUNTONG Serial)',
     FlockConfidence.high => switch (method) {
+      'wildcard_probe_ie_sig' => 'High (Flock IE Signature)',
       'wildcard_probe' => 'High (Flock Probe Captured)',
       'raven_uuid' => 'High (Raven UUID)',
       'name_match' => 'High (BLE Name)',
@@ -92,7 +93,9 @@ extension FlockExtensionSignals on FlockExtension {
     if (isValidated) return FlockConfidence.verified;
     if (hasSignal(FlockSignal.ravenUuid)) return FlockConfidence.high;
     if (hasSignal(FlockSignal.name)) return FlockConfidence.high;
-    if (method == 'wildcard_probe') return FlockConfidence.high;
+    if (method == 'wildcard_probe' || method == 'wildcard_probe_ie_sig') {
+      return FlockConfidence.high;
+    }
     return FlockConfidence.suspected;
   }
 }

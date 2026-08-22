@@ -152,4 +152,20 @@ static inline int IRAM_ATTR isWildcardProbeIE(const uint8_t* body, int len) {
     return -1;
 }
 
+static inline bool IRAM_ATTR flockHasLiteonVendorIE(const uint8_t* body, int len) {
+    if (!body) return false;
+    while (len >= 2) {
+        uint8_t id   = body[0];
+        uint8_t elen = body[1];
+        if ((int)elen + 2 > len) break;
+        if (id == 221 && elen >= 3 &&
+            body[2] == 0x50 && body[3] == 0x6f && body[4] == 0x9a) {
+            return true;
+        }
+        body += elen + 2;
+        len  -= elen + 2;
+    }
+    return false;
+}
+
 #endif

@@ -58,13 +58,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (Migrator m) async {
         await m.createAll();
+        await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_detections_session ON detections (session_id)');
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
@@ -86,6 +88,10 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 6) {
           await m.addColumn(detections, detections.flockSignals);
+        }
+        if (from < 7) {
+          await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_detections_session ON detections (session_id)');
         }
       },
     );
@@ -139,8 +145,21 @@ class AppDatabase extends _$AppDatabase {
           .watch();
 
   Future<void> deleteSession(String id) async {
-    await (delete(detections)..where((d) => d.sessionId.equals(id))).go();
-    await (delete(sessions)..where((s) => s.id.equals(id))).go();
+    await transaction(() async {
+      await (delete(detections)..where((d) => d.sessionId.equals(id))).go();
+      await (delete(sessions)..where((s) => s.id.equals(id))).go();
+    });
+  }
+
+  Future<void> deleteSessions(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await transaction(() async {
+      for (var i = 0; i < ids.length; i += 500) {
+        final chunk = ids.sublist(i, (i + 500).clamp(0, ids.length));
+        await (delete(detections)..where((d) => d.sessionId.isIn(chunk))).go();
+        await (delete(sessions)..where((s) => s.id.isIn(chunk))).go();
+      }
+    });
   }
 
   // -- Detection operations --

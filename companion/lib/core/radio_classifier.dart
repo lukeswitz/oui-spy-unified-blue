@@ -24,6 +24,7 @@ const _wifiMethods = {
   'oui_addr3',
   'ssid',
   'wildcard_probe',
+  'wildcard_probe_ie_sig',
   'odid_nan',
   'odid_beacon',
   'wifi_watchlist',

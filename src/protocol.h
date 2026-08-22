@@ -126,6 +126,7 @@ enum EngineState : uint8_t {
 #define METHOD_OUI_ADDR3       2
 #define METHOD_SSID            3
 #define METHOD_WILDCARD_PROBE  4
+#define METHOD_WILDCARD_PROBE_IE_SIG 5
 
 // Flock-BLE methods
 #define METHOD_OUI_MATCH       0
@@ -398,6 +399,8 @@ typedef struct __attribute__((packed)) {
 #define PCAP_CTRL_START          0x01  // payload: channel_start[1] channel_end[1] radio_mask[1]
 #define PCAP_CTRL_STOP           0x02
 #define PCAP_CTRL_CLEAR          0x03  // delete on-flash capture file
+#define PCAP_CTRL_PAUSE          0x04  // stop appending frames, keep radio up
+#define PCAP_CTRL_RESUME         0x05  // resume appending after a pause
 #define PCAP_CTRL_DOWNLOAD       0x10  // begin download via CHR_PCAP_DATA notifies
 #define PCAP_CTRL_DOWNLOAD_ABORT 0x11
 

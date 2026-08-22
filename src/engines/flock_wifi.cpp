@@ -128,7 +128,11 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
             const uint8_t* body = p + bodyOff;
             int r = (bodyLen > 0) ? isWildcardProbeIE(body, bodyLen) : -1;
             if (r == -1 && bodyLen > 4) r = isWildcardProbeIE(body, bodyLen - 4);
-            if (r == 1) method = METHOD_WILDCARD_PROBE;
+            if (r == 1) {
+                method = flockHasLiteonVendorIE(body, bodyLen)
+                             ? METHOD_WILDCARD_PROBE_IE_SIG
+                             : METHOD_WILDCARD_PROBE;
+            }
         }
     } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
         method = METHOD_OUI_ADDR1;

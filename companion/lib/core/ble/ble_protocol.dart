@@ -400,7 +400,8 @@ class BleProtocol {
           'oui_addr3',
           'ssid',
           'wildcard_probe',
-        ][method.clamp(0, 4)],
+          'wildcard_probe_ie_sig',
+        ][method.clamp(0, 5)],
       Engine.flockBle => const [
           'oui_match',
           'name_match',

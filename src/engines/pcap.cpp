@@ -43,6 +43,7 @@ static unsigned long pcapStartedAt = 0;
 static unsigned long pcapLastStatsNotify = 0;
 
 static volatile uint8_t pcapState = 0;
+static volatile bool pcapPaused = false;
 static volatile uint32_t pcapStreamedBytes = 0;
 
 static uint8_t* bufA = nullptr;
@@ -156,7 +157,7 @@ static IRAM_ATTR uint16_t wifiChanFlags(uint8_t ch) {
 }
 
 static void IRAM_ATTR pcapWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
-    if (!pcapActive) return;
+    if (!pcapActive || pcapPaused) return;
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA && type != WIFI_PKT_CTRL) return;
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     const uint8_t* p = pkt->payload;
@@ -267,7 +268,7 @@ static void emitBleFrame(uint8_t pduType, uint8_t addrType,
 
 class PcapBleCallbacks : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
-        if (!pcapActive) return;
+        if (!pcapActive || pcapPaused) return;
         uint8_t evType = dev->getAdvType();
         if (evType == 4) cntBleScan++;
         else             cntBleAdv++;
@@ -418,6 +419,7 @@ static void pcapStart(void) {
     pcapCurChan = pcapHopList[0];
     pcapLastHop = millis();
     pcapActive = true;
+    pcapPaused = false;
     pcapState = 1;
 
     if (xTaskCreatePinnedToCore(pcapSenderTask, "pcap_tx",
@@ -468,6 +470,7 @@ static void pcapStop(void) {
         return;
     }
     pcapActive = false;
+    pcapPaused = false;
 
     if (pcapMode == PCAP_MODE_WIFI) {
         wifiCoexUnregister(pcapWifiCb);
@@ -549,6 +552,22 @@ static void pcapLoop(void) {
     }
 }
 
+static void pcapPause(void) {
+    if (!pcapActive || pcapPaused) return;
+    pcapPaused = true;
+    pcapState = 4;
+    Serial.println("[PCAP] Paused");
+    bleGattNotifyPcapStats();
+}
+
+static void pcapResume(void) {
+    if (!pcapActive || !pcapPaused) return;
+    pcapPaused = false;
+    pcapState = 1;
+    Serial.println("[PCAP] Resumed");
+    bleGattNotifyPcapStats();
+}
+
 static void pcapConfig(const uint8_t* payload, uint8_t len) {
     if (len < 1) return;
     uint8_t op = payload[0];
@@ -567,7 +586,9 @@ static void pcapConfig(const uint8_t* payload, uint8_t len) {
             if (len >= 6) pcap5gMode = payload[5] & 0x03;
 #endif
             break;
-        case PCAP_CTRL_STOP:  pcapStop(); break;
+        case PCAP_CTRL_STOP:   pcapStop(); break;
+        case PCAP_CTRL_PAUSE:  pcapPause(); break;
+        case PCAP_CTRL_RESUME: pcapResume(); break;
         case 0x10:
             if (len >= 2) engineSetAutoPcap(payload[1] != 0);
             bleGattNotifyPcapStats();
