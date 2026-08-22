@@ -1,7 +1,7 @@
 [
   {
     "version": "0.5.1",
-    "ref": "23f2429b1af690c0904ff2e18758d50cd241a2d2",
+    "ref": "d1f05e0da932eb801200ab1fc94a868173325b89",
     "targets": [
       "node-xiao_s3",
       "node-s3_devkitc",
