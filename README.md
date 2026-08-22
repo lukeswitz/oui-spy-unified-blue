@@ -152,7 +152,7 @@ Saved runs replay on the map, and you can import CSVs.
 Scanning resumes when you leave. While wardriving inside one, the map shows how many detections the
 zone is holding back, so a quiet screen is never mistaken for a dead radio.
 
-**PCAP** — no SD card: frames stream over Bluetooth and the app writes a Wireshark `.pcap`.
+**PCAP** — no SD card: frames stream over Bluetooth and the app writes a Wireshark `.pcap`. Capture WiFi 802.11 or BLE advertising traffic (BLE saves as `LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR`). Pause and resume a capture without stopping the radio.
 **Auto-PCAP** records for 3–120 s whenever an engine fires, labeled by what triggered it, then goes back to scanning.
 A library screen keeps every capture.
 
