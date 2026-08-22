@@ -67,3 +67,5 @@ src/idf_component.yml.orig
 sdkconfig.defaults
 sdkconfig.v3_app_controlled_c5
 managed_components/
+
+.dummy/
