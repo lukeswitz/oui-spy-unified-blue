@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.5.1",
+    "ref": "23f2429b1af690c0904ff2e18758d50cd241a2d2",
+    "targets": [
+      "node-xiao_s3",
+      "node-s3_devkitc",
+      "node-xiao_c5",
+      "mgr-xiao_s3",
+      "mgr-s3_devkitc",
+      "mgr-xiao_c3",
+      "mgr-wroom"
+    ]
+  },
+  {
     "version": "0.5.0",
     "ref": "4f1aabb208229a0bb3fd828cd89f7e4c3e637fb8",
     "targets": [
