@@ -1886,11 +1886,23 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
   final _keyController = TextEditingController();
   bool _obscureKey = true;
   bool _testing = false;
+  int? _flockCams;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFlockCams();
+  }
 
   @override
   void dispose() {
     _keyController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFlockCams() async {
+    final n = await ref.read(databaseProvider).flockMacCountAll();
+    if (mounted) setState(() => _flockCams = n);
   }
 
   @override
@@ -1959,13 +1971,16 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
           const SizedBox(height: 12),
 
           if (w.isLoggedIn) ...[
-            _WdgwarsStatsCard(stats: w.stats),
+            _WdgwarsStatsCard(stats: w.stats, flockCams: _flockCams),
             const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => ref.read(wdgwarsProvider).refreshStats(),
+                    onPressed: () {
+                      ref.read(wdgwarsProvider).refreshStats();
+                      _loadFlockCams();
+                    },
                     icon: const Icon(Icons.refresh, size: 14),
                     label: const Text('REFRESH', style: TextStyle(fontSize: 10, letterSpacing: 1)),
                     style: OutlinedButton.styleFrom(
@@ -2146,8 +2161,9 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
 }
 
 class _WdgwarsStatsCard extends StatelessWidget {
-  const _WdgwarsStatsCard({this.stats});
+  const _WdgwarsStatsCard({this.stats, this.flockCams});
   final WdgwarsUserStats? stats;
+  final int? flockCams;
 
   @override
   Widget build(BuildContext context) {
@@ -2294,25 +2310,54 @@ class _WdgwarsStatsCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            decoration: BoxDecoration(
-              color: AppTheme.wdgwars.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Column(
-              children: [
-                Text(_fmt(s.total), style: const TextStyle(
-                  color: AppTheme.wdgwars, fontSize: 18,
-                  fontWeight: FontWeight.w700, fontFamily: 'monospace',
-                )),
-                Text('TOTAL DEVICES', style: TextStyle(
-                  color: t.textDim, fontSize: 8,
-                  fontWeight: FontWeight.w600, letterSpacing: 1,
-                )),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.wdgwars.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(_fmt(s.total), style: const TextStyle(
+                        color: AppTheme.wdgwars, fontSize: 18,
+                        fontWeight: FontWeight.w700, fontFamily: 'monospace',
+                      )),
+                      Text('TOTAL DEVICES', style: TextStyle(
+                        color: t.textDim, fontSize: 8,
+                        fontWeight: FontWeight.w600, letterSpacing: 1,
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+              if (flockCams != null) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.flockWifi.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(_fmt(flockCams!), style: const TextStyle(
+                          color: AppTheme.flockWifi, fontSize: 18,
+                          fontWeight: FontWeight.w700, fontFamily: 'monospace',
+                        )),
+                        Text('FLOCK CAMS (LOCAL)', style: TextStyle(
+                          color: t.textDim, fontSize: 8,
+                          fontWeight: FontWeight.w600, letterSpacing: 1,
+                        )),
+                      ],
+                    ),
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
           if (s.dailyCap > 0) ...[
             const SizedBox(height: 8),

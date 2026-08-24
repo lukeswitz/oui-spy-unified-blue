@@ -253,6 +253,15 @@ class AppDatabase extends _$AppDatabase {
     return result.read(detections.macAddress.count(distinct: true)) ?? 0;
   }
 
+  /// Count unique flock MACs across every stored session.
+  Future<int> flockMacCountAll() async {
+    final query = selectOnly(detections)
+      ..where(detections.engine.isIn(['flockBle', 'flockWifi']))
+      ..addColumns([detections.macAddress.count(distinct: true)]);
+    final result = await query.getSingle();
+    return result.read(detections.macAddress.count(distinct: true)) ?? 0;
+  }
+
   /// Count unique detector (watchlist hit) MACs in a session.
   Future<int> detectorMacCount(String sessionId) async {
     final query = selectOnly(detections)
