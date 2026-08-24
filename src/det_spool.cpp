@@ -6,6 +6,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#ifdef OUISPY_DONGLE
+#include "dongle.h"
+#define SPOOL_FS dongleSpoolFs()
+#else
+#define SPOOL_FS LittleFS
+#endif
+
 #if defined(OUISPY_ROLE_MANAGER) && !defined(BOARD_HAS_PSRAM)
 #define SPOOL_CAP 120
 #else
@@ -64,7 +71,7 @@ static int oldestSlot() {
 }
 
 static void persist() {
-    File f = LittleFS.open(SPOOL_PATH, "w");
+    File f = SPOOL_FS.open(SPOOL_PATH, "w");
     if (!f) { s_dirty = false; return; }
     SpoolHeader h = { SPOOL_MAGIC, s_count, s_dropped };
     f.write((const uint8_t*)&h, sizeof(h));
@@ -93,7 +100,7 @@ void detSpoolInit() {
         s_ready = true;
         return;
     }
-    File f = LittleFS.open(SPOOL_PATH, "r");
+    File f = SPOOL_FS.open(SPOOL_PATH, "r");
     if (f) {
         SpoolHeader h;
         if (f.read((uint8_t*)&h, sizeof(h)) == sizeof(h) && h.magic == SPOOL_MAGIC) {
@@ -153,7 +160,7 @@ bool detSpoolReadSlot(uint16_t i, DetectionEvent* out, uint16_t* hitCount) {
 
 void detSpoolClear() {
     if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
-    if (s_ready) LittleFS.remove(SPOOL_PATH);
+    if (s_ready) SPOOL_FS.remove(SPOOL_PATH);
     s_count = 0;
     s_dropped = 0;
     s_dirty = false;

@@ -35,8 +35,15 @@
 #include "engines/pcap.h"
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
+#ifdef OUISPY_DONGLE
+#include "dongle.h"
+#endif
 
-#ifdef OUISPY_RGB_DARK
+#ifdef OUISPY_DONGLE
+  #define OUISPY_LED_INIT()  dongleLedInit()
+  #define OUISPY_LED_ON()    dongleLedSet(0, 48, 0)
+  #define OUISPY_LED_OFF()   dongleLedSet(0, 0, 0)
+#elif defined(OUISPY_RGB_DARK)
   #define OUISPY_LED_INIT()  neopixelWrite(PIN_NEOPIXEL, 0, 0, 0)
   #define OUISPY_LED_ON()    ((void)0)
   #define OUISPY_LED_OFF()   neopixelWrite(PIN_NEOPIXEL, 0, 0, 0)
@@ -72,6 +79,27 @@ void hwGpsInit(void) {
 }
 
 bool hwGpsActive(void) { return hwGpsFix; }
+
+#ifdef OUISPY_DONGLE
+bool hwGpsUtc(uint32_t* epochOut) {
+    if (!hwGpsStarted || epochOut == nullptr) return false;
+    if (!hwGps.date.isValid() || !hwGps.time.isValid()) return false;
+    if (hwGps.date.year() < 2020) return false;
+    uint32_t m = hwGps.date.month();
+    uint32_t d = hwGps.date.day();
+    uint32_t y = hwGps.date.year() - (m <= 2 ? 1 : 0);
+    uint32_t era = y / 400;
+    uint32_t yoe = y - era * 400;
+    uint32_t doy = (153u * (m + (m > 2 ? -3u : 9u)) + 2u) / 5u + d - 1u;
+    uint32_t doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;
+    int32_t days = (int32_t)(era * 146097u + doe) - 719468;
+    *epochOut = (uint32_t)((int64_t)days * 86400LL +
+                           hwGps.time.hour() * 3600 +
+                           hwGps.time.minute() * 60 +
+                           hwGps.time.second());
+    return true;
+}
+#endif
 
 void hwGpsPoll(void) {
     if (!hwGpsStarted) return;
@@ -435,6 +463,10 @@ static void detectionNotifyTask(void* param) {
 
             // Send BLE notification
             bleGattNotifyDetection(&evt);
+
+#ifdef OUISPY_DONGLE
+            dongleOnDetection(&evt);
+#endif
 
             if (evt.source_node_id[0] == '\0')
                 engineRequestAutoPcap((EngineId)evt.engine_id, evt.channel, evt.mac);
@@ -1233,6 +1265,10 @@ void setup() {
 
     initHardware();
 
+#ifdef OUISPY_DONGLE
+    dongleInit();
+#endif
+
     // Load hardware config (buzzer/LED/neopixel) from NVS
     loadHardwareConfig();
     ignoreListInit();
@@ -1292,7 +1328,11 @@ void setup() {
     Serial.println("[INIT] WiFi STA reserved for OTA mode only — mesh stays on ch1");
 
     // Create FreeRTOS tasks
+#ifdef OUISPY_DONGLE
+    BaseType_t t1 = xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 6144, NULL, 2, NULL, 1);
+#else
     BaseType_t t1 = xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
+#endif
 #ifdef OUISPY_NIMBLE2
     BaseType_t t2 = xTaskCreatePinnedToCore(engineCmdTask, "eng_cmd", 4096, NULL, 5, NULL, 1);
 #else
@@ -1417,6 +1457,9 @@ void setup() {
 // ============================================================================
 void loop() {
     hwGpsPoll();
+#ifdef OUISPY_DONGLE
+    dongleTick();
+#endif
     // Run all active engine loops
     engineLoopAll();
 

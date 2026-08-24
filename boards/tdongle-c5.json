@@ -1,0 +1,38 @@
+{
+  "build": {
+    "arduino": {
+      "partitions": "default_16MB.csv",
+      "memory_type": "qio_qspi"
+    },
+    "core": "esp32",
+    "extra_flags": [
+      "-DBOARD_HAS_PSRAM",
+      "-DCONFIG_SPIRAM_MODE_QIO",
+      "-DCONFIG_SPIRAM_TYPE_ESPPSRAM64",
+      "-DCONFIG_SPIRAM_SIZE=8",
+      "-DARDUINO_USB_MODE=1",
+      "-DARDUINO_USB_CDC_ON_BOOT=1"
+    ],
+    "f_cpu": "240000000L",
+    "f_flash": "80000000L",
+    "flash_mode": "qio",
+    "psram_type": "qio",
+    "mcu": "esp32c5",
+    "variant": "esp32c5"
+  },
+  "connectivity": ["bluetooth", "wifi"],
+  "debug": {
+    "openocd_target": "esp32c5.cfg"
+  },
+  "frameworks": ["arduino", "espidf"],
+  "name": "LilyGO T-Dongle-C5 (16 MB Flash Quad, 8 MB PSRAM Quad)",
+  "upload": {
+    "flash_size": "16MB",
+    "maximum_ram_size": 327680,
+    "maximum_size": 16777216,
+    "require_upload_port": true,
+    "speed": 460800
+  },
+  "url": "https://lilygo.cc/products/t-dongle-c5",
+  "vendor": "LilyGO"
+}

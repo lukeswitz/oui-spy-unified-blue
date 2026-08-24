@@ -12,6 +12,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_heap_caps.h>
+#ifdef OUISPY_DONGLE
+#include "../dongle.h"
+#endif
 
 #define PCAP_LT_WIFI         127u
 #define PCAP_LT_BLE          256u
@@ -327,6 +330,9 @@ static void drainBuffersOverBle(void) {
     portEXIT_CRITICAL(&pcapBufMux);
     if (drainBuf && drainLen) {
         bleGattStreamPcapBytes(drainBuf, drainLen);
+#ifdef OUISPY_DONGLE
+        donglePcapWriteFramed(drainBuf, drainLen);
+#endif
         pcapStreamedBytes += drainLen;
         cntBytes = pcapStreamedBytes;
     }
@@ -341,6 +347,9 @@ static void pcapSenderTask(void* /*arg*/) {
         drainBuffersOverBle();
     }
     drainBuffersOverBle();
+#ifdef OUISPY_DONGLE
+    donglePcapClose();
+#endif
     freeBuffers();
     pcapSenderHandle = nullptr;
     vTaskDelete(NULL);
@@ -432,6 +441,10 @@ static void pcapStart(void) {
         bleGattNotifyPcapStats();
         return;
     }
+
+#ifdef OUISPY_DONGLE
+    donglePcapOpen(pcapMode == PCAP_MODE_BLE ? PCAP_LT_BLE : PCAP_LT_WIFI);
+#endif
 
     if (pcapMode == PCAP_MODE_WIFI) {
         bool meshOn = meshIsEnabled();
