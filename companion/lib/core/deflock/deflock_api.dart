@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -95,10 +93,6 @@ class DeflockApi {
   DeflockApi({Dio? dio})
       : _dio = dio ??
             Dio(BaseOptions(
-              headers: {
-                HttpHeaders.userAgentHeader:
-                    'oui-spy-companion (github.com/lukeswitz/oui-spy-unified-blue)',
-              },
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 60),
               validateStatus: (s) => s != null && s < 500,
