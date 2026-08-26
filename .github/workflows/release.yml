@@ -60,6 +60,10 @@ jobs:
             role: node
             board: s3_devkitc
             chip: esp32s3
+          - env: v3_app_controlled_tdongle_s3
+            role: node
+            board: tdongle_s3
+            chip: esp32s3
           - env: v3_app_controlled_c5
             role: node
             board: xiao_c5
@@ -263,6 +267,7 @@ jobs:
             |--------|------|-----------|-------------------|
             | XIAO ESP32-S3 | node | `oui-spy-node-xiao_s3-${{ github.ref_name }}.bin` | `oui-spy-node-xiao_s3-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32-S3 N16R8 DevKitC | node | `oui-spy-node-s3_devkitc-${{ github.ref_name }}.bin` | `oui-spy-node-s3_devkitc-${{ github.ref_name }}-usb.tar.gz` |
+            | LilyGO T-Dongle-S3 (LCD + SD) | node | `oui-spy-node-tdongle_s3-${{ github.ref_name }}.bin` | `oui-spy-node-tdongle_s3-${{ github.ref_name }}-usb.tar.gz` |
             | XIAO ESP32-C5 (dual-band 2.4+5GHz) | node | `oui-spy-node-xiao_c5-${{ github.ref_name }}.bin` | `oui-spy-node-xiao_c5-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32 WROOM   | mgr  | `oui-spy-mgr-wroom-${{ github.ref_name }}.bin`   | `oui-spy-mgr-wroom-${{ github.ref_name }}-usb.tar.gz` |
             | XIAO ESP32-S3 (recommended) | mgr  | `oui-spy-mgr-xiao_s3-${{ github.ref_name }}.bin` | `oui-spy-mgr-xiao_s3-${{ github.ref_name }}-usb.tar.gz` |
