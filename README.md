@@ -104,6 +104,9 @@ The manager only gathers results; the nodes do the scanning.
 
 ---
 
+<img width="600" height="634" alt="IMG_7559" src="https://github.com/user-attachments/assets/fda18f4c-fadf-431e-ab3e-5118436feda0" />
+
+
 <details>
 <summary><b>All supported boards</b></summary>
 
