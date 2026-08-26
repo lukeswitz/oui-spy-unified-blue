@@ -1463,7 +1463,7 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
     txCounter = 0;
     g_meshSessionSalt = esp_random();
 
-#ifndef OUISPY_DONGLE
+#if !defined(OUISPY_DONGLE) || defined(OUISPY_NIMBLE2)
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(false, false);
     vTaskDelay(pdMS_TO_TICKS(100));

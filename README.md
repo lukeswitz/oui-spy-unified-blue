@@ -113,6 +113,7 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 |---|---|---|---|---|
 | **XIAO ESP32-S3** | NODE | 2.4 GHz | `node-xiao_s3` | `v3_app_controlled` |
 | ESP32-S3 N16R8 DevKitC | NODE | 2.4 GHz | `node-s3_devkitc` | `v3_app_controlled_s3_devkitc` |
+| **LilyGO T-Dongle-S3** | NODE — LCD + microSD | 2.4 GHz | `node-tdongle_s3` | `v3_app_controlled_tdongle_s3` |
 | **XIAO ESP32-C5** (experimental) | NODE — standalone only, no mesh | **2.4 + 5 GHz** | `node-xiao_c5` | `v3_app_controlled_c5` |
 | **XIAO ESP32-S3** | MANAGER | — | `mgr-xiao_s3` | `v3_node_manager_s3` |
 | ESP32-S3 N16R8 DevKitC | MANAGER | — | `mgr-s3_devkitc` | `v3_node_manager_s3_devkitc` |
@@ -124,6 +125,43 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 - The **ESP32-C5** is the only board that also scans 5 GHz.
 - It's newer and less tested — treat it as experimental.
 - It runs **standalone only**: the phone connects to it directly, and it can't be a fleet node under a manager.
+
+</details>
+
+<details>
+<summary><b>T-Dongle-S3: screen, button, SD card</b></summary>
+
+The T-Dongle-S3 carries a 160x80 LCD, a microSD slot and an RGB LED, so it scans and logs with no phone attached.
+
+**Button** (side of the case)
+
+| Press | Action |
+|---|---|
+| Single tap | start / stop a wardrive |
+| Double tap | start / stop PCAP capture |
+
+**Screen**
+
+- Top bar: node ID, wardrive runtime, then `APP` / `MSH` / `SD` / `GPS` — green when up, red or amber when not.
+- Left panel: unique WiFi networks (large, green) over unique BLE devices (blue). Counts are distinct MACs, not raw hits.
+- Right panel: satellite count, rows written to the WiGLE CSV, and speed in mph. `NO FIX` means nothing is being written — WiGLE rows need coordinates.
+- Bottom strip: one icon per engine — detector, Flock BLE, Flock WiFi, foxhunter, Sky Spy, UniPwn, PCAP — coloured while the engine runs, dark when off, with that engine's unique count under it.
+
+**LED**
+
+Dim green while any engine runs, dark when idle. A detection flashes that engine's colour, with a different pulse count per engine, so a flash always means something worth looking at — wardrive hits don't flash. Brightness follows the NeoPixel slider in the app; `0` is off.
+
+**SD card**
+
+Files land in `/OUISPY` on the card:
+
+| File | Contents |
+|---|---|
+| `det_<date>_<time>.csv` | every detection: engine, method, MAC, RSSI, channel, name, position, node |
+| `wigle_<date>_<time>.csv` | WigleWifi-1.6 rows, ready to upload |
+| `cap_<date>_<time>_NN_wifi.pcap` | PCAP capture, one file per run |
+
+Names are stamped from GPS UTC once the first fix arrives; files opened before that keep a sequence number so nothing is lost. WiGLE rows need a fix — with no GPS the detection CSV still fills in, without coordinates.
 
 </details>
 
@@ -152,7 +190,7 @@ Saved runs replay on the map, and you can import CSVs.
 Scanning resumes when you leave. While wardriving inside one, the map shows how many detections the
 zone is holding back, so a quiet screen is never mistaken for a dead radio.
 
-**PCAP** — no SD card: frames stream over Bluetooth and the app writes a Wireshark `.pcap`. Capture WiFi 802.11 or BLE advertising traffic (BLE saves as `LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR`). Pause and resume a capture without stopping the radio.
+**PCAP** — frames stream over Bluetooth and the app writes a Wireshark `.pcap`; on the T-Dongle-S3 they also go straight to the card. Capture WiFi 802.11 or BLE advertising traffic (BLE saves as `LINKTYPE_BLUETOOTH_LE_LL_WITH_PHDR`). Pause and resume a capture without stopping the radio.
 **Auto-PCAP** records for 3–120 s whenever an engine fires, labeled by what triggered it, then goes back to scanning.
 A library screen keeps every capture.
 
@@ -258,6 +296,7 @@ Pins are per-board — override with `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=` for other
 ```bash
 pio run -e v3_app_controlled             # node (XIAO ESP32-S3)
 pio run -e v3_app_controlled_s3_devkitc  # node (ESP32-S3 N16R8 DevKitC)
+pio run -e v3_app_controlled_tdongle_s3  # node (LilyGO T-Dongle-S3, LCD + SD)
 ./build_c5.sh                            # node (XIAO ESP32-C5, dual-band 2.4+5GHz)
 ./build_c5.sh -t upload                  # flash the C5 node
 pio run -e v3_node_manager_s3            # manager (XIAO ESP32-S3)

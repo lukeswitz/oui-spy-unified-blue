@@ -672,6 +672,13 @@
         path: 'node-s3_devkitc/',
         flashSize: '16MB', flashMode: 'qio', flashFreq: '80m',
       },
+      'node-tdongle_s3': {
+        role: 'node', name: 'LilyGO T-Dongle-S3', chip: 'ESP32-S3', bands: '2.4GHz', flash: '16MB',
+        note: 'On-board 160x80 LCD, microSD slot and RGB LED. Logs detections, WiGLE CSV and pcap straight to the card; the side button starts/stops a wardrive, double tap toggles pcap. Runs standalone with no phone attached.',
+        label: 'LilyGO T-Dongle-S3 (node, LCD + SD)',
+        path: 'node-tdongle_s3/',
+        flashSize: '16MB', flashMode: 'qio', flashFreq: '80m',
+      },
       'mgr-xiao_s3': {
         role: 'mgr', name: 'XIAO ESP32-S3', chip: 'ESP32-S3', flash: '8MB', recommended: true,
         label: 'XIAO ESP32-S3 — MANAGER (multi-node hub)',

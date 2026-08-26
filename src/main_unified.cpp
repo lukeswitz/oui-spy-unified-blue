@@ -449,10 +449,12 @@ static void detectionNotifyTask(void* param) {
             if (isAlertableEngine(evt.engine_id)) {
                 Serial.printf("[CHIME] engine=%d\n", evt.engine_id);
                 requestChime();
+#ifndef OUISPY_DONGLE
                 if (hwLedEnabled) {
                     g_ledOffAtMs = millis() + 80;
                     OUISPY_LED_ON();
                 }
+#endif
             }
 
             // Broadcast to mesh peers (only local detections, not relayed ones)

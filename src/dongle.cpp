@@ -65,15 +65,18 @@ typedef struct {
 
 static DongleField s_fNode, s_fApp, s_fMesh, s_fSd, s_fGps;
 static DongleField s_fWifi, s_fBle, s_fLog;
-static DongleField s_fHit1, s_fHit2, s_fWd;
+static DongleField s_fHit1, s_fHit2, s_fWd, s_fMph;
 static DongleField s_fStrip[7];
 static uint32_t s_wdStartMs = 0;
 static uint16_t s_wifiIconColor = 1;
 static uint16_t s_bleIconColor = 1;
 static bool s_chromeDrawn = false;
 static uint16_t s_engStripMask = 0xFFFF;
+#define DONGLE_TAP_WINDOW_MS 400u
+
 static bool s_btnDown = false;
 static uint32_t s_btnChangeMs = 0;
+static uint32_t s_btnTapDeadline = 0;
 
 #define DONGLE_SEEN_BYTES 2048
 #define DONGLE_SEEN_BITS  (DONGLE_SEEN_BYTES * 8)
@@ -108,7 +111,7 @@ static bool markSeen(uint8_t* set, uint32_t bits, const uint8_t* mac) {
     return !had;
 }
 
-static uint8_t  s_ledR = 255, s_ledG = 255, s_ledB = 255;
+static uint8_t  s_ledR = 255, s_ledG = 255, s_ledB = 255, s_ledBright = 255;
 static uint32_t s_ledFlashUntil = 0;
 static uint32_t s_ledFlashStart = 0;
 static uint16_t s_ledFlashStepMs = 70;
@@ -127,7 +130,7 @@ static const DongleLedPattern kEngLed[ENGINE_COUNT] = {
     { 90,  0, 60, 1, 40 },
     {  0, 80, 90, 3, 60 },
     { 90,  0,  0, 3, 90 },
-    { 40, 40, 40, 1, 50 },
+    {  0,  0,  0, 0, 50 },
     { 90, 80,  0, 1, 90 },
 };
 
@@ -186,7 +189,8 @@ void dongleLedInit(void) {
 
 void dongleLedSet(uint8_t r, uint8_t g, uint8_t b) {
     uint8_t bright = (uint8_t)(hwNeopixelBrightness >> 3);
-    if (bright == 0) bright = 1;
+    if (hwNeopixelBrightness == 0) { r = 0; g = 0; b = 0; bright = 1; }
+    else if (bright == 0) bright = 1;
     if (bright > 31) bright = 31;
     if (s_ledMutex) xSemaphoreTake(s_ledMutex, portMAX_DELAY);
     for (int i = 0; i < 4; i++) apa102Byte(0x00);
@@ -524,7 +528,7 @@ static void drawEngineIcon(uint8_t id, int16_t x, int16_t y, uint16_t c) {
 }
 
 static const uint16_t kEngColor[ENGINE_COUNT] = {
-    DGX_AMBER, DGX_RED, DGX_RED, DGX_MAGENTA,
+    DGX_AMBER, DGX_SKY, DGX_LIME, DGX_MAGENTA,
     DGX_CYAN, DGX_YELLOW, DGX_WHITE, DGX_SKY
 };
 
@@ -606,9 +610,10 @@ static void tftDraw(void) {
         !s_sdReady ? DGX_RED : s_pcapBytes ? DGX_MAGENTA : (gpsValid ? DGX_AMBER : DGX_GREY), 8, buf);
 
     float mph = currentGps.speed * 2.23694f;
-    if (gpsValid) snprintf(buf, sizeof(buf), "%dmph", (int)(mph + 0.5f));
-    else          snprintf(buf, sizeof(buf), "--mph");
-    fld(&s_fLog, 106, 34, 1, gpsValid ? DGX_WHITE : DGX_SLATE, 8, buf);
+    if (gpsValid) snprintf(buf, sizeof(buf), "%d", (int)(mph + 0.5f));
+    else          snprintf(buf, sizeof(buf), "--");
+    fld(&s_fLog, 104, 36, 2, gpsValid ? DGX_WHITE : DGX_SLATE, 3, buf);
+    fld(&s_fMph, 141, 44, 1, gpsValid ? DGX_GREY : DGX_SLATE, 3, "mph");
 
     bool wdOn = (mask & (1 << ENGINE_WARDRIVE)) != 0;
     if (wdOn && s_wdStartMs == 0) s_wdStartMs = millis();
@@ -622,16 +627,17 @@ static void tftDraw(void) {
                                     (unsigned long)(secs / 60u),
                                     (unsigned long)(secs % 60u));
     } else {
-        snprintf(buf, sizeof(buf), "idle");
+        buf[0] = '\0';
     }
-    fld(&s_fWd, 106, 44, 1, wdOn ? DGX_LIME : DGX_SLATE, 8, buf);
+    fld(&s_fWd, 34, 2, 1, DGX_LIME, 6, buf);
 
     drawEngineStrip(mask);
 }
 
 static void ledApply(uint8_t r, uint8_t g, uint8_t b) {
-    if (r == s_ledR && g == s_ledG && b == s_ledB) return;
-    s_ledR = r; s_ledG = g; s_ledB = b;
+    uint8_t bright = hwNeopixelBrightness;
+    if (r == s_ledR && g == s_ledG && b == s_ledB && bright == s_ledBright) return;
+    s_ledR = r; s_ledG = g; s_ledB = b; s_ledBright = bright;
     dongleLedSet(r, g, b);
 }
 
@@ -653,7 +659,27 @@ static void ledTick(uint32_t now) {
     ledApply(0, 0, 0);
 }
 
+static void buttonFlash(uint32_t now, uint8_t r, uint8_t g, uint8_t b) {
+    s_ledFlashR = r; s_ledFlashG = g; s_ledFlashB = b;
+    s_ledFlashStepMs = 150;
+    s_ledFlashStart = now;
+    s_ledFlashUntil = now + 150u;
+}
+
 static void buttonTick(uint32_t now) {
+    if (s_btnTapDeadline && (int32_t)(now - s_btnTapDeadline) >= 0) {
+        s_btnTapDeadline = 0;
+        bool running = engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED;
+        if (running) {
+            engineDisable(ENGINE_WARDRIVE);
+            Serial.println("[DONGLE] button -> wardrive stop");
+        } else {
+            engineEnable(ENGINE_WARDRIVE);
+            Serial.println("[DONGLE] button -> wardrive start");
+        }
+        buttonFlash(now, 60, 60, 60);
+    }
+
     bool down = digitalRead(DONGLE_BTN) == LOW;
     if (down == s_btnDown) { s_btnChangeMs = now; return; }
     if (now - s_btnChangeMs < 40u) return;
@@ -661,16 +687,20 @@ static void buttonTick(uint32_t now) {
     s_btnDown = down;
     if (!down) return;
 
-    bool running = engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED;
-    if (running) {
-        engineDisable(ENGINE_WARDRIVE);
-        Serial.println("[DONGLE] button -> wardrive stop");
-    } else {
-        engineEnable(ENGINE_WARDRIVE);
-        Serial.println("[DONGLE] button -> wardrive start");
+    if (s_btnTapDeadline) {
+        s_btnTapDeadline = 0;
+        bool capturing = engineGetState(ENGINE_PCAP) != ESTATE_DISABLED;
+        if (capturing) {
+            engineDisable(ENGINE_PCAP);
+            Serial.println("[DONGLE] double tap -> pcap stop");
+        } else {
+            engineEnable(ENGINE_PCAP);
+            Serial.println("[DONGLE] double tap -> pcap start");
+        }
+        buttonFlash(now, 90, 80, 0);
+        return;
     }
-    s_ledFlashR = 60; s_ledFlashG = 60; s_ledFlashB = 60;
-    s_ledFlashUntil = now + 150u;
+    s_btnTapDeadline = now + DONGLE_TAP_WINDOW_MS;
 }
 
 void dongleInit(void) {
@@ -766,10 +796,12 @@ void dongleOnDetection(const DetectionEvent* evt) {
 
     uint8_t eid = evt->engine_id < ENGINE_COUNT ? evt->engine_id : ENGINE_WARDRIVE;
     const DongleLedPattern* pat = &kEngLed[eid];
-    s_ledFlashR = pat->r; s_ledFlashG = pat->g; s_ledFlashB = pat->b;
-    s_ledFlashStepMs = pat->stepMs;
-    s_ledFlashStart = millis();
-    s_ledFlashUntil = s_ledFlashStart + (uint32_t)pat->stepMs * pat->pulses * 2u;
+    if (pat->pulses) {
+        s_ledFlashR = pat->r; s_ledFlashG = pat->g; s_ledFlashB = pat->b;
+        s_ledFlashStepMs = pat->stepMs;
+        s_ledFlashStart = millis();
+        s_ledFlashUntil = s_ledFlashStart + (uint32_t)pat->stepMs * pat->pulses * 2u;
+    }
 
     if (!s_sdReady) return;
 

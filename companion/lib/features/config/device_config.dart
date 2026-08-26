@@ -94,6 +94,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       if (mounted && ref.read(configMenuWantedProvider)) _syncSectionSheet(true);
     });
     _offlineGpsTag = prefs.getBool('offlineGpsTagEnabled') ?? false;
+    _neopixelBrightness = prefs.getInt('neopixelBrightness') ?? _neopixelBrightness;
     _readDeviceConfig();
     final ble = ref.read(bleManagerProvider);
     _connStateSub = ble.connectionState.listen((s) {
@@ -159,6 +160,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _buzzerEnabled = hw[0] != 0;
             _ledEnabled = hw[1] != 0;
             _neopixelBrightness = hw[2];
+            ref.read(sharedPreferencesProvider)
+                .setInt('neopixelBrightness', hw[2]);
             _buzzerVolume = hw.length >= 4 ? hw[3] : 100;
             _flockExtendedOui = hw.length >= 5 && hw[4] != 0;
             _offlineScanEnabled = hw.length > 5 && hw[5] != 0;
@@ -1203,6 +1206,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
           );
       ref.read(sharedPreferencesProvider)
           .setBool('offlineScanEnabled', _offlineScanEnabled);
+      ref.read(sharedPreferencesProvider)
+          .setInt('neopixelBrightness', _neopixelBrightness);
     } catch (e) {
       DebugLog.log('CONFIG: writeHardwareConfig failed: $e');
       if (!mounted) return;
