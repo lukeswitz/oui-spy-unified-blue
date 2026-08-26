@@ -3,6 +3,17 @@ import 'dart:typed_data';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 
+typedef GpsStatus = ({
+  bool hwActive,
+  double latitude,
+  double longitude,
+  double altitude,
+  double speed,
+  double heading,
+  double accuracy,
+  int satellites,
+});
+
 /// Binary encode/decode for GATT characteristic payloads.
 class BleProtocol {
   const BleProtocol._();
@@ -131,6 +142,22 @@ class BleProtocol {
     bytes.setInt64(33, timestampMs, Endian.little);
     bytes.setUint8(41, suppressAlerts ? 1 : 0);
     return bytes.buffer.asUint8List();
+  }
+
+  /// Decode GPS Receive read-back: hw_active[1] then the device's live GpsData.
+  static GpsStatus? decodeGpsStatus(List<int> data) {
+    if (data.length < 42) return null;
+    final view = ByteData.sublistView(Uint8List.fromList(data));
+    return (
+      hwActive: data[0] != 0,
+      latitude: view.getFloat64(1, Endian.little),
+      longitude: view.getFloat64(9, Endian.little),
+      altitude: view.getFloat32(17, Endian.little),
+      speed: view.getFloat32(21, Endian.little),
+      heading: view.getFloat32(25, Endian.little),
+      accuracy: view.getFloat32(29, Endian.little),
+      satellites: data[33],
+    );
   }
 
   // -- Engine control --

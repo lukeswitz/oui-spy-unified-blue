@@ -20,6 +20,9 @@ class StatusBar extends ConsumerStatefulWidget {
 class _StatusBarState extends ConsumerState<StatusBar> {
   GpsPosition? _gpsPosition;
   StreamSubscription<GpsPosition>? _gpsSub;
+  HwGpsState _hwGps = const HwGpsState(
+      active: false, satellites: 0, source: GpsSource.phone, inUse: false);
+  StreamSubscription<HwGpsState>? _hwGpsSub;
   Timer? _uptimeTimer;
 
   @override
@@ -27,8 +30,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     super.initState();
     final gps = ref.read(gpsProvider);
     _gpsPosition = gps.lastPosition;
+    _hwGps = gps.hwGps;
     _gpsSub = gps.positionStream.listen((pos) {
       if (mounted) setState(() => _gpsPosition = pos);
+    });
+    _hwGpsSub = gps.hwGpsStream.listen((s) {
+      if (mounted) setState(() => _hwGps = s);
     });
     _uptimeTimer = Timer.periodic(
       const Duration(seconds: 1),
@@ -41,6 +48,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   @override
   void dispose() {
     _gpsSub?.cancel();
+    _hwGpsSub?.cancel();
     _uptimeTimer?.cancel();
     super.dispose();
   }
@@ -74,7 +82,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
           ],
           // GPS
           _InfoChip(
-            icon: Icons.satellite_alt,
+            icon: _hwGps.inUse ? Icons.memory : Icons.smartphone,
             label: _gpsLabel,
             color: _gpsColor,
           ),
@@ -137,6 +145,8 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   }
 
   Color get _gpsColor {
+    if (_hwGps.inUse) return AppTheme.gpsGood;
+    if (_hwGps.fallback) return AppTheme.warning;
     final quality = _gpsPosition?.quality ?? GpsQuality.none;
     return switch (quality) {
       GpsQuality.good => AppTheme.gpsGood,
@@ -147,9 +157,11 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   }
 
   String get _gpsLabel {
+    if (_hwGps.inUse) return 'HW ${_hwGps.satellites}sv';
     final pos = _gpsPosition;
-    if (pos == null) return '--';
-    return '${pos.accuracy.toStringAsFixed(0)}m';
+    if (pos == null) return _hwGps.fallback ? 'PH --' : '--';
+    final acc = '${pos.accuracy.toStringAsFixed(0)}m';
+    return _hwGps.fallback ? 'PH $acc' : acc;
   }
 }
 

@@ -1075,6 +1075,13 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
 extern bool hwGpsActive(void);
 
 class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
+    void onRead(NimBLECharacteristic* chr) override {
+        uint8_t buf[1 + sizeof(GpsData)];
+        buf[0] = hwGpsActive() ? 1 : 0;
+        memcpy(buf + 1, (const void*)&currentGps, sizeof(GpsData));
+        chr->setValue(buf, sizeof(buf));
+    }
+
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
         if (val.length() < sizeof(GpsData)) return;
@@ -2229,7 +2236,7 @@ void bleGattInit(void) {
     // -- GPS Receive (WRITE, WRITE_NR) --
     chrGpsReceive = svc->createCharacteristic(
         CHR_GPS_RECEIVE,
-        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
     chrGpsReceive->setCallbacks(&gpsReceiveCb);
 

@@ -26,7 +26,7 @@ class GattUuids {
   /// READ, NOTIFY: device status (engines, counts, heap, SPIFFS)
   static final deviceStatus = Guid('00000011-$_base');
 
-  /// WRITE: app pushes phone GPS to device
+  /// READ, WRITE: read device GPS state (hw_active + GpsData); write phone GPS
   static final gpsReceive = Guid('00000012-$_base');
 
   /// READ, WRITE: buzzer, LED, NeoPixel brightness

@@ -41,6 +41,7 @@ import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_api.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/core/app_time.dart';
+import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DeviceConfigScreen extends ConsumerStatefulWidget {
@@ -74,6 +75,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   String _heapFree = '--';
 
   StreamSubscription<NodeConnectionState>? _connStateSub;
+  StreamSubscription<HwGpsState>? _hwGpsSub;
+  HwGpsState _hwGps = const HwGpsState(
+      active: false, satellites: 0, source: GpsSource.phone, inUse: false);
 
   @override
   void initState() {
@@ -98,6 +102,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         _readDeviceConfig();
       }
     });
+    final gps = ref.read(gpsProvider);
+    _hwGps = gps.hwGps;
+    _hwGpsSub = gps.hwGpsStream.listen((s) {
+      if (mounted) setState(() => _hwGps = s);
+    });
+    gps.refreshHwGps();
   }
 
   void _persistTab() {
@@ -123,6 +133,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     // Leaving with the sheet up must not re-open it on the next visit.
     ref.read(configMenuWantedProvider.notifier).state = false;
     _connStateSub?.cancel();
+    _hwGpsSub?.cancel();
     _tabController.removeListener(_persistTab);
     _tabController.dispose();
     _ssidController.dispose();
@@ -492,6 +503,23 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     );
   }
 
+  Widget _gpsSourceRow(
+      GpsSource source, IconData icon, String label, String subtitle) {
+    final selected = _hwGps.source == source;
+    return ConfigActionRow(
+      icon: icon,
+      label: label,
+      subtitle: subtitle,
+      color: selected ? const Color(0xFF4AB8FF) : null,
+      onTap: () => ref.read(gpsProvider).setSource(source),
+      trailing: Icon(
+        selected ? Icons.check_circle : Icons.circle_outlined,
+        size: 18,
+        color: selected ? const Color(0xFF4AB8FF) : AppTheme.textDim,
+      ),
+    );
+  }
+
   Widget _buildHardwareTab() {
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
@@ -553,6 +581,37 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             setState(() => _neopixelBrightness = v.round());
             _writeHardwareConfig();
           },
+        ),
+
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'GPS SOURCE'),
+        ConfigInfoRow(
+          icon: _hwGps.active ? Icons.satellite_alt : Icons.satellite_alt_outlined,
+          label: 'On-board GPS module',
+          value: _hwGps.active ? 'FIX · ${_hwGps.satellites} sats' : 'NO FIX',
+          color: _hwGps.active ? const Color(0xFF4AFF8A) : const Color(0xFFFF6B6B),
+        ),
+        ConfigInfoRow(
+          icon: Icons.edit_location_alt,
+          label: 'Recording positions from',
+          value: _hwGps.inUse
+              ? 'HARDWARE'
+              : (_hwGps.fallback ? 'PHONE (FALLBACK)' : 'PHONE'),
+          color: _hwGps.fallback
+              ? const Color(0xFFFFB84A)
+              : const Color(0xFF4AB8FF),
+        ),
+        _gpsSourceRow(
+          GpsSource.phone,
+          Icons.smartphone,
+          'Phone (default)',
+          'Record the phone location. The device is never polled for GPS.',
+        ),
+        _gpsSourceRow(
+          GpsSource.hardware,
+          Icons.memory,
+          'On-board GPS module',
+          'Record from the module, falling back to the phone whenever it has no fix.',
         ),
 
         const SizedBox(height: 16),

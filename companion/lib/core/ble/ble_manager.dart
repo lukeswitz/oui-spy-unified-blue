@@ -1231,6 +1231,18 @@ class BleManager {
     );
   }
 
+  /// Read the device's live GPS state, including whether its on-board GPS
+  /// module has a fix.
+  Future<GpsStatus?> readGpsStatus() async {
+    if (_gpsReceive == null || !isConnected) return null;
+    try {
+      return BleProtocol.decodeGpsStatus(await _gpsReceive!.read());
+    } catch (e) {
+      DebugLog.log('BLE: GPS status read failed: $e');
+      return null;
+    }
+  }
+
   // -- Hardware config --
 
   Future<void> _readDeviceConfig() async {
