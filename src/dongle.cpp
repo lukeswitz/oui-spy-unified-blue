@@ -53,6 +53,7 @@ static uint32_t s_hits = 0;
 static uint32_t s_wifiHits = 0;
 static uint32_t s_bleHits = 0;
 static uint32_t s_wigleRows = 0;
+static uint32_t s_detRows = 0;
 static uint32_t s_lastDraw = 0;
 static char s_lastLine[DONGLE_ROWS][DONGLE_COLS + 1];
 
@@ -604,8 +605,8 @@ static void tftDraw(void) {
 
     if (!s_sdReady)          snprintf(buf, sizeof(buf), "NO SD");
     else if (s_pcapBytes)    snprintf(buf, sizeof(buf), "CAP %luk", (unsigned long)(s_pcapBytes / 1024u));
-    else if (!gpsValid)      snprintf(buf, sizeof(buf), "LOG --");
-    else                     snprintf(buf, sizeof(buf), "LOG %lu", (unsigned long)s_wigleRows);
+    else if (gpsValid)       snprintf(buf, sizeof(buf), "WIG %lu", (unsigned long)s_wigleRows);
+    else                     snprintf(buf, sizeof(buf), "LOG %lu", (unsigned long)s_detRows);
     fld(&s_fHit2, 106, 24, 1,
         !s_sdReady ? DGX_RED : s_pcapBytes ? DGX_MAGENTA : (gpsValid ? DGX_AMBER : DGX_GREY), 8, buf);
 
@@ -830,6 +831,7 @@ void dongleOnDetection(const DetectionEvent* evt) {
                             s_hitMac, (int)evt->rssi, (unsigned)evt->channel, nameEsc,
                             evt->source_node_id[0] ? evt->source_node_id : "local");
         }
+        s_detRows++;
     }
 
     if (s_wigleCsv && evt->engine_id == ENGINE_WARDRIVE && gpsValid && haveUtc) {

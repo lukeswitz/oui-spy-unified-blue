@@ -131,14 +131,14 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 <details>
 <summary><b>T-Dongle-S3: screen, button, SD card</b></summary>
 
-The T-Dongle-S3 carries a 160x80 LCD, a microSD slot and an RGB LED, so it scans and logs with no phone attached.
+The T-Dongle-S3 has an LCD screen, microSD and an LED (no GPS). It scans and logs with no app:
 
-**Button** (side of the case)
+**Button**
 
 | Press | Action |
 |---|---|
 | Single tap | start / stop a wardrive |
-| Double tap | start / stop PCAP capture |
+| Double tap | start / stop WiFi PCAP  |
 
 **Screen**
 
@@ -153,7 +153,7 @@ Dim green while any engine runs, dark when idle. A detection flashes that engine
 
 **SD card**
 
-Files land in `/OUISPY` on the card:
+Files go in `/OUISPY` on the card:
 
 | File | Contents |
 |---|---|
