@@ -13,6 +13,13 @@
 #define DGX_CYAN    0x07FF
 #define DGX_MAGENTA 0xF81F
 #define DGX_YELLOW  0xFFE0
+#define DGX_LIME    0x9FE0
+#define DGX_AMBER   0xFD20
+#define DGX_BLUE    0x255F
+#define DGX_SKY     0x5DFF
+#define DGX_GREY    0x8410
+#define DGX_DIM     0x39E7
+#define DGX_SLATE   0x2124
 
 class DongleST7735 : public Adafruit_SPITFT {
 public:

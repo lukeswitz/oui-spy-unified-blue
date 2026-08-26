@@ -117,7 +117,11 @@ static SemaphoreHandle_t  inviteMutex = NULL;
 static SemaphoreHandle_t  txMutex = NULL;
 
 #define MESH_RENDEZVOUS_CH      1
+#ifdef OUISPY_LOWRAM
+#define MESH_TX_QUEUE_DEPTH     12
+#else
 #define MESH_TX_QUEUE_DEPTH     128
+#endif
 #define MESH_TX_MAX_LEN         250
 #define MESH_TX_DRAIN_PERIOD_MS 20
 #define MESH_TX_DRAIN_BURST     64
@@ -1393,7 +1397,11 @@ void meshInit(void) {
     if (!meshRxQueue) {
         Serial.println("[MESH] rx queue create FAIL");
     }
+#ifdef OUISPY_LOWRAM
+    detRecQueue = xQueueCreate(24, sizeof(DetRec));
+#else
     detRecQueue = xQueueCreate(128, sizeof(DetRec));
+#endif
     if (!detRecQueue) {
         Serial.println("[MESH] detRec queue create FAIL");
     }
@@ -1455,13 +1463,24 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
     txCounter = 0;
     g_meshSessionSalt = esp_random();
 
+#ifndef OUISPY_DONGLE
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(false, false);
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
+#endif
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+#ifdef OUISPY_DONGLE
+    esp_err_t startRc = esp_wifi_start();
+    esp_err_t chRc = esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    wifi_mode_t md = WIFI_MODE_NULL;
+    esp_wifi_get_mode(&md);
+    Serial.printf("[MESH] wifi start rc=0x%x ch rc=0x%x mode=%d\n",
+                  (int)startRc, (int)chRc, (int)md);
+#else
     esp_wifi_start();
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+#endif
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("[MESH] ESP-NOW init failed");

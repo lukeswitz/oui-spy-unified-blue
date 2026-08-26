@@ -486,6 +486,12 @@ static void detectionNotifyTask(void* param) {
                     Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d,\"auth\":%d}\n",
                                   evt.engine_id, macStr, evt.rssi, evt.channel, evt.method,
                                   evt.ext.flock.auth_mode);
+#ifdef OUISPY_DONGLE
+                } else if (evt.engine_id == ENGINE_WARDRIVE && evt.method == METHOD_WIFI_AP) {
+                    Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d,\"hidden\":%d}\n",
+                                  evt.engine_id, macStr, evt.rssi, evt.channel, evt.method,
+                                  evt.ext.wardrive.ssid[0] ? 0 : 1);
+#endif
                 } else {
                     Serial.printf("{\"engine\":%d,\"mac\":\"%s\",\"rssi\":%d,\"ch\":%d,\"method\":%d}\n",
                                   evt.engine_id, macStr, evt.rssi, evt.channel, evt.method);
@@ -1276,6 +1282,8 @@ void setup() {
     // Create FreeRTOS queues
 #ifdef OUISPY_NIMBLE2
     detectionQueue = xQueueCreate(32, sizeof(DetectionEvent));
+#elif defined(OUISPY_LOWRAM)
+    detectionQueue = xQueueCreate(32, sizeof(DetectionEvent));
 #else
     detectionQueue = xQueueCreate(128, sizeof(DetectionEvent));
 #endif
@@ -1290,7 +1298,13 @@ void setup() {
         Serial.println("[FATAL] Queue creation failed!");
         while (1) delay(1000);
     }
+#ifdef OUISPY_LOWRAM
+    Serial.printf("[INIT] Queues created (det=%u, cmd=%u)\n",
+                  (unsigned)uxQueueSpacesAvailable(detectionQueue),
+                  (unsigned)uxQueueSpacesAvailable(engineCmdQueue));
+#else
     Serial.println("[INIT] Queues created (det=128, cmd=8)");
+#endif
 
     // Initialize engine registry
     engineRegistryInit();
@@ -1319,6 +1333,24 @@ void setup() {
     hwGpsInit();
     meshInit();
 #else
+#ifdef OUISPY_DONGLE
+    wifi_init_config_t dongleWifiCfg = WIFI_INIT_CONFIG_DEFAULT();
+    dongleWifiCfg.nvs_enable        = 0;
+    dongleWifiCfg.static_rx_buf_num = 4;
+    dongleWifiCfg.dynamic_rx_buf_num = 8;
+    dongleWifiCfg.dynamic_tx_buf_num = 8;
+    dongleWifiCfg.cache_tx_buf_num  = 0;
+    dongleWifiCfg.ampdu_rx_enable   = 0;
+    dongleWifiCfg.ampdu_tx_enable   = 0;
+    dongleWifiCfg.amsdu_tx_enable   = 0;
+    esp_err_t dongleWifiRc = esp_wifi_init(&dongleWifiCfg);
+    if (dongleWifiRc == ESP_OK) {
+        esp_wifi_set_storage(WIFI_STORAGE_RAM);
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        dongleWifiRc = esp_wifi_start();
+    }
+    Serial.printf("[DONGLE] wifi up rc=0x%x\n", (int)dongleWifiRc);
+#endif
     hwGpsInit();
     meshInit();
 

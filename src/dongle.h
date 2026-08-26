@@ -40,6 +40,10 @@
 #define DONGLE_SD_HZ 20000000
 #endif
 
+#ifndef DONGLE_BTN
+#define DONGLE_BTN 0
+#endif
+
 #ifndef DONGLE_LED_DI
 #define DONGLE_LED_DI 40
 #endif

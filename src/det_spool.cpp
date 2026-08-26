@@ -13,7 +13,9 @@
 #define SPOOL_FS LittleFS
 #endif
 
-#if defined(OUISPY_ROLE_MANAGER) && !defined(BOARD_HAS_PSRAM)
+#if defined(OUISPY_LOWRAM)
+#define SPOOL_CAP 48
+#elif defined(OUISPY_ROLE_MANAGER) && !defined(BOARD_HAS_PSRAM)
 #define SPOOL_CAP 120
 #else
 #define SPOOL_CAP 1000
