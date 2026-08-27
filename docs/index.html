@@ -648,7 +648,7 @@
   </script>
 
   <script type="module">
-    import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.5.4/bundle.js';
+    import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@^0.6.1/bundle.js';
 
     const TARGETS = {
       'node-xiao_s3': {
@@ -934,6 +934,7 @@
       flashBtn.textContent = 'FLASHING...';
       logEl.innerHTML = '';
 
+      let transport = null;
       try {
         log('Requesting serial port...');
         const port = await navigator.serial.requestPort();
@@ -941,11 +942,12 @@
         setStatus('CONNECTED', 'connected');
         log('Port selected');
 
-        const transport = new Transport(port, true);
+        transport = new Transport(port, true);
         const esploader = new ESPLoader({
           transport,
-          baudrate: 921600,
+          baudrate: 460800,
           romBaudrate: 115200,
+          serialOptions: { bufferSize: 16384 },
           terminal: {
             clean() {},
             writeLine(data) { log(data.trim()); },
@@ -953,9 +955,39 @@
           }
         });
 
+        const detectChip = esploader.detectChip.bind(esploader);
+        esploader.detectChip = async (...a) => {
+          const r = await detectChip(...a);
+          const c = esploader.chip;
+          if (c && c.SPI_REG_BASE === 0x60002000
+              && ['ESP32-C5', 'ESP32-C6', 'ESP32-C61'].includes(c.CHIP_NAME)) {
+            c.SPI_REG_BASE = 0x60003000;
+            log('Applied SPI_REG_BASE correction for ' + c.CHIP_NAME + ' (esptool-js#253).');
+          }
+          return r;
+        };
+
         log('Connecting to ' + TARGETS[currentTarget].chip + '...');
-        const chip = await esploader.main();
+        let chip;
+        try {
+          chip = await esploader.main();
+        } catch (err) {
+          if (/getChipDescription/.test(err.message || '')) {
+            throw new Error('Chip not recognized by esptool-js. Replug the board and RETRY; if it still fails, this silicon is newer than the flasher build — open an issue with this log.');
+          }
+          throw err;
+        }
         log(`Chip: ${chip}`, 'success');
+
+        const detected = esploader.chip && esploader.chip.CHIP_NAME;
+        const wanted = TARGETS[currentTarget].chip.split(' ')[0];
+        if (detected && detected !== wanted) {
+          const match = Object.keys(TARGETS).filter(
+            k => TARGETS[k].chip.split(' ')[0] === detected && TARGETS[k].role === TARGETS[currentTarget].role);
+          throw new Error(`Board mismatch: connected chip is ${detected}, selected target needs ${wanted}. `
+            + (match.length ? 'Select ' + match.map(k => TARGETS[k].label).join(' or ') + ' and RETRY.'
+                            : 'No ' + detected + ' target exists for this role.'));
+        }
         setStatus('FLASHING', 'flashing');
 
         progressContainer.classList.add('active');
@@ -970,7 +1002,7 @@
           const addr = (cfg.name === 'bootloader.bin' && TARGETS[currentTarget].bootloaderOffset != null)
             ? TARGETS[currentTarget].bootloaderOffset
             : cfg.offset;
-          flashFiles.push({ data: binaryToStr(data), address: addr });
+          flashFiles.push({ data, address: addr });
           log(`  ${cfg.name} (${(data.length / 1024).toFixed(1)} KB)`);
           setProgress(((i + 1) / FLASH_CONFIG.length) * 20, `DOWNLOADED ${cfg.name}`);
         }
@@ -984,7 +1016,7 @@
           flashSize: tgt.flashSize,
           flashMode: tgt.flashMode,
           flashFreq: tgt.flashFreq,
-          eraseAll: false,
+          eraseAll: true,
           compress: true,
           reportProgress: (fileIndex, written, total) => {
             const filePct = written / total;
@@ -1011,6 +1043,14 @@
       } catch (err) {
         setStatus('ERROR', 'error');
         log(err.message || String(err), 'error');
+        if (transport) {
+          try {
+            await transport.disconnect();
+            log('Serial port released.');
+          } catch (e) {
+            log('Could not release the serial port — close this tab before retrying.', 'error');
+          }
+        }
         flashBtn.disabled = false;
         flashBtn.textContent = 'RETRY';
       }
