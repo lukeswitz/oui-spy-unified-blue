@@ -445,6 +445,7 @@ class AppState extends ChangeNotifier {
           DebugLog.log('AppState: connection ready — pushing saved node radio roles');
           _pushNodeRadioRoles();
         }
+        _restoreHardwareConfig();
       }
       if (state == NodeConnectionState.disconnected ||
           state == NodeConnectionState.reconnecting) {
@@ -730,6 +731,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     SharedPreferences.getInstance().then((p) => p.setBool('meshAutoEnable', true));
     DebugLog.log('AppState: mesh enabled, peers=${peerMacs.length}');
+  }
+
+  Future<void> _restoreHardwareConfig() async {
+    final p = await SharedPreferences.getInstance();
+    if (p.getBool('hwConfigSaved') != true) return;
+    try {
+      await _ble.writeHardwareConfig(
+        buzzer: p.getBool('hwBuzzerEnabled') ?? true,
+        led: p.getBool('hwLedEnabled') ?? true,
+        neopixelBrightness: p.getInt('neopixelBrightness') ?? 50,
+        buzzerVolume: p.getInt('hwBuzzerVolume') ?? 100,
+        extendedOui: p.getBool('hwFlockExtendedOui') ?? false,
+        offlineScan: p.getBool('offlineScanEnabled') ?? false,
+      );
+      DebugLog.log('AppState: connection ready — restored saved hardware config');
+    } catch (e) {
+      DebugLog.log('AppState: hardware config restore failed: $e');
+    }
   }
 
   Future<void> disableMesh() async {

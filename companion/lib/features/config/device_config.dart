@@ -1204,10 +1204,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             extendedOui: _flockExtendedOui,
             offlineScan: _offlineScanEnabled,
           );
-      ref.read(sharedPreferencesProvider)
-          .setBool('offlineScanEnabled', _offlineScanEnabled);
-      ref.read(sharedPreferencesProvider)
-          .setInt('neopixelBrightness', _neopixelBrightness);
+      final p = ref.read(sharedPreferencesProvider);
+      p.setBool('offlineScanEnabled', _offlineScanEnabled);
+      p.setInt('neopixelBrightness', _neopixelBrightness);
+      p.setBool('hwBuzzerEnabled', _buzzerEnabled);
+      p.setBool('hwLedEnabled', _ledEnabled);
+      p.setInt('hwBuzzerVolume', _buzzerVolume);
+      p.setBool('hwFlockExtendedOui', _flockExtendedOui);
+      p.setBool('hwConfigSaved', true);
     } catch (e) {
       DebugLog.log('CONFIG: writeHardwareConfig failed: $e');
       if (!mounted) return;
