@@ -10,6 +10,7 @@ import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/map_tiles.dart';
 import 'package:uuid/uuid.dart';
 
 class GeofenceScreen extends ConsumerStatefulWidget {
@@ -200,15 +201,12 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
                 onTap: _mode != _DrawMode.none ? _onMapTap : null,
               ),
               children: [
-                TileLayer(
-                  urlTemplate: mapStyle.urlTemplate,
-                  userAgentPackageName: 'tech.colonelpanic.ouispy',
-                  maxZoom: 19,
-                ),
+                mapTileLayer(mapStyle),
                 // Existing geofences
                 ..._existingZoneLayers(t),
                 // Drawing preview
                 ..._drawingPreviewLayers(t),
+                mapAttribution(mapStyle),
               ],
             ),
 

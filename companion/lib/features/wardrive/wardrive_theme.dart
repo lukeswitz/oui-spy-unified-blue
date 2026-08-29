@@ -67,7 +67,7 @@ class WardriveThemeData {
 
   /// Color filter applied to raster tiles for neon retint.
   final ColorFilter? tileTint;
-  final String? mapTileOverride;
+  final MapStyle? mapTileOverride;
 
   final Map<Engine, Color> engineOverrides;
   final double routeAlpha;
@@ -125,8 +125,7 @@ final Map<WardriveTheme, WardriveThemeData> wardriveThemes = {
     detectionBanner: true,
     neonClusters: true,
     tileTint: _nightriderTileTint,
-    mapTileOverride:
-        'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+    mapTileOverride: MapStyle.cartoDark,
     engineOverrides: const {
       Engine.detector: Color(0xFF18E7F0),
       Engine.flockBle: Color(0xFFC07BFF),

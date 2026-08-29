@@ -9,6 +9,7 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/map_tiles.dart';
 
 class DroneMapView extends ConsumerStatefulWidget {
   const DroneMapView({super.key, required this.drones});
@@ -178,11 +179,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
         interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
       ),
       children: [
-        TileLayer(
-          urlTemplate: mapStyle.urlTemplate,
-          userAgentPackageName: 'tech.colonelpanic.ouispy',
-          maxZoom: 19,
-        ),
+        mapTileLayer(mapStyle),
         if (rings.isNotEmpty) CircleLayer(circles: rings),
         if (trails.isNotEmpty) PolylineLayer(polylines: trails),
         if (tethers.isNotEmpty) PolylineLayer(polylines: tethers),
@@ -196,6 +193,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
             ),
           ]),
         if (markers.isNotEmpty) MarkerLayer(markers: markers),
+        mapAttribution(mapStyle),
       ],
     );
   }

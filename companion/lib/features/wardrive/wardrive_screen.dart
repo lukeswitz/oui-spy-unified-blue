@@ -37,6 +37,7 @@ import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/deflock/deflock_api.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/map_tiles.dart';
 import 'package:share_plus/share_plus.dart';
 
 class WardriveScreen extends ConsumerStatefulWidget {
@@ -758,8 +759,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     }
 
     final detectionLayers = _buildDetectionLayers(wd, wt);
-    final tileUrl = wt.mapTileOverride ?? mapStyle.urlTemplate;
-    final darkBase = wt.mapTileOverride != null ? true : mapStyle.isDark;
+    final tileStyle = wt.mapTileOverride ?? mapStyle;
+    final darkBase = tileStyle.isDark;
 
     final mapWidget = FlutterMap(
               mapController: _mapController,
@@ -816,17 +817,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 },
               ),
               children: [
-                TileLayer(
-                  urlTemplate: tileUrl,
-                  userAgentPackageName: 'tech.colonelpanic.ouispy',
-                  maxZoom: 19,
-                  tileBuilder: wt.tileTint != null
-                      ? (context, tileWidget, tile) => ColorFiltered(
-                            colorFilter: wt.tileTint!,
-                            child: tileWidget,
-                          )
-                      : null,
-                ),
+                mapTileLayer(tileStyle, tint: wt.tileTint),
                 ..._territoryLayers(ref.watch(wdgwarsProvider)),
                 ..._alprLayers(ref.watch(deflockProvider)),
                 if (detectionLayers.heat.isNotEmpty)
@@ -1274,6 +1265,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   ],
                 ),
               ),
+            mapAttribution(tileStyle),
           ]);
         }),
       ),

@@ -137,21 +137,45 @@ class UnitFormatter {
 
 
 
+const String _esriRest =
+    'https://services.arcgisonline.com/ArcGIS/rest/services';
+const String _cartoGl = 'https://basemaps.cartocdn.com/gl';
+
+const String _osm = '© OpenStreetMap';
+const String _carto = '© CARTO, © OpenStreetMap';
+const String _esriImagery = '© Esri, Maxar, Earthstar Geographics';
+const String _esriTopo = '© Esri, HERE, Garmin, USGS, OpenStreetMap';
+
 enum MapStyle {
-  cartoDark('Carto Dark', 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'),
-  cartoLight('Carto Light', 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'),
-  cartoVoyager('Voyager', 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'),
-  osm('OpenStreetMap', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
-  openTopo('Topo', 'https://tile.opentopomap.org/{z}/{x}/{y}.png'),
-  stamenToner('Toner', 'https://basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png'),
-  stamenTerrain('Terrain', 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'),
+  cartoDark('Carto Dark', '$_cartoGl/dark-matter-gl-style/style.json',
+      attribution: _carto, isVector: true, isDark: true),
+  cartoLight('Positron', '$_cartoGl/positron-gl-style/style.json',
+      attribution: _carto, isVector: true),
+  cartoVoyager('Voyager', '$_cartoGl/voyager-gl-style/style.json',
+      attribution: _carto, isVector: true),
+  satellite('Satellite', '$_esriRest/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: _esriImagery, isDark: true),
+  osm('OpenStreetMap', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: _osm),
+  openTopo('Topo', 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+      attribution: '$_osm, SRTM, OpenTopoMap (CC-BY-SA)'),
+  terrain('Terrain', '$_esriRest/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      attribution: _esriTopo),
   ;
 
-  const MapStyle(this.label, this.urlTemplate);
-  final String label;
-  final String urlTemplate;
+  const MapStyle(
+    this.label,
+    this.url, {
+    required this.attribution,
+    this.isVector = false,
+    this.isDark = false,
+  });
 
-  bool get isDark => this == cartoDark || this == stamenToner;
+  final String label;
+  final String url;
+  final String attribution;
+  final bool isVector;
+  final bool isDark;
 }
 
 class MapStyleNotifier extends StateNotifier<MapStyle> {

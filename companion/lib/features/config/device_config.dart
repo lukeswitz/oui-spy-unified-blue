@@ -43,6 +43,7 @@ import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/map_tiles.dart';
 
 class DeviceConfigScreen extends ConsumerStatefulWidget {
   const DeviceConfigScreen({super.key});
@@ -4503,12 +4504,9 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
             : const Color(0xFFE8E8EE),
       ),
       children: [
-        TileLayer(
-          urlTemplate: mapStyle.urlTemplate,
-          userAgentPackageName: 'tech.colonelpanic.ouispy',
-          maxZoom: 19,
-        ),
+        mapTileLayer(mapStyle),
         MarkerLayer(markers: markers),
+        mapAttribution(mapStyle),
       ],
     );
   }

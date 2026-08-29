@@ -49,6 +49,8 @@ dependencies:
   file_selector: ^1.0.3
   package_info_plus: ^9.0.0
   device_info_plus: ^12.4.0
+  vector_map_tiles: ^8.0.0
+  vector_tile_renderer: ^5.2.1
 
 dev_dependencies:
   flutter_test:
