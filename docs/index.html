@@ -870,14 +870,14 @@
       const note = document.getElementById('verNote');
       if (!chips || !note) return;
       const avail = versionsForTarget(currentTarget);
-      if (!avail.some(v => v.version === currentVersion.version)) {
+      if (!avail.includes(currentVersion)) {
         currentVersion = avail[0] || VERSIONS[0];
       }
       chips.innerHTML = '';
       avail.forEach(v => {
         const chip = document.createElement('button');
-        chip.className = 'ver-chip' + (v.version === currentVersion.version ? ' selected' : '');
-        chip.onclick = () => setVersion(v.version);
+        chip.className = 'ver-chip' + (v === currentVersion ? ' selected' : '');
+        chip.onclick = () => setVersion(v);
         chip.innerHTML = 'v' + v.version +
           (v.version === VERSIONS[0].version ? '<span class="vc-badge">current</span>' : '');
         chips.appendChild(chip);
@@ -895,8 +895,8 @@
       }
     }
 
-    window.setVersion = function(version) {
-      const v = versionsForTarget(currentTarget).find(x => x.version === version);
+    window.setVersion = function(entry) {
+      const v = versionsForTarget(currentTarget).find(x => x === entry || x.version === entry);
       if (!v) return;
       currentVersion = v;
       renderVersions();
