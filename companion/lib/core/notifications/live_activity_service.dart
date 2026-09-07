@@ -13,8 +13,12 @@ class LiveActivityService {
   bool get supported => _supported;
 
   String? _activityId;
+  String? _mode;
   Future<String?>? _startInFlight;
-  bool get isActive => _activityId != null;
+  bool get isActive => _activityId != null || _startInFlight != null;
+
+  /// Mode the visible activity was started with — identifies its owner.
+  String? get activeMode => _mode;
 
   /// Check if Live Activities are supported on this device.
   Future<void> init() async {
@@ -94,6 +98,7 @@ class LiveActivityService {
       _startInFlight = _channel.invokeMethod<String>('startActivity', payload);
       try {
         _activityId = await _startInFlight!;
+        _mode = primaryMode;
         DebugLog.log('LIVE_ACTIVITY: started activity=$_activityId mode=$primaryMode');
       } finally {
         _startInFlight = null;
@@ -101,42 +106,39 @@ class LiveActivityService {
     } catch (e) {
       _startInFlight = null;
       _activityId = null;
+      _mode = null;
       DebugLog.log('LIVE_ACTIVITY: update error: $e');
     }
   }
 
-  /// End the current Live Activity.
+  /// End every Live Activity of our type and forget the local handle.
   Future<void> end() async {
-    if (!_supported) return;
+    if (!Platform.isIOS) return;
     if (_activityId == null && _startInFlight != null) {
       _activityId = await _startInFlight;
     }
-    if (_activityId == null) return;
-
-    try {
-      await _channel.invokeMethod('endActivity', {
-        'activityId': _activityId,
-      });
-      DebugLog.log('LIVE_ACTIVITY: ended activity=$_activityId');
-      _activityId = null;
-    } catch (e) {
-      DebugLog.log('LIVE_ACTIVITY: end error: $e');
-    }
-  }
-
-  Future<void> endAll() async {
-    if (!Platform.isIOS) return;
+    final id = _activityId;
     try {
       await _channel.invokeMethod('endAllActivities');
-      DebugLog.log('LIVE_ACTIVITY: endAll');
-      _activityId = null;
+      DebugLog.log('LIVE_ACTIVITY: ended activity=$id mode=$_mode');
     } on MissingPluginException {
-      // legacy handler / unsupported iOS — fall back to single-end
-      await end();
+      if (id != null) {
+        try {
+          await _channel.invokeMethod('endActivity', {'activityId': id});
+          DebugLog.log('LIVE_ACTIVITY: ended activity=$id (legacy handler)');
+        } catch (e) {
+          DebugLog.log('LIVE_ACTIVITY: end fallback error: $e');
+        }
+      }
     } catch (e) {
-      DebugLog.log('LIVE_ACTIVITY: endAll error: $e');
+      DebugLog.log('LIVE_ACTIVITY: end error: $e');
+    } finally {
+      _activityId = null;
+      _mode = null;
     }
   }
+
+  Future<void> endAll() => end();
 
   static String resolvePrimaryMode(Set<String> activeEngines, {String? foxhuntTarget}) {
     final hasWardrive = activeEngines.contains('wardrive');

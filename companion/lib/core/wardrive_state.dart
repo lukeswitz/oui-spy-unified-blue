@@ -575,6 +575,7 @@ class WardriveController extends ChangeNotifier {
       }
     }
     _savePrefs();
+    _updateLiveActivity();
     notifyListeners();
     DebugLog.log('WARDRIVE: removed target $t live -> $activeLabel');
   }
@@ -634,6 +635,7 @@ class WardriveController extends ChangeNotifier {
         DebugLog.log('WARDRIVE: stopOwnedEngine $eng error: $err');
       }
     }
+    _updateLiveActivity();
     notifyListeners();
   }
 
@@ -1503,13 +1505,17 @@ class WardriveController extends ChangeNotifier {
   void _updateLiveActivity({bool allowStart = false}) {
     final engineNames = activeEngines.map((e) => e.name).toSet();
     if (foxhuntTarget != null) engineNames.add('foxhunter');
+    if (engineNames.isEmpty) {
+      if (_liveActivity.isActive) _liveActivity.end();
+      return;
+    }
     final mode = LiveActivityService.resolvePrimaryMode(
       engineNames,
       foxhuntTarget: foxhuntTarget,
     );
     _liveActivity.update(
       primaryMode: mode,
-      allowStart: allowStart,
+      allowStart: allowStart || state == WardriveState.running,
       activeLabel: _liveActivityLabel(engineNames),
       uniqueCount: uniqueMacs.length,
       wifiCount: _wifiNetworkMacs.length,

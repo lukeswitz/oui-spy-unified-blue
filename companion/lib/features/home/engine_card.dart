@@ -137,6 +137,9 @@ class _EngineCardState extends ConsumerState<EngineCard>
         ? ble.enableEngine(widget.engine, targetNodeId: targetNode,
             radio: appState.engineRadio[widget.engine])
         : ble.disableEngine(widget.engine, targetNodeId: targetNode);
+    if (widget.engine == Engine.foxhunter && !value) {
+      appState.endFoxhuntLiveActivity();
+    }
     fut.catchError((e) {
       DebugLog.log('ENGINE: toggle ${widget.engine.name} -> $value FAILED: $e');
       if (!mounted) return;

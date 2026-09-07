@@ -93,6 +93,15 @@ class LiveActivityHandler {
     /// End every Live Activity of our type, regardless of which process started it.
     /// Used on app launch (cleanup stale activities from prior runs) and
     /// applicationWillTerminate (cleanup on graceful exit).
+    static func endAllActivitiesBlocking(timeout: TimeInterval = 2) {
+        let sem = DispatchSemaphore(value: 0)
+        Task.detached(priority: .userInitiated) {
+            await endAllActivitiesNow()
+            sem.signal()
+        }
+        _ = sem.wait(timeout: .now() + timeout)
+    }
+
     static func endAllActivitiesNow() async {
         for activity in Activity<OuiSpyLiveActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)

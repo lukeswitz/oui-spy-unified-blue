@@ -138,11 +138,17 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton(
-                  onPressed: (state.isManagerConnected &&
-                          state.foxhunterTargetNodeId == null)
-                      ? null
-                      : _setTarget,
-                  child: const Text('HUNT'),
+                  onPressed: target != null
+                      ? _clearTarget
+                      : ((state.isManagerConnected &&
+                              state.foxhunterTargetNodeId == null)
+                          ? null
+                          : _setTarget),
+                  style: target != null
+                      ? ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.error)
+                      : null,
+                  child: Text(target != null ? 'STOP' : 'HUNT'),
                 ),
               ],
             ),

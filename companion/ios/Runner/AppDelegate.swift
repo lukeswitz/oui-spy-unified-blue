@@ -24,7 +24,7 @@ import UIKit
 
   override func applicationWillTerminate(_ application: UIApplication) {
     if #available(iOS 16.2, *) {
-      Task { await LiveActivityHandler.endAllActivitiesNow() }
+      LiveActivityHandler.endAllActivitiesBlocking()
     }
     super.applicationWillTerminate(application)
   }

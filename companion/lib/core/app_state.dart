@@ -128,6 +128,14 @@ class AppState extends ChangeNotifier {
       );
     }
     _ble.setFoxhunterTarget(mac, channel: channel, nodeId: effective);
+    _liveActivity.update(
+      primaryMode: 'foxhunter',
+      allowStart: true,
+      uniqueCount: totalDetections,
+      targetMac: mac,
+      rssi: foxhunterRssi,
+      intervalMs: foxhunterIntervalMs,
+    );
     notifyListeners();
   }
 
@@ -150,6 +158,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void endFoxhuntLiveActivity() {
+    if (_liveActivity.isActive && _liveActivity.activeMode == 'foxhunter') {
+      _liveActivity.end();
+    }
+  }
+
   void clearFoxhunterTarget() {
     final nodeId = foxhunterTargetNodeId;
     foxhunterTarget = null;
@@ -158,6 +172,7 @@ class AppState extends ChangeNotifier {
     foxhunterRssi = -100;
     foxhunterIntervalMs = 3000;
     _ble.disableEngine(Engine.foxhunter, targetNodeId: nodeId);
+    endFoxhuntLiveActivity();
     notifyListeners();
   }
 
