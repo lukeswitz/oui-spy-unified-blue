@@ -677,14 +677,6 @@
         path: 'node-tdongle_s3/',
         flashSize: '16MB', flashMode: 'keep', flashFreq: 'keep',
       },
-      'node-tdongle_c5': {
-        role: 'node', name: 'LilyGO T-Dongle-C5', chip: 'ESP32-C5', bands: '2.4 + 5GHz', flash: '16MB',
-        experimental: true, standalone: true,
-        label: 'LilyGO T-Dongle-C5 (node, LCD + SD, dual-band 2.4+5GHz)',
-        path: 'node-tdongle_c5/',
-        flashSize: '16MB', flashMode: 'keep', flashFreq: 'keep',
-        bootloaderOffset: 0x2000,
-      },
       'mgr-xiao_s3': {
         role: 'mgr', name: 'XIAO ESP32-S3', chip: 'ESP32-S3', flash: '8MB', recommended: true,
         label: 'XIAO ESP32-S3 — MANAGER (multi-node hub)',
@@ -708,6 +700,7 @@
         experimental: true,
         label: 'M5StickC (node, LCD + buttons)',
         path: 'node-stickc/',
+        baudrate: 230400,
         flashSize: '4MB', flashMode: 'keep', flashFreq: 'keep',
         bootloaderOffset: 0x1000,
       },
@@ -716,6 +709,7 @@
         experimental: true,
         label: 'M5StickC PLUS (node, LCD + buttons)',
         path: 'node-stickc_plus/',
+        baudrate: 230400,
         flashSize: '4MB', flashMode: 'keep', flashFreq: 'keep',
         bootloaderOffset: 0x1000,
       },
@@ -724,6 +718,7 @@
         experimental: true,
         label: 'M5StickC PLUS2 (node, LCD + buttons)',
         path: 'node-stickc_plus2/',
+        baudrate: 230400,
         flashSize: '8MB', flashMode: 'keep', flashFreq: 'keep',
         bootloaderOffset: 0x1000,
       },
@@ -789,7 +784,10 @@
       return currentVersion.version === VERSIONS[0].version;
     }
 
+    const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+
     function firmwareBase() {
+      if (IS_LOCAL) return 'firmware/' + TARGETS[currentTarget].path;
       return RAW_PREFIX + currentVersion.ref + '/docs/firmware/' + TARGETS[currentTarget].path;
     }
 
@@ -977,7 +975,7 @@
         transport = new Transport(port, true);
         const esploader = new ESPLoader({
           transport,
-          baudrate: 460800,
+          baudrate: TARGETS[currentTarget].baudrate || 460800,
           romBaudrate: 115200,
           serialOptions: { bufferSize: 16384 },
           terminal: {
@@ -1056,6 +1054,12 @@
             setProgress(overallPct, `WRITING ${FLASH_CONFIG[fileIndex].name} ${(filePct * 100).toFixed(0)}%`);
           }
         });
+
+        try {
+          await esploader.after('hard_reset');
+        } catch (e) {
+          log('Reset failed (' + e.message + ') — unplug and replug to boot.');
+        }
 
         setProgress(100, 'COMPLETE');
         progressFill.classList.add('complete');

@@ -34,6 +34,11 @@
 #define DONGLE_PANEL_OY 40
 #endif
 
+#ifndef DONGLE_PANEL_MEMW
+#define DONGLE_PANEL_MEMW 240
+#endif
+#define DGX_OX_FAR (DONGLE_PANEL_MEMW - DONGLE_PANEL_OX - DONGLE_PANEL_W)
+
 class DongleST7789 : public Adafruit_SPITFT {
 public:
     DongleST7789(SPIClass* spi, int8_t cs, int8_t dc, int8_t rst)
@@ -42,12 +47,22 @@ public:
     void begin(uint32_t freq = 40000000) override {
         invertOnCommand = 0x21;
         invertOffCommand = 0x20;
+        Serial.printf("[TFT] cs=%d dc=%d rst=%d freq=%u\n",
+                      (int)DONGLE_TFT_CS, (int)DONGLE_TFT_DC,
+                      (int)DONGLE_TFT_RST, (unsigned)freq); Serial.flush();
+        pinMode(DONGLE_TFT_CS, OUTPUT); digitalWrite(DONGLE_TFT_CS, HIGH);
+        Serial.println("[TFT] cs ok"); Serial.flush();
+        pinMode(DONGLE_TFT_DC, OUTPUT); digitalWrite(DONGLE_TFT_DC, HIGH);
+        Serial.println("[TFT] dc ok"); Serial.flush();
+        Serial.println("[TFT] initSPI"); Serial.flush();
         initSPI(freq, SPI_MODE0);
-
+        Serial.println("[TFT] swreset"); Serial.flush();
         sendCommand(0x01);
         delay(150);
+        Serial.println("[TFT] slpout"); Serial.flush();
         sendCommand(0x11);
         delay(120);
+        Serial.println("[TFT] cfg"); Serial.flush();
 
         static const uint8_t colmod[] = {0x55};
         sendCommand(0x3A, colmod, 1);
@@ -73,8 +88,9 @@ public:
         delay(10);
         sendCommand(0x29);
         delay(100);
-
+        Serial.println("[TFT] dispon"); Serial.flush();
         setRotation(0);
+        Serial.println("[TFT] done"); Serial.flush();
     }
 
     void setRotation(uint8_t m) override {
@@ -84,12 +100,12 @@ public:
             case 1:
                 madctl = 0x60 | 0x08;
                 _width = DONGLE_PANEL_H; _height = DONGLE_PANEL_W;
-                _xstart = DONGLE_PANEL_OY; _ystart = DONGLE_PANEL_OX;
+                _xstart = DONGLE_PANEL_OY; _ystart = DGX_OX_FAR;
                 break;
             case 2:
                 madctl = 0xC0 | 0x08;
                 _width = DONGLE_PANEL_W; _height = DONGLE_PANEL_H;
-                _xstart = DONGLE_PANEL_OX; _ystart = DONGLE_PANEL_OY;
+                _xstart = DGX_OX_FAR; _ystart = DONGLE_PANEL_OY;
                 break;
             case 3:
                 madctl = 0xA0 | 0x08;

@@ -16,7 +16,10 @@
     "version": "0.5.1",
     "ref": "companion",
     "targets": [
-      "node-tdongle_s3"
+      "node-tdongle_s3",
+      "node-stickc",
+      "node-stickc_plus",
+      "node-stickc_plus2"
     ]
   },
   {

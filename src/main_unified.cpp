@@ -142,11 +142,20 @@ volatile bool    hwAlertsSuppressed = false;
 // Hardware
 // ============================================================================
 static void initHardware(void) {
+#ifdef OUISPY_TINYRAM
+    Serial.printf("[HW] buzzer pin %d\n", (int)PIN_BUZZER); Serial.flush();
+#endif
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, LOW);
+#ifdef OUISPY_TINYRAM
+    Serial.println("[HW] led init"); Serial.flush();
+#endif
     OUISPY_LED_INIT();
 
     Serial.println("[HW] Pins initialized");
+#ifdef OUISPY_TINYRAM
+    Serial.flush();
+#endif
 }
 
 // ============================================================================
@@ -1247,6 +1256,10 @@ static void skyspyMeshTestTask(void* arg) {
 #endif
 
 void setup() {
+#if defined(OUISPY_DONGLE) && DONGLE_PWR_HOLD >= 0
+    pinMode(DONGLE_PWR_HOLD, OUTPUT);
+    digitalWrite(DONGLE_PWR_HOLD, HIGH);
+#endif
     Serial.begin(115200);
     delay(200);
 

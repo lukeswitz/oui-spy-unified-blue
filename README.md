@@ -118,6 +118,9 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 | ESP32-S3 N16R8 DevKitC | NODE | 2.4 GHz | `node-s3_devkitc` | `v3_app_controlled_s3_devkitc` |
 | **LilyGO T-Dongle-S3** | NODE — LCD + microSD | 2.4 GHz | `node-tdongle_s3` | `v3_app_controlled_tdongle_s3` |
 | **XIAO ESP32-C5** (experimental) | NODE — standalone only, no mesh | **2.4 + 5 GHz** | `node-xiao_c5` | `v3_app_controlled_c5` |
+| **M5StickC PLUS** (v1) | NODE — LCD + 3 buttons, no SD | 2.4 GHz | `node-stickc_plus` | `v3_app_controlled_stickc_plus` |
+| M5StickC PLUS2 (v2) | NODE — LCD + 3 buttons, no SD | 2.4 GHz | `node-stickc_plus2` | `v3_app_controlled_stickc_plus2` |
+| M5StickC (original) | NODE — LCD + 3 buttons, no SD | 2.4 GHz | `node-stickc` | `v3_app_controlled_stickc` |
 | **XIAO ESP32-S3** | MANAGER | — | `mgr-xiao_s3` | `v3_node_manager_s3` |
 | ESP32-S3 N16R8 DevKitC | MANAGER | — | `mgr-s3_devkitc` | `v3_node_manager_s3_devkitc` |
 | XIAO ESP32-C3 | MANAGER | — | `mgr-xiao_c3` | `v3_node_manager_xiao_c3` |
@@ -128,6 +131,42 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 - The **ESP32-C5** is the only board that also scans 5 GHz.
 - It's newer and less tested — treat it as experimental.
 - It runs **standalone only**: the phone connects to it directly, and it can't be a fleet node under a manager.
+- The **M5StickC** boards also run standalone only — mesh is compiled out to fit their RAM.
+
+</details>
+
+<details>
+<summary><b>M5StickC / PLUS / PLUS2: screen and buttons</b></summary>
+
+An LCD, three buttons and a buzzer, no SD card and no GPS. Built for real-time alerting in a pocket: detections chime and show on screen, and the app collects them over Bluetooth.
+
+**Buttons**
+
+| Button | Press | Action |
+|---|---|---|
+| A — front | tap | start / stop the detector |
+| A — front | hold | foxhunt the last alert; hold again to stop |
+| B — side | tap | start / stop a wardrive |
+| B — side | hold | mute / unmute the buzzer |
+| PWR | tap | screen brightness — full, 70%, 50%, off |
+| PWR | hold | power off |
+
+- Foxhunt arms from the last **alerting** detection — detector, Flock BLE, Flock WiFi, Sky Spy or UniPwn. Wardrive survey hits don't arm it, so the target doesn't drift while you're driving.
+- Foxhunt refuses law-enforcement OUIs, the same rule the app enforces.
+- The original M5StickC has no buzzer; alerts are screen and LED only.
+- PWR is the AXP192 power key on the StickC and PLUS, and a GPIO on the PLUS2. Hold is handled in hardware.
+
+**Screen**
+
+- Top bar: node ID, wardrive runtime, then `APP` / `MSH` / `SD` / `GPS`. `MSH` and `SD` stay dark — there is no card slot and mesh is compiled out.
+- Left panel: unique WiFi networks (large) over unique BLE devices. Counts are distinct MACs, not raw hits.
+- Right panel: satellite count, the armed foxhunt target, and speed in mph.
+- Bottom strip: one icon per engine — detector, Flock BLE, Flock WiFi, foxhunter, Sky Spy, UniPwn, wardrive — coloured while running, dark when off, with that engine's unique count under it.
+
+**Limits**
+
+- PCAP streams over Bluetooth only, with smaller buffers than the S3 boards. There is no card to write to.
+- No GPS, so WiGLE rows need the phone's location.
 
 </details>
 

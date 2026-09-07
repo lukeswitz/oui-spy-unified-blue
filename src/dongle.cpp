@@ -4,7 +4,24 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <LittleFS.h>
-#ifdef DONGLE_TFT_ST7789
+#ifdef DONGLE_M5GFX
+#include <M5GFX.h>
+#define DGX_BLACK   0x0000
+#define DGX_WHITE   0xFFFF
+#define DGX_RED     0xF800
+#define DGX_GREEN   0x07E0
+#define DGX_CYAN    0x07FF
+#define DGX_MAGENTA 0xF81F
+#define DGX_YELLOW  0xFFE0
+#define DGX_LIME    0x9FE0
+#define DGX_AMBER   0xFD20
+#define DGX_BLUE    0x255F
+#define DGX_SKY     0x5DFF
+#define DGX_GREY    0x8410
+#define DGX_DIM     0x39E7
+#define DGX_SLATE   0x2124
+#define DongleTFT M5GFX
+#elif defined(DONGLE_TFT_ST7789)
 #include "dongle_st7789.h"
 #define DongleTFT DongleST7789
 #else
@@ -72,20 +89,20 @@
 #define LY_BLE_NY        56
 #define LY_BLE_NSZ        3
 #define LY_RB_X         156
-#define LY_SAT_Y         20
-#define LY_LOG_Y         34
-#define LY_MPH_X        154
-#define LY_MPH_Y         50
+#define LY_RB_CHARS      13
+#define LY_LOG_Y         26
+#define LY_MPH_X        158
+#define LY_MPH_Y         46
 #define LY_MPH_SZ         3
-#define LY_MPHL_X       210
-#define LY_MPHL_Y        64
+#define LY_MPHL_X       214
+#define LY_MPHL_Y        60
 #define LY_RULE2_Y       84
 #define LY_STRIP_X0       2
-#define LY_STRIP_DX      34
+#define LY_STRIP_DX      39
 #define LY_STRIP_Y       90
-#define LY_STRIP_CW      32
+#define LY_STRIP_CW      37
 #define LY_STRIP_CH      18
-#define LY_STRIP_IDX      9
+#define LY_STRIP_IDX     12
 #define LY_STRIP_CNT_DX   8
 #define LY_STRIP_CNT_Y  112
 #define LY_STRIP_CNT_SZ   1
@@ -115,13 +132,13 @@
 #define LY_BLE_NY        39
 #define LY_BLE_NSZ        2
 #define LY_RB_X         106
-#define LY_SAT_Y         14
-#define LY_LOG_Y         24
+#define LY_RB_CHARS       9
+#define LY_LOG_Y         16
 #define LY_MPH_X        104
-#define LY_MPH_Y         36
+#define LY_MPH_Y         30
 #define LY_MPH_SZ         2
 #define LY_MPHL_X       141
-#define LY_MPHL_Y        44
+#define LY_MPHL_Y        38
 #define LY_RULE2_Y       55
 #define LY_STRIP_X0       3
 #define LY_STRIP_DX      22
@@ -137,7 +154,11 @@
 extern bool hwGpsUtc(uint32_t* epochOut);
 
 static SPIClass s_spi(DONGLE_SPI_BUS);
+#ifdef DONGLE_M5GFX
+static DongleTFT s_tft;
+#else
 static DongleTFT s_tft(&s_spi, DONGLE_TFT_CS, DONGLE_TFT_DC, DONGLE_TFT_RST);
+#endif
 static bool s_tftReady = false;
 
 static SemaphoreHandle_t s_sdMutex = nullptr;
@@ -702,14 +723,16 @@ static const uint16_t kEngColor[ENGINE_COUNT] = {
     DGX_CYAN, DGX_YELLOW, DGX_WHITE, DGX_SKY
 };
 
+#ifdef DONGLE_NO_SD
+#define DONGLE_STRIP_N 6
+#else
 #define DONGLE_STRIP_N 7
+#endif
 static const uint8_t kStripEngines[DONGLE_STRIP_N] = {
     ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER,
     ENGINE_SKYSPY, ENGINE_UNIPWN,
-#ifdef DONGLE_NO_SD
-    ENGINE_WARDRIVE
-#else
-    ENGINE_PCAP
+#ifndef DONGLE_NO_SD
+    ENGINE_PCAP,
 #endif
 };
 
@@ -765,7 +788,9 @@ static void tftDraw(void) {
     tag(&s_fApp,  LY_APP_X, "APP", phone, DGX_LIME);
     tag(&s_fMesh, LY_MSH_X, "MSH", mgr,   DGX_CYAN);
     fld(&s_fSd,  LY_SD_X,  LY_TAG_Y, 1, s_sdReady ? DGX_LIME : DGX_RED,   3, "SD");
+#ifndef DONGLE_NO_GPS
     fld(&s_fGps, LY_GPS_X, LY_TAG_Y, 1, gpsValid  ? DGX_LIME : DGX_AMBER, 3, "GPS");
+#endif
 
     if (!s_chromeDrawn) {
         s_chromeDrawn = true;
@@ -789,11 +814,6 @@ static void tftDraw(void) {
     fmtCount(s_bleHits, buf, sizeof(buf));
     fld(&s_fBle, LY_BLE_NX, LY_BLE_NY, LY_BLE_NSZ, DGX_SKY, 4, buf);
 
-    uint8_t sats = currentGps.satellite_count;
-    if (gpsValid) snprintf(buf, sizeof(buf), "SAT %u", (unsigned)sats);
-    else          snprintf(buf, sizeof(buf), "NO FIX");
-    fld(&s_fHit1, LY_RB_X, LY_SAT_Y, 1,
-        !gpsValid ? DGX_RED : (sats >= 5 ? DGX_LIME : DGX_AMBER), 8, buf);
 
 #ifdef DONGLE_NO_SD
     if (s_fhArmed)        snprintf(buf, sizeof(buf), "FH %02X:%02X", s_fhMac[4], s_fhMac[5]);
@@ -807,15 +827,21 @@ static void tftDraw(void) {
     else if (gpsValid)       snprintf(buf, sizeof(buf), "WIG %lu", (unsigned long)s_wigleRows);
     else                     snprintf(buf, sizeof(buf), "LOG %lu", (unsigned long)s_detRows);
     fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1,
-        !s_sdReady ? DGX_RED : s_pcapBytes ? DGX_MAGENTA : (gpsValid ? DGX_AMBER : DGX_GREY), 8, buf);
+        !s_sdReady ? DGX_RED : s_pcapBytes ? DGX_MAGENTA : (gpsValid ? DGX_AMBER : DGX_GREY),
+        LY_RB_CHARS, buf);
 #endif
 
+#ifndef DONGLE_NO_GPS
     float mph = currentGps.speed * 2.23694f;
     if (gpsValid) snprintf(buf, sizeof(buf), "%d", (int)(mph + 0.5f));
     else          snprintf(buf, sizeof(buf), "--");
+#ifndef DONGLE_NO_GPS
     fld(&s_fLog, LY_MPH_X, LY_MPH_Y, LY_MPH_SZ, gpsValid ? DGX_WHITE : DGX_SLATE,
         3, buf);
     fld(&s_fMph, LY_MPHL_X, LY_MPHL_Y, 1, gpsValid ? DGX_GREY : DGX_SLATE, 3, "mph");
+#endif
+
+#endif
 
     bool wdOn = (mask & (1 << ENGINE_WARDRIVE)) != 0;
     if (wdOn && s_wdStartMs == 0) s_wdStartMs = millis();
@@ -914,7 +940,10 @@ static void foxhuntLastHit(uint32_t now) {
 
 static void cycleBrightness(uint32_t now) {
     s_brightStep = (uint8_t)((s_brightStep + 1) & 3);
-#ifdef DONGLE_AXP192
+#ifdef DONGLE_M5GFX
+    static const uint8_t kM5Lvl[4] = {255, 180, 110, 0};
+    s_tft.setBrightness(kM5Lvl[s_brightStep]);
+#elif defined(DONGLE_AXP192)
     static const uint8_t kLvl[4] = {0xF0, 0xB0, 0x80, 0x00};
     uint8_t v = axpRead(0x28);
     axpWrite(0x28, (uint8_t)((v & 0x0F) | kLvl[s_brightStep]));
@@ -1044,29 +1073,41 @@ static void buttonTick(uint32_t now) {
 void dongleInit(void) {
     if (!s_sdMutex) s_sdMutex = xSemaphoreCreateMutex();
 
+    Serial.println("[DONGLE] init: pwr hold"); Serial.flush();
 #if DONGLE_PWR_HOLD >= 0
     pinMode(DONGLE_PWR_HOLD, OUTPUT);
     digitalWrite(DONGLE_PWR_HOLD, HIGH);
 #endif
 #ifdef DONGLE_AXP192
+    Serial.println("[DONGLE] init: axp"); Serial.flush();
     axpInit();
 #endif
+    Serial.println("[DONGLE] init: buttons"); Serial.flush();
 
-    pinMode(DONGLE_BTN, INPUT_PULLUP);
+    pinMode(DONGLE_BTN, DONGLE_BTN >= 34 ? INPUT : INPUT_PULLUP);
     s_btnDown = digitalRead(DONGLE_BTN) == LOW;
 #if DONGLE_BTN_B >= 0
-    pinMode(DONGLE_BTN_B, INPUT_PULLUP);
+    pinMode(DONGLE_BTN_B, DONGLE_BTN_B >= 34 ? INPUT : INPUT_PULLUP);
     s_btnBDown = digitalRead(DONGLE_BTN_B) == LOW;
 #endif
 #if DONGLE_BTN_PWR >= 0
-    pinMode(DONGLE_BTN_PWR, INPUT_PULLUP);
+    pinMode(DONGLE_BTN_PWR, DONGLE_BTN_PWR >= 34 ? INPUT : INPUT_PULLUP);
 #endif
 #if DONGLE_TFT_BL >= 0
     pinMode(DONGLE_TFT_BL, OUTPUT);
 #endif
     dongleBacklight(false);
+#ifdef DONGLE_M5GFX
+    Serial.println("[DONGLE] init: m5gfx"); Serial.flush();
+    s_tft.init();
+    s_tft.setBrightness(255);
+#else
+    Serial.println("[DONGLE] init: spi begin"); Serial.flush();
     s_spi.begin(DONGLE_TFT_SCLK, DONGLE_TFT_MISO, DONGLE_TFT_MOSI, -1);
+    Serial.println("[DONGLE] init: tft begin"); Serial.flush();
     s_tft.begin(DONGLE_TFT_HZ);
+#endif
+    Serial.println("[DONGLE] init: tft ok"); Serial.flush();
     s_tft.setRotation(DONGLE_TFT_ROTATION);
     s_tft.fillScreen(DGX_BLACK);
     s_tft.setTextSize(1);
@@ -1077,6 +1118,8 @@ void dongleInit(void) {
 
     tftLine(0, "OUI-SPY " FW_VERSION, DGX_CYAN);
     tftLine(1, OUISPY_BOARD, DGX_WHITE);
+    Serial.printf("[DONGLE] rot=%d w=%d h=%d\n", (int)DONGLE_TFT_ROTATION,
+                  (int)s_tft.width(), (int)s_tft.height());
 
     sdLock();
     s_sdReady = sdMount();
