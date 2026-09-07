@@ -200,7 +200,7 @@ static void flockWifiStop(void) {
         return;
     }
     wifiCoexUnregister(wifiSnifferCb);
-    if (meshIsEnabled()) {
+    if (meshIsEnabled() || wifiCoexActive() || wifiRadioExternallyOwned()) {
         WiFi.disconnect(false, false);
         esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
     } else {

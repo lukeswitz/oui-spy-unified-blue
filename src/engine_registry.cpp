@@ -192,11 +192,15 @@ static bool engineEnableImpl(EngineId id) {
     }
 
     // Start
+    states[id] = ESTATE_SCANNING;
     if (engines[id]->start) {
         Serial.printf("[ENGINE] Starting %s\n", engines[id]->name);
         engines[id]->start();
     }
-    states[id] = ESTATE_SCANNING;
+    if (states[id] == ESTATE_DISABLED) {
+        Serial.printf("[ENGINE] %s failed to start\n", engines[id]->name);
+        return false;
+    }
     return true;
 }
 

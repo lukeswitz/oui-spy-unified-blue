@@ -43,12 +43,49 @@
 #ifndef DONGLE_BTN
 #define DONGLE_BTN 0
 #endif
+#ifndef DONGLE_BTN_B
+#define DONGLE_BTN_B -1
+#endif
+#ifndef DONGLE_BTN_PWR
+#define DONGLE_BTN_PWR -1
+#endif
+#ifndef DONGLE_BTN_HOLD_MS
+#define DONGLE_BTN_HOLD_MS 800
+#endif
 
 #ifndef DONGLE_LED_DI
 #define DONGLE_LED_DI 40
 #endif
 #ifndef DONGLE_LED_CI
 #define DONGLE_LED_CI 39
+#endif
+
+#ifndef DONGLE_LED_PIN
+#define DONGLE_LED_PIN 10
+#endif
+#ifndef DONGLE_LED_ACTIVE_LOW
+#define DONGLE_LED_ACTIVE_LOW 1
+#endif
+
+#ifndef DONGLE_PWR_HOLD
+#define DONGLE_PWR_HOLD -1
+#endif
+
+#ifndef DONGLE_AXP_SDA
+#define DONGLE_AXP_SDA 21
+#endif
+#ifndef DONGLE_AXP_SCL
+#define DONGLE_AXP_SCL 22
+#endif
+#ifndef DONGLE_AXP_ADDR
+#define DONGLE_AXP_ADDR 0x34
+#endif
+
+#ifndef DONGLE_WIGLE_BOARD
+#define DONGLE_WIGLE_BOARD "T-Dongle"
+#endif
+#ifndef DONGLE_WIGLE_DEVICE
+#define DONGLE_WIGLE_DEVICE ""
 #endif
 
 void dongleLedInit(void);

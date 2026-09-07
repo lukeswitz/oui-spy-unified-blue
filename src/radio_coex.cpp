@@ -19,7 +19,7 @@ void c5WifiInitNetif(void) {
     }
     nvs_flash_init();
 }
-static void c5WifiUp(void) {
+void c5WifiUp(void) {
     if (g_c5WifiUp) return;
     size_t dma = heap_caps_get_free_size(MALLOC_CAP_DMA);
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -180,6 +180,14 @@ void wifiCoexUnregister(WifiRxParser parser) {
 
 bool wifiCoexActive(void) {
     return g_count > 0;
+}
+
+bool wifiRadioExternallyOwned(void) {
+#ifdef OUISPY_DONGLE
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool wifiCoexShouldHop(int engineId) {

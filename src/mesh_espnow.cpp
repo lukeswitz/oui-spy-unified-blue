@@ -4,6 +4,7 @@
 #include "ignore_list.h"
 #include "engines/detector.h"
 #include "wifi_ota_handler.h"
+#include "radio_coex.h"
 #include <stddef.h>
 #include "ble_gatt.h"
 #include <Arduino.h>
@@ -117,7 +118,7 @@ static SemaphoreHandle_t  inviteMutex = NULL;
 static SemaphoreHandle_t  txMutex = NULL;
 
 #define MESH_RENDEZVOUS_CH      1
-#ifdef OUISPY_LOWRAM
+#if defined(OUISPY_LOWRAM) || defined(OUISPY_NIMBLE2)
 #define MESH_TX_QUEUE_DEPTH     12
 #else
 #define MESH_TX_QUEUE_DEPTH     128
@@ -1385,19 +1386,22 @@ void meshInit(void) {
     if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) meshAddFleetMac(mac);
     if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) == ESP_OK) meshAddFleetMac(mac);
 
-#ifndef OUISPY_NIMBLE2
+#ifdef OUISPY_NO_MESH
+    Serial.printf("[MESH] disabled for this board, id=%s internalFree=%u\n",
+                  localNodeId,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    return;
+#endif
     meshTxQueue = xQueueCreate(MESH_TX_QUEUE_DEPTH, sizeof(MeshTxItem));
     if (!meshTxQueue) {
         Serial.println("[MESH] tx queue create FAIL");
     }
-#endif
 #ifndef OUISPY_ROLE_MANAGER
-#ifndef OUISPY_NIMBLE2
     meshRxQueue = xQueueCreate(8, sizeof(MeshRxItem));
     if (!meshRxQueue) {
         Serial.println("[MESH] rx queue create FAIL");
     }
-#ifdef OUISPY_LOWRAM
+#if defined(OUISPY_LOWRAM) || defined(OUISPY_NIMBLE2)
     detRecQueue = xQueueCreate(24, sizeof(DetRec));
 #else
     detRecQueue = xQueueCreate(128, sizeof(DetRec));
@@ -1405,16 +1409,21 @@ void meshInit(void) {
     if (!detRecQueue) {
         Serial.println("[MESH] detRec queue create FAIL");
     }
+#ifdef OUISPY_TINYRAM
+    xTaskCreate(meshRxWorkerFn, "meshRxWk", 4096, NULL, 4, &meshRxWorkerHandle);
+#else
     xTaskCreate(meshRxWorkerFn, "meshRxWk", 6144, NULL, 4, &meshRxWorkerHandle);
 #endif
 #endif
-#ifndef OUISPY_NIMBLE2
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
     xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
 #ifndef OUISPY_ROLE_MANAGER
     xTaskCreatePinnedToCore(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle, 0);
 #endif
-#endif
+    Serial.printf("[MESH] queues txd=%d dmaFree=%u internalFree=%u\n",
+                  (int)MESH_TX_QUEUE_DEPTH,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
 #if defined(OUISPY_NETCOUNT) && !defined(OUISPY_ROLE_MANAGER)
     xTaskCreate(ncInjectTaskFn, "ncInject", 4096, NULL, 1, NULL);
 #endif
@@ -1463,7 +1472,15 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
     txCounter = 0;
     g_meshSessionSalt = esp_random();
 
-#if !defined(OUISPY_DONGLE) || defined(OUISPY_NIMBLE2)
+#ifdef OUISPY_NIMBLE2
+    c5WifiUp();
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    esp_err_t c5ChRc = esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
+    wifi_mode_t c5Md = WIFI_MODE_NULL;
+    esp_wifi_get_mode(&c5Md);
+    Serial.printf("[MESH] c5 wifi ch rc=0x%x mode=%d\n", (int)c5ChRc, (int)c5Md);
+#else
+#ifndef OUISPY_DONGLE
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(false, false);
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -1480,6 +1497,7 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
 #else
     esp_wifi_start();
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+#endif
 #endif
 
     if (esp_now_init() != ESP_OK) {

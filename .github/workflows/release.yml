@@ -68,6 +68,22 @@ jobs:
             role: node
             board: xiao_c5
             chip: esp32c5
+          - env: v3_app_controlled_tdongle_c5
+            role: node
+            board: tdongle_c5
+            chip: esp32c5
+          - env: v3_app_controlled_stickc
+            role: node
+            board: stickc
+            chip: esp32
+          - env: v3_app_controlled_stickc_plus
+            role: node
+            board: stickc_plus
+            chip: esp32
+          - env: v3_app_controlled_stickc_plus2
+            role: node
+            board: stickc_plus2
+            chip: esp32
           - env: v3_node_manager_wroom
             role: mgr
             board: wroom
@@ -150,6 +166,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           : > "${RUNNER_TEMP}/targets.txt"
           for pair in node:xiao_s3 node:s3_devkitc node:xiao_c5 \
+                      node:tdongle_s3 node:tdongle_c5 \
+                      node:stickc node:stickc_plus node:stickc_plus2 \
                       mgr:xiao_s3 mgr:s3_devkitc mgr:xiao_c3 mgr:wroom; do
             ROLE="${pair%%:*}"; BOARD="${pair##*:}"
             STEM="oui-spy-${ROLE}-${BOARD}-${VERSION}"
@@ -269,6 +287,10 @@ jobs:
             | ESP32-S3 N16R8 DevKitC | node | `oui-spy-node-s3_devkitc-${{ github.ref_name }}.bin` | `oui-spy-node-s3_devkitc-${{ github.ref_name }}-usb.tar.gz` |
             | LilyGO T-Dongle-S3 (LCD + SD) | node | `oui-spy-node-tdongle_s3-${{ github.ref_name }}.bin` | `oui-spy-node-tdongle_s3-${{ github.ref_name }}-usb.tar.gz` |
             | XIAO ESP32-C5 (dual-band 2.4+5GHz) | node | `oui-spy-node-xiao_c5-${{ github.ref_name }}.bin` | `oui-spy-node-xiao_c5-${{ github.ref_name }}-usb.tar.gz` |
+            | LilyGO T-Dongle-C5 (LCD + SD, dual-band) | node | `oui-spy-node-tdongle_c5-${{ github.ref_name }}.bin` | `oui-spy-node-tdongle_c5-${{ github.ref_name }}-usb.tar.gz` |
+            | M5StickC (LCD + buttons) | node | `oui-spy-node-stickc-${{ github.ref_name }}.bin` | `oui-spy-node-stickc-${{ github.ref_name }}-usb.tar.gz` |
+            | M5StickC PLUS (LCD + buttons) | node | `oui-spy-node-stickc_plus-${{ github.ref_name }}.bin` | `oui-spy-node-stickc_plus-${{ github.ref_name }}-usb.tar.gz` |
+            | M5StickC PLUS2 (LCD + buttons) | node | `oui-spy-node-stickc_plus2-${{ github.ref_name }}.bin` | `oui-spy-node-stickc_plus2-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32 WROOM   | mgr  | `oui-spy-mgr-wroom-${{ github.ref_name }}.bin`   | `oui-spy-mgr-wroom-${{ github.ref_name }}-usb.tar.gz` |
             | XIAO ESP32-S3 (recommended) | mgr  | `oui-spy-mgr-xiao_s3-${{ github.ref_name }}.bin` | `oui-spy-mgr-xiao_s3-${{ github.ref_name }}-usb.tar.gz` |
             | ESP32-S3 N16R8 DevKitC | mgr  | `oui-spy-mgr-s3_devkitc-${{ github.ref_name }}.bin` | `oui-spy-mgr-s3_devkitc-${{ github.ref_name }}-usb.tar.gz` |

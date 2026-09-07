@@ -1335,6 +1335,12 @@ void setup() {
     hwGpsInit();
     meshInit();
 #else
+#if defined(OUISPY_TINYRAM) || defined(OUISPY_STACKPROBE)
+    Serial.printf("[MEM] pre-wifi internalFree=%u dmaFree=%u largest=%u\n",
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+#endif
 #ifdef OUISPY_DONGLE
     wifi_init_config_t dongleWifiCfg = WIFI_INIT_CONFIG_DEFAULT();
     dongleWifiCfg.nvs_enable        = 0;
@@ -1353,10 +1359,22 @@ void setup() {
     }
     Serial.printf("[DONGLE] wifi up rc=0x%x\n", (int)dongleWifiRc);
 #endif
+#if defined(OUISPY_TINYRAM) || defined(OUISPY_STACKPROBE)
+    Serial.printf("[MEM] post-wifi internalFree=%u dmaFree=%u largest=%u\n",
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+#endif
     hwGpsInit();
     meshInit();
 
     bleGattInit();
+#if defined(OUISPY_TINYRAM) || defined(OUISPY_STACKPROBE)
+    Serial.printf("[MEM] post-BLE internalFree=%u dmaFree=%u largest=%u\n",
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+#endif
 #endif
 
     Serial.println("[INIT] WiFi STA reserved for OTA mode only — mesh stays on ch1");
@@ -1392,8 +1410,7 @@ void setup() {
     }
 
 #ifndef OUISPY_ENGINE_SELFTEST
-#ifndef OUISPY_COEX_STRESS
-#ifndef OUISPY_NIMBLE2
+#if !defined(OUISPY_COEX_STRESS) && !defined(OUISPY_NO_MESH)
     {
         MeshConfig cfg = {};
         cfg.enabled = 1;
@@ -1402,7 +1419,6 @@ void setup() {
         meshEnable(&cfg);
         Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
     }
-#endif
 #endif
 #ifdef OUISPY_SPOOL_LIVETEST
     meshDisable();
@@ -1490,6 +1506,25 @@ void setup() {
 // Arduino Loop
 // ============================================================================
 void loop() {
+#ifdef OUISPY_STACKPROBE
+    static bool stackProbeDone = false;
+    if (!stackProbeDone && millis() > 10000) {
+        stackProbeDone = true;
+        static const char* kProbe[] = {
+            "nimble_host", "btController", "BTU_TASK", "BTC_TASK", "hciT",
+            "wifi", "det_notify", "meshTx", "meshRetry", "meshSched",
+            "meshRxWk", "loopTask", "IDLE", "tiT",
+        };
+        for (unsigned i = 0; i < sizeof(kProbe) / sizeof(kProbe[0]); i++) {
+            TaskHandle_t h = xTaskGetHandle(kProbe[i]);
+            if (!h) continue;
+            Serial.printf("[STACK] %-14s freeBytes=%u\n", kProbe[i],
+                          (unsigned)uxTaskGetStackHighWaterMark(h));
+        }
+        Serial.printf("[STACK] internalFree=%u\n",
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    }
+#endif
     hwGpsPoll();
 #ifdef OUISPY_DONGLE
     dongleTick();

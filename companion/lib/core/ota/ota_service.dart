@@ -119,8 +119,9 @@ class OtaService {
         n.contains('-boot_app0')) {
       return -1;
     }
+    if (board.isNotEmpty && !n.contains('-${board.toLowerCase()}-')) return -1;
     int score = 1;
-    if (board.isNotEmpty && n.contains(board.toLowerCase())) score += 10;
+    if (board.isNotEmpty) score += 10;
     if (role.isNotEmpty && n.contains('-$role-')) score += 5;
     return score;
   }

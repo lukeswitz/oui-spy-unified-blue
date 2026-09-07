@@ -8,8 +8,10 @@ void wifiCoexRegister(WifiRxParser parser, uint32_t filterMask);
 void wifiCoexUnregister(WifiRxParser parser);
 #ifdef OUISPY_NIMBLE2
 void c5WifiInitNetif(void);
+void c5WifiUp(void);
 #endif
 bool wifiCoexActive(void);
+bool wifiRadioExternallyOwned(void);
 bool wifiCoexShouldHop(int engineId);
 
 void wifiSnifferApplyPs(void);

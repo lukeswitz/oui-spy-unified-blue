@@ -20,7 +20,11 @@
 #define PCAP_LT_BLE          256u
 #define PCAP_RADIOTAP_LEN    18u
 #define PCAP_SNAPLEN         2324u
+#ifdef OUISPY_TINYRAM
+#define PCAP_BUF_SIZE        (4u * 1024u)
+#else
 #define PCAP_BUF_SIZE        (16u * 1024u)
+#endif
 #define BLE_ADV_ACCESS_ADDR  0x8E89BED6u
 
 static volatile bool pcapActive = false;
@@ -351,6 +355,9 @@ static void pcapSenderTask(void* /*arg*/) {
     donglePcapClose();
 #endif
     freeBuffers();
+    Serial.printf("[PCAP] sender exit stackHeadroom=%u internalFree=%u\n",
+                  (unsigned)uxTaskGetStackHighWaterMark(NULL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     pcapSenderHandle = nullptr;
     vTaskDelete(NULL);
 }
@@ -418,6 +425,10 @@ static void pcapStart(void) {
         bleGattNotifyPcapStats();
         return;
     }
+    Serial.printf("[PCAP] buffers ok (2x%u) internalFree=%u largest=%u\n",
+                  (unsigned)PCAP_BUF_SIZE,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     bufSizeA = bufSizeB = 0;
     useA = true;
     resetCounters();
@@ -431,9 +442,17 @@ static void pcapStart(void) {
     pcapPaused = false;
     pcapState = 1;
 
+#ifdef OUISPY_TINYRAM
+    const uint32_t pcapTxStack = 4096;
+#else
+    const uint32_t pcapTxStack = 8192;
+#endif
     if (xTaskCreatePinnedToCore(pcapSenderTask, "pcap_tx",
-                                8192, NULL, 5, &pcapSenderHandle, 1) != pdPASS) {
-        Serial.println("[PCAP] task create failed");
+                                pcapTxStack, NULL, 5, &pcapSenderHandle, 1) != pdPASS) {
+        Serial.printf("[PCAP] task create failed (stack=%u internalFree=%u largest=%u)\n",
+                      (unsigned)pcapTxStack,
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
         pcapActive = false;
         pcapState = 3;
         freeBuffers();
