@@ -119,6 +119,8 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     pushDetectionFromISR(&evt);
 }
 
+bool foxhunterHasTarget(void) { return hasTarget; }
+
 void foxhunterSetTarget(const uint8_t* mac, uint8_t channel) {
     memcpy(targetMac, mac, 6);
     hasTarget = true;

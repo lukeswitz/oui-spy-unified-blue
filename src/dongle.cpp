@@ -37,6 +37,8 @@
 #include "mesh_espnow.h"
 #include "ble_gatt.h"
 #include "engines/foxhunter.h"
+#include "engines/detector.h"
+#include "engines/pcap.h"
 #include <esp_heap_caps.h>
 
 #ifdef DONGLE_SD_MMC
@@ -98,11 +100,11 @@
 #define LY_MPHL_Y        60
 #define LY_RULE2_Y       84
 #define LY_STRIP_X0       2
-#define LY_STRIP_DX      39
+#define LY_STRIP_DX      34
 #define LY_STRIP_Y       90
-#define LY_STRIP_CW      37
+#define LY_STRIP_CW      32
 #define LY_STRIP_CH      18
-#define LY_STRIP_IDX     12
+#define LY_STRIP_IDX      9
 #define LY_STRIP_CNT_DX   8
 #define LY_STRIP_CNT_Y  112
 #define LY_STRIP_CNT_SZ   1
@@ -190,9 +192,18 @@ typedef struct {
 static DongleField s_fNode, s_fApp, s_fMesh, s_fSd, s_fGps;
 static DongleField s_fWifi, s_fBle, s_fLog;
 static DongleField s_fHit1, s_fHit2, s_fWd, s_fMph;
-static DongleField s_fStrip[7];
+static DongleField s_fMode;
+
+static uint8_t s_selIdx = 0;
+
+#ifdef DONGLE_NO_SD
+#define DONGLE_STRIP_N 7
+#else
+#define DONGLE_STRIP_N 7
+#endif
+static DongleField s_fStrip[DONGLE_STRIP_N];
 #if DGS_W >= 240
-static uint8_t s_stripCntLen[7] = {0};
+static uint8_t s_stripCntLen[DONGLE_STRIP_N] = {0};
 #endif
 static uint32_t s_wdStartMs = 0;
 static uint16_t s_wifiIconColor = 1;
@@ -723,15 +734,12 @@ static const uint16_t kEngColor[ENGINE_COUNT] = {
     DGX_CYAN, DGX_YELLOW, DGX_WHITE, DGX_SKY
 };
 
-#ifdef DONGLE_NO_SD
-#define DONGLE_STRIP_N 6
-#else
-#define DONGLE_STRIP_N 7
-#endif
 static const uint8_t kStripEngines[DONGLE_STRIP_N] = {
     ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER,
     ENGINE_SKYSPY, ENGINE_UNIPWN,
-#ifndef DONGLE_NO_SD
+#ifdef DONGLE_NO_SD
+    ENGINE_WARDRIVE,
+#else
     ENGINE_PCAP,
 #endif
 };
@@ -749,11 +757,17 @@ static void drawEngineStrip(uint8_t mask) {
             s_tft.fillRect(x, LY_STRIP_Y, LY_STRIP_CW, LY_STRIP_CH, DGX_BLACK);
             drawEngineIcon(eid, x + LY_STRIP_IDX, LY_STRIP_Y, col);
         }
+        s_tft.drawFastHLine(x + 2, LY_STRIP_Y + LY_STRIP_CH,
+                            LY_STRIP_CW - 4,
+                            (i == s_selIdx) ? DGX_WHITE : DGX_BLACK);
         uint32_t n = s_engCount[eid];
-        if (n == 0)          buf[0] = '\0';
-        else if (n < 1000u)  snprintf(buf, sizeof(buf), "%lu", (unsigned long)n);
-        else if (n < 100000u) snprintf(buf, sizeof(buf), "%luk", (unsigned long)(n / 1000u));
-        else                 snprintf(buf, sizeof(buf), "99k");
+        if (n == 0)            buf[0] = '\0';
+        else if (n < 1000u)    snprintf(buf, sizeof(buf), "%lu", (unsigned long)n);
+        else if (n < 100000u)  snprintf(buf, sizeof(buf), "%lu.%luk",
+                                        (unsigned long)(n / 1000u),
+                                        (unsigned long)((n % 1000u) / 100u));
+        else if (n < 1000000u) snprintf(buf, sizeof(buf), "%luk", (unsigned long)(n / 1000u));
+        else                   snprintf(buf, sizeof(buf), "%luM", (unsigned long)(n / 1000000u));
 #if DGS_W >= 240
         uint8_t bn = (uint8_t)strlen(buf);
         if (bn != s_stripCntLen[i]) {
@@ -783,8 +797,10 @@ static void tftDraw(void) {
     bool mgr   = meshManagerJoined();
     uint8_t mask = engineGetActiveMask();
 
-    fld(&s_fNode, LY_ID_X, LY_TAG_Y, 1, phone ? DGX_WHITE : DGX_GREY, 4,
-        meshGetLocalNodeId());
+    fld(&s_fNode, LY_ID_X, LY_TAG_Y, 1,
+        (engineGetState((EngineId)kStripEngines[s_selIdx]) != ESTATE_DISABLED)
+            ? DGX_LIME : DGX_AMBER,
+        6, engShortName(kStripEngines[s_selIdx]));
     tag(&s_fApp,  LY_APP_X, "APP", phone, DGX_LIME);
     tag(&s_fMesh, LY_MSH_X, "MSH", mgr,   DGX_CYAN);
     fld(&s_fSd,  LY_SD_X,  LY_TAG_Y, 1, s_sdReady ? DGX_LIME : DGX_RED,   3, "SD");
@@ -815,21 +831,30 @@ static void tftDraw(void) {
     fld(&s_fBle, LY_BLE_NX, LY_BLE_NY, LY_BLE_NSZ, DGX_SKY, 4, buf);
 
 
+    if (engineGetState(ENGINE_PCAP) != ESTATE_DISABLED) {
+        uint32_t cb = pcapCapturedBytes();
+        if (cb >= 1048576u) snprintf(buf, sizeof(buf), "CAP %lu.%luM",
+                                     (unsigned long)(cb >> 20),
+                                     (unsigned long)((cb % 1048576u) / 104858u));
+        else                snprintf(buf, sizeof(buf), "CAP %luk", (unsigned long)(cb >> 10));
+        fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1, DGX_MAGENTA, LY_RB_CHARS, buf);
+    } else if (s_fhArmed || s_fhValid) {
+        snprintf(buf, sizeof(buf), "%s %02X:%02X", s_fhArmed ? "FH" : "fh",
+                 s_fhMac[4], s_fhMac[5]);
+        fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1,
+            s_fhArmed ? DGX_MAGENTA : DGX_AMBER, LY_RB_CHARS, buf);
+    } else {
 #ifdef DONGLE_NO_SD
-    if (s_fhArmed)        snprintf(buf, sizeof(buf), "FH %02X:%02X", s_fhMac[4], s_fhMac[5]);
-    else if (s_fhValid)   snprintf(buf, sizeof(buf), "fh %02X:%02X", s_fhMac[4], s_fhMac[5]);
-    else                  snprintf(buf, sizeof(buf), "FH --");
-    fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1,
-        s_fhArmed ? DGX_MAGENTA : (s_fhValid ? DGX_AMBER : DGX_SLATE), 8, buf);
+        snprintf(buf, sizeof(buf), "FH --");
+        fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1, DGX_SLATE, LY_RB_CHARS, buf);
 #else
-    if (!s_sdReady)          snprintf(buf, sizeof(buf), "NO SD");
-    else if (s_pcapBytes)    snprintf(buf, sizeof(buf), "CAP %luk", (unsigned long)(s_pcapBytes / 1024u));
-    else if (gpsValid)       snprintf(buf, sizeof(buf), "WIG %lu", (unsigned long)s_wigleRows);
-    else                     snprintf(buf, sizeof(buf), "LOG %lu", (unsigned long)s_detRows);
-    fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1,
-        !s_sdReady ? DGX_RED : s_pcapBytes ? DGX_MAGENTA : (gpsValid ? DGX_AMBER : DGX_GREY),
-        LY_RB_CHARS, buf);
+        if (!s_sdReady)       snprintf(buf, sizeof(buf), "NO SD");
+        else if (gpsValid)    snprintf(buf, sizeof(buf), "WIG %lu", (unsigned long)s_wigleRows);
+        else                  snprintf(buf, sizeof(buf), "LOG %lu", (unsigned long)s_detRows);
+        fld(&s_fHit2, LY_RB_X, LY_LOG_Y, 1,
+            !s_sdReady ? DGX_RED : (gpsValid ? DGX_AMBER : DGX_GREY), LY_RB_CHARS, buf);
 #endif
+    }
 
 #ifndef DONGLE_NO_GPS
     float mph = currentGps.speed * 2.23694f;
@@ -894,7 +919,7 @@ static void buttonFlash(uint32_t now, uint8_t r, uint8_t g, uint8_t b) {
     s_ledFlashUntil = now + 150u;
 }
 
-#if DONGLE_BTN_B >= 0
+
 static bool s_btnBDown = false;
 static uint32_t s_btnBChangeMs = 0;
 static uint32_t s_btnADownMs = 0;
@@ -911,6 +936,30 @@ static void toggleEngine(EngineId id, const char* label, uint32_t now,
     buttonFlash(now, r, g, b);
 }
 
+static void cycleDetMode(uint32_t now) {
+    s_selIdx = (uint8_t)((s_selIdx + 1) % DONGLE_STRIP_N);
+    Serial.printf("[DONGLE] select -> %s\n",
+                  engShortName(kStripEngines[s_selIdx]));
+    buttonFlash(now, 90, 60, 0);
+}
+
+static void toggleFlock(uint32_t now) {
+    bool on = engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED ||
+              engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED;
+    if (on) { engineDisable(ENGINE_FLOCK_BLE); engineDisable(ENGINE_FLOCK_WIFI); }
+    else    { engineEnable(ENGINE_FLOCK_BLE);  engineEnable(ENGINE_FLOCK_WIFI); }
+    Serial.printf("[DONGLE] flock %s\n", on ? "off" : "on");
+    buttonFlash(now, 0, 90, 40);
+}
+
+static void foxhuntLastHit(uint32_t now);
+
+static void startSelectedMode(uint32_t now) {
+    EngineId id = (EngineId)kStripEngines[s_selIdx];
+    if (id == ENGINE_FOXHUNTER) { foxhuntLastHit(now); return; }
+    toggleEngine(id, engShortName(id), now, 90, 60, 0);
+}
+
 static void foxhuntLastHit(uint32_t now) {
     if (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) {
         engineDisable(ENGINE_FOXHUNTER);
@@ -919,8 +968,15 @@ static void foxhuntLastHit(uint32_t now) {
         buttonFlash(now, 40, 40, 40);
         return;
     }
+    if (foxhunterHasTarget()) {          // app-set target wins
+        engineEnable(ENGINE_FOXHUNTER);
+        s_fhArmed = true;
+        Serial.println("[DONGLE] foxhunt -> app target");
+        buttonFlash(now, 0, 60, 90);
+        return;
+    }
     if (!s_fhValid) {
-        Serial.println("[DONGLE] foxhunt: no alert to hunt yet");
+        Serial.println("[DONGLE] foxhunt: no target set and no alert yet");
         buttonFlash(now, 90, 0, 0);
         return;
     }
@@ -958,43 +1014,31 @@ static void cycleBrightness(uint32_t now) {
 
 static void pwrShortPress(uint32_t now) { cycleBrightness(now); }
 
+#if DONGLE_BTN_B >= 0
 static void buttonTickMulti(uint32_t now) {
     bool aDown = digitalRead(DONGLE_BTN) == LOW;
-    if (aDown && !s_btnALongFired && s_btnADownMs &&
-        (now - s_btnADownMs) >= DONGLE_BTN_HOLD_MS) {
-        s_btnALongFired = true;
-        s_btnTapDeadline = 0;
-        foxhuntLastHit(now);
-    }
     if (aDown != s_btnDown && (now - s_btnChangeMs) >= 40u) {
         s_btnChangeMs = now;
         s_btnDown = aDown;
         if (aDown) {
             s_btnADownMs = now;
             s_btnALongFired = false;
-        } else if (!s_btnALongFired) {
-            toggleEngine(ENGINE_DETECTOR, "detector", now, 90, 60, 0);
+        } else {
+            cycleDetMode(now);
         }
     } else if (aDown == s_btnDown) {
         s_btnChangeMs = now;
     }
 
     bool bDown = digitalRead(DONGLE_BTN_B) == LOW;
-    if (bDown && !s_btnBLongFired && s_btnBDownMs &&
-        (now - s_btnBDownMs) >= DONGLE_BTN_HOLD_MS) {
-        s_btnBLongFired = true;
-        hwBuzzerEnabled = !hwBuzzerEnabled;
-        Serial.printf("[DONGLE] buzzer %s\n", hwBuzzerEnabled ? "on" : "muted");
-        buttonFlash(now, 90, 80, 0);
-    }
     if (bDown != s_btnBDown && (now - s_btnBChangeMs) >= 40u) {
         s_btnBChangeMs = now;
         s_btnBDown = bDown;
         if (bDown) {
             s_btnBDownMs = now;
             s_btnBLongFired = false;
-        } else if (!s_btnBLongFired) {
-            toggleEngine(ENGINE_WARDRIVE, "wardrive", now, 20, 90, 0);
+        } else {
+            startSelectedMode(now);
         }
     } else if (bDown == s_btnBDown) {
         s_btnBChangeMs = now;
@@ -1036,15 +1080,7 @@ static void buttonTickMulti(uint32_t now) {
 static void buttonTick(uint32_t now) {
     if (s_btnTapDeadline && (int32_t)(now - s_btnTapDeadline) >= 0) {
         s_btnTapDeadline = 0;
-        bool running = engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED;
-        if (running) {
-            engineDisable(ENGINE_WARDRIVE);
-            Serial.println("[DONGLE] button -> wardrive stop");
-        } else {
-            engineEnable(ENGINE_WARDRIVE);
-            Serial.println("[DONGLE] button -> wardrive start");
-        }
-        buttonFlash(now, 60, 60, 60);
+        cycleDetMode(now);
     }
 
     bool down = digitalRead(DONGLE_BTN) == LOW;
@@ -1056,15 +1092,7 @@ static void buttonTick(uint32_t now) {
 
     if (s_btnTapDeadline) {
         s_btnTapDeadline = 0;
-        bool capturing = engineGetState(ENGINE_PCAP) != ESTATE_DISABLED;
-        if (capturing) {
-            engineDisable(ENGINE_PCAP);
-            Serial.println("[DONGLE] double tap -> pcap stop");
-        } else {
-            engineEnable(ENGINE_PCAP);
-            Serial.println("[DONGLE] double tap -> pcap start");
-        }
-        buttonFlash(now, 90, 80, 0);
+        startSelectedMode(now);
         return;
     }
     s_btnTapDeadline = now + DONGLE_TAP_WINDOW_MS;
@@ -1194,6 +1222,7 @@ void dongleOnDetection(const DetectionEvent* evt) {
         case ENGINE_FLOCK_WIFI:
         case ENGINE_SKYSPY:
         case ENGINE_UNIPWN:
+            if (evt->source_node_id[0] != '\0') break;   // relayed: not ours to hunt
             memcpy(s_fhMac, evt->mac, 6);
             s_fhChan = evt->channel;
             s_fhIsAxon = s_hitIsAxon;
@@ -1360,8 +1389,32 @@ static void btnSoakTick(uint32_t now) {
 }
 #endif
 
+#ifdef OUISPY_PCAP_SELFTEST
+static void pcapSelftest(uint32_t now) {
+    static uint8_t st = 0;
+    if (st == 0 && now > 9000) {
+        st = 1;
+        Serial.printf("[PCAPTEST] enabling, internalFree=%u largest=%u\n",
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        bool ok = engineEnable(ENGINE_PCAP);
+        Serial.printf("[PCAPTEST] engineEnable=%d state=%d\n", ok ? 1 : 0,
+                      (int)engineGetState(ENGINE_PCAP));
+    } else if (st == 1 && now > 24000) {
+        st = 2;
+        Serial.printf("[PCAPTEST] after 15s state=%d internalFree=%u\n",
+                      (int)engineGetState(ENGINE_PCAP),
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        engineDisable(ENGINE_PCAP);
+    }
+}
+#endif
+
 void dongleTick(void) {
     uint32_t now = millis();
+#ifdef OUISPY_PCAP_SELFTEST
+    pcapSelftest(now);
+#endif
 #ifdef OUISPY_BTN_SOAK
     btnSoakTick(now);
 #endif

@@ -1,4 +1,9 @@
 #include "flock_wifi.h"
+extern volatile uint32_t g_flockOuiSuppressed;
+extern volatile uint32_t g_flockOuiAllowed;
+extern volatile uint32_t g_flockCorroborated;
+#include <Preferences.h>
+extern bool flockAllowOuiOnly;
 #include "protocol.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
@@ -140,6 +145,13 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     }
 
     if (method == 0xFF || !matchMac) return;
+    // bare OUI is not a flock on its own; upstream requires corroboration
+    if (method == METHOD_OUI_ADDR1 || method == METHOD_OUI_ADDR2) {
+        if (!flockAllowOuiOnly) { g_flockOuiSuppressed++; return; }
+        g_flockOuiAllowed++;
+    } else {
+        g_flockCorroborated++;
+    }
 
     if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {
         uint8_t a = flockParseAuth(p, len);
@@ -160,7 +172,31 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     pushDetectionFromISR(&evt);
 }
 
+bool flockAllowOuiOnly = false;
+volatile uint32_t g_flockOuiSuppressed = 0;
+volatile uint32_t g_flockOuiAllowed = 0;
+volatile uint32_t g_flockCorroborated = 0;
+
+void flockSetAllowOuiOnly(bool on) {
+    flockAllowOuiOnly = on;
+    Preferences p;
+    p.begin("ouispy-flock", false);
+    p.putBool("oui_only", on);
+    p.end();
+    Serial.printf("[FLOCK] bare-OUI hits %s\n", on ? "allowed" : "rejected");
+}
+
+bool flockGetAllowOuiOnly(void) { return flockAllowOuiOnly; }
+
+static void flockLoadPrefs(void) {
+    Preferences p;
+    p.begin("ouispy-flock", true);
+    flockAllowOuiOnly = p.getBool("oui_only", false);
+    p.end();
+}
+
 static void flockWifiInit(void) {
+    flockLoadPrefs();
     wifiDedup.reset();
     channelIdx = 0;
     flockOuiInitBuckets();

@@ -561,6 +561,21 @@ static void statusHeartbeatTask(void* param) {
             OUISPY_LED_OFF();
             g_ledOffAtMs = 0;
         }
+#ifdef OUISPY_TINYRAM
+        {
+            extern volatile uint32_t g_flockOuiSuppressed;
+            extern volatile uint32_t g_flockOuiAllowed;
+            extern volatile uint32_t g_flockCorroborated;
+            Serial.printf("[FLOCK] ouiSuppressed=%lu ouiAllowed=%lu corroborated=%lu allowOui=%d\n",
+                          (unsigned long)g_flockOuiSuppressed,
+                          (unsigned long)g_flockOuiAllowed,
+                          (unsigned long)g_flockCorroborated,
+                          flockGetAllowOuiOnly() ? 1 : 0);
+        }
+        Serial.printf("[TEMP] %.1fC cpu=%uMHz heap=%u\n", temperatureRead(),
+                      (unsigned)getCpuFrequencyMhz(),
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#endif
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
         bleGattNodeGraceTick();

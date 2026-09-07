@@ -1,4 +1,8 @@
 #include "wardrive.h"
+extern bool flockAllowOuiOnly;
+extern volatile uint32_t g_flockOuiSuppressed;
+extern volatile uint32_t g_flockOuiAllowed;
+extern volatile uint32_t g_flockCorroborated;
 #include "../protocol.h"
 #include "../mesh_espnow.h"
 #include "../radio_coex.h"
@@ -366,6 +370,12 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
         } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
             fMethod = METHOD_OUI_ADDR1;
             fMac = addr1;
+        }
+        if (fMac && (fMethod == METHOD_OUI_ADDR1 || fMethod == METHOD_OUI_ADDR2)) {
+            if (!flockAllowOuiOnly) { g_flockOuiSuppressed++; fMac = NULL; }
+            else                    { g_flockOuiAllowed++; }
+        } else if (fMac) {
+            g_flockCorroborated++;
         }
         if (fMac) {
             if (frameType == 0 && (frameSubtype == 8 || frameSubtype == 5)) {

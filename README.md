@@ -106,7 +106,6 @@ The manager only gathers results; the nodes do the scanning.
 
 <img width="600" height="634" alt="IMG_7559" src="https://github.com/user-attachments/assets/fda18f4c-fadf-431e-ab3e-5118436feda0" />
 
-
 <details>
 <summary><b>All supported boards</b></summary>
 
@@ -136,74 +135,115 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 </details>
 
 <details>
-<summary><b>M5StickC / PLUS / PLUS2: screen and buttons</b></summary>
+<summary><b>M5StickC / PLUS / PLUS2 — screen and buttons</b></summary>
 
-An LCD, three buttons and a buzzer, no SD card and no GPS. Built for real-time alerting in a pocket: detections chime and show on screen, and the app collects them over Bluetooth.
+Two buttons and a power button. No SD card, no GPS. Built for real-time alerting in a
+pocket: detections chime, show on screen, and reach the app over Bluetooth.
 
-**Buttons**
+### Buttons
 
-| Button | Press | Action |
+| Button | Press | What it does |
 |---|---|---|
-| A — front | tap | start / stop the detector |
-| A — front | hold | foxhunt the last alert; hold again to stop |
-| B — side | tap | start / stop a wardrive |
-| B — side | hold | mute / unmute the buzzer |
-| PWR | tap | screen brightness — full, 70%, 50%, off |
-| PWR | hold | power off |
+| **A** — big front button | tap | **Cycle** to the next mode |
+| **B** — small side button | tap | **Start / stop** the mode you selected |
+| **PWR** — top edge | tap | Screen brightness: full → 70% → 50% → off |
+| **PWR** | hold | Power off (handled in hardware) |
 
-- Foxhunt arms from the last **alerting** detection — detector, Flock BLE, Flock WiFi, Sky Spy or UniPwn. Wardrive survey hits don't arm it, so the target doesn't drift while you're driving.
-- Foxhunt refuses law-enforcement OUIs, the same rule the app enforces.
-- The original M5StickC has no buzzer; alerts are screen and LED only.
-- PWR is the AXP192 power key on the StickC and PLUS, and a GPIO on the PLUS2. Hold is handled in hardware.
+There are no long-presses. Every press acts once when you let go, so it does not matter
+how long you hold A or B.
 
-**Screen**
+**The two-step rhythm:** tap **A** until the name you want shows at the top left, then tap
+**B** once to run it. Tap **B** again to stop.
 
-- Top bar: node ID, wardrive runtime, then `APP` / `MSH` / `SD` / `GPS`. `MSH` and `SD` stay dark — there is no card slot and mesh is compiled out.
-- Left panel: unique WiFi networks (large) over unique BLE devices. Counts are distinct MACs, not raw hits.
-- Right panel: satellite count, the armed foxhunt target, and speed in mph.
-- Bottom strip: one icon per engine — detector, Flock BLE, Flock WiFi, foxhunter, Sky Spy, UniPwn, wardrive — coloured while running, dark when off, with that engine's unique count under it.
+### Modes
 
-**Limits**
+Tapping **A** walks through these, in the same order as the icons along the bottom:
 
-- PCAP streams over Bluetooth only, with smaller buffers than the S3 boards. There is no card to write to.
-- No GPS, so WiGLE rows need the phone's location.
+| Shown | Engine | Finds |
+|---|---|---|
+| `DETECT` | Detector | Your watchlist, AirTags, Flipper, Meta glasses, Axon |
+| `FLOCKB` | Flock BLE | Flock cameras over Bluetooth |
+| `FLOCKW` | Flock WiFi | Flock cameras over WiFi |
+| `FOXHNT` | Foxhunter | Chases one MAC and shows how close you are |
+| `SKYSPY` | Sky Spy | Drone Remote ID |
+| `UNIPWN` | UniPwn | Unitree robots |
+| `WARDRV` | Wardrive | Logs every network for WiGLE |
+
+### Screen
+
+| Where | Shows |
+|---|---|
+| **Top left** | Selected mode — **amber** = picked, **lime** = running |
+| **Top middle** | Wardrive run time, once wardriving |
+| **Top right** | `APP` `MSH` `SD` `GPS`. `MSH` and `SD` stay dark — no mesh, no card slot |
+| **Left, large** | Unique **WiFi** networks seen |
+| **Left, below** | Unique **BLE** devices seen |
+| **Right, upper** | Foxhunt target, or `CAP 1.2M` while capturing |
+| **Right, lower** | Speed in mph |
+| **Bottom strip** | One icon per mode. Lit while running, dark when off, **underlined** = selected. Count underneath. |
+
+Counts round as they grow: `999` → `1.1k` → `10.2k` → `100k` → `1M`.
+
+### Foxhunt
+
+Pick `FOXHNT`, tap **B**. It hunts, in this order of preference:
+
+1. **A target you set in the app** — the app always wins.
+2. **Otherwise, the last thing that alerted** — detector, Flock BLE/WiFi, Sky Spy or UniPwn.
+
+Wardrive hits never become the target, or it would change every few milliseconds while you
+drive. Only detections your own radio heard count, never ones relayed from another node.
+
+The upper-right field tells you where you stand before you commit:
+
+| Shows | Means |
+|---|---|
+| `FH --` grey | Nothing to hunt yet |
+| `fh BE:5A` amber | Armed — this is what **B** will lock onto |
+| `FH BE:5A` magenta | Hunting it now |
+
+Foxhunting a law-enforcement device is refused, same rule the app enforces.
 
 </details>
 
 <details>
-<summary><b>T-Dongle-S3: screen, button, SD card</b></summary>
+<summary><b>T-Dongle-S3 — screen, button, SD card</b></summary>
 
-The T-Dongle-S3 has an LCD screen, microSD and an LED (no GPS). It scans and logs with no app:
+LCD, microSD and an LED. Scans and logs to the card with no app attached.
 
-**Button**
+### Button
 
-| Press | Action |
+One button, so the same two steps as the Sticks are split by press count:
+
+| Press | What it does |
 |---|---|
-| Single tap | start / stop a wardrive |
-| Double tap | start / stop WiFi PCAP  |
+| **1 press** | **Cycle** to the next mode |
+| **2 presses** | **Start / stop** the mode you selected |
 
-**Screen**
+### Screen
 
-- Top bar: node ID, wardrive runtime, then `APP` / `MSH` / `SD` / `GPS` — green when up, red or amber when not.
-- Left panel: unique WiFi networks (large, green) over unique BLE devices (blue). Counts are distinct MACs, not raw hits.
-- Right panel: satellite count, rows written to the WiGLE CSV, and speed in mph. `NO FIX` means nothing is being written — WiGLE rows need coordinates.
-- Bottom strip: one icon per engine — detector, Flock BLE, Flock WiFi, foxhunter, Sky Spy, UniPwn, PCAP — coloured while the engine runs, dark when off, with that engine's unique count under it.
+Same layout as the Sticks, with three differences: the strip's last icon is **PCAP**
+instead of wardrive (it has a card to write to), `SD` and `GPS` are live, and the
+upper-right field falls back to `WIG`/`LOG` row counts when no foxhunt target is armed.
 
-**LED**
+### LED
 
-Dim green while any engine runs, dark when idle. A detection flashes that engine's colour, with a different pulse count per engine, so a flash always means something worth looking at — wardrive hits don't flash. Brightness follows the NeoPixel slider in the app; `0` is off.
+Dim green while any engine runs, dark when idle. A detection flashes that engine's colour
+with its own pulse count, so a flash always means something worth looking at — wardrive
+hits do not flash. Brightness follows the NeoPixel slider in the app; `0` is off.
 
-**SD card**
+### SD card
 
-Files go in `/OUISPY` on the card:
+Files land in `/OUISPY` on the card:
 
 | File | Contents |
 |---|---|
-| `det_<date>_<time>.csv` | every detection: engine, method, MAC, RSSI, channel, name, position, node |
-| `wigle_<date>_<time>.csv` | WigleWifi-1.6 rows, ready to upload |
-| `cap_<date>_<time>_NN_wifi.pcap` | PCAP capture, one file per run |
+| `det_*.csv` | Every detection, with GPS when available |
+| `wigle_*.csv` | WiGLE-format wardrive rows |
+| `cap_*.pcap` | Packet captures, openable in Wireshark |
 
-Names are stamped from GPS UTC once the first fix arrives; files opened before that keep a sequence number so nothing is lost. WiGLE rows need a fix — with no GPS the detection CSV still fills in, without coordinates.
+Filenames get a UTC timestamp once GPS supplies the time; until then they use a boot
+sequence number.
 
 </details>
 

@@ -6,4 +6,7 @@ void flockWifiSetRadioGate(bool on);
 void flockWifiHostSuspend(bool suspend);
 void flockSetExtendedOui(bool en);
 bool flockGetExtendedOui(void);
+void flockSetAllowOuiOnly(bool on);
+bool flockGetAllowOuiOnly(void);
+
 #endif

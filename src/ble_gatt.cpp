@@ -1396,6 +1396,11 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
 #endif
                 }
                 break;
+            case 0x04:
+                if (val.length() >= 2) {
+                    flockSetAllowOuiOnly(data[1] != 0);
+                }
+                break;
             default:
                 Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
                 break;

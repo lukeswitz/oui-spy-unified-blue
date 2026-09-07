@@ -25,4 +25,6 @@ void pcapAbortDownload(void);
 // Clear capture file
 void pcapClearCapture(void);
 
+uint32_t pcapCapturedBytes(void);
+
 #endif

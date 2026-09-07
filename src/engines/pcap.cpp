@@ -536,9 +536,21 @@ static void pcapStop(void) {
                   (unsigned long)cntBytes, (unsigned long)cntDropped);
 }
 
+#ifndef PCAP_MAX_BYTES
+#define PCAP_MAX_BYTES (10u * 1024u * 1024u)
+#endif
+
+uint32_t pcapCapturedBytes(void) { return pcapStreamedBytes; }
+
 static void pcapLoop(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
     unsigned long now = millis();
+    if (pcapActive && pcapStreamedBytes >= PCAP_MAX_BYTES) {
+        Serial.printf("[PCAP] size cap %u bytes reached — stopping\n",
+                      (unsigned)PCAP_MAX_BYTES);
+        engineDisable(ENGINE_PCAP);
+        return;
+    }
     if (!pcapActive) {
         if (now - pcapLastStatsNotify >= 1000) {
             pcapLastStatsNotify = now;

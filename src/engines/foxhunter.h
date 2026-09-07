@@ -22,4 +22,6 @@ void foxhunterCheckWifiDeviceISR(
     const uint8_t* addr1, const uint8_t* addr2, const uint8_t* addr3,
     int rssi, uint8_t channel);
 
+bool foxhunterHasTarget(void);
+
 #endif
