@@ -117,7 +117,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install PlatformIO
-        run: pip install platformio
+        run: pip install 'platformio==6.1.19'
 
       - name: Build firmware (${{ matrix.env }})
         run: pio run -e ${{ matrix.env }}
