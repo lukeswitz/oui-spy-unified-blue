@@ -5514,7 +5514,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
   static const List<String> _nodeBoards = [
     'xiao_s3',
     's3_devkitc',
+    'xiao_c5',
     'tdongle_s3',
+    'tdongle_c5',
   ];
 
   @override
