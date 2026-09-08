@@ -247,6 +247,7 @@ jobs:
             **Added**
             - M5StickC, M5StickC PLUS and M5StickC PLUS2 node port: LCD panel, three-button map, on-device detection. No SD; mesh is compiled out on these boards to fit their RAM, so they run standalone
             - LilyGO T-Dongle-S3 and T-Dongle-C5 node support: LCD, microSD, and a side button that starts and stops wardrive
+            - The ESP32-C5 boards run standalone only: mesh is compiled out, so they connect straight to the phone and cannot be fleet nodes under a manager
             - Hardware GPS: an on-board GPS module can supply position instead of the phone
             - Flock confidence tiers shown on the StickC panel
             - Local flock camera count in WDGWars
