@@ -137,8 +137,7 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 <details>
 <summary><b>M5StickC / PLUS / PLUS2 — screen and buttons</b></summary>
 
-Two buttons and a power button. No SD card, no GPS. Built for real-time alerting in a
-pocket: detections chime, show on screen, and reach the app over Bluetooth.
+Two buttons and a power button. No SD card, no GPS.
 
 ### Buttons
 
@@ -149,15 +148,14 @@ pocket: detections chime, show on screen, and reach the app over Bluetooth.
 | **PWR** — top edge | tap | Screen brightness: full → 70% → 50% → off |
 | **PWR** | hold | Power off (handled in hardware) |
 
-There are no long-presses. Every press acts once when you let go, so it does not matter
-how long you hold A or B.
+Tap **A** until the mode you want shows at the top left, then tap **B** to run it.
+Tap **B** again to stop.
 
-**The two-step rhythm:** tap **A** until the name you want shows at the top left, then tap
-**B** once to run it. Tap **B** again to stop.
+No long-presses. Every press acts on release.
 
 ### Modes
 
-Tapping **A** walks through these, in the same order as the icons along the bottom:
+Strip order, left to right:
 
 | Shown | Engine | Finds |
 |---|---|---|
@@ -186,15 +184,11 @@ Counts round as they grow: `999` → `1.1k` → `10.2k` → `100k` → `1M`.
 
 ### Foxhunt
 
-Pick `FOXHNT`, tap **B**. It hunts, in this order of preference:
+`FOXHNT` + **B** hunts, in order: a target set in the app, else the last alert from
+detector, Flock BLE/WiFi, Sky Spy or UniPwn. Wardrive hits and relayed detections are
+never targets.
 
-1. **A target you set in the app** — the app always wins.
-2. **Otherwise, the last thing that alerted** — detector, Flock BLE/WiFi, Sky Spy or UniPwn.
-
-Wardrive hits never become the target, or it would change every few milliseconds while you
-drive. Only detections your own radio heard count, never ones relayed from another node.
-
-The upper-right field tells you where you stand before you commit:
+Upper-right field:
 
 | Shows | Means |
 |---|---|
@@ -202,35 +196,36 @@ The upper-right field tells you where you stand before you commit:
 | `fh BE:5A` amber | Armed — this is what **B** will lock onto |
 | `FH BE:5A` magenta | Hunting it now |
 
-Foxhunting a law-enforcement device is refused, same rule the app enforces.
+Law-enforcement OUIs are refused.
 
 </details>
 
 <details>
 <summary><b>T-Dongle-S3 — screen, button, SD card</b></summary>
 
-LCD, microSD and an LED. Scans and logs to the card with no app attached.
+LCD, microSD, LED. Logs to the card with no app attached.
 
 ### Button
-
-One button, so the same two steps as the Sticks are split by press count:
 
 | Press | What it does |
 |---|---|
 | **1 press** | **Cycle** to the next mode |
 | **2 presses** | **Start / stop** the mode you selected |
 
+Press once until the mode you want shows at the top left, then press twice to run it.
+Press twice again to stop.
+
 ### Screen
 
-Same layout as the Sticks, with three differences: the strip's last icon is **PCAP**
-instead of wardrive (it has a card to write to), `SD` and `GPS` are live, and the
-upper-right field falls back to `WIG`/`LOG` row counts when no foxhunt target is armed.
+Same layout as the Sticks, except: strip ends in **PCAP** not wardrive, `SD` and `GPS`
+are live, and the upper-right field shows `WIG`/`LOG` row counts when no foxhunt target
+is armed.
 
 ### LED
 
-Dim green while any engine runs, dark when idle. A detection flashes that engine's colour
-with its own pulse count, so a flash always means something worth looking at — wardrive
-hits do not flash. Brightness follows the NeoPixel slider in the app; `0` is off.
+Dim green while any engine runs, dark when idle. A detection flashes that engine's
+colour and pulse count. Wardrive hits do not flash. Brightness follows the NeoPixel
+slider in the app; `0` is off.
 
 ### SD card
 
@@ -242,8 +237,8 @@ Files land in `/OUISPY` on the card:
 | `wigle_*.csv` | WiGLE-format wardrive rows |
 | `cap_*.pcap` | Packet captures, openable in Wireshark |
 
-Filenames get a UTC timestamp once GPS supplies the time; until then they use a boot
-sequence number.
+Filenames use a UTC timestamp once GPS supplies the time, otherwise a boot sequence
+number.
 
 </details>
 
