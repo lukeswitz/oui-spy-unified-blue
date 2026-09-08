@@ -339,6 +339,7 @@ class BleManager {
   NodeConnectionState get currentConnectionState => _currentState;
   String get nodeId => _nodeId;
   String get board => _board;
+  bool get isC5 => _board.endsWith('c5');
   String get role => _role;
   String? get connectedDeviceId => _primaryDeviceId ?? _lastDeviceId;
   bool get isManagerConnected =>

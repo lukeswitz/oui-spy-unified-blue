@@ -1,7 +1,7 @@
 name: oui_spy
 description: "OUI-SPY Companion - Multi-engine RF detection and wardriving"
 publish_to: "none"
-version: 0.5.1+1
+version: 0.6.0+1
 
 environment:
   sdk: ^3.11.5

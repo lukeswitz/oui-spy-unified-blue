@@ -282,7 +282,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
     final isImperial = unitSystem == UnitSystem.imperial;
     final use24Hour = ref.watch(use24HourTimeProvider);
     final t = AppTheme.of(context);
-    final isC5 = ref.watch(bleManagerProvider).board == 'xiao_c5';
+    final isC5 = ref.watch(bleManagerProvider).isC5;
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1055,6 +1055,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             'xiao_s3' => 'XIAO ESP32-S3',
             's3_devkitc' => 'ESP32-S3 DevKitC',
             'xiao_c5' => 'XIAO ESP32-C5 (2.4+5GHz)',
+            'tdongle_s3' => 'LilyGO T-Dongle-S3',
+            'tdongle_c5' => 'LilyGO T-Dongle-C5 (2.4+5GHz)',
+            'stickc' => 'M5StickC',
+            'stickc_plus' => 'M5StickC PLUS',
+            'stickc_plus2' => 'M5StickC PLUS2',
             'xiao_c3' => 'XIAO ESP32-C3',
             'wroom' => 'ESP32 WROOM',
             final b => b.isEmpty ? '—' : b,
@@ -1396,7 +1401,7 @@ class _ChannelRangeSlider extends ConsumerWidget {
           onDown: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd - 1,
           onUp: () => ref.read(wardriveProvider).channelEnd = wd.channelEnd + 1,
         ),
-        if (ref.watch(bleManagerProvider).board == 'xiao_c5')
+        if (ref.watch(bleManagerProvider).isC5)
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Row(
@@ -5512,9 +5517,6 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     'xiao_c5',
     'tdongle_s3',
     'tdongle_c5',
-    'stickc',
-    'stickc_plus',
-    'stickc_plus2',
   ];
 
   @override
@@ -6937,7 +6939,7 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
 class _VersionRow extends StatelessWidget {
   const _VersionRow();
 
-  static const String appVersion = '0.5.1';
+  static const String appVersion = '0.6.0';
 
   @override
   Widget build(BuildContext context) {

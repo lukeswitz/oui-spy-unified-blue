@@ -14,7 +14,7 @@
   },
   {
     "version": "0.5.1",
-    "ref": "companion",
+    "ref": "39bd91c36fabb58693649063995f19983e019c1f",
     "targets": [
       "node-tdongle_s3",
       "node-stickc",

@@ -242,40 +242,34 @@ jobs:
             > [!NOTE]
             > Early beta — file bugs in Issues.
 
-            ### What's new since v0.5.0
+            ### What's new since v0.5.1
 
             **Added**
-            - Flock confidence (VERIFIED / HIGH / SUSPECTED) on feed and config detection rows, in the detection detail sheet, and as V/H/S chips in the wardrive flock panel, with a confidence filter group in the detections filter sheet
-            - DeFlock cross-reference: mapped ALPRs from OpenStreetMap on the wardrive map, and every flock detection with a fix is scored against them — `ON MAP` within 75 m of a mapped camera, `UNMAPPED` beyond 250 m, `NO MAP DATA` where nothing has been fetched. Tiles are cached on the phone, so a driven area keeps resolving offline
-            - Contributing an unmapped find to OpenStreetMap is offered only for a fully validated flock detection (name + XUNTONG 0x09C8 + TN serial); the link is copied for you to review and submit by hand, never posted by the app
-            - WDGWars territory layer on the wardrive map (gang hulls, viewport-culled, 5 min cache, off by default)
-            - WDGWars account stats: today / 7d / reinforced / credits / cracked, gang role, country / joined / bounties
-            - CONFIG nav tap toggles the section sheet open and closed
+            - M5StickC, M5StickC PLUS and M5StickC PLUS2 node port: LCD panel, three-button map, on-device detection. No SD; mesh is compiled out on these boards to fit their RAM, so they run standalone
+            - LilyGO T-Dongle-S3 and T-Dongle-C5 node support: LCD, microSD, and a side button that starts and stops wardrive
+            - Hardware GPS: an on-board GPS module can supply position instead of the phone
+            - Flock confidence tiers shown on the StickC panel
+            - Local flock camera count in WDGWars
+            - Map moved to Carto vector tiles; no API key needed
 
-            **Fixed — app**
-            - Wardrive sessions finalize on stop, on detach and on app shutdown; reconnect offers to continue or stop the open session
-            - Foxhunt blocked for law-enforcement targets (Axon 00:25:DF): the action icon is hidden on feed rows and a reason is shown if it is reached another way
-            - CSV import and rescan no longer promote a row to flock on an OUI match alone; wardrive rows promote to detector only
-            - App-side flock OUI table synced: 00:40:8C and AC:CC:8E added, Falcon false positives 94:2A:6F and F4:E2:C6 removed
-            - Tapping a detection isolates that pin instead of drawing the whole session; a finished session frames the whole track; config tab index survives rebuilds
-            - WDGWars upload moved to v2 gzip + job poll (10.2 MB CSV → 750 KB on the wire), buffered multipart body, QUEUED state while the job runs, stale error banner cleared
-            - WDGWars upload finishes with the server's own counts — `N imported · N new · N merged` — instead of a generic success, or the server's rejection reason on failure
-            - Feed search queries the database, not just the 500-row live buffer
-            - WiGLE and WDGWars send timeout scales with file size (60 s + 12 s/MB, capped at 900 s) and retries on a fresh connection
-            - CommandSheet close button (sheets were near-undismissable on mobile)
+            **Fixed - app**
+            - Live Activity ends when the engines stop (#19)
+            - Feed export writes the full history instead of the live buffer
+            - DeFlock requests no longer send a dart:io User-Agent header
+            - The 5 GHz band selector and the 2.4 GHz All / 1-6-11 toggle now appear on every C5 board, not only the XIAO C5
 
-            **Fixed — firmware**
-            - Detector signatures now run under wardrive: BLE checked pre-dedup, WiFi fed from the wardrive ISR
-            - `SIG_AXON` WiFi early-return no longer starves watchlist matching; a `sigDedup` hit no longer skips the remaining signature checks
-            - Axon matches BT SIG CID 0x034D and service UUID 0xFC81, not OUI alone
-            - Ray-Ban Meta criteria synced to upstream (CID 0x0D53, service 0xFD5F, names)
-            - Flock WiFi uses the upstream method only (addr3/BSSID match dropped), RSSI floor −95, wildcard probes no longer mislabeled `oui_addr2`
-            - Flock BLE emits on name or Raven service UUID alone, otherwise only on the full validated signal set
-            - Flock OUI list: Ubiquiti false positives dropped; f8:a2:d6, 00:40:8c and ac:cc:8e demoted to the extended list
-            - `detectorHostSuspend` resume left `wifiActive` false on S3
+            **Fixed - firmware**
+            - T-Dongle-S3 log count stayed at zero in no-app mode
+            - Stored hardware config survives a flash
+
+            **Fixed - web flasher**
+            - T-Dongle-S3 served a 404
+            - C5 write failure
+            - Flash mode, frequency and size are taken from the image instead of forced to QIO, which boot-looped every S3 target
+            - Per-board upload baud; the target list scrolls
 
             **Build**
-            - Built with Flutter 3.47.0 / Dart 3.13; analyzer clean, 53 tests pass
+            - Flutter 3.47.0 / Dart 3.13.0; analyzer clean, 66 tests pass
 
             ### Firmware
 
@@ -302,6 +296,8 @@ jobs:
 
             ### Companion App
 
+            App builds are attached to this release by hand; the workflow uploads firmware only.
+
             | Platform | File | Instructions |
             |----------|------|--------------|
             | **Android** | `oui-spy-${{ github.ref_name }}.apk` | Download signed APK, tap to install. |
@@ -309,12 +305,13 @@ jobs:
             | **iOS** | [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) | Join beta via TestFlight. |
 
             ### Requirements
-            - Boards: XIAO ESP32-S3 or ESP32-S3 N16R8 DevKitC (node); XIAO ESP32-S3 (recommended), ESP32-S3 N16R8 DevKitC, XIAO ESP32-C3, or ESP32 WROOM (manager)
+            - Boards, node: XIAO ESP32-S3, ESP32-S3 N16R8 DevKitC, LilyGO T-Dongle-S3, XIAO ESP32-C5, LilyGO T-Dongle-C5, M5StickC, M5StickC PLUS, M5StickC PLUS2
+            - Boards, manager: XIAO ESP32-S3 (recommended), ESP32-S3 N16R8 DevKitC, XIAO ESP32-C3, ESP32 WROOM
             - BLE-capable phone/computer
             - GPS/Location for wardriving
             - The DeFlock layer is off by default. Turning it on sends the map viewport bounding box to a public Overpass mirror (overpass-api.de, falling back to overpass.private.coffee), which discloses the area you are looking at. Detections never leave the phone.
 
-            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/v0.5.0...${{ github.ref_name }}
+            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/v0.5.1...${{ github.ref_name }}
           files: |
             artifacts/**/*.bin
             artifacts/**/*.tar.gz
