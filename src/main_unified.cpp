@@ -1359,10 +1359,6 @@ void setup() {
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     c5WifiInitNetif();
-    c5WifiUp();
-    Serial.printf("[MEM] post-wifi dmaFree=%u internalFree=%u\n",
-                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
-                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     bleGattInit();
     hwGpsInit();
     meshInit();
