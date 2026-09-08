@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.6.0",
+    "ref": "332726f283c7e9468c39dda2d110865475ffce7d",
+    "targets": [
+      "node-xiao_s3",
+      "node-s3_devkitc",
+      "node-xiao_c5",
+      "node-tdongle_s3",
+      "node-tdongle_c5",
+      "node-stickc",
+      "node-stickc_plus",
+      "node-stickc_plus2",
+      "mgr-xiao_s3",
+      "mgr-s3_devkitc",
+      "mgr-xiao_c3",
+      "mgr-wroom"
+    ]
+  },
+  {
     "version": "0.5.1",
     "ref": "d1f05e0da932eb801200ab1fc94a868173325b89",
     "targets": [
