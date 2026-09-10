@@ -945,6 +945,31 @@ static void autoPcapSelftestTask(void* arg) {
 }
 #endif
 
+#ifdef OUISPY_C5_WIFI_SELFTEST
+static void c5WifiSelftestTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    for (int round = 1; round <= 3; round++) {
+        uint32_t t0 = millis();
+        Serial.printf("[C5TEST] round %d: enable wardrive t=%u\n", round, (unsigned)t0);
+        bool ok = engineEnable(ENGINE_WARDRIVE);
+        Serial.printf("[C5TEST] round %d: enable rc=%d took=%ums dma=%u internal=%u\n",
+                      round, ok ? 1 : 0, (unsigned)(millis() - t0),
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        vTaskDelay(pdMS_TO_TICKS(20000));
+        uint32_t t1 = millis();
+        engineDisable(ENGINE_WARDRIVE);
+        Serial.printf("[C5TEST] round %d: disabled took=%ums dma=%u\n",
+                      round, (unsigned)(millis() - t1),
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA));
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+    Serial.println("[C5TEST] done");
+    vTaskDelete(NULL);
+}
+#endif
+
 #ifdef OUISPY_RADIOWATCH
 static void radioWatchTask(void* arg) {
     (void)arg;
@@ -1361,7 +1386,7 @@ void setup() {
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     c5WifiInitNetif();
-    c5WifiUp();
+    c5WifiPrepare();
     bleGattInit();
     hwGpsInit();
     meshInit();
@@ -1475,6 +1500,10 @@ void setup() {
 #ifdef OUISPY_RADIOWATCH
     xTaskCreatePinnedToCore(radioWatchTask, "radiowatch", 4096, NULL, 1, NULL, 1);
     Serial.println("[INIT] RADIO WATCH armed");
+#endif
+#ifdef OUISPY_C5_WIFI_SELFTEST
+    xTaskCreatePinnedToCore(c5WifiSelftestTask, "c5test", 4096, NULL, 1, NULL, 0);
+    Serial.println("[INIT] C5 WIFI SELFTEST armed (3x wardrive enable/disable, no phone)");
 #endif
 #ifdef OUISPY_WATCHDOG_SELFTEST
     xTaskCreatePinnedToCore(watchdogSelftestTask, "wdtest", 4096, NULL, 1, NULL, 1);

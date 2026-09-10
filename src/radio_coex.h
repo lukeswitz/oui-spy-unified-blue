@@ -9,6 +9,7 @@ void wifiCoexUnregister(WifiRxParser parser);
 #ifdef OUISPY_NIMBLE2
 void c5WifiInitNetif(void);
 void c5WifiUp(void);
+void c5WifiPrepare(void);
 #endif
 bool wifiCoexActive(void);
 bool wifiRadioExternallyOwned(void);
