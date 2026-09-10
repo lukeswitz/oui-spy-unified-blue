@@ -16,6 +16,9 @@ extern volatile uint32_t g_flockCorroborated;
 #include "flock_wifi.h"
 #include "flock_ble.h"
 #include "foxhunter.h"
+#include <esp_attr.h>
+#include <esp_heap_caps.h>
+#include <new>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -171,7 +174,16 @@ static uint16_t currentSlotDwellMs(void) {
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
-static DedupRing<1024, 5000> wardriveDedup;
+typedef DedupRing<1024, 5000> WardriveDedup;
+static WardriveDedup* wardriveDedupPtr = nullptr;
+static WardriveDedup& wardriveDedupRef(void) {
+    if (!wardriveDedupPtr) {
+        void* mem = heap_caps_malloc(sizeof(WardriveDedup), MALLOC_CAP_SPIRAM);
+        if (!mem) mem = heap_caps_malloc(sizeof(WardriveDedup), MALLOC_CAP_8BIT);
+        wardriveDedupPtr = new (mem) WardriveDedup();
+    }
+    return *wardriveDedupPtr;
+}
 static DedupRingISR<1024, 2000> wifiDedup;
 static DedupRingISR<64, 5000> isrFlockWifiDedup;
 
@@ -472,7 +484,7 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
         uint8_t mac[6];
         bleAddrToMac(dev->getAddress().getNative(), mac);
         if (wdDetectorActive) detectorCheckBleSignatures(dev, mac, dev->getRSSI());
-        if (wardriveDedup.check(mac)) return;
+        if (wardriveDedupRef().check(mac)) return;
 
         int rssi = dev->getRSSI();
         uint32_t now = millis();
@@ -573,7 +585,7 @@ static WardriveAdvCallbacks wardriveBleCallbacks;
 // ============================================================================
 
 static void wardriveInit(void) {
-    wardriveDedup.reset();
+    wardriveDedupRef().reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
     flockMatchInit();
@@ -583,12 +595,12 @@ static void wardriveInit(void) {
 static void wardriveStart(void) {
     wardriveActive = true;
     lastBleScan = 0;
-    wardriveDedup.reset();
+    wardriveDedupRef().reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
     meshResetTxDedup();
     uint32_t relog = engineGetRediscoverMs();
-    wardriveDedup.setCooldownMs(relog);
+    wardriveDedupRef().setCooldownMs(relog);
     wifiDedup.setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
     wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
@@ -599,11 +611,13 @@ static void wardriveStart(void) {
     lastChannelHop = millis();
 
     if (wardriveRadio & 0x01) {
+#ifndef OUISPY_NIMBLE2
         if (!meshIsEnabled()) {
             WiFi.mode(WIFI_STA);
             WiFi.disconnect(false, false);
             vTaskDelay(pdMS_TO_TICKS(50));
         }
+#endif
 
         wifiApplyRegdomain();
 
@@ -857,7 +871,7 @@ void wardriveSetRadioMask(uint8_t mask) {
 
 static void wardriveApplyPrefs(void) {
     uint32_t relog = engineGetRediscoverMs();
-    wardriveDedup.setCooldownMs(relog);
+    wardriveDedupRef().setCooldownMs(relog);
     wifiDedup.setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
 }

@@ -201,9 +201,12 @@ Law-enforcement OUIs are refused.
 </details>
 
 <details>
-<summary><b>T-Dongle-S3 — screen, button, SD card</b></summary>
+<summary><b>T-Dongle-S3 / T-Dongle-C5 — screen, button, SD card</b></summary>
 
 LCD, microSD, LED. Logs to the card with no app attached.
+
+The C5 uses the same panel, card layout and LED. It scans 2.4 and 5 GHz, and runs
+standalone only — it cannot join a mesh as a node.
 
 ### Button
 

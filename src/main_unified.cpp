@@ -1286,10 +1286,12 @@ void setup() {
 
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);
+#ifndef OUISPY_NIMBLE2
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true, true);
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     WiFi.mode(WIFI_OFF);
+#endif
 
     if (wifiOtaHasPending()) {
         Serial.println("[BOOT] WiFi OTA pending -> OTA-only mode (BLE/mesh/engines skipped, full heap)");
@@ -1359,6 +1361,7 @@ void setup() {
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     c5WifiInitNetif();
+    c5WifiUp();
     bleGattInit();
     hwGpsInit();
     meshInit();

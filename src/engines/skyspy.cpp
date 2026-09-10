@@ -357,9 +357,11 @@ static void skyspyStart(void) {
     bool wantWifi = (skyspyRadioMask & 0x01) != 0;
     bool wantBle  = (skyspyRadioMask & 0x02) != 0;
     if (wantWifi) {
+#ifndef OUISPY_NIMBLE2
         if (!meshIsEnabled()) {
             WiFi.mode(WIFI_STA);
         }
+#endif
         // MGMT only — ODID (NAN/Beacon) travels in mgmt frames; DATA/CTRL would
         // bury the callback in irrelevant traffic and miss drone beacons.
         wifiSnifferApplyPs();
