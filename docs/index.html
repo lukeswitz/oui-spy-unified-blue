@@ -797,7 +797,9 @@
     }
 
     function isLatestVersion() {
-      return currentVersion.version === VERSIONS[0].version;
+      const avail = versionsForTarget(currentTarget);
+      const newest = avail.length ? avail[0] : VERSIONS[0];
+      return currentVersion.version === newest.version;
     }
 
     const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
@@ -926,14 +928,14 @@
         chip.className = 'ver-chip' + (v === currentVersion ? ' selected' : '');
         chip.onclick = () => setVersion(v);
         chip.innerHTML = 'v' + v.version +
-          (v.version === VERSIONS[0].version ? '<span class="vc-badge">current</span>' : '');
+          (v === avail[0] ? '<span class="vc-badge">current</span>' : '');
         chips.appendChild(chip);
       });
       if (versionsError) {
         note.textContent = 'Version list unavailable (' + versionsError + ') — serving the current build.';
       } else if (!isLatestVersion()) {
         note.textContent = 'Older release. Settings already on the board are kept; the companion app expects v' +
-          VERSIONS[0].version + ' and may show fewer features on this build.';
+          avail[0].version + ' and may show fewer features on this build.';
       } else if (avail.length === 1 && VERSIONS.length > 1) {
         note.textContent = TARGETS[currentTarget].name + ' was introduced in v' + avail[0].version +
           ' — no earlier builds exist for it.';
