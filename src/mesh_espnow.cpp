@@ -1876,6 +1876,12 @@ static void meshTxTaskFn(void* arg) {
                 if (r == ESP_OK) break;
                 vTaskDelay(pdMS_TO_TICKS(1));
             }
+            if (r != ESP_OK) {
+                Serial.printf("[MESH-TX] send FAILED rc=0x%x len=%u ch=%u dma=%u internal=%u\n",
+                              (int)r, (unsigned)item.len, (unsigned)cur_ch,
+                              (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+            }
             sent++;
         }
 

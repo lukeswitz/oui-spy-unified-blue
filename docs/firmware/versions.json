@@ -5,7 +5,8 @@
     "dist": true,
     "targets": [
       "node-xiao_c5",
-      "node-tdongle_c5"
+      "node-tdongle_c5",
+      "node-tdongle_s3"
     ]
   },
   {

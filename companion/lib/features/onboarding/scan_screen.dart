@@ -9,6 +9,7 @@ import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 class ScanScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   String? _error;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<NodeConnectionState>? _connSub;
+  String? _rememberedMgrId;
+
+  Future<void> _loadRememberedManager() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    if (p.getBool('lastPrimaryIsManager') ?? false) {
+      setState(() => _rememberedMgrId = p.getString('lastPrimaryDeviceId'));
+    }
+  }
 
   @override
   void initState() {
@@ -37,6 +47,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       });
       return;
     }
+    _loadRememberedManager();
     _connSub = ble.connectionState.listen((state) {
       if (state == NodeConnectionState.ready && mounted) {
         context.go('/home');
@@ -239,15 +250,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final t = AppTheme.of(context);
     final all = _results.values.toList();
     String displayName(ScanResult r) {
-      final n = r.device.platformName;
-      if (n.isNotEmpty) return n.toUpperCase();
-      return r.advertisementData.advName.toUpperCase();
+      final adv = r.advertisementData.advName;
+      if (adv.isNotEmpty) return adv.toUpperCase();
+      return r.device.platformName.toUpperCase();
     }
     bool isMgr(ScanResult r) {
-      final n = displayName(r);
-      return n.contains('-MGR') || n.contains('OUI-SPY-MGR');
+      final adv = r.advertisementData.advName.toUpperCase();
+      final plat = r.device.platformName.toUpperCase();
+      if (adv.contains('-MGR') || plat.contains('-MGR')) return true;
+      final rem = _rememberedMgrId;
+      return rem != null && rem == r.device.remoteId.toString();
     }
-    final hasManager = all.any(isMgr);
+    final hasManager =
+        all.any(isMgr) || ref.read(bleManagerProvider).isManagerConnected;
     final filtered = hasManager ? all.where(isMgr).toList() : all;
     final sorted = filtered
       ..sort((a, b) => displayName(a).compareTo(displayName(b)));
@@ -335,14 +350,31 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      r.device.platformName.isNotEmpty
-                                          ? r.device.platformName
-                                          : (r.advertisementData.advName.isNotEmpty
-                                              ? r.advertisementData.advName
+                                      r.advertisementData.advName.isNotEmpty
+                                          ? r.advertisementData.advName
+                                          : (r.device.platformName.isNotEmpty
+                                              ? r.device.platformName
                                               : (r.advertisementData.serviceUuids.contains(GattUuids.service)
                                                   ? 'OUI-SPY node'
                                                   : '(unnamed)')),
                                         style: const TextStyle(color: AppTheme.accent, fontSize: 14, fontWeight: FontWeight.w600)),
+                                    if (isMgr(r))
+                                      Container(
+                                        margin: const EdgeInsets.only(top: 4),
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.success.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppTheme.success.withValues(alpha: 0.5)),
+                                        ),
+                                        child: const Text('MANAGER',
+                                            style: TextStyle(
+                                              color: AppTheme.success,
+                                              fontSize: 9,
+                                              letterSpacing: 1.2,
+                                              fontWeight: FontWeight.w700,
+                                            )),
+                                      ),
                                     Text(
                                       isThisConnecting
                                           ? 'CONNECTING...'

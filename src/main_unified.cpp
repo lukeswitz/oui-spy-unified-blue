@@ -1380,8 +1380,6 @@ void setup() {
     dongleWifiCfg.nvs_enable        = 0;
     dongleWifiCfg.static_rx_buf_num = 4;
     dongleWifiCfg.dynamic_rx_buf_num = 8;
-    dongleWifiCfg.dynamic_tx_buf_num = 8;
-    dongleWifiCfg.cache_tx_buf_num  = 0;
     dongleWifiCfg.ampdu_rx_enable   = 0;
     dongleWifiCfg.ampdu_tx_enable   = 0;
     dongleWifiCfg.amsdu_tx_enable   = 0;
