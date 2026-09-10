@@ -71,3 +71,4 @@ sdkconfig.v3_app_controlled_c5
 managed_components/
 
 .dummy/
+sdkconfig.*

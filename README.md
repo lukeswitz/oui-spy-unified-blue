@@ -116,8 +116,8 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 | **XIAO ESP32-S3** | NODE | 2.4 GHz | `node-xiao_s3` | `v3_app_controlled` |
 | ESP32-S3 N16R8 DevKitC | NODE | 2.4 GHz | `node-s3_devkitc` | `v3_app_controlled_s3_devkitc` |
 | **LilyGO T-Dongle-S3** | NODE — LCD + microSD | 2.4 GHz | `node-tdongle_s3` | `v3_app_controlled_tdongle_s3` |
-| **XIAO ESP32-C5** (experimental) | NODE — standalone only, no mesh | **2.4 + 5 GHz** | `node-xiao_c5` | `v3_app_controlled_c5` |
-| **LilyGO T-Dongle-C5** (experimental) | NODE — LCD + microSD, standalone only | **2.4 + 5 GHz** | `node-tdongle_c5` | `v3_app_controlled_tdongle_c5` |
+| **XIAO ESP32-C5** (experimental) | NODE | **2.4 + 5 GHz** | `node-xiao_c5` | `v3_app_controlled_c5` |
+| **LilyGO T-Dongle-C5** (experimental) | NODE — LCD + microSD | **2.4 + 5 GHz** | `node-tdongle_c5` | `v3_app_controlled_tdongle_c5` |
 | **M5StickC PLUS** (v1) | NODE — LCD + 3 buttons, no SD | 2.4 GHz | `node-stickc_plus` | `v3_app_controlled_stickc_plus` |
 | M5StickC PLUS2 (v2) | NODE — LCD + 3 buttons, no SD | 2.4 GHz | `node-stickc_plus2` | `v3_app_controlled_stickc_plus2` |
 | M5StickC (original) | NODE — LCD + 3 buttons, no SD | 2.4 GHz | `node-stickc` | `v3_app_controlled_stickc` |
@@ -130,7 +130,7 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 - **Several boards:** flash MANAGER on the one your phone connects to (`mgr-xiao_s3`), NODE on the rest.
 - The **ESP32-C5** boards are the only ones that also scan 5 GHz.
 - They're newer and less tested — treat them as experimental.
-- The **ESP32-C5** and **M5StickC** boards run standalone only: mesh is compiled out (`OUISPY_NO_MESH`), so they connect straight to the phone and can't be fleet nodes.
+- The **M5StickC** boards run standalone only: mesh is compiled out (`OUISPY_NO_MESH`) to fit their RAM, so they connect straight to the phone and can't be fleet nodes.
 
 </details>
 
@@ -205,8 +205,8 @@ Law-enforcement OUIs are refused.
 
 LCD, microSD, LED. Logs to the card with no app attached.
 
-The C5 uses the same panel, card layout and LED. It scans 2.4 and 5 GHz, and runs
-standalone only — it cannot join a mesh as a node.
+The C5 uses the same panel, card layout and LED. It scans 2.4 and 5 GHz and joins the
+mesh as a node.
 
 ### Button
 
@@ -345,7 +345,7 @@ Several engines check all three so a target is caught in any role.
 - Scanning nodes weave back to channel 1 each sweep to pass traffic, so mesh chatter and channel-split scanning share the radio.
 - A node silent for 45 s drops off and rejoins on its own when back in range.
 - Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio, Wi-Fi band) push to every node and override their local copies.
-- The **ESP32-C5** and **M5StickC** boards do not participate in the mesh — mesh is compiled out on them, so they connect straight to your phone.
+- The **M5StickC** boards do not participate in the mesh — mesh is compiled out on them, so they connect straight to your phone.
 
 </details>
 
