@@ -11,7 +11,6 @@
 #include <nvs_flash.h>
 
 static bool g_c5WifiUp = false;
-static bool g_c5WifiInited = false;
 void c5WifiInitNetif(void) {
     esp_netif_init();
     esp_err_t le = esp_event_loop_create_default();
@@ -20,8 +19,8 @@ void c5WifiInitNetif(void) {
     }
     nvs_flash_init();
 }
-void c5WifiPrepare(void) {
-    if (g_c5WifiInited) return;
+void c5WifiUp(void) {
+    if (g_c5WifiUp) return;
     size_t dma = heap_caps_get_free_size(MALLOC_CAP_DMA);
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     cfg.nvs_enable = 0;
@@ -32,22 +31,15 @@ void c5WifiPrepare(void) {
     }
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     esp_wifi_set_mode(WIFI_MODE_STA);
-    g_c5WifiInited = true;
-    Serial.printf("[COEX] C5 WiFi ready dma=%u init=0x%x\n", (unsigned)dma, (int)irc);
-}
-void c5WifiUp(void) {
-    if (g_c5WifiUp) return;
-    c5WifiPrepare();
-    if (!g_c5WifiInited) return;
-    size_t dma = heap_caps_get_free_size(MALLOC_CAP_DMA);
     esp_err_t src = esp_wifi_start();
     if (src != ESP_OK) {
+        esp_wifi_deinit();
         Serial.printf("[COEX] C5 WiFi start FAILED dma=%u start=0x%x\n", (unsigned)dma, (int)src);
         return;
     }
     wifiSnifferApplyPs();
     g_c5WifiUp = true;
-    Serial.printf("[COEX] C5 WiFi up dma=%u\n", (unsigned)dma);
+    Serial.printf("[COEX] C5 WiFi up dma=%u init=0x%x\n", (unsigned)dma, (int)irc);
 }
 static void __attribute__((unused)) c5WifiDown(void) {
     if (!g_c5WifiUp) return;
