@@ -772,6 +772,7 @@
         new URL('firmware/versions.json', document.baseURI).href,
         FIRMWARE_BASE_ROOT + 'versions.json',
       ];
+      if (!IS_LOCAL) sources.reverse();
       const failures = [];
       for (const url of sources) {
         try {
