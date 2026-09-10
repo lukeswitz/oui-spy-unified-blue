@@ -803,8 +803,9 @@
     const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 
     function firmwareBase() {
-      if (IS_LOCAL) return 'firmware/' + TARGETS[currentTarget].path;
-      return RAW_PREFIX + currentVersion.ref + '/docs/firmware/' + TARGETS[currentTarget].path;
+      const dir = (currentVersion && currentVersion.dist) ? 'dist/' : 'firmware/';
+      if (IS_LOCAL) return dir + TARGETS[currentTarget].path;
+      return RAW_PREFIX + currentVersion.ref + '/docs/' + dir + TARGETS[currentTarget].path;
     }
 
     // Optional: pull from latest GitHub release if local docs/firmware/<target>/ missing.

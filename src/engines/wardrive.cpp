@@ -174,6 +174,7 @@ static uint16_t currentSlotDwellMs(void) {
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
+#if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
 typedef DedupRing<1024, 5000> WardriveDedup;
 static WardriveDedup* wardriveDedupPtr = nullptr;
 static WardriveDedup& wardriveDedupRef(void) {
@@ -184,6 +185,10 @@ static WardriveDedup& wardriveDedupRef(void) {
     }
     return *wardriveDedupPtr;
 }
+#else
+static DedupRing<1024, 5000> wardriveDedupStatic;
+static inline DedupRing<1024, 5000>& wardriveDedupRef(void) { return wardriveDedupStatic; }
+#endif
 static DedupRingISR<1024, 2000> wifiDedup;
 static DedupRingISR<64, 5000> isrFlockWifiDedup;
 

@@ -34,6 +34,8 @@ key.properties
 
 # Release binaries
 dist/
+# web flasher pre-release bins, served by docs/index.html
+!docs/dist/
 
 # Flutter / Dart build output
 companion/build/

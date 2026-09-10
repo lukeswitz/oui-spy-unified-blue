@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.6.0-dev",
+    "ref": "companion",
+    "dist": true,
+    "targets": [
+      "node-xiao_c5",
+      "node-tdongle_c5"
+    ]
+  },
+  {
     "version": "0.6.0",
     "ref": "332726f283c7e9468c39dda2d110865475ffce7d",
     "targets": [
