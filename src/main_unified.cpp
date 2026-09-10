@@ -526,6 +526,9 @@ static void engineCmdTask(void* param) {
             engineProcessCommand(&cmd);
             // Notify phone of state change
             bleGattNotifyEngineState();
+#ifdef OUISPY_XIAO_C5
+            vTaskDelay(1);
+#endif
         }
     }
 }

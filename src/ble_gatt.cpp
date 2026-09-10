@@ -902,9 +902,21 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         uint16_t connHandle = server->getPeerInfo(0).getConnHandle();
         server->updateConnParams(connHandle, 12, 24, 0, 600);
         Serial.println("[BLE] Phone connected, requested fast conn params");
+#ifdef OUISPY_XIAO_C5
+        {
+            NimBLEConnInfo ci = server->getPeerInfo(0);
+            Serial.printf("[BLET] connected t=%ums interval=%u latency=%u timeout=%u mtu=%u\n",
+                          (unsigned)millis(), (unsigned)ci.getConnInterval(),
+                          (unsigned)ci.getConnLatency(), (unsigned)ci.getConnTimeout(),
+                          (unsigned)server->getPeerMTU(connHandle));
+        }
+#endif
     }
 
     void onDisconnect(NimBLEServer* server) override {
+#ifdef OUISPY_XIAO_C5
+        Serial.printf("[BLET] disconnected t=%ums\n", (unsigned)millis());
+#endif
         phoneConnected = false;
         hwAlertsSuppressed = false;
 #ifdef OUISPY_ROLE_MANAGER
@@ -919,6 +931,9 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         nodePhoneDisconnected();
 #endif
         NimBLEDevice::startAdvertising();
+#ifdef OUISPY_XIAO_C5
+        Serial.printf("[BLET] advertising restarted t=%ums\n", (unsigned)millis());
+#endif
     }
 };
 
