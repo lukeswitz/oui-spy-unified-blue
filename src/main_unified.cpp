@@ -16,6 +16,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
+#ifdef OUISPY_NIMBLE2
+#include <freertos/idf_additions.h>
+#endif
 
 #include "protocol.h"
 #include "det_spool.h"
@@ -1323,7 +1326,7 @@ void setup() {
     detectionQueue = xQueueCreate(128, sizeof(DetectionEvent));
 #endif
 #ifdef OUISPY_NIMBLE2
-    engineCmdQueue = xQueueCreate(32, sizeof(EngineCommand));
+    engineCmdQueue = xQueueCreateWithCaps(32, sizeof(EngineCommand), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 #else
     engineCmdQueue = xQueueCreate(8, sizeof(EngineCommand));
 #endif
@@ -1547,14 +1550,16 @@ void setup() {
 // ============================================================================
 void loop() {
 #ifdef OUISPY_STACKPROBE
-    static bool stackProbeDone = false;
-    if (!stackProbeDone && millis() > 10000) {
-        stackProbeDone = true;
+    static int stackProbeDone = 0;
+    if ((stackProbeDone == 0 && millis() > 10000) || (stackProbeDone == 1 && millis() > 45000)) {
+        stackProbeDone++;
         static const char* kProbe[] = {
             "nimble_host", "btController", "BTU_TASK", "BTC_TASK", "hciT",
-            "wifi", "det_notify", "meshTx", "meshRetry", "meshSched",
+            "wifi", "det_notify", "eng_cmd", "status_hb", "chime",
+            "meshTx", "meshRetry", "meshSched",
             "meshRxWk", "loopTask", "IDLE", "tiT",
         };
+        Serial.printf("[STACK] t=%lus\n", (unsigned long)(millis() / 1000));
         for (unsigned i = 0; i < sizeof(kProbe) / sizeof(kProbe[0]); i++) {
             TaskHandle_t h = xTaskGetHandle(kProbe[i]);
             if (!h) continue;

@@ -14,6 +14,12 @@
 #include <mbedtls/gcm.h>
 #include <string.h>
 #include <esp_ota_ops.h>
+#ifdef OUISPY_NIMBLE2
+#include <freertos/idf_additions.h>
+#define MESH_QUEUE_CREATE(n, sz) xQueueCreateWithCaps((n), (sz), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+#else
+#define MESH_QUEUE_CREATE(n, sz) xQueueCreate((n), (sz))
+#endif
 
 volatile MeshConfig meshCurrentConfig = {};
 volatile MeshStatus meshCurrentStatus = {};
@@ -1392,17 +1398,17 @@ void meshInit(void) {
                   (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     return;
 #endif
-    meshTxQueue = xQueueCreate(MESH_TX_QUEUE_DEPTH, sizeof(MeshTxItem));
+    meshTxQueue = MESH_QUEUE_CREATE(MESH_TX_QUEUE_DEPTH, sizeof(MeshTxItem));
     if (!meshTxQueue) {
         Serial.println("[MESH] tx queue create FAIL");
     }
 #ifndef OUISPY_ROLE_MANAGER
-    meshRxQueue = xQueueCreate(8, sizeof(MeshRxItem));
+    meshRxQueue = MESH_QUEUE_CREATE(8, sizeof(MeshRxItem));
     if (!meshRxQueue) {
         Serial.println("[MESH] rx queue create FAIL");
     }
 #if defined(OUISPY_LOWRAM) || defined(OUISPY_NIMBLE2)
-    detRecQueue = xQueueCreate(24, sizeof(DetRec));
+    detRecQueue = MESH_QUEUE_CREATE(24, sizeof(DetRec));
 #else
     detRecQueue = xQueueCreate(128, sizeof(DetRec));
 #endif
