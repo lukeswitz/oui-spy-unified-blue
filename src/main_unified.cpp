@@ -1394,6 +1394,10 @@ void setup() {
     dongleWifiCfg.ampdu_rx_enable   = 0;
     dongleWifiCfg.ampdu_tx_enable   = 0;
     dongleWifiCfg.amsdu_tx_enable   = 0;
+#ifdef OUISPY_TINYRAM
+    dongleWifiCfg.static_tx_buf_num = 4;
+    dongleWifiCfg.cache_tx_buf_num  = 4;
+#endif
     esp_err_t dongleWifiRc = esp_wifi_init(&dongleWifiCfg);
     if (dongleWifiRc == ESP_OK) {
         esp_wifi_set_storage(WIFI_STORAGE_RAM);

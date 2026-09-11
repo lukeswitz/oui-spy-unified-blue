@@ -174,8 +174,13 @@ static uint16_t currentSlotDwellMs(void) {
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
+#ifdef OUISPY_TINYRAM
+#define WD_DEDUP_SLOTS 256
+#else
+#define WD_DEDUP_SLOTS 1024
+#endif
 #if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
-typedef DedupRing<1024, 5000> WardriveDedup;
+typedef DedupRing<WD_DEDUP_SLOTS, 5000> WardriveDedup;
 static WardriveDedup* wardriveDedupPtr = nullptr;
 static WardriveDedup& wardriveDedupRef(void) {
     if (!wardriveDedupPtr) {
@@ -186,10 +191,10 @@ static WardriveDedup& wardriveDedupRef(void) {
     return *wardriveDedupPtr;
 }
 #else
-static DedupRing<1024, 5000> wardriveDedupStatic;
-static inline DedupRing<1024, 5000>& wardriveDedupRef(void) { return wardriveDedupStatic; }
+static DedupRing<WD_DEDUP_SLOTS, 5000> wardriveDedupStatic;
+static inline DedupRing<WD_DEDUP_SLOTS, 5000>& wardriveDedupRef(void) { return wardriveDedupStatic; }
 #endif
-static DedupRingISR<1024, 2000> wifiDedup;
+static DedupRingISR<WD_DEDUP_SLOTS, 2000> wifiDedup;
 static DedupRingISR<64, 5000> isrFlockWifiDedup;
 
 static volatile uint8_t wdFlockBleActive = 0;
