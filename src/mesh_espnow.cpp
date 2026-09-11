@@ -1421,10 +1421,16 @@ void meshInit(void) {
     xTaskCreate(meshRxWorkerFn, "meshRxWk", 6144, NULL, 4, &meshRxWorkerHandle);
 #endif
 #endif
+#ifdef OUISPY_NIMBLE2
+    xTaskCreateWithCaps(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    xTaskCreateWithCaps(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    xTaskCreatePinnedToCoreWithCaps(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
     xTaskCreate(retryTaskFn, "meshRetry", 4096, NULL, 1, &retryTaskHandle);
     xTaskCreate(meshTxTaskFn, "meshTx", 4096, NULL, 3, &meshTxTaskHandle);
 #ifndef OUISPY_ROLE_MANAGER
     xTaskCreatePinnedToCore(meshSchedTaskFn, "meshSched", 4096, NULL, 2, &meshSchedTaskHandle, 0);
+#endif
 #endif
     Serial.printf("[MESH] queues txd=%d dmaFree=%u internalFree=%u\n",
                   (int)MESH_TX_QUEUE_DEPTH,

@@ -1319,7 +1319,7 @@ void setup() {
 
     // Create FreeRTOS queues
 #ifdef OUISPY_NIMBLE2
-    detectionQueue = xQueueCreate(32, sizeof(DetectionEvent));
+    detectionQueue = xQueueCreateWithCaps(32, sizeof(DetectionEvent), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 #elif defined(OUISPY_LOWRAM)
     detectionQueue = xQueueCreate(32, sizeof(DetectionEvent));
 #else
@@ -1434,7 +1434,11 @@ void setup() {
     BaseType_t t2 = xTaskCreatePinnedToCore(engineCmdTask, "eng_cmd", 4096, NULL, 1, NULL, 1);
 #endif
     BaseType_t t3 = xTaskCreatePinnedToCore(statusHeartbeatTask, "status_hb", 6144, NULL, 1, NULL, 1);
+#ifdef OUISPY_NIMBLE2
+    BaseType_t t4 = xTaskCreatePinnedToCoreWithCaps(chimeTaskFn, "chime", 2048, NULL, 1, NULL, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
     BaseType_t t4 = xTaskCreatePinnedToCore(chimeTaskFn, "chime", 2048, NULL, 1, NULL, 1);
+#endif
 
     Serial.printf("[INIT] Tasks created det=%d cmd=%d hb=%d chime=%d internalFree=%u dmaFree=%u\n",
                   (int)t1, (int)t2, (int)t3, (int)t4,
