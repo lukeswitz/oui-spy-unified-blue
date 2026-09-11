@@ -766,7 +766,12 @@ static void wardriveLoop(void) {
         if (pWardriveScan != nullptr) {
             if (now - lastBleScan >= bleScanIntervalMs && !pWardriveScan->isScanning()) {
                 lastBleScan = now;
-                pWardriveScan->start(0, wardriveBleOnComplete, false);
+                bool bleOk = pWardriveScan->start(0, wardriveBleOnComplete, false);
+                if (!bleOk) {
+                    Serial.printf("[WARDRIVE] ble scan start FAILED internal=%u dma=%u\n",
+                                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA));
+                }
 #ifdef OUISPY_SWEEPLOG
                 Serial.printf("[BLEDUTY] ON  t=%lu (dur=%u int=%u)\n",
                               (unsigned long)now, bleScanDurationMs, bleScanIntervalMs);
@@ -774,8 +779,9 @@ static void wardriveLoop(void) {
             } else if (pWardriveScan->isScanning() && (now - lastBleScan >= bleScanDurationMs)) {
                 pWardriveScan->stop();
 #ifdef OUISPY_SWEEPLOG
-                Serial.printf("[BLEDUTY] OFF t=%lu (on for %lums)\n",
-                              (unsigned long)now, (unsigned long)(now - lastBleScan));
+                Serial.printf("[BLEDUTY] OFF t=%lu (on for %lums) rawSeen=%lu\n",
+                              (unsigned long)now, (unsigned long)(now - lastBleScan),
+                              (unsigned long)g_engRawSeen);
 #endif
             }
         }
