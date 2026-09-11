@@ -4,9 +4,18 @@
     "ref": "companion",
     "dist": true,
     "targets": [
+      "node-xiao_s3",
+      "node-s3_devkitc",
       "node-xiao_c5",
+      "node-tdongle_s3",
       "node-tdongle_c5",
-      "node-tdongle_s3"
+      "node-stickc",
+      "node-stickc_plus",
+      "node-stickc_plus2",
+      "mgr-xiao_s3",
+      "mgr-s3_devkitc",
+      "mgr-xiao_c3",
+      "mgr-wroom"
     ]
   },
   {

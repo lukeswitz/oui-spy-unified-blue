@@ -130,7 +130,7 @@ The [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) always list
 - **Several boards:** flash MANAGER on the one your phone connects to (`mgr-xiao_s3`), NODE on the rest.
 - The **ESP32-C5** boards are the only ones that also scan 5 GHz.
 - They're newer and less tested — treat them as experimental.
-- The **M5StickC** boards run standalone only: mesh is compiled out (`OUISPY_NO_MESH`) to fit their RAM, so they connect straight to the phone and can't be fleet nodes.
+- The **M5StickC PLUS** (v1) is a full mesh node. The original **M5StickC** and the **PLUS2** run standalone only: mesh is compiled out (`OUISPY_NO_MESH`) to fit their RAM, so they connect straight to the phone and can't be fleet nodes.
 
 </details>
 
@@ -173,7 +173,7 @@ Strip order, left to right:
 |---|---|
 | **Top left** | Selected mode — **amber** = picked, **lime** = running |
 | **Top middle** | Wardrive run time, once wardriving |
-| **Top right** | `APP` `MSH` `SD` `GPS`. `MSH` and `SD` stay dark — no mesh, no card slot |
+| **Top right** | `APP` `MSH` `SD` `GPS`. `MSH` lights on the PLUS once a manager is joined and stays dark on the original and PLUS2 (no mesh); `SD` stays dark — no card slot |
 | **Left, large** | Unique **WiFi** networks seen |
 | **Left, below** | Unique **BLE** devices seen |
 | **Right, upper** | Foxhunt target, or `CAP 1.2M` while capturing |
@@ -345,7 +345,7 @@ Several engines check all three so a target is caught in any role.
 - Scanning nodes weave back to channel 1 each sweep to pass traffic, so mesh chatter and channel-split scanning share the radio.
 - A node silent for 45 s drops off and rejoins on its own when back in range.
 - Manager settings (buzzer, LED, alert timing, ignore list, wardrive radio, Wi-Fi band) push to every node and override their local copies.
-- The **M5StickC** boards do not participate in the mesh — mesh is compiled out on them, so they connect straight to your phone.
+- The **M5StickC PLUS** (v1) joins the mesh as a node. The original **M5StickC** and the **PLUS2** do not — mesh is compiled out on them, so they connect straight to your phone.
 
 </details>
 
