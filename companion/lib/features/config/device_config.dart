@@ -5517,6 +5517,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     'xiao_c5',
     'tdongle_s3',
     'tdongle_c5',
+    'stickc_plus',
   ];
 
   @override
