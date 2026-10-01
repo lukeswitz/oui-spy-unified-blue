@@ -55,7 +55,7 @@ void bleCoexEnsureScanning(void) {
     s->setActiveScan(g_wantActive);
     s->setInterval(100);
     s->setWindow(99);
-#ifdef OUISPY_NIMBLE2
+#ifdef OUISPY_NIMBLE2_API
     s->start(0, false, false);
 #else
     s->start(0, nullptr, false);

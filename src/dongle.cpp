@@ -1435,8 +1435,60 @@ static void pcapSelftest(uint32_t now) {
 }
 #endif
 
+#ifdef OUISPY_STANDALONE_SELFTEST
+static void standaloneSelftest(uint32_t now) {
+    static uint8_t idx = 0, phase = 0, fails = 0;
+    static uint32_t at = 12000, det0 = 0, eng0 = 0, size0 = 0;
+    if ((int32_t)(now - at) < 0 || idx >= DONGLE_STRIP_N) return;
+    EngineId id = (EngineId)kStripEngines[idx];
+    const char* nm = engShortName(id);
+    if (phase == 0) {
+        while (s_selIdx != idx) cycleDetMode(now);
+        det0 = s_detRows; eng0 = s_engCount[id];
+        sdLock();
+        if (s_detCsv) s_detCsv.flush();
+        if (s_detCsv) { File rf = DONGLE_SD.open(s_detCsv.path(), FILE_READ); size0 = rf ? (uint32_t)rf.size() : 0; if (rf) rf.close(); }
+        sdUnlock();
+        startSelectedMode(now);
+        Serial.printf("[SATEST] %s start state=%d mask=0x%02X\n", nm,
+                      (int)engineGetState(id), engineGetActiveMask());
+        phase = 1; at = now + 20000;
+    } else {
+        int runState = (int)engineGetState(id);
+        uint32_t pcapB = s_pcapBytes;
+        sdLock();
+        if (s_detCsv) s_detCsv.flush();
+        uint32_t size1 = 0;
+        if (s_detCsv) { File rf = DONGLE_SD.open(s_detCsv.path(), FILE_READ); size1 = rf ? (uint32_t)rf.size() : 0; if (rf) rf.close(); }
+        sdUnlock();
+        startSelectedMode(now);
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        int stopState = (int)engineGetState(id);
+        bool ran = runState != ESTATE_DISABLED;
+        bool stopped = stopState == ESTATE_DISABLED;
+        const char* verdict;
+        if (id == ENGINE_FOXHUNTER && !ran) verdict = "SKIP(no target)";
+        else if (!ran || !stopped) verdict = "FAIL";
+        else if (id == ENGINE_WARDRIVE && (s_engCount[id] == eng0 || size1 <= size0)) verdict = "FAIL(no SD rows)";
+        else if (id == ENGINE_PCAP && pcapB == 0) verdict = "FAIL(no pcap bytes)";
+        else verdict = "PASS";
+        if (verdict[0] == 'F') fails++;
+        Serial.printf("[SATEST] %s run=%d stop=%d hits=+%lu detRows=+%lu csvBytes=%lu->%lu pcapBytes=%lu %s\n",
+                      nm, runState, stopState, (unsigned long)(s_engCount[id] - eng0),
+                      (unsigned long)(s_detRows - det0), (unsigned long)size0,
+                      (unsigned long)size1, (unsigned long)pcapB, verdict);
+        idx++; phase = 0; at = now + 4000;
+        if (idx >= DONGLE_STRIP_N)
+            Serial.printf("[SATEST] DONE modes=%u fails=%u\n", (unsigned)DONGLE_STRIP_N, (unsigned)fails);
+    }
+}
+#endif
+
 void dongleTick(void) {
     uint32_t now = millis();
+#ifdef OUISPY_STANDALONE_SELFTEST
+    standaloneSelftest(now);
+#endif
 #ifdef OUISPY_PCAP_SELFTEST
     pcapSelftest(now);
 #endif

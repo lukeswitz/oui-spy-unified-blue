@@ -203,7 +203,7 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
         g_engRawSeen++;
         ODID_UAS_Data& UAS_data = UAS_data_ble;
-#ifdef OUISPY_NIMBLE2
+#ifdef OUISPY_NIMBLE2_API
         const std::vector<uint8_t>& _pl = dev->getPayload();
         int len = (int)_pl.size();
         const uint8_t* payload = _pl.data();

@@ -1786,10 +1786,14 @@ static void dfuNotifyTrampoline(const uint8_t* data, size_t len) {
 
 static volatile bool     pcapIndInFlight = false;
 static volatile uint32_t pcapIndSentMs   = 0;
+static volatile uint16_t pcapSubValue    = 0;
 class PcapDataCallbacks : public NimBLECharacteristicCallbacks {
-#ifdef OUISPY_NIMBLE2
+#ifdef OUISPY_NIMBLE2_API
     void onStatus(NimBLECharacteristic* /*chr*/, int /*code*/) override {
         pcapIndInFlight = false;
+    }
+    void onSubscribe(NimBLECharacteristic* /*chr*/, NimBLEConnInfo& /*info*/, uint16_t subValue) override {
+        pcapSubValue = subValue;
     }
 #else
     void onStatus(NimBLECharacteristic* /*chr*/, Status /*s*/, int /*code*/) override {
@@ -1797,6 +1801,14 @@ class PcapDataCallbacks : public NimBLECharacteristicCallbacks {
     }
 #endif
 };
+
+[[maybe_unused]] static unsigned pcapSubscribedCount(void) {
+#ifdef OUISPY_NIMBLE2_API
+    return pcapSubValue ? 1u : 0u;
+#else
+    return chrPcapData ? (unsigned)chrPcapData->getSubscribedCount() : 0u;
+#endif
+}
 static PcapDataCallbacks pcapDataCallbacks;
 
 #ifdef OUISPY_ROLE_MANAGER
@@ -1851,7 +1863,7 @@ static void flushPcapCoalesced(void) {
         portEXIT_CRITICAL(&pcapCoalesceMux);
         return;
     }
-    if (chrPcapData->getSubscribedCount() == 0) return;
+    if (pcapSubscribedCount() == 0) return;
     if (pcapIndInFlight) {
         if (millis() - pcapIndSentMs > PCAP_IND_WATCHDOG_MS) pcapIndInFlight = false;
         else return;
@@ -1909,7 +1921,7 @@ static void pcapBleFlushTaskFn(void* arg) {
                 Serial.printf("[PCAP-MGR] recsOk=%lu recsDrop=%lu toPhone=%luB backlog=%uB sub=%u | statsNodes=%d statsFrames=%lu\n",
                     (unsigned long)mgrPcapRecsOk, (unsigned long)mgrPcapRecsDropped,
                     (unsigned long)mgrPcapBytesToPhone, (unsigned)backlog,
-                    chrPcapData ? (unsigned)chrPcapData->getSubscribedCount() : 0u,
+                    pcapSubscribedCount(),
                     aggNodes, (unsigned long)aggFrames);
             }
         }
@@ -2095,7 +2107,7 @@ void bleGattStreamPcapBytes(const uint8_t* buf, size_t len) {
     }
 #endif
     if (!phoneConnected || chrPcapData == nullptr) return;
-#ifndef OUISPY_NIMBLE2
+#ifndef OUISPY_NIMBLE2_API
     if (chrPcapData->getSubscribedCount() == 0) return;
 #endif
     size_t chunk = 180;
@@ -2385,7 +2397,7 @@ void bleGattInit(void) {
 
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(SVC_UUID);
-#ifndef OUISPY_NIMBLE2
+#ifndef OUISPY_NIMBLE2_API
     adv->setScanResponse(true);
 #endif
     if (!adv->start()) {

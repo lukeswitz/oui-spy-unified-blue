@@ -1,7 +1,11 @@
 #ifndef BLE_NIMBLE_COMPAT_H
 #define BLE_NIMBLE_COMPAT_H
 
-#if defined(OUISPY_NIMBLE2) && defined(__cplusplus) && __has_include(<NimBLEDevice.h>)
+#if defined(OUISPY_NIMBLE2) && !defined(OUISPY_NIMBLE2_API)
+#define OUISPY_NIMBLE2_API 1
+#endif
+
+#if defined(OUISPY_NIMBLE2_API) && defined(__cplusplus) && __has_include(<NimBLEDevice.h>)
 #include <Arduino.h>
 #include <esp_mac.h>
 #include <NimBLEDevice.h>
@@ -35,6 +39,9 @@ class OuispyServerCallbacks : public NimBLEServerCallbacks {
 #define setAdvertisedDeviceCallbacks setScanCallbacks
 #define getNative getVal
 #define getInitialized isInitialized
+#endif
+
+#if defined(OUISPY_NIMBLE2) && defined(__cplusplus) && __has_include(<NimBLEDevice.h>)
 #define xTaskCreatePinnedToCore(fn, nm, st, ar, pr, hd, core) \
     xTaskCreatePinnedToCore((fn), (nm), (st), (ar), (pr), (hd), 0)
 #define ledcSetup(ch, freq, res) ledcAttach(PIN_BUZZER, (freq), (res))
