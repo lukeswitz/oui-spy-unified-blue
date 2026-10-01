@@ -335,13 +335,18 @@ class BleProtocol {
     return buf.buffer.asUint8List();
   }
 
+  static const meshBoardCodes = [
+    '', 'xiao_s3', 's3_devkitc', 'xiao_c5', 'tdongle_s3', 'tdongle_c5',
+    'stickc', 'stickc_plus', 'stickc_plus2', 'xiao_c3', 'wroom',
+  ];
+
   static ({
     bool enabled,
     int peerCount,
     int connectedPeers,
     int rxCount,
     int txCount,
-    List<({String id, int role, int activeEngines, int fwVersion})> liveNodes,
+    List<({String id, int role, int activeEngines, int fwVersion, String board})> liveNodes,
   }) decodeMeshStatus(List<int> data) {
     if (data.length < 11) {
       return (
@@ -355,19 +360,22 @@ class BleProtocol {
     }
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
-    final live = <({String id, int role, int activeEngines, int fwVersion})>[];
+    final live = <({String id, int role, int activeEngines, int fwVersion, String board})>[];
     if (data.length >= 12) {
       final n = data[11];
       const entryLen = 11;
+      final boardsAt = 12 + n * entryLen;
       for (int i = 0; i < n && 12 + (i + 1) * entryLen <= data.length; i++) {
         final off = 12 + i * entryLen;
         final idBytes = bytes.sublist(off, off + 4);
         final id = String.fromCharCodes(idBytes);
+        final code = boardsAt + i < data.length ? data[boardsAt + i] : 0;
         live.add((
           id: id,
           role: data[off + 5],
           activeEngines: data[off + 6],
           fwVersion: view.getUint32(off + 7, Endian.little),
+          board: code < meshBoardCodes.length ? meshBoardCodes[code] : '',
         ));
       }
     }

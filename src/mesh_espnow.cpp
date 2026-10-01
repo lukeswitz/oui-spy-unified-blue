@@ -263,6 +263,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
     liveNodes[slot].role = role;
     liveNodes[slot].active_engines = engines;
     liveNodes[slot].fw_version = fw_version;
+    liveNodes[slot].board = 0;
     gNewNodeJoined = true;
     xSemaphoreGive(liveMutex);
 }
@@ -878,6 +879,22 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
+    if (plainLen >= sizeof(MeshNodeInfoPacket) && plainBuf[0] == MESH_PKT_NODE_INFO) {
+        MeshNodeInfoPacket ni;
+        memcpy(&ni, plainBuf, sizeof(ni));
+        if (liveMutex && ni.source_node_id[0] && memcmp(ni.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0 &&
+            xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+                if (memcmp(liveNodes[i].id, ni.source_node_id, MESH_NODE_ID_LEN) == 0) {
+                    liveNodes[i].board = ni.board;
+                    break;
+                }
+            }
+            xSemaphoreGive(liveMutex);
+        }
+        return;
+    }
+
     if (plainLen >= 7 && plainBuf[0] == MESH_PKT_IGNORELIST) {
         MeshIgnoreListPacket il;
         size_t cp = plainLen <= sizeof(il) ? plainLen : sizeof(il);
@@ -956,10 +973,22 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         size_t ul = wp.data[off++];
         if (ul == 0 || off + ul > n) return;
         memcpy(url, wp.data + off, ul);
+        char ownUrl[MESH_WIFIOTA_MAX + 32];
+        snprintf(ownUrl, sizeof(ownUrl), "%s", url);
+        const char* tag = "oui-spy-node-";
+        char* seg = strstr(url, tag);
+        if (seg) {
+            char* boardStart = seg + strlen(tag);
+            char* boardEnd = strchr(boardStart, '-');
+            if (boardEnd) {
+                snprintf(ownUrl, sizeof(ownUrl), "%.*s%s%s",
+                         (int)(boardStart - url), url, OUISPY_BOARD, boardEnd);
+            }
+        }
         s_wifiOtaApplied = true;
-        Serial.printf("[MESH-WIFIOTA] creds(%s)+url -> save + reboot to self-update\n", ssid);
+        Serial.printf("[MESH-WIFIOTA] creds(%s)+url -> save + reboot to self-update: %s\n", ssid, ownUrl);
         wifiOtaSaveCreds(ssid, pass);
-        wifiOtaSetPending(url);
+        wifiOtaSetPending(ownUrl);
         delay(200);
         esp_restart();
         return;
@@ -2236,6 +2265,15 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     hb.phone_connected = bleGattIsConnected() ? 1 : 0;
     uint8_t enc[128]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
+    enqueueTx(enc, encLen);
+
+    static uint8_t s_infoTick = 0;
+    if ((s_infoTick++ & 3) != 0) return;
+    MeshNodeInfoPacket ni = {};
+    ni.pkt_type = MESH_PKT_NODE_INFO;
+    memcpy(ni.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    ni.board = ouispyBoardCode();
+    if (!encryptPacket((const uint8_t*)&ni, sizeof(ni), enc, &encLen)) return;
     enqueueTx(enc, encLen);
 }
 

@@ -45,6 +45,21 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 
+String boardDisplayName(String? board) => switch (board) {
+      'xiao_s3' => 'XIAO ESP32-S3',
+      's3_devkitc' => 'ESP32-S3 DevKitC',
+      'xiao_c5' => 'XIAO ESP32-C5 (2.4+5GHz)',
+      'tdongle_s3' => 'LilyGO T-Dongle-S3',
+      'tdongle_c5' => 'LilyGO T-Dongle-C5 (2.4+5GHz)',
+      'stickc' => 'M5StickC',
+      'stickc_plus' => 'M5StickC PLUS',
+      'stickc_plus2' => 'M5StickC PLUS2',
+      'xiao_c3' => 'XIAO ESP32-C3',
+      'wroom' => 'ESP32 WROOM',
+      null || '' => '—',
+      final b => b,
+    };
+
 class DeviceConfigScreen extends ConsumerStatefulWidget {
   const DeviceConfigScreen({super.key});
 
@@ -527,12 +542,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
   Widget _buildHardwareTab() {
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
+    final hasBuzzer = !const {'tdongle_s3', 'tdongle_c5', 'stickc'}
+        .contains(ref.read(bleManagerProvider).board);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'AUDIO'),
-        ConfigToggleRow(
+        if (hasBuzzer) const ConfigSectionHeader(label: 'AUDIO'),
+        if (hasBuzzer) ConfigToggleRow(
           icon: Icons.volume_up,
           label: 'Buzzer',
           subtitle: 'Audible alerts on detections',
@@ -543,7 +560,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             _writeHardwareConfig();
           },
         ),
-        if (_buzzerEnabled)
+        if (hasBuzzer && _buzzerEnabled)
           ConfigSliderRow(
             icon: Icons.graphic_eq,
             label: 'Buzzer Volume',
@@ -559,7 +576,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
             },
           ),
 
-        const SizedBox(height: 16),
+        if (hasBuzzer) const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'LIGHTING'),
         ConfigToggleRow(
           icon: Icons.lightbulb,
@@ -968,6 +985,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
       final parts = <String>[
         if (hasCustom) id,
         if (isSelf) 'this device',
+        if (appState.nodeBoard(id) != null) boardDisplayName(appState.nodeBoard(id)),
         online ? 'LIVE' : 'offline',
         '$dets dets',
       ];
@@ -1051,19 +1069,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen>
         ConfigInfoRow(
           icon: Icons.developer_board,
           label: 'Board',
-          value: switch (ref.read(bleManagerProvider).board) {
-            'xiao_s3' => 'XIAO ESP32-S3',
-            's3_devkitc' => 'ESP32-S3 DevKitC',
-            'xiao_c5' => 'XIAO ESP32-C5 (2.4+5GHz)',
-            'tdongle_s3' => 'LilyGO T-Dongle-S3',
-            'tdongle_c5' => 'LilyGO T-Dongle-C5 (2.4+5GHz)',
-            'stickc' => 'M5StickC',
-            'stickc_plus' => 'M5StickC PLUS',
-            'stickc_plus2' => 'M5StickC PLUS2',
-            'xiao_c3' => 'XIAO ESP32-C3',
-            'wroom' => 'ESP32 WROOM',
-            final b => b.isEmpty ? '—' : b,
-          },
+          value: boardDisplayName(ref.read(bleManagerProvider).board),
         ),
         ConfigInfoRow(
           icon: Icons.fingerprint,
@@ -5568,6 +5574,13 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
     await prefs.setString(_nodeBoardPrefKey, v);
   }
 
+  String _effectiveNodeBoard() {
+    final boards = ref.read(appStateProvider).liveNodeBoards;
+    if (boards.contains('')) return _nodeBoard;
+    final reported = boards.where((b) => _nodeBoards.contains(b));
+    return reported.isNotEmpty ? reported.first : _nodeBoard;
+  }
+
   Future<void> _ensureWifiForUpdate() async {
     return;
   }
@@ -5605,7 +5618,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
         board: ble.board,
         role: ble.role,
         includeNode: ble.isManagerConnected,
-        nodeBoard: _nodeBoard,
+        nodeBoard: _effectiveNodeBoard(),
       );
       if (!mounted) return;
       final primary = pair.primary;
@@ -5673,11 +5686,12 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
           ],
         ),
       ),
+      if (nodes.any((id) => appState.nodeBoard(id) == null))
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
         child: Row(
           children: [
-            Text('Node board',
+            Text('Board for nodes on older firmware',
                 style: TextStyle(color: t.textSecondary, fontSize: 11)),
             const SizedBox(width: 10),
             DropdownButton<String>(
@@ -5724,6 +5738,9 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                 child: Text(appState.labelForNode(id),
                     style: TextStyle(color: t.textPrimary, fontSize: 12)),
               ),
+              Text(boardDisplayName(appState.nodeBoard(id)),
+                  style: TextStyle(color: t.textDim, fontSize: 11)),
+              const SizedBox(width: 8),
               Builder(builder: (_) {
                 final v = appState.nodeFwVersion(id);
                 final outdated = v != null &&

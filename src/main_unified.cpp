@@ -148,8 +148,10 @@ static void initHardware(void) {
 #ifdef OUISPY_TINYRAM
     Serial.printf("[HW] buzzer pin %d\n", (int)PIN_BUZZER); Serial.flush();
 #endif
+#ifndef OUISPY_NO_BUZZER
     pinMode(PIN_BUZZER, OUTPUT);
     digitalWrite(PIN_BUZZER, LOW);
+#endif
 #ifdef OUISPY_TINYRAM
     Serial.println("[HW] led init"); Serial.flush();
 #endif
@@ -167,7 +169,11 @@ static void initHardware(void) {
 static void loadHardwareConfig(void) {
     Preferences p;
     p.begin("ouispy-hw", true);
+#ifdef OUISPY_NO_BUZZER
+    hwBuzzerEnabled = false;
+#else
     hwBuzzerEnabled = p.getBool("buzzer", true);
+#endif
     hwBuzzerVolume = p.getUChar("bz_vol", 100);
     hwLedEnabled = p.getBool("led", true);
     hwNeopixelBrightness = p.getUChar("neo_brt", 50);
@@ -423,6 +429,41 @@ static void spoolE2EInjectTask(void* arg) {
 
 static volatile uint32_t g_ledOffAtMs = 0;
 
+#ifdef OUISPY_STANDALONE_STRESS
+extern "C" uint8_t* ble_hci_trans_buf_alloc(int type);
+extern "C" void ble_hci_trans_buf_free(uint8_t* buf);
+extern "C" int ble_hci_trans_ll_evt_tx(uint8_t* hci_ev);
+static volatile uint32_t g_fakeInjected = 0;
+static volatile uint32_t g_fakeDropped = 0;
+
+static void fakeAdvTask(void* arg) {
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(15000));
+    uint32_t n = 0;
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(250));
+        if (!NimBLEDevice::getScan()->isScanning()) continue;
+        uint8_t* ev = ble_hci_trans_buf_alloc(1);
+        if (!ev) { g_fakeDropped++; continue; }
+        char name[12];
+        int nl = snprintf(name, sizeof(name), "FAKE-%04lX", (unsigned long)(n & 0xFFFF));
+        uint8_t adv[31];
+        uint8_t al = 0;
+        adv[al++] = 2; adv[al++] = 0x01; adv[al++] = 0x06;
+        adv[al++] = (uint8_t)(nl + 1); adv[al++] = 0x09;
+        memcpy(&adv[al], name, nl); al += (uint8_t)nl;
+        const uint8_t hdr[] = { 0x3E, (uint8_t)(12 + al), 0x02, 1, 3, 1,
+                                (uint8_t)n, (uint8_t)(n >> 8), (uint8_t)(n >> 16),
+                                0xCE, 0xFA, 0xC5, al };
+        memcpy(ev, hdr, sizeof(hdr));
+        memcpy(ev + sizeof(hdr), adv, al);
+        ev[sizeof(hdr) + al] = (uint8_t)(int8_t)-55;
+        if (ble_hci_trans_ll_evt_tx(ev) == 0) { g_fakeInjected++; n++; }
+        else { ble_hci_trans_buf_free(ev); g_fakeDropped++; }
+    }
+}
+#endif
+
 static void detectionNotifyTask(void* param) {
     DetectionEvent evt;
     Serial.println("[TASK] Detection notify task started");
@@ -581,6 +622,15 @@ static void statusHeartbeatTask(void* param) {
         Serial.printf("[TEMP] %.1fC cpu=%uMHz heap=%u\n", temperatureRead(),
                       (unsigned)getCpuFrequencyMhz(),
                       (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+#endif
+#ifdef OUISPY_STANDALONE_STRESS
+        Serial.printf("[STRESS] up=%lus rstReason=%d fake=%lu drop=%lu heap=%u largest=%u minEver=%u scanning=%d\n",
+                      (unsigned long)(millis() / 1000UL), (int)esp_reset_reason(),
+                      (unsigned long)g_fakeInjected, (unsigned long)g_fakeDropped,
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                      (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+                      NimBLEDevice::getScan()->isScanning() ? 1 : 0);
 #endif
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
@@ -1470,6 +1520,16 @@ void setup() {
         meshEnable(&cfg);
         Serial.println("[INIT] mesh auto-enabled (plaintext broadcast, manager-controlled)");
     }
+#endif
+#ifdef OUISPY_STANDALONE_STRESS
+    delay(3000);
+    {
+        const uint8_t fakeOui[6] = { 0xC5, 0xFA, 0xCE, 0, 0, 0 };
+        detectorAddFilter(fakeOui, 3, "FAKE");
+    }
+    engineEnable(ENGINE_DETECTOR);
+    xTaskCreatePinnedToCore(fakeAdvTask, "fakeadv", 3072, NULL, 1, NULL, 1);
+    Serial.println("[STRESS] standalone: detector armed + fake BLE advertiser injecting 4 unique devices/s");
 #endif
 #ifdef OUISPY_SPOOL_LIVETEST
     meshDisable();

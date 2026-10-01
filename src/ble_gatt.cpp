@@ -1119,7 +1119,11 @@ void hardwareConfigApply(const uint8_t* data, size_t len) {
     static uint8_t lastCfg[8]; static size_t lastCfgLen = 0; static bool haveCfg = false;
     if (haveCfg && len == lastCfgLen && len <= sizeof(lastCfg) && memcmp(lastCfg, data, len) == 0) return;
     if (len <= sizeof(lastCfg)) { memcpy(lastCfg, data, len); lastCfgLen = len; haveCfg = true; }
+#ifdef OUISPY_NO_BUZZER
+    bool buzzer = false;
+#else
     bool buzzer = data[0] != 0;
+#endif
     bool led = data[1] != 0;
     uint8_t brightness = data[2];
     uint8_t buzzerVol = (len >= 4) ? data[3] : 100;
@@ -2197,6 +2201,9 @@ void bleGattInit(void) {
         NimBLEDevice::init(devName);
         Serial.printf("[BLE] device name: %s\n", devName);
     }
+#ifndef OUISPY_STRESS_NOFIX
+    NimBLEDevice::getScan()->setMaxResults(0);
+#endif
 #ifdef OUISPY_DUAL_BAND
     NimBLEDevice::setPower(ESP_PWR_LVL_P20);   // C5 radio TX ceiling (Bruce C5/C6/H2 tier)
 #else
@@ -2578,7 +2585,7 @@ void bleGattNotifyMeshStatus(void) {
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t liveCount = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
 
-    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 11];
+    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 12];
     buf[0] = st.enabled;
     buf[1] = st.peer_count;
     buf[2] = st.connected_peers;
@@ -2593,6 +2600,7 @@ void bleGattNotifyMeshStatus(void) {
         memcpy(buf + off + 7, &live[i].fw_version, 4);
         off += 11;
     }
+    for (size_t i = 0; i < liveCount; i++) buf[off++] = live[i].board;
 
     static uint8_t lastBuf[sizeof(buf)] = {};
     static size_t  lastLen = 0;

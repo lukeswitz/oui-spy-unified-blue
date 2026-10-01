@@ -53,6 +53,7 @@ struct MeshLiveNode {
     uint8_t  role;
     uint8_t  active_engines;
     uint32_t fw_version;
+    uint8_t  board;
 };
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms);
 

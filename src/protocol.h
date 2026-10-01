@@ -465,7 +465,25 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_OTA_ACK         = 0x10,
     MESH_PKT_DETECTION_BATCH = 0x11,
     MESH_PKT_WIFI_OTA        = 0x12,
+    MESH_PKT_NODE_INFO       = 0x13,
 };
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  board;
+} MeshNodeInfoPacket;
+
+static const char* const kOuispyBoards[] = {
+    "", "xiao_s3", "s3_devkitc", "xiao_c5", "tdongle_s3", "tdongle_c5",
+    "stickc", "stickc_plus", "stickc_plus2", "xiao_c3", "wroom",
+};
+
+static inline uint8_t ouispyBoardCode(void) {
+    for (uint8_t i = 1; i < sizeof(kOuispyBoards) / sizeof(kOuispyBoards[0]); i++)
+        if (strcmp(kOuispyBoards[i], OUISPY_BOARD) == 0) return i;
+    return 0;
+}
 
 #define MESH_DET_REC_NAME_MAX  32
 #define MESH_DET_BATCH_BUDGET  215

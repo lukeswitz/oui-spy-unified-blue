@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #ifdef DONGLE_M5GFX
 #include <M5GFX.h>
 #define DGX_BLACK   0x0000
@@ -143,9 +144,14 @@
 #define LY_MPHL_Y        38
 #define LY_RULE2_Y       55
 #define LY_STRIP_X0       3
+#ifdef DONGLE_NO_SD
 #define LY_STRIP_DX      22
-#define LY_STRIP_Y       57
 #define LY_STRIP_CW      20
+#else
+#define LY_STRIP_DX      19
+#define LY_STRIP_CW      17
+#endif
+#define LY_STRIP_Y       57
 #define LY_STRIP_CH      13
 #define LY_STRIP_IDX      3
 #define LY_STRIP_CNT_DX   1
@@ -197,9 +203,9 @@ static DongleField s_fMode;
 static uint8_t s_selIdx = 0;
 
 #ifdef DONGLE_NO_SD
-#define DONGLE_STRIP_N 7
+#define DONGLE_STRIP_N 6
 #else
-#define DONGLE_STRIP_N 7
+#define DONGLE_STRIP_N 8
 #endif
 static DongleField s_fStrip[DONGLE_STRIP_N];
 #if DGS_W >= 240
@@ -211,6 +217,7 @@ static uint16_t s_bleIconColor = 1;
 static bool s_chromeDrawn = false;
 static uint16_t s_engStripMask = 0xFFFF;
 #define DONGLE_TAP_WINDOW_MS 400u
+#define DONGLE_LONG_PRESS_MS 800u
 
 static bool s_btnDown = false;
 static uint32_t s_btnChangeMs = 0;
@@ -737,10 +744,8 @@ static const uint16_t kEngColor[ENGINE_COUNT] = {
 static const uint8_t kStripEngines[DONGLE_STRIP_N] = {
     ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER,
     ENGINE_SKYSPY, ENGINE_UNIPWN,
-#ifdef DONGLE_NO_SD
-    ENGINE_WARDRIVE,
-#else
-    ENGINE_PCAP,
+#ifndef DONGLE_NO_SD
+    ENGINE_WARDRIVE, ENGINE_PCAP,
 #endif
 };
 
@@ -936,6 +941,16 @@ static void toggleEngine(EngineId id, const char* label, uint32_t now,
     buttonFlash(now, r, g, b);
 }
 
+[[maybe_unused]] static void toggleBuzzer(uint32_t now) {
+    hwBuzzerEnabled = !hwBuzzerEnabled;
+    Preferences p;
+    p.begin("ouispy-hw", false);
+    p.putBool("buzzer", hwBuzzerEnabled);
+    p.end();
+    Serial.printf("[DONGLE] buzzer %s\n", hwBuzzerEnabled ? "on" : "off");
+    buttonFlash(now, 80, 0, 80);
+}
+
 static void cycleDetMode(uint32_t now) {
     s_selIdx = (uint8_t)((s_selIdx + 1) % DONGLE_STRIP_N);
     Serial.printf("[DONGLE] select -> %s\n",
@@ -1024,10 +1039,14 @@ static void buttonTickMulti(uint32_t now) {
             s_btnADownMs = now;
             s_btnALongFired = false;
         } else {
-            cycleDetMode(now);
+            if (!s_btnALongFired) cycleDetMode(now);
         }
     } else if (aDown == s_btnDown) {
         s_btnChangeMs = now;
+    }
+    if (s_btnDown && !s_btnALongFired && (now - s_btnADownMs) >= DONGLE_LONG_PRESS_MS) {
+        s_btnALongFired = true;
+        foxhuntLastHit(now);
     }
 
     bool bDown = digitalRead(DONGLE_BTN_B) == LOW;
@@ -1038,11 +1057,17 @@ static void buttonTickMulti(uint32_t now) {
             s_btnBDownMs = now;
             s_btnBLongFired = false;
         } else {
-            startSelectedMode(now);
+            if (!s_btnBLongFired) startSelectedMode(now);
         }
     } else if (bDown == s_btnBDown) {
         s_btnBChangeMs = now;
     }
+#ifndef OUISPY_NO_BUZZER
+    if (s_btnBDown && !s_btnBLongFired && (now - s_btnBDownMs) >= DONGLE_LONG_PRESS_MS) {
+        s_btnBLongFired = true;
+        toggleBuzzer(now);
+    }
+#endif
 
 #if DONGLE_BTN_PWR >= 0
     static bool s_pwrDown = false;

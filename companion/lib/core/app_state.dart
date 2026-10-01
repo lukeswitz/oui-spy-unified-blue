@@ -237,6 +237,12 @@ class AppState extends ChangeNotifier {
   final Set<String> _seenNodes = {};
   final Map<String, int> _nodeLastSeenMs = {};
   final Map<String, int> _nodeFwVersion = {};
+  final Map<String, String> _nodeBoard = {};
+  String? nodeBoard(String id) => _nodeBoard[canonicalNodeId(id)];
+  Set<String> get liveNodeBoards => {
+        for (final id in _meshLiveNodeIds)
+          if (!_meshManagerNodeIds.contains(id)) _nodeBoard[id] ?? '',
+      };
   final Set<String> _meshLiveNodeIds = {};
   final Set<String> _meshManagerNodeIds = {};
   bool isManagerNode(String id) =>
@@ -556,6 +562,7 @@ class AppState extends ChangeNotifier {
         if (entry.role == 1) managers.add(canon);
         _nodeLastSeenMs[canon] = now;
         if (entry.fwVersion != 0) _nodeFwVersion[canon] = entry.fwVersion;
+        if (entry.board.isNotEmpty) _nodeBoard[canon] = entry.board;
       }
       _meshLiveNodeIds
         ..clear()

@@ -713,6 +713,7 @@
         baudrate: 115200,
         flashSize: '4MB', flashMode: 'keep', flashFreq: 'keep',
         bootloaderOffset: 0x1000,
+        rtsPulseReset: true,
       },
       'node-stickc_plus': {
         role: 'node', name: 'M5StickC PLUS', chip: 'ESP32', bands: '2.4GHz', flash: '4MB',
@@ -722,6 +723,7 @@
         baudrate: 115200,
         flashSize: '4MB', flashMode: 'keep', flashFreq: 'keep',
         bootloaderOffset: 0x1000,
+        rtsPulseReset: true,
       },
       'node-stickc_plus2': {
         role: 'node', name: 'M5StickC PLUS2', chip: 'ESP32', bands: '2.4GHz', flash: '8MB',
@@ -731,6 +733,7 @@
         baudrate: 230400,
         flashSize: '8MB', flashMode: 'keep', flashFreq: 'keep',
         bootloaderOffset: 0x1000,
+        rtsPulseReset: true,
       },
       'mgr-wroom': {
         role: 'mgr', name: 'ESP32 WROOM', chip: 'ESP32', flash: '4MB',
@@ -1075,7 +1078,15 @@
         });
 
         try {
-          await esploader.after('hard_reset');
+          if (tgt.rtsPulseReset) {
+            await transport.setDTR(false);
+            await transport.setRTS(true);
+            await new Promise(r => setTimeout(r, 100));
+            await transport.setRTS(false);
+            log('Reset: RTS pulse (EN low 100ms) — board rebooting into new firmware.');
+          } else {
+            await esploader.after('hard_reset');
+          }
         } catch (e) {
           log('Reset failed (' + e.message + ') — unplug and replug to boot.');
         }
