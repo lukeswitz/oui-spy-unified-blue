@@ -1588,6 +1588,11 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
 
         if (wigle.isLoggedIn) ...[
           _WigleStatsCard(stats: wigle.stats),
+          if (wigle.rateLimited) ...[
+            const SizedBox(height: 8),
+            Text(WigleApi.rateLimitMessage,
+                style: const TextStyle(color: AppTheme.error, fontSize: 11)),
+          ],
           const SizedBox(height: 10),
           Row(
             children: [

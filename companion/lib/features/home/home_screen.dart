@@ -7,6 +7,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/home/engine_card.dart';
@@ -986,7 +987,9 @@ class _WardriveAccountsStrip extends ConsumerWidget {
         icon: Icons.language,
         color: AppTheme.wigle,
         name: 'WiGLE',
-        detail: s == null
+        detail: wigle.rateLimited
+            ? WigleApi.rateLimitMessage
+            : s == null
             ? 'Loading…'
             : '#${s.rank} · ${_fmt(s.discoveredWiFi)} WiFi · ${_fmt(s.discoveredBt)} BT',
       ));

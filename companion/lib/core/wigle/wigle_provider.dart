@@ -34,6 +34,7 @@ class WigleProvider extends ChangeNotifier {
   WigleUserStats? get stats => _stats;
   String? get error => _error;
   String get apiName => _apiName;
+  bool get rateLimited => _error == WigleApi.rateLimitMessage;
 
   bool isUploaded(String sessionId) => _uploadedSessions.contains(sessionId);
   bool isUploading(String sessionId) => _uploadingMap[sessionId] == true;
@@ -118,7 +119,12 @@ class WigleProvider extends ChangeNotifier {
     if (_api == null) return;
     try {
       _stats = await _api!.getUserStats();
+      if (rateLimited) _error = null;
       notifyListeners();
+    } on WigleApiException catch (e) {
+      _error = e.message;
+      notifyListeners();
+      DebugLog.log('WIGLE: stats refresh failed: $e');
     } catch (e) {
       DebugLog.log('WIGLE: stats refresh failed: $e');
     }

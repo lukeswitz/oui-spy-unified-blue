@@ -2,9 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class WigleApi {
-  WigleApi({required String apiName, required String apiToken})
+  WigleApi(
+      {required String apiName,
+      required String apiToken,
+      HttpClientAdapter? adapter})
       : _dio = Dio(BaseOptions(
           baseUrl: 'https://api.wigle.net/api/v2',
           headers: {
@@ -13,13 +17,41 @@ class WigleApi {
           },
           connectTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 30),
-        ));
+        )) {
+    if (adapter != null) _dio.httpClientAdapter = adapter;
+  }
 
   final Dio _dio;
 
+  static const _keyLockedUntil = 'wigle_429_locked_until';
+  static const rateLimitMessage =
+      'Wigle access is currently not available for your account. Try again in 24hr.';
+
+  Future<Response<dynamic>> _guard(
+      Future<Response<dynamic>> Function() call) async {
+    final prefs = await SharedPreferences.getInstance();
+    final until = prefs.getInt(_keyLockedUntil) ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch < until) {
+      throw WigleApiException(rateLimitMessage);
+    }
+    try {
+      return await call();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 429) {
+        await prefs.setInt(
+            _keyLockedUntil,
+            DateTime.now()
+                .add(const Duration(hours: 24))
+                .millisecondsSinceEpoch);
+        throw WigleApiException(rateLimitMessage);
+      }
+      rethrow;
+    }
+  }
+
   /// Verify credentials by fetching user stats.
   Future<WigleUserStats> getUserStats() async {
-    final resp = await _dio.get('/stats/user');
+    final resp = await _guard(() => _dio.get('/stats/user'));
     final data = resp.data as Map<String, dynamic>;
     if (data['success'] != true) {
       throw WigleApiException(data['message']?.toString() ?? 'Unknown error');
@@ -39,14 +71,14 @@ class WigleApi {
       'donate': 'on',
     });
 
-    final resp = await _dio.post(
-      '/file/upload',
-      data: formData,
-      options: Options(
-        sendTimeout: _sendTimeoutFor(bytes),
-        receiveTimeout: const Duration(seconds: 120),
-      ),
-    );
+    final resp = await _guard(() => _dio.post(
+          '/file/upload',
+          data: formData,
+          options: Options(
+            sendTimeout: _sendTimeoutFor(bytes),
+            receiveTimeout: const Duration(seconds: 120),
+          ),
+        ));
 
     final data = resp.data as Map<String, dynamic>;
     if (data['success'] != true) {
@@ -57,7 +89,7 @@ class WigleApi {
 
   /// Get user's rank / standings.
   Future<WigleRanking> getRanking() async {
-    final resp = await _dio.get('/stats/user');
+    final resp = await _guard(() => _dio.get('/stats/user'));
     final data = resp.data as Map<String, dynamic>;
     if (data['success'] != true) {
       throw WigleApiException(data['message']?.toString() ?? 'Unknown error');
