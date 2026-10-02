@@ -50,6 +50,8 @@ abstract class FlockSignal {
   static const int mfg = 0x08;
   static const int tn = 0x10;
   static const int ravenUuid = 0x20;
+  static const int gatt = 0x40;
+  static const int dfu = 0x80;
 
   static const int validated = serial | mfg | tn;
 }
@@ -75,6 +77,7 @@ extension FlockConfidenceX on FlockConfidence {
       'wildcard_probe_ie_sig' => 'High (Flock IE Signature)',
       'wildcard_probe' => 'High (Flock Probe Captured)',
       'raven_uuid' => 'High (Raven UUID)',
+      'gatt_uuid' => 'High (Flock GATT UUID)',
       'name_match' => 'High (BLE Name)',
       _ => 'High',
     },
@@ -92,6 +95,7 @@ extension FlockExtensionSignals on FlockExtension {
   FlockConfidence confidence(String method) {
     if (isValidated) return FlockConfidence.verified;
     if (hasSignal(FlockSignal.ravenUuid)) return FlockConfidence.high;
+    if (hasSignal(FlockSignal.gatt)) return FlockConfidence.high;
     if (hasSignal(FlockSignal.name)) return FlockConfidence.high;
     if (method == 'wildcard_probe' || method == 'wildcard_probe_ie_sig') {
       return FlockConfidence.high;

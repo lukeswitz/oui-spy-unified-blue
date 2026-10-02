@@ -773,6 +773,8 @@ List<String> _flockSignalLabels(FlockExtension? flock) {
     if (flock.hasSignal(FlockSignal.mfg)) 'XUNTONG',
     if (flock.hasSignal(FlockSignal.tn)) 'TN',
     if (flock.hasSignal(FlockSignal.ravenUuid)) 'RAVEN-UUID',
+    if (flock.hasSignal(FlockSignal.gatt)) 'FLOCK-GATT',
+    if (flock.hasSignal(FlockSignal.dfu)) 'NORDIC-DFU',
   ];
 }
 
@@ -786,6 +788,8 @@ String methodLabel(String method) => switch (method) {
   'name_match' => 'BLE NAME',
   'mfg_id' => 'MFG DATA',
   'raven_uuid' => 'RAVEN UUID',
+  'gatt_uuid' => 'FLOCK GATT',
+  'nordic_dfu' => 'NORDIC DFU',
   'ble_watchlist' => 'WATCHLIST',
   'wifi_watchlist' => 'WATCHLIST',
   'ble_proximity' => 'PROXIMITY',

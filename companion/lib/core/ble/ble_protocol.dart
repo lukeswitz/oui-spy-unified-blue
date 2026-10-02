@@ -442,7 +442,9 @@ class BleProtocol {
           'name_match',
           'mfg_id',
           'raven_uuid',
-        ][method.clamp(0, 3)],
+          'gatt_uuid',
+          'nordic_dfu',
+        ][method.clamp(0, 5)],
       Engine.skySpy => const [
           'odid_ble',
           'odid_nan',

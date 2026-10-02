@@ -34,6 +34,10 @@ static const int FLOCK_MFG_ID_COUNT =
 #define RAVEN_ERROR_SVC       "00003500-0000-1000-8000-00805f9b34fb"
 #define RAVEN_HRT_SVC         "00001809-0000-1000-8000-00805f9b34fb"
 #define RAVEN_OLD_LOC_SVC     "00001819-0000-1000-8000-00805f9b34fb"
+#define RAVEN_SVC16_MIN       0x3100
+#define RAVEN_SVC16_MAX       0x3500
+#define FLOCK_GATT_SVC        "e8ccbb38-9532-46a8-9fe5-1814df172e6f"
+#define NORDIC_DFU_SVC        "00001530-1212-efde-1523-785feabcd123"
 
 // Cached UUID objects to avoid heap alloc / strcasecmp per advert.
 struct RavenUuidCache {
@@ -45,6 +49,8 @@ struct RavenUuidCache {
     NimBLEUUID error;
     NimBLEUUID hrt;
     NimBLEUUID old_loc;
+    NimBLEUUID flock_gatt;
+    NimBLEUUID nordic_dfu;
     bool ready;
 };
 
@@ -60,6 +66,8 @@ static inline void flockMatchInit() {
     flockRavenCache.error    = NimBLEUUID(RAVEN_ERROR_SVC);
     flockRavenCache.hrt      = NimBLEUUID(RAVEN_HRT_SVC);
     flockRavenCache.old_loc  = NimBLEUUID(RAVEN_OLD_LOC_SVC);
+    flockRavenCache.flock_gatt = NimBLEUUID(FLOCK_GATT_SVC);
+    flockRavenCache.nordic_dfu = NimBLEUUID(NORDIC_DFU_SVC);
     flockRavenCache.ready    = true;
     flockOuiInitBuckets();
 }
@@ -145,6 +153,10 @@ static inline bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev,
             u.equals(flockRavenCache.upload) ||
             u.equals(flockRavenCache.config) ||
             u.equals(flockRavenCache.error))  has_proprietary = true;
+        if (u.bitSize() == 16) {
+            uint16_t u16 = reinterpret_cast<const ble_uuid16_t*>(u.getBase())->value;
+            if (u16 >= RAVEN_SVC16_MIN && u16 <= RAVEN_SVC16_MAX) has_proprietary = true;
+        }
         if (u.equals(flockRavenCache.dev_info)) has_dev_info = true;
         if (u.equals(flockRavenCache.hrt))      has_hrt      = true;
         if (u.equals(flockRavenCache.old_loc))  has_old_loc  = true;
@@ -156,6 +168,28 @@ static inline bool flockMatchRavenUuid(NimBLEAdvertisedDevice* dev,
     if (has_dev_info && has_hrt && has_old_loc) {
         if (fwOut) *fwOut = "1.1.x";
         return true;
+    }
+    return false;
+}
+
+static inline bool flockMatchGattUuid(NimBLEAdvertisedDevice* dev) {
+    if (!dev->haveServiceUUID()) return false;
+    if (!flockRavenCache.ready) flockMatchInit();
+    int count = dev->getServiceUUIDCount();
+    for (int i = 0; i < count; i++) {
+        if (dev->getServiceUUID(i).equals(flockRavenCache.flock_gatt)) return true;
+    }
+    return false;
+}
+
+static inline bool flockMatchNordicDfu(NimBLEAdvertisedDevice* dev,
+                                       const char* name) {
+    if (name && strcasecmp(name, "DfuTarg") == 0) return true;
+    if (!dev->haveServiceUUID()) return false;
+    if (!flockRavenCache.ready) flockMatchInit();
+    int count = dev->getServiceUUIDCount();
+    for (int i = 0; i < count; i++) {
+        if (dev->getServiceUUID(i).equals(flockRavenCache.nordic_dfu)) return true;
     }
     return false;
 }

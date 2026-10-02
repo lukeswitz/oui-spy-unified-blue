@@ -322,7 +322,9 @@ class WigleCsvRescan {
             method == 'oui_match' ||
             method == 'ble_proximity' ||
             method == 'mfg_id' ||
-            method == 'raven_uuid';
+            method == 'raven_uuid' ||
+            method == 'gatt_uuid' ||
+            method == 'nordic_dfu';
 
         final wlHit = wlIndex.match(mac, name);
 
@@ -408,7 +410,9 @@ class WigleCsvRescan {
           method == 'oui_match' ||
           method == 'ble_proximity' ||
           method == 'mfg_id' ||
-          method == 'raven_uuid';
+          method == 'raven_uuid' ||
+          method == 'gatt_uuid' ||
+          method == 'nordic_dfu';
 
       final wlHit = wlIndex.match(mac, name);
 

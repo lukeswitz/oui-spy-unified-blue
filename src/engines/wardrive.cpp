@@ -523,6 +523,8 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
                 if (flockMatchNameStr(name.c_str()))        sigMask |= FLOCK_SIG_NAME;
                 if (flockMatchBareSerialName(name.c_str())) sigMask |= FLOCK_SIG_SERIAL;
             }
+            if (flockMatchGattUuid(dev)) sigMask |= FLOCK_SIG_GATT;
+            if (flockMatchNordicDfu(dev, name.c_str())) sigMask |= FLOCK_SIG_DFU;
 
             if (sigMask & FLOCK_SIG_NAME) {
                 isFlock = true;
@@ -536,6 +538,14 @@ class WardriveAdvCallbacks : public NimBLEAdvertisedDeviceCallbacks {
                 flockMethod = METHOD_RAVEN_UUID;
                 isRaven = true;
                 sigMask |= FLOCK_SIG_RAVEN_UUID;
+            }
+            if (!isFlock && (sigMask & FLOCK_SIG_GATT)) {
+                isFlock = true;
+                flockMethod = METHOD_GATT_UUID;
+            }
+            if (!isFlock && (sigMask & FLOCK_SIG_DFU) && g_flockExtendedOui) {
+                isFlock = true;
+                flockMethod = METHOD_NORDIC_DFU;
             }
 
             if (isFlock) {

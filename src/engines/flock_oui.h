@@ -20,6 +20,7 @@ struct FlockOui { uint8_t b[3]; uint8_t ext; };
 extern volatile bool g_flockExtendedOui;
 
 static const FlockOui FLOCK_OUI_TABLE[] = {
+    { {0x00,0x03,0x7f}, 1 }, // Qualcomm Atheros QCA9377 (Flock fw default MAC)
     { {0x00,0x18,0x0a}, 1 }, // Murata
     { {0x00,0x23,0x6c}, 1 }, // Sierra Wireless
     { {0x00,0x40,0x8c}, 1 }, // Flock BLE (@NitekryDPaul Jul 2026 LE CSV)

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 
 /// Flock-BLE notification wire layout (firmware ble_gatt.cpp packDetection):
 ///   [0]      engine_id
@@ -109,5 +110,35 @@ void main() {
     expect(d.flock!.ravenFirmware, '1.2+');
     expect(d.method, 'raven_uuid');
     expect(d.flock!.hasSignal(FlockSignal.ravenUuid), true);
+  });
+
+  test('flock GATT uuid decodes as BLE, high confidence', () {
+    final d = _decode(
+        _flockPacket(name: '', method: 4, sigMask: FlockSignal.gatt));
+    expect(d.method, 'gatt_uuid');
+    expect(isBleMethod(d.method), true);
+    expect(isWifiMethod(d.method), false);
+    expect(d.flock!.isRaven, false);
+    expect(d.flock!.confidence(d.method), FlockConfidence.high);
+    expect(d.flock!.confidence(d.method).label(d.method),
+        'High (Flock GATT UUID)');
+  });
+
+  test('nordic DFU decodes as BLE, suspected confidence', () {
+    final d = _decode(
+        _flockPacket(name: 'DfuTarg', method: 5, sigMask: FlockSignal.dfu));
+    expect(d.method, 'nordic_dfu');
+    expect(isBleMethod(d.method), true);
+    expect(isWifiMethod(d.method), false);
+    expect(d.flock!.confidence(d.method), FlockConfidence.suspected);
+    expect(d.flock!.isValidated, false);
+  });
+
+  test('new bits do not collide with validated set', () {
+    expect(FlockSignal.validated & (FlockSignal.gatt | FlockSignal.dfu), 0);
+    final d = _decode(_flockPacket(
+        name: '',
+        sigMask: FlockSignal.gatt | FlockSignal.dfu | FlockSignal.ravenUuid));
+    expect(d.flock!.signals, 0xE0);
   });
 }

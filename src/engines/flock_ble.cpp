@@ -57,6 +57,8 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
             if (flockMatchNameStr(name.c_str()))        sigMask |= FLOCK_SIG_NAME;
             if (flockMatchBareSerialName(name.c_str())) sigMask |= FLOCK_SIG_SERIAL;
         }
+        if (flockMatchGattUuid(dev)) sigMask |= FLOCK_SIG_GATT;
+        if (flockMatchNordicDfu(dev, name.c_str())) sigMask |= FLOCK_SIG_DFU;
 
         if (sigMask & FLOCK_SIG_NAME) {
             detected = true;
@@ -73,6 +75,14 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
                 isRaven = true;
                 sigMask |= FLOCK_SIG_RAVEN_UUID;
             }
+        }
+        if (!detected && (sigMask & FLOCK_SIG_GATT)) {
+            detected = true;
+            method = METHOD_GATT_UUID;
+        }
+        if (!detected && (sigMask & FLOCK_SIG_DFU) && g_flockExtendedOui) {
+            detected = true;
+            method = METHOD_NORDIC_DFU;
         }
 
         if (!detected) return;
@@ -103,10 +113,11 @@ class FlockBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         pushDetection(&evt);
 
         std::string addrStr = dev->getAddress().toString();
-        const char* methodStr[] = {"oui", "name", "mfg_id", "raven_uuid"};
+        const char* methodStr[] = {"oui", "name", "mfg_id", "raven_uuid",
+                                   "gatt_uuid", "nordic_dfu"};
         Serial.printf("[FLOCK-BLE] %s %s RSSI:%d [%s] sig=0x%02X%s%s%s%s%s\n",
                       addrStr.c_str(), name.c_str(), rssi,
-                      method < 4 ? methodStr[method] : "?",
+                      method < 6 ? methodStr[method] : "?",
                       sigMask,
                       (sigMask & FLOCK_SIG_VALIDATED) == FLOCK_SIG_VALIDATED
                           ? " VALIDATED" : "",

@@ -133,6 +133,8 @@ enum EngineState : uint8_t {
 #define METHOD_NAME_MATCH      1
 #define METHOD_MFG_ID          2
 #define METHOD_RAVEN_UUID      3
+#define METHOD_GATT_UUID       4
+#define METHOD_NORDIC_DFU      5
 
 // Flock signal mask — every predicate that hit, not just the deciding one.
 // BLE emits on NAME or RAVEN_UUID alone, else only on the full VALIDATED set.
@@ -142,6 +144,8 @@ enum EngineState : uint8_t {
 #define FLOCK_SIG_MFG          0x08
 #define FLOCK_SIG_TN           0x10
 #define FLOCK_SIG_RAVEN_UUID   0x20
+#define FLOCK_SIG_GATT         0x40
+#define FLOCK_SIG_DFU          0x80
 #define FLOCK_SIG_VALIDATED    (FLOCK_SIG_SERIAL | FLOCK_SIG_MFG | FLOCK_SIG_TN)
 
 // Sky Spy methods

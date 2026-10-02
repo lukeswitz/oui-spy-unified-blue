@@ -11,6 +11,8 @@ const _bleMethods = {
   'name_match',
   'mfg_id',
   'raven_uuid',
+  'gatt_uuid',
+  'nordic_dfu',
   'ble_watchlist',
   'ble_proximity',
 };
