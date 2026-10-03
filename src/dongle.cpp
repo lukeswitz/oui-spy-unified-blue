@@ -75,7 +75,12 @@
 #define LY_APP_X        120
 #define LY_MSH_X        152
 #define LY_SD_X         184
+#ifdef DONGLE_BAT_ADC
+#define LY_GPS_X        184
+#define LY_BAT_X        208
+#else
 #define LY_GPS_X        208
+#endif
 #define LY_RULE1_Y       14
 #define LY_BOX_Y         16
 #define LY_BOX_H         66
@@ -808,7 +813,21 @@ static void tftDraw(void) {
         6, engShortName(kStripEngines[s_selIdx]));
     tag(&s_fApp,  LY_APP_X, "APP", phone, DGX_LIME);
     tag(&s_fMesh, LY_MSH_X, "MSH", mgr,   DGX_CYAN);
+#ifdef DONGLE_BAT_ADC
+    int batPct = ((int)analogReadMilliVolts(DONGLE_BAT_ADC) * 2 - 3300) * 100 / 800;
+    if (batPct < 0) batPct = 0;
+    if (batPct > 100) batPct = 100;
+    if (batPct >= 100) snprintf(buf, sizeof(buf), "100");
+    else               snprintf(buf, sizeof(buf), "%d%%", batPct);
+    if (!s_chromeDrawn) {
+        s_tft.drawRect(LY_BAT_X, 1, 28, 12, DGX_GREY);
+        s_tft.fillRect(LY_BAT_X + 28, 4, 3, 6, DGX_GREY);
+    }
+    fld(&s_fSd, LY_BAT_X + 5, LY_TAG_Y, 1,
+        batPct > 50 ? DGX_LIME : (batPct > 20 ? DGX_AMBER : DGX_RED), 3, buf);
+#else
     fld(&s_fSd,  LY_SD_X,  LY_TAG_Y, 1, s_sdReady ? DGX_LIME : DGX_RED,   3, "SD");
+#endif
 #ifndef DONGLE_NO_GPS
     fld(&s_fGps, LY_GPS_X, LY_TAG_Y, 1, gpsValid  ? DGX_LIME : DGX_AMBER, 3, "GPS");
 #endif
@@ -1020,6 +1039,9 @@ static void cycleBrightness(uint32_t now) {
     axpWrite(0x28, (uint8_t)((v & 0x0F) | kLvl[s_brightStep]));
     if (s_brightStep == 3) axpWrite(0x12, (uint8_t)(axpRead(0x12) & ~0x04));
     else                   axpWrite(0x12, (uint8_t)(axpRead(0x12) | 0x04));
+#elif defined(DONGLE_TFT_BL_PWM)
+    static const uint8_t kPwm[4] = {255, 180, 110, 0};
+    analogWrite(DONGLE_TFT_BL, kPwm[s_brightStep]);
 #else
     dongleBacklight(s_brightStep != 3);
 #endif
