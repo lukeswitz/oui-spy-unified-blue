@@ -158,16 +158,12 @@
 #define LY_MPHL_Y        38
 #define LY_RULE2_Y       55
 #define LY_STRIP_X0       3
-#define LY_STRIP_DX_6    22
-#define LY_STRIP_CW_6    20
-#define LY_STRIP_DX_8    19
-#define LY_STRIP_CW_8    17
 #ifdef DONGLE_NO_SD
-#define LY_STRIP_DX      LY_STRIP_DX_6
-#define LY_STRIP_CW      LY_STRIP_CW_6
+#define LY_STRIP_DX      22
+#define LY_STRIP_CW      20
 #else
-#define LY_STRIP_DX      LY_STRIP_DX_8
-#define LY_STRIP_CW      LY_STRIP_CW_8
+#define LY_STRIP_DX      19
+#define LY_STRIP_CW      17
 #endif
 #define LY_STRIP_Y       57
 #define LY_STRIP_CH      13
@@ -772,8 +768,8 @@ static void drawEngineStrip(uint8_t mask) {
     bool redrawIcons = (mask != s_engStripMask);
     s_engStripMask = mask;
 #ifdef DONGLE_NO_SD
-    int16_t dx = (s_stripN >= 8) ? LY_STRIP_DX_8 : LY_STRIP_DX_6;
-    int16_t cw = (s_stripN >= 8) ? LY_STRIP_CW_8 : LY_STRIP_CW_6;
+    int16_t dx = (int16_t)((DGS_W - LY_STRIP_X0) / s_stripN);
+    int16_t cw = dx - 2;
 #else
     const int16_t dx = LY_STRIP_DX;
     const int16_t cw = LY_STRIP_CW;
