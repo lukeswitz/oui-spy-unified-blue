@@ -242,35 +242,31 @@ jobs:
             > [!NOTE]
             > Early beta — file bugs in Issues.
 
-            ### What's new since v0.5.1
+            ### What's new since v0.6.0
 
             **Added**
-            - M5StickC, M5StickC PLUS and M5StickC PLUS2 node port: LCD panel, three-button map, on-device detection. No SD; mesh is compiled out on these boards to fit their RAM, so they run standalone
-            - LilyGO T-Dongle-S3 and T-Dongle-C5 node support: LCD, microSD, and a single button: one press cycles mode, two presses start or stop it
-            - The ESP32-C5 boards run standalone only: mesh is compiled out, so they connect straight to the phone and cannot be fleet nodes under a manager
-            - Hardware GPS: an on-board GPS module can supply position instead of the phone
-            - Flock confidence tiers shown on the StickC panel
-            - Local flock camera count in WDGWars
-            - Map moved to Carto vector tiles; no API key needed
-
-            **Fixed - app**
-            - Live Activity ends when the engines stop (#19)
-            - Feed export writes the full history instead of the live buffer
-            - DeFlock requests no longer send a dart:io User-Agent header
-            - The 5 GHz band selector and the 2.4 GHz All / 1-6-11 toggle now appear on every C5 board, not only the XIAO C5
+            - ESP32-C5 boards (XIAO C5, T-Dongle-C5) and M5StickC PLUS / PLUS2 join the mesh as fleet nodes; only the original M5StickC remains standalone
+            - NimBLE 2.x on all boards; S3 builds reclaim internal RAM via PSRAM NimBLE pools
+            - Node board ID: firmware reports its board type over BLE so the app and OTA can target per-board
+            - Per-board OTA: companion app selects the correct firmware image by board ID
+            - Battery meter on M5StickC / PLUS (AXP192 ADC) and PLUS2 (built-in fuel gauge)
+            - PWM display dimmer on M5StickC PLUS2
+            - Upstream Flock GATT, DFU and OUI signatures synced
+            - WiGLE upload backs off 24 hours on HTTP 429
+            - Boards without SD (StickC family) show wardrive and pcap icons on the LCD strip when the app is connected; hidden when standalone since there is no local storage
 
             **Fixed - firmware**
-            - T-Dongle-S3 log count stayed at zero in no-app mode
-            - Stored hardware config survives a flash
+            - C5 mesh: task creation, BLE scan DMA, wardrive relay, ESP-NOW TX all work under mesh
+            - T-Dongle-C5 RAM budget trimmed to fit mesh + wardrive
+            - Manager C3 and WROOM builds link again (#20)
+            - C5 BLE link timing (XIAO and T-Dongle)
+            - C5 WiFi init order no longer races BLE
+
+            **Fixed - app**
+            - Per-target OTA version check uses the board's own latest, not a global latest
 
             **Fixed - web flasher**
-            - T-Dongle-S3 served a 404
-            - C5 write failure
-            - Flash mode, frequency and size are taken from the image instead of forced to QIO, which boot-looped every S3 target
-            - Per-board upload baud; the target list scrolls
-
-            **Build**
-            - Flutter 3.47.0 / Dart 3.13.0; analyzer clean, 66 tests pass
+            - Flasher manifest source order corrected; C5 dist bins served
 
             ### Firmware
 
@@ -312,7 +308,7 @@ jobs:
             - GPS/Location for wardriving
             - The DeFlock layer is off by default. Turning it on sends the map viewport bounding box to a public Overpass mirror (overpass-api.de, falling back to overpass.private.coffee), which discloses the area you are looking at. Detections never leave the phone.
 
-            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/v0.5.1...${{ github.ref_name }}
+            **Full Changelog**: https://github.com/lukeswitz/oui-spy-unified-blue/compare/v0.6.0...${{ github.ref_name }}
           files: |
             artifacts/**/*.bin
             artifacts/**/*.tar.gz

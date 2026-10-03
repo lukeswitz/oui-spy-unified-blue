@@ -158,12 +158,16 @@
 #define LY_MPHL_Y        38
 #define LY_RULE2_Y       55
 #define LY_STRIP_X0       3
+#define LY_STRIP_DX_6    22
+#define LY_STRIP_CW_6    20
+#define LY_STRIP_DX_8    19
+#define LY_STRIP_CW_8    17
 #ifdef DONGLE_NO_SD
-#define LY_STRIP_DX      22
-#define LY_STRIP_CW      20
+#define LY_STRIP_DX      LY_STRIP_DX_6
+#define LY_STRIP_CW      LY_STRIP_CW_6
 #else
-#define LY_STRIP_DX      19
-#define LY_STRIP_CW      17
+#define LY_STRIP_DX      LY_STRIP_DX_8
+#define LY_STRIP_CW      LY_STRIP_CW_8
 #endif
 #define LY_STRIP_Y       57
 #define LY_STRIP_CH      13
@@ -216,14 +220,15 @@ static DongleField s_fMode;
 
 static uint8_t s_selIdx = 0;
 
+#define DONGLE_STRIP_MAX 8
 #ifdef DONGLE_NO_SD
-#define DONGLE_STRIP_N 6
+static uint8_t s_stripN = 6;
 #else
-#define DONGLE_STRIP_N 8
+static uint8_t s_stripN = 8;
 #endif
-static DongleField s_fStrip[DONGLE_STRIP_N];
+static DongleField s_fStrip[DONGLE_STRIP_MAX];
 #if DGS_W >= 240
-static uint8_t s_stripCntLen[DONGLE_STRIP_N] = {0};
+static uint8_t s_stripCntLen[DONGLE_STRIP_MAX] = {0};
 #endif
 static uint32_t s_wdStartMs = 0;
 static uint16_t s_wifiIconColor = 1;
@@ -756,29 +761,37 @@ static const uint16_t kEngColor[ENGINE_COUNT] = {
     DGX_CYAN, DGX_YELLOW, DGX_WHITE, DGX_SKY
 };
 
-static const uint8_t kStripEngines[DONGLE_STRIP_N] = {
+static const uint8_t kStripEngines[DONGLE_STRIP_MAX] = {
     ENGINE_DETECTOR, ENGINE_FLOCK_BLE, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER,
     ENGINE_SKYSPY, ENGINE_UNIPWN,
-#ifndef DONGLE_NO_SD
     ENGINE_WARDRIVE, ENGINE_PCAP,
-#endif
 };
 
 static void drawEngineStrip(uint8_t mask) {
     char buf[8];
     bool redrawIcons = (mask != s_engStripMask);
     s_engStripMask = mask;
-    for (int i = 0; i < DONGLE_STRIP_N; i++) {
+#ifdef DONGLE_NO_SD
+    int16_t dx = (s_stripN >= 8) ? LY_STRIP_DX_8 : LY_STRIP_DX_6;
+    int16_t cw = (s_stripN >= 8) ? LY_STRIP_CW_8 : LY_STRIP_CW_6;
+#else
+    const int16_t dx = LY_STRIP_DX;
+    const int16_t cw = LY_STRIP_CW;
+#endif
+    if (redrawIcons) {
+        s_tft.fillRect(LY_STRIP_X0, LY_STRIP_Y, DGS_W - LY_STRIP_X0,
+                       LY_STRIP_CH + 16, DGX_BLACK);
+    }
+    for (int i = 0; i < s_stripN; i++) {
         uint8_t eid = kStripEngines[i];
-        int16_t x = (int16_t)(LY_STRIP_X0 + i * LY_STRIP_DX);
+        int16_t x = (int16_t)(LY_STRIP_X0 + i * dx);
         bool on = (mask & (1 << eid)) != 0;
         uint16_t col = on ? kEngColor[eid] : DGX_SLATE;
         if (redrawIcons) {
-            s_tft.fillRect(x, LY_STRIP_Y, LY_STRIP_CW, LY_STRIP_CH, DGX_BLACK);
             drawEngineIcon(eid, x + LY_STRIP_IDX, LY_STRIP_Y, col);
         }
         s_tft.drawFastHLine(x + 2, LY_STRIP_Y + LY_STRIP_CH,
-                            LY_STRIP_CW - 4,
+                            cw - 4,
                             (i == s_selIdx) ? DGX_WHITE : DGX_BLACK);
         uint32_t n = s_engCount[eid];
         if (n == 0)            buf[0] = '\0';
@@ -816,6 +829,15 @@ static void tftDraw(void) {
     bool phone = bleGattIsConnected();
     bool mgr   = meshManagerJoined();
     uint8_t mask = engineGetActiveMask();
+
+#ifdef DONGLE_NO_SD
+    uint8_t wantN = phone ? 8 : 6;
+    if (wantN != s_stripN) {
+        if (s_selIdx >= wantN) s_selIdx = 0;
+        s_stripN = wantN;
+        s_engStripMask = ~mask;
+    }
+#endif
 
     fld(&s_fNode, LY_ID_X, LY_TAG_Y, 1,
         (engineGetState((EngineId)kStripEngines[s_selIdx]) != ESTATE_DISABLED)
@@ -987,7 +1009,7 @@ static void toggleEngine(EngineId id, const char* label, uint32_t now,
 }
 
 static void cycleDetMode(uint32_t now) {
-    s_selIdx = (uint8_t)((s_selIdx + 1) % DONGLE_STRIP_N);
+    s_selIdx = (uint8_t)((s_selIdx + 1) % s_stripN);
     Serial.printf("[DONGLE] select -> %s\n",
                   engShortName(kStripEngines[s_selIdx]));
     buttonFlash(now, 90, 60, 0);
@@ -1477,7 +1499,7 @@ static void pcapSelftest(uint32_t now) {
 static void standaloneSelftest(uint32_t now) {
     static uint8_t idx = 0, phase = 0, fails = 0;
     static uint32_t at = 12000, det0 = 0, eng0 = 0, size0 = 0;
-    if ((int32_t)(now - at) < 0 || idx >= DONGLE_STRIP_N) return;
+    if ((int32_t)(now - at) < 0 || idx >= s_stripN) return;
     EngineId id = (EngineId)kStripEngines[idx];
     const char* nm = engShortName(id);
     if (phase == 0) {
@@ -1516,8 +1538,8 @@ static void standaloneSelftest(uint32_t now) {
                       (unsigned long)(s_detRows - det0), (unsigned long)size0,
                       (unsigned long)size1, (unsigned long)pcapB, verdict);
         idx++; phase = 0; at = now + 4000;
-        if (idx >= DONGLE_STRIP_N)
-            Serial.printf("[SATEST] DONE modes=%u fails=%u\n", (unsigned)DONGLE_STRIP_N, (unsigned)fails);
+        if (idx >= s_stripN)
+            Serial.printf("[SATEST] DONE modes=%u fails=%u\n", (unsigned)s_stripN, (unsigned)fails);
     }
 }
 #endif
