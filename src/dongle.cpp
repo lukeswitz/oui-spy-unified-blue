@@ -75,9 +75,11 @@
 #define LY_APP_X        120
 #define LY_MSH_X        152
 #define LY_SD_X         184
-#ifdef DONGLE_BAT_ADC
+#if defined(DONGLE_BAT_ADC) || defined(DONGLE_AXP192)
 #define LY_GPS_X        184
 #define LY_BAT_X        208
+#define LY_BAT_W         28
+#define LY_BAT_H         12
 #else
 #define LY_GPS_X        208
 #endif
@@ -123,7 +125,14 @@
 #define LY_APP_X         74
 #define LY_MSH_X         96
 #define LY_SD_X         118
+#if defined(DONGLE_BAT_ADC) || defined(DONGLE_AXP192)
+#define LY_GPS_X        114
+#define LY_BAT_X        136
+#define LY_BAT_W         22
+#define LY_BAT_H         10
+#else
 #define LY_GPS_X        136
+#endif
 #define LY_RULE1_Y       11
 #define LY_BOX_Y         12
 #define LY_BOX_H         43
@@ -351,6 +360,7 @@ static void axpInit(void) {
     axpWrite(0x28, (uint8_t)((v & 0x0F) | 0xF0));
     uint8_t pek = axpRead(0x46) & 0x03;
     if (pek) axpWrite(0x46, pek);
+    axpWrite(0x82, (uint8_t)(axpRead(0x82) | 0x80));
     Serial.printf("[DONGLE] axp192 reg12=0x%02x reg28=0x%02x\n",
                   (unsigned)axpRead(0x12), (unsigned)axpRead(0x28));
 }
@@ -813,17 +823,23 @@ static void tftDraw(void) {
         6, engShortName(kStripEngines[s_selIdx]));
     tag(&s_fApp,  LY_APP_X, "APP", phone, DGX_LIME);
     tag(&s_fMesh, LY_MSH_X, "MSH", mgr,   DGX_CYAN);
+#if defined(DONGLE_BAT_ADC) || defined(DONGLE_AXP192)
 #ifdef DONGLE_BAT_ADC
-    int batPct = ((int)analogReadMilliVolts(DONGLE_BAT_ADC) * 2 - 3300) * 100 / 800;
+    int batMv = (int)analogReadMilliVolts(DONGLE_BAT_ADC) * 2;
+#else
+    int batMv = (int)((((uint16_t)axpRead(0x78) << 4) | (axpRead(0x79) & 0x0F)) * 11u / 10u);
+#endif
+    int batPct = (batMv - 3300) * 100 / 800;
     if (batPct < 0) batPct = 0;
     if (batPct > 100) batPct = 100;
     if (batPct >= 100) snprintf(buf, sizeof(buf), "100");
     else               snprintf(buf, sizeof(buf), "%d%%", batPct);
     if (!s_chromeDrawn) {
-        s_tft.drawRect(LY_BAT_X, 1, 28, 12, DGX_GREY);
-        s_tft.fillRect(LY_BAT_X + 28, 4, 3, 6, DGX_GREY);
+        s_tft.drawRect(LY_BAT_X, 1, LY_BAT_W, LY_BAT_H, DGX_GREY);
+        s_tft.fillRect(LY_BAT_X + LY_BAT_W, 1 + (LY_BAT_H - 6) / 2,
+                       DGS_W >= 240 ? 3 : 2, 6, DGX_GREY);
     }
-    fld(&s_fSd, LY_BAT_X + 5, LY_TAG_Y, 1,
+    fld(&s_fSd, LY_BAT_X + (LY_BAT_W - 18) / 2, LY_TAG_Y, 1,
         batPct > 50 ? DGX_LIME : (batPct > 20 ? DGX_AMBER : DGX_RED), 3, buf);
 #else
     fld(&s_fSd,  LY_SD_X,  LY_TAG_Y, 1, s_sdReady ? DGX_LIME : DGX_RED,   3, "SD");
