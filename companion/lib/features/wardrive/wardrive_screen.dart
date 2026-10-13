@@ -129,7 +129,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('CONTINUE', style: TextStyle(color: AppTheme.accent)),
+            child: Text('CONTINUE', style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
@@ -839,7 +839,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const SizedBox(
+                      SizedBox(
                         width: 16, height: 16,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: AppTheme.accent),
@@ -849,7 +849,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                         wd.radioTransition == 'stopping'
                             ? 'RADIO SHUTTING DOWN…'
                             : 'RADIO STARTING UP…',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.accent,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,

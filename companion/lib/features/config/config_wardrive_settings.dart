@@ -100,7 +100,7 @@ class _TimingRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
               ),
-              child: const Icon(Icons.remove, size: 16, color: AppTheme.accent),
+              child: Icon(Icons.remove, size: 16, color: AppTheme.accent),
             ),
           ),
           Container(
@@ -108,7 +108,7 @@ class _TimingRow extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(
               '$value$suffix',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.accent, fontSize: 12,
                 fontFamily: 'monospace', fontWeight: FontWeight.w700,
               ),
@@ -124,7 +124,7 @@ class _TimingRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
               ),
-              child: const Icon(Icons.add, size: 16, color: AppTheme.accent),
+              child: Icon(Icons.add, size: 16, color: AppTheme.accent),
             ),
           ),
         ],
@@ -420,7 +420,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: AppTheme.accent),
+                      borderSide: BorderSide(color: AppTheme.accent),
                     ),
                   ),
                 ),
@@ -452,7 +452,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(6),
-                      borderSide: const BorderSide(color: AppTheme.accent),
+                      borderSide: BorderSide(color: AppTheme.accent),
                     ),
                   ),
                 ),
@@ -584,7 +584,7 @@ class _WigleStatsCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const SizedBox(width: 14, height: 14,
+            SizedBox(width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.accent)),
             const SizedBox(width: 8),
             Text('Loading stats...', style: TextStyle(color: t.textDim, fontSize: 11)),
@@ -625,9 +625,9 @@ class _WigleStatsCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.emoji_events, size: 12, color: AppTheme.accent),
+                    Icon(Icons.emoji_events, size: 12, color: AppTheme.accent),
                     const SizedBox(width: 4),
-                    Text('#${s.rank}', style: const TextStyle(
+                    Text('#${s.rank}', style: TextStyle(
                       color: AppTheme.accent, fontSize: 12,
                       fontWeight: FontWeight.w700, fontFamily: 'monospace',
                     )),

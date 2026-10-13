@@ -5,10 +5,16 @@ import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class NotificationSettingsBody extends ConsumerWidget {
-  const NotificationSettingsBody({super.key, this.shrinkWrap = false, this.physics});
+  const NotificationSettingsBody({
+    super.key,
+    this.shrinkWrap = false,
+    this.physics,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  });
 
   final bool shrinkWrap;
   final ScrollPhysics? physics;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,7 +24,7 @@ class NotificationSettingsBody extends ConsumerWidget {
     return ListView(
       shrinkWrap: shrinkWrap,
       physics: physics,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: padding,
       children: [
         if (!notif.permissionGranted)
           Container(
@@ -41,7 +47,7 @@ class NotificationSettingsBody extends ConsumerWidget {
                 ),
                 TextButton(
                   onPressed: () => notif.init(),
-                  child: const Text('RETRY', style: TextStyle(
+                  child: Text('RETRY', style: TextStyle(
                     color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.w700,
                   )),
                 ),

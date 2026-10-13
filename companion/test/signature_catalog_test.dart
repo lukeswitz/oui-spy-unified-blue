@@ -10,7 +10,7 @@ void main() {
   final engine = SignatureEngine(sigs);
 
   test('catalog parses with expected stock rows', () {
-    expect(sigs.length, 253);
+    expect(sigs.length, 254);
     final ray = byId['fleet-rayneo']!;
     expect(ray.matchAny, isFalse);
     expect(ray.rules.length, 2);
@@ -56,5 +56,14 @@ void main() {
       vendorIeOuis: ['FA:0B:BC'],
     );
     expect(engine.match(o).map((s) => s.id), contains('fleet-remote-id'));
+  });
+
+  test('phone-scanned watch name classifies as wearable', () {
+    const o = Observation(key: 'BLE:A967F874', kind: RadioKind.ble, mac: '', name: 'Brian’s Samsung Watch');
+    final hits = engine.match(o);
+    expect(hits.map((s) => s.id), contains('fleet-smartwatch'));
+    expect(hits.first.kind, SignatureClass.wearable);
+    const guard = Observation(key: 'BLE:X', kind: RadioKind.ble, mac: '', name: 'WatchGuard VISTA');
+    expect(engine.match(guard).map((s) => s.id), isNot(contains('fleet-smartwatch')));
   });
 }

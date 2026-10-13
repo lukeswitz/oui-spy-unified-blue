@@ -236,11 +236,13 @@ class _ConfigAuthPill extends StatelessWidget {
 
 class _MeshModeTile extends StatelessWidget {
   const _MeshModeTile({
+    required this.icon,
     required this.label,
     required this.subtitle,
     required this.selected,
     required this.onTap,
   });
+  final IconData icon;
   final String label;
   final String subtitle;
   final bool selected;
@@ -271,14 +273,8 @@ class _MeshModeTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                selected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                size: 16,
-                color: color,
-              ),
-              const SizedBox(width: 10),
+              Icon(icon, size: 24, color: color),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,9 +283,9 @@ class _MeshModeTile extends StatelessWidget {
                       label,
                       style: TextStyle(
                         color: color,
-                        fontSize: 12,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
+                        letterSpacing: 1,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -297,11 +293,18 @@ class _MeshModeTile extends StatelessWidget {
                       subtitle,
                       style: TextStyle(
                         color: t.textDim,
-                        fontSize: 11,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
+              ),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: 22,
+                color: color,
               ),
             ],
           ),

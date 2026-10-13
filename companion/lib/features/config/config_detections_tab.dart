@@ -315,7 +315,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                                     ? FontWeight.w700
                                     : FontWeight.w500)),
                         trailing: val == current
-                            ? const Icon(Icons.check,
+                            ? Icon(Icons.check,
                                 size: 18, color: AppTheme.accent)
                             : null,
                         onTap: () {
@@ -806,7 +806,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
 
   Widget _buildBody(ResolvedTheme t, List<Map<String, dynamic>> items) {
     if (_loading) {
-      return const Center(
+      return Center(
         child: CircularProgressIndicator(
           color: AppTheme.accent, strokeWidth: 2),
       );

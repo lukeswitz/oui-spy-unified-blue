@@ -461,7 +461,7 @@ class _DrawingToolbar extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 isCircle ? 'CIRCLE' : 'POLYGON',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.accent, fontSize: 10,
                   fontWeight: FontWeight.w700, letterSpacing: 1,
                 ),
@@ -496,7 +496,7 @@ class _DrawingToolbar extends StatelessWidget {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppTheme.accent),
+                  borderSide: BorderSide(color: AppTheme.accent),
                 ),
               ),
             ),
@@ -529,7 +529,7 @@ class _DrawingToolbar extends StatelessWidget {
                         ? '${(circleRadiusM / 1000).toStringAsFixed(1)}km'
                         : '${circleRadiusM.round()}m',
                     textAlign: TextAlign.right,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.accent, fontSize: 10,
                       fontFamily: 'monospace', fontWeight: FontWeight.w600,
                     ),
@@ -689,7 +689,7 @@ class _DrawBtn extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: AppTheme.accent),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(
+            Text(label, style: TextStyle(
               color: AppTheme.accent, fontSize: 11,
               fontWeight: FontWeight.w700, letterSpacing: 0.5,
             )),

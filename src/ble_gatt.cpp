@@ -2190,6 +2190,11 @@ class DeviceInfoCallbacks : public NimBLECharacteristicCallbacks {
         len++;
         len += snprintf(info + len, sizeof(info) - len, "%u",
                         (unsigned)ESP.getFreeHeap());
+        int8_t tc = meshChipTempC();
+        if (tc != OUISPY_TEMP_UNKNOWN) {
+            len++;
+            len += snprintf(info + len, sizeof(info) - len, "%d", (int)tc);
+        }
         chr->setValue((uint8_t*)info, len + 1);
     }
 };
@@ -2661,7 +2666,7 @@ void bleGattNotifyMeshStatus(void) {
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t liveCount = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
 
-    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 12];
+    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 13];
     buf[0] = st.enabled;
     buf[1] = st.peer_count;
     buf[2] = st.connected_peers;
@@ -2677,6 +2682,7 @@ void bleGattNotifyMeshStatus(void) {
         off += 11;
     }
     for (size_t i = 0; i < liveCount; i++) buf[off++] = live[i].board;
+    for (size_t i = 0; i < liveCount; i++) buf[off++] = (uint8_t)live[i].temp_c;
 
     static uint8_t lastBuf[sizeof(buf)] = {};
     static size_t  lastLen = 0;

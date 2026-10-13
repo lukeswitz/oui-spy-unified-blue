@@ -235,6 +235,8 @@ class AppState extends ChangeNotifier {
   final Map<String, int> _nodeFwVersion = {};
   final Map<String, String> _nodeBoard = {};
   String? nodeBoard(String id) => _nodeBoard[canonicalNodeId(id)];
+  final Map<String, int> _nodeTempC = {};
+  int? nodeTempC(String id) => _nodeTempC[canonicalNodeId(id)];
   Set<String> get liveNodeBoards => {
         for (final id in _meshLiveNodeIds)
           if (!_meshManagerNodeIds.contains(id)) _nodeBoard[id] ?? '',
@@ -559,6 +561,8 @@ class AppState extends ChangeNotifier {
         _nodeLastSeenMs[canon] = now;
         if (entry.fwVersion != 0) _nodeFwVersion[canon] = entry.fwVersion;
         if (entry.board.isNotEmpty) _nodeBoard[canon] = entry.board;
+        final tempC = entry.tempC;
+        if (tempC != null) _nodeTempC[canon] = tempC;
       }
       _meshLiveNodeIds
         ..clear()

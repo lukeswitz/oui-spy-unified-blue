@@ -246,7 +246,7 @@ class _OtaProgressStepperState extends State<OtaProgressStepper>
                 minHeight: 5,
                 backgroundColor: t.border,
                 valueColor:
-                    const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+                    AlwaysStoppedAnimation<Color>(AppTheme.accent),
               ),
             )
           else if (m.activeIndex >= 0 && !m.complete)
@@ -256,7 +256,7 @@ class _OtaProgressStepperState extends State<OtaProgressStepper>
                 minHeight: 5,
                 backgroundColor: t.border,
                 valueColor:
-                    const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+                    AlwaysStoppedAnimation<Color>(AppTheme.accent),
               ),
             ),
           if (m.detail.isNotEmpty)
@@ -280,7 +280,7 @@ class _OtaProgressStepperState extends State<OtaProgressStepper>
                   if (hasBar)
                     Text(
                       '${(m.fraction * 100).toStringAsFixed(0)}%',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.accent,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,

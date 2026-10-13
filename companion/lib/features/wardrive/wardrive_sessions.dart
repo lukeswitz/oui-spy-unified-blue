@@ -221,7 +221,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.file_download_outlined, size: 14, color: AppTheme.accent),
@@ -798,7 +798,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                   stream: db.watchWardriveSessions(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator(
+                      return Center(child: CircularProgressIndicator(
                         color: AppTheme.accent, strokeWidth: 2));
                     }
                     final sessions = snapshot.data!
@@ -1261,7 +1261,7 @@ class _SessionRow extends ConsumerWidget {
                     ),
                   )
                 : const SizedBox.shrink();
-            final routeIcon = const Icon(Icons.route, size: 16, color: AppTheme.accent);
+            final routeIcon = Icon(Icons.route, size: 16, color: AppTheme.accent);
             final dateText = Text(dateStr, style: TextStyle(
               color: t.textPrimary, fontSize: 11,
               fontFamily: 'monospace', fontWeight: FontWeight.w500,

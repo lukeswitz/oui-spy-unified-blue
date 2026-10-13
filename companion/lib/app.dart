@@ -132,17 +132,30 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final style = ref.watch(appStyleProvider);
     ref.watch(use24HourTimeProvider); // loads AppTime.use24Hour at startup
+    if (AppTheme.accent != style.accent) {
+      AppTheme.accent = style.accent;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) (context as Element).visitChildren(_rebuildAll);
+      });
+    }
+    final fixed = style.brightness;
     return MaterialApp.router(
       title: 'OUI-SPY',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode,
+      theme: AppTheme.themeFor(style, fixed ?? Brightness.light),
+      darkTheme: AppTheme.themeFor(style, fixed ?? Brightness.dark),
+      themeMode: fixed == null ? themeMode : (fixed == Brightness.dark ? ThemeMode.dark : ThemeMode.light),
       routerConfig: router,
       debugShowCheckedModeBanner: false,
       builder: (context, child) => _GlobalPcapBannerOverlay(child: child ?? const SizedBox.shrink()),
     );
   }
+}
+
+void _rebuildAll(Element e) {
+  e.markNeedsBuild();
+  e.visitChildren(_rebuildAll);
 }
 
 class _GlobalPcapBannerOverlay extends ConsumerWidget {

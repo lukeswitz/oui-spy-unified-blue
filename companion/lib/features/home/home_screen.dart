@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
@@ -31,6 +32,7 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           children: [
             const StatusBar(),
+            const _PhoneScanBanner(),
             Expanded(
               child: state.isConnected
                   ? _ConnectedView(state: state)
@@ -38,6 +40,46 @@ class HomeScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhoneScanBanner extends ConsumerWidget {
+  const _PhoneScanBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final src = ref.watch(phoneBleSourceProvider);
+    if (!src.active) return const SizedBox.shrink();
+    final t = AppTheme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: AppTheme.detector.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.detector.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.bluetooth_searching, size: 20, color: AppTheme.detector),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('This phone is scanning for nearby devices',
+                style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+          ),
+          FilledButton.icon(
+            onPressed: () => src.setEnabled(false),
+            icon: const Icon(Icons.stop, size: 18),
+            label: const Text('Stop'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.error,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 40),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -131,7 +173,7 @@ class _DisconnectedView extends ConsumerWidget {
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.accent,
-                    side: const BorderSide(color: AppTheme.accent),
+                    side: BorderSide(color: AppTheme.accent),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -153,7 +195,7 @@ class _DisconnectedView extends ConsumerWidget {
                     color: AppTheme.accent.withValues(alpha: 0.25),
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     SizedBox(
                       width: 14,
@@ -163,7 +205,7 @@ class _DisconnectedView extends ConsumerWidget {
                         color: AppTheme.accent,
                       ),
                     ),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Text(
                       'RECONNECTING…',
                       style: TextStyle(

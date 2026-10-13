@@ -449,7 +449,10 @@ typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;
     char     source_node_id[MESH_NODE_ID_LEN];
     uint8_t  board;
+    int8_t   temp_c;
 } MeshNodeInfoPacket;
+
+#define OUISPY_TEMP_UNKNOWN ((int8_t)-128)
 
 static const char* const kOuispyBoards[] = {
     "", "xiao_s3", "s3_devkitc", "xiao_c5", "tdongle_s3", "tdongle_c5",

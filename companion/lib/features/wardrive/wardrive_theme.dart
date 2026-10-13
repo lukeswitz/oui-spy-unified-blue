@@ -84,7 +84,7 @@ final ColorFilter _nightriderTileTint = ColorFilter.matrix(<double>[
 ]);
 
 final Map<WardriveTheme, WardriveThemeData> wardriveThemes = {
-  WardriveTheme.classic: const WardriveThemeData(
+  WardriveTheme.classic: WardriveThemeData(
     theme: WardriveTheme.classic,
     label: 'Classic',
     tagline: 'Stock HUD',

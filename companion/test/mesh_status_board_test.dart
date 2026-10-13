@@ -35,4 +35,14 @@ void main() {
         _status([_entry('AB12', 0)], boards: [200]));
     expect(s.liveNodes.single.board, '');
   });
+
+  test('trailing temps decode signed, 0x80 is unknown, absent is null', () {
+    final s = BleProtocol.decodeMeshStatus(_status(
+      [_entry('AB12', 0), _entry('CD34', 0), _entry('EF56', 0)],
+      boards: [1, 1, 1, 41, 0x80, 0xF6],
+    ));
+    expect(s.liveNodes.map((n) => n.tempC).toList(), [41, null, -10]);
+    final old = BleProtocol.decodeMeshStatus(_status([_entry('AB12', 0)], boards: [1]));
+    expect(old.liveNodes.single.tempC, isNull);
+  });
 }

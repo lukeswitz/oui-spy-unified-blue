@@ -10,7 +10,7 @@ double barIconSize(BuildContext context) {
 double barGap(BuildContext context, [double m = 1]) =>
     barIconSize(context) * 0.35 * m;
 
-const kPillPalette = <Color>[
+final kPillPalette =<Color>[
   AppTheme.accent,
   AppTheme.flockBle,
   AppTheme.wardrive,
@@ -25,7 +25,7 @@ const kPillPalette = <Color>[
 
 Color pillColor(int i) => kPillPalette[i % kPillPalette.length];
 
-const kPillAll = AppTheme.accent;
+final kPillAll =AppTheme.accent;
 const kPillBle = AppTheme.flockBle;
 const kPillWifi = AppTheme.wardrive;
 

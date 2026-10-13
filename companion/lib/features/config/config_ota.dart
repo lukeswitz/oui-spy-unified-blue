@@ -77,18 +77,18 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_updating)
-                  const SizedBox(
+                  SizedBox(
                     width: 12, height: 12,
                     child: CircularProgressIndicator(
                       strokeWidth: 1.5, color: AppTheme.accent,
                     ),
                   )
                 else
-                  const Icon(Icons.refresh, size: 14, color: AppTheme.accent),
+                  Icon(Icons.refresh, size: 14, color: AppTheme.accent),
                 const SizedBox(width: 6),
                 Text(
                   _updating ? 'Checking...' : 'Check for Update',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.accent,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -809,7 +809,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                   size: 14, color: AppTheme.accent),
               const SizedBox(width: 6),
               Text(f.label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.accent,
                       fontSize: 12,
                       fontWeight: FontWeight.w700)),
@@ -834,7 +834,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                   child: LinearProgressIndicator(
                     minHeight: 5,
                     backgroundColor: t.border,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
+                    valueColor: AlwaysStoppedAnimation<Color>(
                         AppTheme.accent),
                   ),
                 ),

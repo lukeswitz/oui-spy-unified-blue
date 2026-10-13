@@ -1,7 +1,8 @@
 part of 'device_config.dart';
 
 class _WardriveConfigTab extends ConsumerStatefulWidget {
-  const _WardriveConfigTab();
+  const _WardriveConfigTab({required this.showAccounts});
+  final bool showAccounts;
 
   @override
   ConsumerState<_WardriveConfigTab> createState() => _WardriveConfigTabState();
@@ -25,16 +26,22 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
+    if (widget.showAccounts) {
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: const [
+          ConfigSectionHeader(label: 'WARDRIVE ACCOUNTS'),
+          SizedBox(height: 10),
+          _WigleSection(),
+          SizedBox(height: 18),
+          _WdgwarsSection(),
+          SizedBox(height: 20),
+        ],
+      );
+    }
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'WARDRIVE ACCOUNTS'),
-        const SizedBox(height: 10),
-        const _WigleSection(),
-        const SizedBox(height: 18),
-        const _WdgwarsSection(),
-
-        const SizedBox(height: 20),
         Row(
           children: [
             const Expanded(child: ConfigSectionHeader(label: 'YOUR CAPTURE DATABASE')),
@@ -59,8 +66,8 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
           future: _statsFuture,
           builder: (context, snap) {
             if (!snap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(
                   child: SizedBox(
                     width: 20, height: 20,

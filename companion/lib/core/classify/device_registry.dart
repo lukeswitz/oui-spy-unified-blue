@@ -129,7 +129,7 @@ class EspDetectionSource extends ObservationSource {
   final Stream<Observation> observations;
 }
 
-class PhoneBleSource extends ObservationSource {
+class PhoneBleSource extends ObservationSource with ChangeNotifier {
   static const scanWindow = Duration(seconds: 8);
   static const scanEvery = Duration(seconds: 20);
 
@@ -160,6 +160,13 @@ class PhoneBleSource extends ObservationSource {
       _kick();
       _timer = Timer.periodic(scanEvery, (_) => _kick());
     }
+    notifyListeners();
+  }
+
+  Future<void> setEnabled(bool on) async {
+    setActive(on);
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(DeviceRegistry.phoneScanPref, on);
   }
 
   Future<void> _kick() async {
@@ -209,6 +216,7 @@ class PhoneBleSource extends ObservationSource {
     _timer?.cancel();
     _sub?.cancel();
     _out.close();
+    super.dispose();
   }
 }
 
@@ -376,14 +384,13 @@ class DeviceRegistry extends ChangeNotifier {
   }
 }
 
-final phoneBleSourceProvider = Provider<PhoneBleSource>((ref) {
+final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   final gps = ref.read(gpsProvider);
   final src = PhoneBleSource(here: () {
     final p = gps.lastPosition;
     return p == null ? null : GpsSample(0, p.latitude, p.longitude);
   });
   SharedPreferences.getInstance().then((p) => src.setActive(p.getBool(DeviceRegistry.phoneScanPref) ?? false));
-  ref.onDispose(src.dispose);
   return src;
 });
 

@@ -268,6 +268,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
     liveNodes[slot].active_engines = engines;
     liveNodes[slot].fw_version = fw_version;
     liveNodes[slot].board = 0;
+    liveNodes[slot].temp_c = OUISPY_TEMP_UNKNOWN;
     gNewNodeJoined = true;
     xSemaphoreGive(liveMutex);
 }
@@ -307,6 +308,16 @@ static void recordLiveSeen(const char* id) {
     }
     xSemaphoreGive(liveMutex);
     recordLiveNode(id, 0, 0);  // first sight only — HEARTBEAT fills in role+engines
+}
+
+int8_t meshChipTempC(void) {
+#if CONFIG_IDF_TARGET_ESP32
+    return OUISPY_TEMP_UNKNOWN;
+#else
+    float c = temperatureRead();
+    if (isnan(c) || c < -100.0f || c > 127.0f) return OUISPY_TEMP_UNKNOWN;
+    return (int8_t)lroundf(c);
+#endif
 }
 
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
@@ -873,14 +884,16 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         return;
     }
 
-    if (plainLen >= sizeof(MeshNodeInfoPacket) && plainBuf[0] == MESH_PKT_NODE_INFO) {
+    if (plainLen >= offsetof(MeshNodeInfoPacket, temp_c) && plainBuf[0] == MESH_PKT_NODE_INFO) {
         MeshNodeInfoPacket ni;
-        memcpy(&ni, plainBuf, sizeof(ni));
+        ni.temp_c = OUISPY_TEMP_UNKNOWN;
+        memcpy(&ni, plainBuf, plainLen < sizeof(ni) ? plainLen : sizeof(ni));
         if (liveMutex && ni.source_node_id[0] && memcmp(ni.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0 &&
             xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
             for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
                 if (memcmp(liveNodes[i].id, ni.source_node_id, MESH_NODE_ID_LEN) == 0) {
                     liveNodes[i].board = ni.board;
+                    liveNodes[i].temp_c = ni.temp_c;
                     break;
                 }
             }
@@ -2296,6 +2309,7 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     ni.pkt_type = MESH_PKT_NODE_INFO;
     memcpy(ni.source_node_id, localNodeId, MESH_NODE_ID_LEN);
     ni.board = ouispyBoardCode();
+    ni.temp_c = meshChipTempC();
     if (!encryptPacket((const uint8_t*)&ni, sizeof(ni), enc, &encLen)) return;
     enqueueTx(enc, encLen);
 }

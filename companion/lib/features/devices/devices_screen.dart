@@ -25,7 +25,7 @@ Color confidenceColor(Confidence c) => switch (c) {
   Confidence.low => AppTheme.gpsNone,
 };
 
-const _classColors = <SignatureClass, Color>{
+final _classColors =<SignatureClass, Color>{
   SignatureClass.finder: Color(0xFFE66B9B),
   SignatureClass.beacon: AppTheme.wardrive,
   SignatureClass.signage: Color(0xFF8890A8),

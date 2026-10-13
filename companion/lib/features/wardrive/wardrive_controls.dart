@@ -47,7 +47,7 @@ class _IdleControls extends StatelessWidget {
                   ),
                 ),
               ),
-              Text('${wd.markerDistanceM.round()}m', style: const TextStyle(
+              Text('${wd.markerDistanceM.round()}m', style: TextStyle(
                 color: AppTheme.accent, fontSize: 10,
                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
               )),
@@ -260,7 +260,7 @@ class _CompassResetBtn extends StatelessWidget {
                     size: const Size(28, 28),
                     painter: _CompassNeedlePainter(),
                   ),
-                  const Positioned(
+                  Positioned(
                     top: 2,
                     child: Text(
                       'N',

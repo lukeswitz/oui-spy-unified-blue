@@ -44,7 +44,7 @@ class _IgnoreListTab extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
                   ),
-                  child: const Icon(Icons.add, size: 18, color: AppTheme.accent),
+                  child: Icon(Icons.add, size: 18, color: AppTheme.accent),
                 ),
               ),
             ],

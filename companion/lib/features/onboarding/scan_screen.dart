@@ -240,7 +240,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 }
               },
               child: Text(actionLabel,
-                  style: const TextStyle(color: AppTheme.accent)),
+                  style: TextStyle(color: AppTheme.accent)),
             ),
         ],
       ),
@@ -317,7 +317,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               onPressed: _scanning ? null : _startScan,
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.accent,
-                side: const BorderSide(color: AppTheme.accent),
+                side: BorderSide(color: AppTheme.accent),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
               ),
@@ -392,7 +392,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: isThisConnecting
-                                ? const Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
+                                ? Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
                                 : Icon(Icons.bluetooth, color: isOtherConnecting ? t.textDim : AppTheme.accent, size: 18),
                           ),
                           const SizedBox(width: 12),

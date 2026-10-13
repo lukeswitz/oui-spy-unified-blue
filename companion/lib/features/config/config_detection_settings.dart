@@ -92,7 +92,8 @@ void _pushPage(BuildContext context, String title, Widget body) {
 }
 
 class _DetectionSettingsTab extends ConsumerStatefulWidget {
-  const _DetectionSettingsTab();
+  const _DetectionSettingsTab({this.footer = const []});
+  final List<Widget> footer;
 
   @override
   ConsumerState<_DetectionSettingsTab> createState() => _DetectionSettingsTabState();
@@ -198,6 +199,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           onChanged: _setPhoneScan,
         ),
         const SizedBox(height: 20),
+        ...widget.footer,
       ],
     );
   }

@@ -49398,6 +49398,55 @@
             "kind": "WEARABLE"
         },
         {
+            "id": "fleet-smartwatch",
+            "name": "Smartwatch",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 3,
+            "rules": [
+                {
+                    "kind": "NAME_CONTAINS",
+                    "text": "Galaxy Watch",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                },
+                {
+                    "kind": "NAME_CONTAINS",
+                    "text": "Samsung Watch",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                },
+                {
+                    "kind": "NAME_CONTAINS",
+                    "text": "Apple Watch",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                },
+                {
+                    "kind": "NAME_CONTAINS",
+                    "text": "Pixel Watch",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Smartwatch advertising its product name. Pattern match, not that person.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "WEARABLE"
+        },
+        {
             "id": "fleet-pacific-tpms",
             "name": "Pacific TPMS",
             "enabled": true,

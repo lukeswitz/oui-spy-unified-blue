@@ -55,8 +55,10 @@ struct MeshLiveNode {
     uint8_t  active_engines;
     uint32_t fw_version;
     uint8_t  board;
+    int8_t   temp_c;
 };
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms);
+int8_t meshChipTempC(void);
 
 bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version);
 bool meshOtaInitiatorRunning(void);

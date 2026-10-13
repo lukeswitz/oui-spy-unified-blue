@@ -12,8 +12,8 @@ class ConfigSectionHeader extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: 8, top: topPadding),
       child: Text(label, style: TextStyle(
-        color: t.textDim, fontSize: 10,
-        fontWeight: FontWeight.w700, letterSpacing: 2,
+        color: t.textDim, fontSize: 12,
+        fontWeight: FontWeight.w700, letterSpacing: 1.5,
       )),
     );
   }
@@ -40,8 +40,8 @@ class ConfigToggleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(10),
@@ -49,19 +49,21 @@ class ConfigToggleRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: value ? color : t.textDim),
-          const SizedBox(width: 10),
+          Icon(icon, size: 24, color: value ? color : t.textDim),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: TextStyle(
-                  color: t.textPrimary, fontSize: 13, fontWeight: FontWeight.w600,
+                  color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600,
                 )),
-                if (subtitle != null)
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
                   Text(subtitle!, style: TextStyle(
-                    color: t.textDim, fontSize: 10,
+                    color: t.textDim, fontSize: 13,
                   )),
+                ],
               ],
             ),
           ),
@@ -105,8 +107,8 @@ class ConfigSliderRow extends StatelessWidget {
     final t = AppTheme.of(context);
     final c = color ?? AppTheme.accent;
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(10),
@@ -116,14 +118,15 @@ class ConfigSliderRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: t.textDim),
-              const SizedBox(width: 8),
-              Text(label, style: TextStyle(
-                color: t.textPrimary, fontSize: 12, fontWeight: FontWeight.w500,
-              )),
-              const Spacer(),
+              Icon(icon, size: 24, color: c),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(label, style: TextStyle(
+                  color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600,
+                )),
+              ),
               Text(valueLabel, style: TextStyle(
-                color: c, fontSize: 11,
+                color: c, fontSize: 14,
                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
               )),
             ],
@@ -169,8 +172,8 @@ class ConfigInfoRow extends StatelessWidget {
     final t = AppTheme.of(context);
     final c = color ?? t.textDim;
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(10),
@@ -178,18 +181,21 @@ class ConfigInfoRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: c),
-          const SizedBox(width: 10),
+          Icon(icon, size: 24, color: c),
+          const SizedBox(width: 14),
           Text(label, style: TextStyle(
-            color: t.textPrimary, fontSize: 12, fontWeight: FontWeight.w500,
+            color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w500,
           )),
-          const Spacer(),
-          Text(value, style: TextStyle(
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
             color: AppTheme.accent,
-            fontSize: 12,
+            fontSize: 15,
             fontFamily: monospace ? 'monospace' : null,
             fontWeight: FontWeight.w600,
-          )),
+          ))),
         ],
       ),
     );
@@ -229,8 +235,8 @@ class ConfigActionRow extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
             color: t.surface,
             borderRadius: BorderRadius.circular(10),
@@ -241,28 +247,28 @@ class ConfigActionRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, size: prominent ? 26 : 18, color: c),
-              SizedBox(width: prominent ? 16 : 10),
+              Icon(icon, size: prominent ? 28 : 24, color: c),
+              SizedBox(width: prominent ? 16 : 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(label, style: TextStyle(
                       color: destructive ? AppTheme.error : t.textPrimary,
-                      fontSize: prominent ? 18 : 13,
+                      fontSize: prominent ? 18 : 16,
                       fontWeight: FontWeight.w600,
                     )),
                     if (subtitle != null) ...[
-                      if (prominent) const SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(subtitle!, style: TextStyle(
-                        color: t.textDim, fontSize: prominent ? 14 : 10,
+                        color: t.textDim, fontSize: prominent ? 14 : 13,
                       )),
                     ],
                   ],
                 ),
               ),
               if (trailing != null) trailing!
-              else Icon(Icons.chevron_right, size: 18, color: t.textDim),
+              else Icon(Icons.chevron_right, size: 22, color: t.textDim),
             ],
           ),
         ),
@@ -296,7 +302,7 @@ class ConfigCompactButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           decoration: BoxDecoration(
             color: t.surface,
             borderRadius: BorderRadius.circular(10),
@@ -308,7 +314,7 @@ class ConfigCompactButton extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 18, color: c),
+              Icon(icon, size: 24, color: c),
               const SizedBox(height: 6),
               Text(
                 label,
@@ -317,7 +323,7 @@ class ConfigCompactButton extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: destructive ? AppTheme.error : t.textPrimary,
-                  fontSize: 11,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -349,7 +355,7 @@ class ConfigTextField extends StatelessWidget {
     final t = AppTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(10),
@@ -357,17 +363,17 @@ class ConfigTextField extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: t.textDim),
-          const SizedBox(width: 10),
+          Icon(icon, size: 24, color: t.textDim),
+          const SizedBox(width: 14),
           Expanded(
             child: TextField(
               controller: controller,
               obscureText: obscure,
               keyboardType: keyboardType,
-              style: TextStyle(color: t.textPrimary, fontSize: 13),
+              style: TextStyle(color: t.textPrimary, fontSize: 16),
               decoration: InputDecoration(
                 labelText: label,
-                labelStyle: TextStyle(color: t.textDim, fontSize: 12),
+                labelStyle: TextStyle(color: t.textDim, fontSize: 14),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -444,8 +450,8 @@ class _ConfigNumberFieldState extends State<ConfigNumberField> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(10),
@@ -453,24 +459,24 @@ class _ConfigNumberFieldState extends State<ConfigNumberField> {
       ),
       child: Row(
         children: [
-          Icon(widget.icon, size: 16, color: t.textDim),
-          const SizedBox(width: 10),
+          Icon(widget.icon, size: 24, color: t.textDim),
+          const SizedBox(width: 14),
           Expanded(
             child: Text(widget.label, style: TextStyle(
-              color: t.textPrimary, fontSize: 12, fontWeight: FontWeight.w500,
+              color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w500,
             )),
           ),
           SizedBox(
-            width: 90,
+            width: 100,
             child: TextFormField(
               controller: _controller,
               focusNode: _focusNode,
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.done,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.accent,
                 fontFamily: 'monospace',
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.right,

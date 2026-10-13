@@ -38,6 +38,88 @@ final themeModeProvider =
   return ThemeModeNotifier();
 });
 
+enum AppStyle {
+  standard('Default', 'Blue accent, follows the Dark Mode switch', null, Color(0xFF6B8AFF)),
+  cyberpunk('Cyberpunk', 'Deep purple with neon cyan', Brightness.dark, Color(0xFF05D9E8)),
+  terminal('Terminal', 'Green on black, monospace text', Brightness.dark, Color(0xFF33FF66)),
+  minimalLight('Minimal light', 'Plain white, black accents', Brightness.light, Color(0xFF1A1A1A)),
+  minimalDark('Minimal dark', 'Plain black, white accents', Brightness.dark, Color(0xFFEDEDED));
+
+  const AppStyle(this.label, this.description, this.brightness, this.accent);
+  final String label;
+  final String description;
+  final Brightness? brightness;
+  final Color accent;
+
+  String? get fontFamily => this == terminal ? 'Menlo' : null;
+  List<String>? get fontFallback => this == terminal ? const ['Courier', 'monospace'] : null;
+
+  ResolvedTheme palette(Brightness b) => switch (this) {
+        cyberpunk => const ResolvedTheme(
+            background: Color(0xFF0D0221),
+            surface: Color(0xFF1A0B2E),
+            surfaceLight: Color(0xFF261447),
+            border: Color(0xFF3D1E6D),
+            textPrimary: Color(0xFFF5F0FF),
+            textSecondary: Color(0xFFC9B8FF),
+            textDim: Color(0xFF9A86C4),
+          ),
+        terminal => const ResolvedTheme(
+            background: Color(0xFF000000),
+            surface: Color(0xFF050D07),
+            surfaceLight: Color(0xFF0B1A0E),
+            border: Color(0xFF1C4426),
+            textPrimary: Color(0xFF4DFF7A),
+            textSecondary: Color(0xFF2FD45E),
+            textDim: Color(0xFF22A548),
+          ),
+        minimalLight => const ResolvedTheme(
+            background: Color(0xFFFFFFFF),
+            surface: Color(0xFFFAFAFA),
+            surfaceLight: Color(0xFFF0F0F0),
+            border: Color(0xFFDDDDDD),
+            textPrimary: Color(0xFF111111),
+            textSecondary: Color(0xFF444444),
+            textDim: Color(0xFF6E6E6E),
+          ),
+        minimalDark => const ResolvedTheme(
+            background: Color(0xFF0A0A0A),
+            surface: Color(0xFF141414),
+            surfaceLight: Color(0xFF1E1E1E),
+            border: Color(0xFF2C2C2C),
+            textPrimary: Color(0xFFEDEDED),
+            textSecondary: Color(0xFFB5B5B5),
+            textDim: Color(0xFF8A8A8A),
+          ),
+        standard => b == Brightness.light ? AppTheme._lightPalette : AppTheme._darkPalette,
+      };
+}
+
+class AppStyleNotifier extends StateNotifier<AppStyle> {
+  AppStyleNotifier() : super(AppStyle.standard) {
+    _load();
+  }
+
+  static const _key = 'app_style';
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_key);
+    final match = AppStyle.values.where((s) => s.name == value);
+    if (match.isNotEmpty) state = match.first;
+  }
+
+  Future<void> setStyle(AppStyle style) async {
+    state = style;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, style.name);
+  }
+}
+
+final appStyleProvider = StateNotifierProvider<AppStyleNotifier, AppStyle>((ref) {
+  return AppStyleNotifier();
+});
+
 
 enum UnitSystem { metric, imperial }
 
@@ -216,7 +298,7 @@ class AppTheme {
   static const textPrimary = Color(0xFFF0F1F5);
   static const textSecondary = Color(0xFFB0B5C8);
   static const textDim = Color(0xFF8890A8);
-  static const accent = Color(0xFF6B8AFF);
+  static Color accent = AppStyle.standard.accent;
   static const error = Color(0xFFE65A6B);
   static const success = Color(0xFF5AE6A1);
   static const warning = Color(0xFFE6A85A);
@@ -249,45 +331,55 @@ class AppTheme {
   static const _lightTextSecondary = Color(0xFF4C5165);
   static const _lightTextDim = Color(0xFF6B7186);
 
+  static const _lightPalette = ResolvedTheme(
+    background: _lightBackground,
+    surface: _lightSurface,
+    surfaceLight: _lightSurfaceLight,
+    border: _lightBorder,
+    textPrimary: _lightTextPrimary,
+    textSecondary: _lightTextSecondary,
+    textDim: _lightTextDim,
+  );
+
+  static const _darkPalette = ResolvedTheme(
+    background: background,
+    surface: surface,
+    surfaceLight: surfaceLight,
+    border: border,
+    textPrimary: textPrimary,
+    textSecondary: textSecondary,
+    textDim: textDim,
+  );
+
   static ResolvedTheme of(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.light
-        ? const ResolvedTheme(
-            background: _lightBackground,
-            surface: _lightSurface,
-            surfaceLight: _lightSurfaceLight,
-            border: _lightBorder,
-            textPrimary: _lightTextPrimary,
-            textSecondary: _lightTextSecondary,
-            textDim: _lightTextDim,
-          )
-        : const ResolvedTheme(
-            background: background,
-            surface: surface,
-            surfaceLight: surfaceLight,
-            border: border,
-            textPrimary: textPrimary,
-            textSecondary: textSecondary,
-            textDim: textDim,
-          );
+    final theme = Theme.of(context);
+    return theme.extension<ResolvedTheme>() ??
+        (theme.brightness == Brightness.light ? _lightPalette : _darkPalette);
   }
 
   static ThemeData get darkTheme => _buildTheme(Brightness.dark);
   static ThemeData get lightTheme => _buildTheme(Brightness.light);
 
-  static ThemeData _buildTheme(Brightness brightness) {
-    final isDark = brightness == Brightness.dark;
+  static ThemeData themeFor(AppStyle style, Brightness brightness) => _buildTheme(brightness, style);
 
-    final bg = isDark ? background : _lightBackground;
-    final sf = isDark ? surface : _lightSurface;
-    final sfLight = isDark ? surfaceLight : _lightSurfaceLight;
-    final bd = isDark ? border : _lightBorder;
-    final tp = isDark ? textPrimary : _lightTextPrimary;
-    final ts = isDark ? textSecondary : _lightTextSecondary;
-    final td = isDark ? textDim : _lightTextDim;
+  static ThemeData _buildTheme(Brightness brightness, [AppStyle style = AppStyle.standard]) {
+    final isDark = brightness == Brightness.dark;
+    final p = style.palette(brightness);
+    final accent = style.accent;
+
+    final bg = p.background;
+    final sf = p.surface;
+    final sfLight = p.surfaceLight;
+    final bd = p.border;
+    final tp = p.textPrimary;
+    final ts = p.textSecondary;
+    final td = p.textDim;
 
     return ThemeData(
       brightness: brightness,
+      fontFamily: style.fontFamily,
+      fontFamilyFallback: style.fontFallback,
+      extensions: [p],
       scaffoldBackgroundColor: bg,
       colorScheme: ColorScheme(
         brightness: brightness,
@@ -408,7 +500,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: accent),
+          borderSide: BorderSide(color: accent),
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -443,7 +535,7 @@ class AppTheme {
 }
 
 /// Resolved palette for the current brightness. Use [AppTheme.of(context)].
-class ResolvedTheme {
+class ResolvedTheme extends ThemeExtension<ResolvedTheme> {
   const ResolvedTheme({
     required this.background,
     required this.surface,
@@ -461,4 +553,21 @@ class ResolvedTheme {
   final Color textPrimary;
   final Color textSecondary;
   final Color textDim;
+
+  @override
+  ResolvedTheme copyWith() => this;
+
+  @override
+  ResolvedTheme lerp(ResolvedTheme? other, double t) {
+    if (other == null) return this;
+    return ResolvedTheme(
+      background: Color.lerp(background, other.background, t)!,
+      surface: Color.lerp(surface, other.surface, t)!,
+      surfaceLight: Color.lerp(surfaceLight, other.surfaceLight, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
+      textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
+      textDim: Color.lerp(textDim, other.textDim, t)!,
+    );
+  }
 }

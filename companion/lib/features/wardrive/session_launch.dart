@@ -353,7 +353,7 @@ Future<void> _settingsDialog(
               Navigator.of(ctx).pop();
               await onAction?.call();
             },
-            child: Text(action, style: const TextStyle(color: AppTheme.accent)),
+            child: Text(action, style: TextStyle(color: AppTheme.accent)),
           ),
       ],
     ),
@@ -435,7 +435,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.settings_input_antenna,
             color: AppTheme.accent,
             size: 18,

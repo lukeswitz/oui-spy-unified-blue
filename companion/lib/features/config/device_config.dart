@@ -77,6 +77,9 @@ String boardDisplayName(String? board) => switch (board) {
       final b => b,
     };
 
+String formatTempC(int c, UnitSystem u) =>
+    u == UnitSystem.imperial ? '${(c * 9 / 5 + 32).round()}°F' : '$c°C';
+
 class DeviceConfigScreen extends ConsumerStatefulWidget {
   const DeviceConfigScreen({super.key});
 
@@ -103,6 +106,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
   String _fwVersion = '--';
   String _nodeId = '--';
   String _heapFree = '--';
+  int? _selfTempC;
+  final _navKey = GlobalKey<NavigatorState>();
 
   StreamSubscription<NodeConnectionState>? _connStateSub;
   StreamSubscription<HwGpsState>? _hwGpsSub;
@@ -224,6 +229,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             final bytes = int.tryParse(String.fromCharCodes(segs[4]).trim());
             if (bytes != null) _heapFree = '${(bytes / 1024).round()} KB';
           }
+          _selfTempC = segs.length >= 6 ? int.tryParse(String.fromCharCodes(segs[5]).trim()) : null;
           DebugLog.log('CONFIG: fw=$_fwVersion node=$_nodeId heap=$_heapFree');
         }
       }
@@ -244,11 +250,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       if (_open != null) setState(() => _open = _sub = null);
     });
     final open = _open;
-    return PopScope(
-      canPop: open == null,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _open != null) _back();
-      },
+    final sub = _sub;
+    Page<void> page(String key, Widget child) => MaterialPage<void>(
+          key: ValueKey(key),
+          child: ColoredBox(color: t.background, child: child),
+        );
+    return NavigatorPopHandler<void>(
+      onPopWithResult: (_) => _navKey.currentState?.maybePop(),
       child: Scaffold(
         backgroundColor: t.background,
         body: GestureDetector(
@@ -256,30 +264,55 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           behavior: HitTestBehavior.translucent,
           child: SafeArea(
             bottom: false,
-            child: open == null ? _overview(t) : _sectionPage(t, open),
+            child: Navigator(
+              key: _navKey,
+              pages: [
+                page('overview', _overview(t)),
+                if (open != null) page('section$open', _sectionPage(t, open, null)),
+                if (open != null && sub != null) page('section$open/$sub', _sectionPage(t, open, sub)),
+              ],
+              onDidRemovePage: _onPageRemoved,
+            ),
           ),
         ),
       ),
     );
   }
 
-  static const _sectionTitles = ['App', 'Scanning', 'Detection', 'Alerts', 'Node', 'Data', 'About'];
-  static const _aboutIndex = 6;
+  void _onPageRemoved(Page<Object?> page) {
+    final key = page.key;
+    if (key is! ValueKey<String>) return;
+    if (_open != null && _sub != null && key.value == 'section$_open/$_sub') {
+      setState(() => _sub = null);
+    } else if (_open != null && key.value == 'section$_open') {
+      setState(() => _open = _sub = null);
+    }
+  }
+
+  static const _sectionTitles = ['App', 'Scanning', 'Detection & alerts', 'Node', 'Data', 'About'];
+  static const _aboutIndex = 5;
 
   String _sectionSummary(int i) {
     final ble = ref.read(bleManagerProvider);
+    final temp = _selfTempC;
     return switch (i) {
-      0 => 'Appearance, units, auto-connect',
+      0 => 'Theme, units, auto-connect',
       1 => 'Re-log thresholds, scan timing, channels',
-      2 => 'What to watch for, watchlist, ignore list',
-      3 => 'Foxhunt, milestones, limits, sound',
-      4 => ble.isConnected ? '$_nodeId · fw $_fwVersion' : 'Not connected',
-      _ => 'Accounts, captures, export',
+      2 => 'What to watch for, how you are alerted, your lists',
+      3 => ble.isConnected
+          ? [
+              boardDisplayName(ble.board),
+              _nodeId,
+              'fw $_fwVersion',
+              if (temp != null) formatTempC(temp, ref.read(unitSystemProvider)),
+            ].join(' · ')
+          : 'Not connected',
+      _ => 'Accounts, capture database, captures, export',
     };
   }
 
   Widget _overview(ResolvedTheme t) => LayoutBuilder(builder: (context, box) {
-        const rows = 7;
+        const rows = 6;
         const chrome = 8 + 8 + 34 + 16 + 24 + 16;
         final rowH = ((box.maxHeight - chrome) / rows).clamp(64.0, 120.0);
         Widget sized(Widget row) => ConstrainedBox(
@@ -323,13 +356,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       });
 
   List<(String, String, IconData, Widget Function())>? _subPages(int i) => switch (i) {
-        4 => [
+        3 => [
             ('Hardware', 'Sound, lights, GPS source, Flock detection, offline scan', Icons.memory, _buildHardwareTab),
-            ('Mesh', 'Mode, status, key, nodes', Icons.hub, _buildMeshTab),
+            ('Mesh', 'Mode, status, key, nodes with board and temperature', Icons.hub, _buildMeshTab),
             ('Firmware', 'Device info, Wi-Fi network, updates', Icons.system_update, _buildFirmwareTab),
           ],
-        5 => [
-            ('Accounts', 'WiGLE and WDGWars, your capture database', Icons.cloud_upload, () => const _WardriveConfigTab()),
+        4 => [
+            ('Accounts', 'WiGLE and WDGWars upload accounts', Icons.cloud_upload, () => const _WardriveConfigTab(showAccounts: true)),
+            ('Capture database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
             ('Export', 'Data and backup, OUI database', Icons.ios_share, _buildExportTab),
           ],
@@ -338,25 +372,23 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
 
   void _back() => setState(() => _sub != null ? _sub = null : _open = null);
 
-  Widget _sectionPage(ResolvedTheme t, int i) {
+  Widget _sectionPage(ResolvedTheme t, int i, int? sub) {
     final subs = _subPages(i);
-    final sub = _sub;
     final title = subs != null && sub != null ? subs[sub].$1 : _sectionTitles[i];
     final Widget body = switch (i) {
       0 => _buildAppTab(),
       1 => _buildScanTab(),
-      2 => const _DetectionSettingsTab(),
-      3 => _buildAlertsTab(),
+      2 => _DetectionSettingsTab(footer: [_buildAlertsTab()]),
       _aboutIndex => _buildAboutTab(),
       _ when sub != null => subs![sub].$4(),
       _ => ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            if (i == 4 && !ref.read(bleManagerProvider).isConnected)
+            if (i == 3 && !ref.read(bleManagerProvider).isConnected)
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
                 child: Text('Connect an OUI-SPY board to change its settings.',
-                    style: TextStyle(color: t.textDim, fontSize: 12)),
+                    style: TextStyle(color: t.textDim, fontSize: 14)),
               ),
             for (var s = 0; s < subs!.length; s++)
               ConfigActionRow(
@@ -384,7 +416,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                 child: Text(title,
                     style: TextStyle(color: t.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
               ),
-              if (_loading && i == 4)
+              if (_loading && i == 3)
                 const Padding(
                   padding: EdgeInsets.only(right: 16),
                   child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -404,12 +436,33 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final unitSystem = ref.watch(unitSystemProvider);
     final isImperial = unitSystem == UnitSystem.imperial;
     final use24Hour = ref.watch(use24HourTimeProvider);
+    final style = ref.watch(appStyleProvider);
+    final t = AppTheme.of(context);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'APPEARANCE'),
-        ConfigToggleRow(
+        const ConfigSectionHeader(label: 'THEME'),
+        for (final s in AppStyle.values)
+          ConfigActionRow(
+            icon: switch (s) {
+              AppStyle.standard => Icons.palette,
+              AppStyle.cyberpunk => Icons.bolt,
+              AppStyle.terminal => Icons.terminal,
+              AppStyle.minimalLight => Icons.light_mode_outlined,
+              AppStyle.minimalDark => Icons.dark_mode_outlined,
+            },
+            label: s.label,
+            subtitle: s.description,
+            color: s == style ? AppTheme.accent : t.textDim,
+            onTap: () => ref.read(appStyleProvider.notifier).setStyle(s),
+            trailing: Icon(
+              s == style ? Icons.check_circle : Icons.circle_outlined,
+              size: 22,
+              color: s == style ? AppTheme.accent : t.textDim,
+            ),
+          ),
+        if (style == AppStyle.standard) ConfigToggleRow(
           icon: isDark ? Icons.dark_mode : Icons.light_mode,
           label: 'Dark Mode',
           subtitle: isDark ? 'Dark theme active' : 'Light theme active',
@@ -620,7 +673,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                 color: AppTheme.accent.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.system_update_alt,
+              child: Icon(Icons.system_update_alt,
                   size: 30, color: AppTheme.accent),
             ),
             const SizedBox(height: 14),
@@ -827,20 +880,27 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
 
   Widget _buildAlertsTab() {
     final appState = ref.watch(appStateProvider);
-    return ListView(
-      padding: EdgeInsets.zero,
+    final t = AppTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 8, 2, 12),
+          child: Text('How you are alerted',
+              style: TextStyle(color: t.textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
+        ),
         const NotificationSettingsBody(
           shrinkWrap: true,
           physics: NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
         ),
         if (appState.isConnected) ...[
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: EdgeInsets.only(top: 16),
             child: ConfigSectionHeader(label: 'FIRMWARE TIMING'),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.only(bottom: 16),
             child: Column(
               children: [
                 ConfigNumberField(
@@ -1012,12 +1072,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ),
         _MeshModeTile(
+          icon: Icons.link_off,
           label: 'OFF',
           subtitle: 'Mesh disabled — single-node operation',
           selected: modeOff,
           onTap: () => appState.disableMesh(),
         ),
         _MeshModeTile(
+          icon: Icons.podcasts,
           label: 'BROADCAST (PLAINTEXT)',
           subtitle: 'No peer table. Unlimited nodes hear every packet. ch=1',
           selected: modePlain,
@@ -1027,6 +1089,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ),
         _MeshModeTile(
+          icon: Icons.lock,
           label: 'ENCRYPTED (AES-256-GCM)',
           subtitle: 'Up to 6 unicast peers. Shared key. Per ESP-NOW limit.',
           selected: modeEnc,
@@ -1124,23 +1187,42 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       ..sort(sortFn);
     final offlineIds = all.where((id) => !live.contains(id) && id != appState.nodeId).toList()
       ..sort(sortFn);
+    final units = ref.watch(unitSystemProvider);
+    final ble = ref.read(bleManagerProvider);
     Widget row(String id, {required bool online}) {
       final dets = perNode[id] ?? 0;
       final label = appState.labelForNode(id);
       final hasCustom = appState.nodeLabels.containsKey(id);
       final isSelf = id == appState.nodeId && id != 'LOCAL';
+      final board = appState.nodeBoard(id) ?? (isSelf ? ble.board : null);
+      final temp = isSelf ? _selfTempC : appState.nodeTempC(id);
       final parts = <String>[
         if (hasCustom) id,
         if (isSelf) 'this device',
-        if (appState.nodeBoard(id) != null) boardDisplayName(appState.nodeBoard(id)),
         online ? 'LIVE' : 'offline',
         '$dets dets',
       ];
+      final t = AppTheme.of(context);
       return ConfigActionRow(
         icon: isSelf ? Icons.smartphone : (online ? Icons.memory : Icons.memory_outlined),
-        label: label,
+        label: board == null || board.isEmpty ? label : '$label  ·  ${boardDisplayName(board)}',
         subtitle: parts.join('  ·  '),
         onTap: () => _renameNodeDialog(appState, id),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (temp != null) ...[
+              Icon(Icons.thermostat, size: 20, color: temp >= 70 ? AppTheme.error : t.textSecondary),
+              Text(formatTempC(temp, units),
+                  style: TextStyle(
+                      color: temp >= 70 ? AppTheme.error : t.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(width: 4),
+            ],
+            Icon(Icons.chevron_right, size: 22, color: t.textDim),
+          ],
+        ),
       );
     }
     final widgets = <Widget>[];
@@ -1226,6 +1308,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ConfigInfoRow(
           icon: Icons.memory, label: 'Free Heap', value: _heapFree,
         ),
+        if (_selfTempC != null)
+          ConfigInfoRow(
+            icon: Icons.thermostat,
+            label: 'Chip temperature',
+            value: formatTempC(_selfTempC!, ref.watch(unitSystemProvider)),
+          ),
 
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'WIFI NETWORK'),
