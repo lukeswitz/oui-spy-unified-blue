@@ -475,12 +475,8 @@ class _ConnectedView extends ConsumerWidget {
   }
 
   /// Determine if engine appears active — accounts for wardrive flock mode.
-  double _mediumCardHeight(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    if (w < 380) return 170;
-    if (w < 420) return 180;
-    return 190;
-  }
+  double _mediumCardHeight(BuildContext context) =>
+      (MediaQuery.of(context).size.height * 0.15).clamp(112.0, 190.0);
 
   bool _isEngineOn(Engine engine, AppState state, WardriveController wd) {
     if (wd.isActive && (engine == Engine.wardrive || wd.ownsEngine(engine))) return true;

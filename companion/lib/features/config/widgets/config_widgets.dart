@@ -206,6 +206,7 @@ class ConfigActionRow extends StatelessWidget {
     this.color,
     this.destructive = false,
     this.trailing,
+    this.prominent = false,
   });
   final IconData icon;
   final String label;
@@ -214,6 +215,7 @@ class ConfigActionRow extends StatelessWidget {
   final Color? color;
   final bool destructive;
   final Widget? trailing;
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
@@ -239,21 +241,23 @@ class ConfigActionRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: c),
-              const SizedBox(width: 10),
+              Icon(icon, size: prominent ? 26 : 18, color: c),
+              SizedBox(width: prominent ? 16 : 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(label, style: TextStyle(
                       color: destructive ? AppTheme.error : t.textPrimary,
-                      fontSize: 13,
+                      fontSize: prominent ? 18 : 13,
                       fontWeight: FontWeight.w600,
                     )),
-                    if (subtitle != null)
+                    if (subtitle != null) ...[
+                      if (prominent) const SizedBox(height: 2),
                       Text(subtitle!, style: TextStyle(
-                        color: t.textDim, fontSize: 10,
+                        color: t.textDim, fontSize: prominent ? 14 : 10,
                       )),
+                    ],
                   ],
                 ),
               ),

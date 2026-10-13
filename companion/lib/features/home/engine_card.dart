@@ -357,7 +357,11 @@ class _EngineCardState extends ConsumerState<EngineCard>
     );
   }
 
-  Widget _buildMedium(BuildContext context) {
+  Widget _buildMedium(BuildContext context) => LayoutBuilder(
+        builder: (context, box) => _buildMediumBody(context, dense: box.maxHeight < 150),
+      );
+
+  Widget _buildMediumBody(BuildContext context, {required bool dense}) {
     final t = AppTheme.of(context);
     final color = widget.engine.color;
     final active = _displayActive;
@@ -372,7 +376,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
           return AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(dense ? 12 : 14),
             decoration: BoxDecoration(
               color: active
                   ? color.withValues(alpha: 0.04 + glow)
@@ -392,8 +396,8 @@ class _EngineCardState extends ConsumerState<EngineCard>
                 Row(
                   children: [
                     Container(
-                      width: 36,
-                      height: 36,
+                      width: dense ? 28 : 36,
+                      height: dense ? 28 : 36,
                       decoration: BoxDecoration(
                         color: active
                             ? color.withValues(alpha: 0.12 + glow)
@@ -406,18 +410,20 @@ class _EngineCardState extends ConsumerState<EngineCard>
                       child: Icon(widget.engine.icon, color: active ? color : t.textDim, size: 18),
                     ),
                     const Spacer(),
-                    Transform.scale(
-                      scale: 0.55,
-                      child: Switch(
-                        value: active,
-                        onChanged: _toggleEngine,
-                        activeTrackColor: color.withValues(alpha: 0.25),
-                        activeThumbColor: color,
+                    SizedBox(
+                      height: 28,
+                      child: FittedBox(
+                        child: Switch(
+                          value: active,
+                          onChanged: _toggleEngine,
+                          activeTrackColor: color.withValues(alpha: 0.25),
+                          activeThumbColor: color,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: dense ? 6 : 10),
                 Text(
                   widget.engine.label.toUpperCase(),
                   style: TextStyle(
@@ -427,26 +433,34 @@ class _EngineCardState extends ConsumerState<EngineCard>
                     letterSpacing: 1.2,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  widget.engine.description,
-                  style: TextStyle(color: t.textSecondary, fontSize: 10),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                if (!dense) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.engine.description,
+                    style: TextStyle(color: t.textSecondary, fontSize: 10),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
                 const Spacer(),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      '${widget.detectionCount}',
-                      style: TextStyle(
-                        color: active && widget.detectionCount > 0
-                            ? t.textPrimary : t.textSecondary,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w200,
-                        fontFamily: 'monospace',
-                        height: 1,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.bottomLeft,
+                        child: Text(
+                          '${widget.detectionCount}',
+                          style: TextStyle(
+                            color: active && widget.detectionCount > 0
+                                ? t.textPrimary : t.textSecondary,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w200,
+                            fontFamily: 'monospace',
+                            height: 1,
+                          ),
+                        ),
                       ),
                     ),
                     if (widget.rate > 0) ...[
@@ -623,44 +637,44 @@ class _EngineCardState extends ConsumerState<EngineCard>
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.engine.isDualRadio) ...[
-          GestureDetector(
-            onTap: isLocked ? null : _cycleRadio,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: chipColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: chipColor.withValues(alpha: 0.3),
-                  width: 0.5,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (isLocked)
-                    Icon(Icons.lock, size: 10, color: chipColor)
-                  else
-                    Icon(_radioIcon(radio), size: 14, color: chipColor),
-                  const SizedBox(width: 4),
-                  Text(
-                    _radioLabel(radio),
-                    style: TextStyle(
-                      color: chipColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-        ],
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.engine.isDualRadio) ...[
+              GestureDetector(
+                onTap: isLocked ? null : _cycleRadio,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: chipColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: chipColor.withValues(alpha: 0.3),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isLocked)
+                        Icon(Icons.lock, size: 10, color: chipColor)
+                      else
+                        Icon(_radioIcon(radio), size: 12, color: chipColor),
+                      const SizedBox(width: 3),
+                      Text(
+                        _radioLabel(radio),
+                        style: TextStyle(
+                          color: chipColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(

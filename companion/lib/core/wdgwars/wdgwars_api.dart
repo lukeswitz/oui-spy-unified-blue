@@ -4,9 +4,10 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter/painting.dart' show Color;
 import 'package:latlong2/latlong.dart';
+import 'package:oui_spy/core/debug_log.dart';
 
 enum WdgwarsUploadPhase { sending, queued }
 
@@ -73,6 +74,7 @@ class WdgwarsApi {
     final raw = await csvFile.readAsBytes();
     if (raw.isEmpty) throw WdgwarsApiException('CSV is empty — nothing to upload');
     final csv = Uint8List.fromList(GZipCodec(level: 9).encode(raw));
+    final uploadName = '${csvFile.uri.pathSegments.last}.gz';
 
     const retryDelays = [Duration(seconds: 2), Duration(seconds: 8)];
     Response<dynamic>? resp;
@@ -81,8 +83,7 @@ class WdgwarsApi {
 
     for (var attempt = 0; attempt <= retryDelays.length; attempt++) {
       try {
-        resp = await _postCsv(
-            '${csvFile.uri.pathSegments.last}.gz', csv, onProgress);
+        resp = await _postCsv(uploadName, csv, onProgress);
         break;
       } on DioException catch (e) {
         if (!_isTransient(e)) throw WdgwarsApiException(_dioMessage(e));
@@ -117,7 +118,7 @@ class WdgwarsApi {
       final jobId = data['job_id']?.toString();
       if (jobId != null && jobId.isNotEmpty) {
         onPhase?.call(WdgwarsUploadPhase.queued);
-        return _awaitJob(jobId, data);
+        return _awaitJob(jobId, data, uploadName);
       }
       return WdgwarsUploadResult.fromJson(data);
     }
@@ -126,29 +127,93 @@ class WdgwarsApi {
   }
 
   Future<WdgwarsUploadResult> _awaitJob(
-      String jobId, Map<String, dynamic> queued) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 120));
+      String jobId, Map<String, dynamic> queued, String uploadName) async {
+    final pollPath = _pollPath(queued['poll_url']?.toString(), jobId);
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
     var delay = const Duration(seconds: 2);
+    var viaHistory = false;
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(delay);
       if (delay < const Duration(seconds: 6)) delay += const Duration(seconds: 1);
-      Map<String, dynamic> job;
+      Response<dynamic> r;
       try {
-        final r = await _dio.get('/api/v2/upload-job/$jobId');
-        job = _asMap(r.data);
-      } on DioException {
+        r = viaHistory
+            ? await _dio.get('/api/upload-history',
+                queryParameters: {'limit': 5}, options: Options(followRedirects: false))
+            : await _dio.get(pollPath, options: Options(followRedirects: false));
+      } on DioException catch (e) {
+        DebugLog.log('WDGWARS: poll $jobId transport error ${e.type.name}');
         continue;
       }
-      switch (job['status']) {
-        case 'done':
-          return WdgwarsUploadResult.fromJson(
-              {..._asMap(job['result']), 'job_id': jobId});
-        case 'failed':
-          throw WdgwarsApiException(
-              (job['error'] as String?) ?? 'WDGWars rejected the file');
+      final code = r.statusCode ?? 0;
+      if (code >= 300 || r.data is! Map) {
+        DebugLog.log('WDGWARS: ${viaHistory ? 'upload-history' : 'poll $jobId'} HTTP $code, not JSON');
+        if (viaHistory) return WdgwarsUploadResult.fromJson(queued);
+        viaHistory = true;
+        delay = Duration.zero;
+        continue;
+      }
+      final Map<String, dynamic> job;
+      if (viaHistory) {
+        final entry = _historyEntry(_asMap(r.data), uploadName);
+        if (entry == null) continue;
+        job = entry;
+      } else {
+        job = _asMap(r.data);
+      }
+      final state = job['status']?.toString().toLowerCase() ?? '';
+      DebugLog.log('WDGWARS: ${viaHistory ? 'upload-history' : 'poll'} $jobId status=$state');
+      if (state == 'done') {
+        return WdgwarsUploadResult.fromJson(
+            {..._resultMap(job['result']), 'job_id': jobId});
+      }
+      if (state == 'failed') {
+        throw WdgwarsApiException((job['error'] as String?) ??
+            (_resultMap(job['result'])['error'] as String?) ??
+            'WDGWars rejected the file');
       }
     }
     return WdgwarsUploadResult.fromJson(queued);
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic>? historyEntryFor(Map<String, dynamic> hist, String uploadName) =>
+      _historyEntry(hist, uploadName);
+
+  @visibleForTesting
+  static Map<String, dynamic> resultMapOf(dynamic raw) => _resultMap(raw);
+
+  static Map<String, dynamic>? _historyEntry(Map<String, dynamic> hist, String uploadName) {
+    final raw = hist['uploads'] ?? hist['history'] ?? hist['items'] ?? hist['data'];
+    if (raw is! List) return null;
+    final bare = uploadName.endsWith('.gz') ? uploadName.substring(0, uploadName.length - 3) : uploadName;
+    for (final e in raw) {
+      if (e is! Map<String, dynamic>) continue;
+      final name = e['filename']?.toString() ?? '';
+      if (name == uploadName || name == bare) return e;
+    }
+    return null;
+  }
+
+  static Map<String, dynamic> _resultMap(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) return decoded;
+      } on FormatException {
+        return const {};
+      }
+    }
+    return const {};
+  }
+
+  static String _pollPath(String? pollUrl, String jobId) {
+    if (pollUrl == null || pollUrl.isEmpty) return '/api/v2/upload-job/$jobId';
+    final uri = Uri.tryParse(pollUrl);
+    if (uri == null) return '/api/v2/upload-job/$jobId';
+    if (uri.hasScheme && uri.host != 'wdgwars.pl') return '/api/v2/upload-job/$jobId';
+    return uri.path;
   }
 
   Future<Response<dynamic>> _postCsv(

@@ -278,38 +278,49 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     };
   }
 
-  Widget _overview(ResolvedTheme t) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 8, 4, 16),
-            child: Text('Settings',
-                style: TextStyle(color: t.textPrimary, fontSize: 28, fontWeight: FontWeight.w700)),
-          ),
-          for (var i = 0; i < kConfigSections.length; i++)
-            ConfigActionRow(
-              icon: kConfigSections[i].icon,
-              label: _sectionTitles[i],
-              subtitle: _sectionSummary(i),
-              color: AppTheme.accent,
+  Widget _overview(ResolvedTheme t) => LayoutBuilder(builder: (context, box) {
+        const rows = 7;
+        const chrome = 8 + 8 + 34 + 16 + 24 + 16;
+        final rowH = ((box.maxHeight - chrome) / rows).clamp(64.0, 120.0);
+        Widget sized(Widget row) => ConstrainedBox(
+              constraints: BoxConstraints(minHeight: rowH),
+              child: row,
+            );
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 16),
+              child: Text('Settings',
+                  style: TextStyle(color: t.textPrimary, fontSize: 28, fontWeight: FontWeight.w700)),
+            ),
+            for (var i = 0; i < kConfigSections.length; i++)
+              sized(ConfigActionRow(
+                icon: kConfigSections[i].icon,
+                label: _sectionTitles[i],
+                subtitle: _sectionSummary(i),
+                color: AppTheme.accent,
+                prominent: true,
+                onTap: () => setState(() {
+                  _open = i;
+                  _sub = null;
+                }),
+              )),
+            const SizedBox(height: 16),
+            sized(ConfigActionRow(
+              icon: Icons.info_outline,
+              label: 'About',
+              subtitle: 'Version, source code',
+              color: t.textDim,
+              prominent: true,
               onTap: () => setState(() {
-                _open = i;
+                _open = _aboutIndex;
                 _sub = null;
               }),
-            ),
-          const SizedBox(height: 16),
-          ConfigActionRow(
-            icon: Icons.info_outline,
-            label: 'About',
-            subtitle: 'Version, source code',
-            color: t.textDim,
-            onTap: () => setState(() {
-              _open = _aboutIndex;
-              _sub = null;
-            }),
-          ),
-        ],
-      );
+            )),
+          ],
+        );
+      });
 
   List<(String, String, IconData, Widget Function())>? _subPages(int i) => switch (i) {
         4 => [
