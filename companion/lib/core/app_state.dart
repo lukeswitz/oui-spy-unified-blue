@@ -850,9 +850,9 @@ class AppState extends ChangeNotifier {
 final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   final ble = ref.watch(bleManagerProvider);
   final gps = ref.watch(gpsProvider);
-  final allowlist = ref.watch(ignoreListProvider);
+  final allowlist = ref.read(ignoreListProvider);
   final geofence = ref.read(geofenceFilterProvider);
-  final notif = ref.watch(notificationServiceProvider);
+  final notif = ref.read(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
   return AppState(ble, gps, allowlist, geofence, notif, liveActivity);
 });

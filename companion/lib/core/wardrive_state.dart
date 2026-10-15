@@ -1294,6 +1294,10 @@ class WardriveController extends ChangeNotifier {
       Engine.foxhunter,
     ];
     for (final e in stale) {
+      if (state != WardriveState.idle) {
+        DebugLog.log('WARDRIVE: stale-disable stopped — session started');
+        return;
+      }
       try {
         await _ble.disableEngine(e);
       } catch (err) {
@@ -1803,9 +1807,9 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final ble = ref.watch(bleManagerProvider);
   final gps = ref.watch(gpsProvider);
   final db = ref.watch(databaseProvider);
-  final allowlist = ref.watch(ignoreListProvider);
+  final allowlist = ref.read(ignoreListProvider);
   final geofence = ref.read(geofenceFilterProvider);
-  final notif = ref.watch(notificationServiceProvider);
+  final notif = ref.read(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
   final controller = WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
   controller.setWatchlistGetter(() => ref.read(watchlistProvider).enabledEntries);

@@ -69,7 +69,9 @@ void bleCoexPauseForMesh(void) {
 
 void bleCoexEnsureScanning(void) {
     if (g_count == 0) return;
+#if CONFIG_IDF_TARGET_ESP32
     if (meshIsEnabled() && meshInMeshWindow()) return;
+#endif
     NimBLEScan* s = NimBLEDevice::getScan();
     if (s->isScanning()) return;
     s->setActiveScan(g_wantActive);

@@ -1375,6 +1375,7 @@ static void meshSchedTaskFn(void* arg) {
         bool probe = false;
         if (meshIsStandalone() &&
             (uint32_t)(millis() - discoverStartMs) >= MESH_DISCOVER_MS) {
+#ifdef OUISPY_DONGLE
             if (!meshCurrentConfig.enabled || !meshNodeHopsWifi() ||
                 (uint32_t)(millis() - lastProbeMs) < MESH_STANDALONE_PROBE_MS) {
                 vTaskDelay(pdMS_TO_TICKS(200));
@@ -1382,6 +1383,10 @@ static void meshSchedTaskFn(void* arg) {
             }
             lastProbeMs = millis();
             probe = true;
+#else
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+#endif
         }
         bool ridScan = false;
         if (meshSkyspyOwnsChannel() && txMutex &&
@@ -1412,7 +1417,9 @@ static void meshSchedTaskFn(void* arg) {
             esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
             xSemaphoreGive(txMutex);
         }
+#if CONFIG_IDF_TARGET_ESP32
         bleCoexPauseForMesh();
+#endif
         if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
         uint32_t t0 = millis();
         for (;;) {
@@ -1515,6 +1522,7 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
 
     xSemaphoreTake(meshMutex, portMAX_DELAY);
     memcpy((void*)&meshCurrentConfig, cfg, sizeof(MeshConfig));
+    meshCurrentConfig.enabled = 0;
 
     MeshStatus st = {};
     st.enabled = 1;
@@ -1606,6 +1614,7 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
         }
     }
 
+    meshCurrentConfig.enabled = cfg->enabled;
     Serial.printf("[MESH] Enabled with %d peers\n", cfg->peer_count);
 
 #ifdef OUISPY_ROLE_MANAGER
