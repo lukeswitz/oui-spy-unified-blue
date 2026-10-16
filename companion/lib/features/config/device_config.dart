@@ -136,6 +136,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       if (s == NodeConnectionState.ready) {
         DebugLog.log('CONFIG: reconnect detected, re-reading device info');
         _readDeviceConfig();
+      } else if (mounted) {
+        setState(() {});
       }
     });
     final gps = ref.read(gpsProvider);
@@ -299,14 +301,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       0 => 'Theme, units, auto-connect',
       1 => 'Re-log thresholds, scan timing, channels',
       2 => 'What to watch for, how you are alerted, your lists',
-      3 => ble.isConnected
-          ? [
+      3 => ble.currentConnectionState != NodeConnectionState.ready
+          ? (ble.isConnected ? 'Connecting…' : 'Not connected')
+          : [
               boardDisplayName(ble.board),
               _nodeId,
               'fw $_fwVersion',
               if (temp != null) formatTempC(temp, ref.read(unitSystemProvider)),
-            ].join(' · ')
-          : 'Not connected',
+            ].join(' · '),
       _ => 'Accounts, capture database, captures, export',
     };
   }

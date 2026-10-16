@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:oui_spy/core/classify/antihunter_class.dart';
+import 'package:oui_spy/core/classify/ble_class.dart';
 import 'package:oui_spy/core/classify/device_explain.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 
@@ -24,18 +24,18 @@ void main() {
   });
 
   test('company id hint', () {
-    final h = AntiHunterClass.hints(_ble(mfg: [const MfgRecord(0x09C8, '0102')]));
+    final h = BleClass.hints(_ble(mfg: [const MfgRecord(0x09C8, '0102')]));
     expect(h.single.bucket, 'camera');
     expect(h.single.label, 'a Flock camera');
   });
 
   test('128-bit base uuid folds to 16-bit', () {
-    final h = AntiHunterClass.hints(_ble(uuids: ['0000FD5F-0000-1000-8000-00805F9B34FB']));
+    final h = BleClass.hints(_ble(uuids: ['0000FD5F-0000-1000-8000-00805F9B34FB']));
     expect(h.single.label, contains('Meta'));
   });
 
   test('samsung smarttag subtype and eddystone url', () {
-    final h = AntiHunterClass.hints(_ble(
+    final h = BleClass.hints(_ble(
       mfg: [const MfgRecord(0x0075, '4209AA')],
       sd: [const ServiceDataRecord('FEAA', '10FF')],
     ));
@@ -44,10 +44,22 @@ void main() {
 
   test('appearance reaches guess when nothing else matches', () {
     final g = DeviceExplain.guess(_ble(appearance: 0x00C1), const []);
-    expect(g.headline, contains('a watch'));
+    expect(g.headline, contains('a sports watch'));
+    expect(DeviceExplain.guess(_ble(appearance: 0x00C0), const []).headline, contains('a watch'));
+  });
+
+  test('appearance categories follow SIG assigned numbers', () {
+    String label(int a) => BleClass.hints(_ble(appearance: a)).single.label;
+    expect(label(0x0340), 'a heart-rate sensor');
+    expect(label(0x0380), 'a blood-pressure monitor');
+    expect(label(0x0580), 'a light fixture');
+    expect(label(0x0900), 'a home appliance');
+    expect(label(0x0C40), 'a pulse oximeter');
+    expect(label(0x08C1), 'a car');
+    expect(label(0x0842), 'a soundbar');
   });
 
   test('empty adv yields no hints', () {
-    expect(AntiHunterClass.hints(_ble()), isEmpty);
+    expect(BleClass.hints(_ble()), isEmpty);
   });
 }

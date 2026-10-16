@@ -9,8 +9,26 @@ void main() {
   final byId = {for (final s in sigs) s.id: s};
   final engine = SignatureEngine(sigs);
 
+  test('Home Assistant sourced matchers classify their products', () {
+    List<String> ids(Observation o) => [for (final s in engine.match(o)) s.id];
+    expect(ids(const Observation(key: 'B:1', kind: RadioKind.ble, mac: '', name: 'Triones-ABC')), contains('fleet-ha-led-ble'));
+    expect(ids(const Observation(key: 'B:2', kind: RadioKind.ble, mac: '', name: 'CC-RT-BLE')), contains('fleet-ha-eq3'));
+    expect(ids(const Observation(key: 'B:3', kind: RadioKind.ble, mac: '', serviceUuids: ['B42E1C08-ADE7-11E4-89D3-123B93F75CBA'])),
+        contains('fleet-ha-airthings'));
+    expect(ids(const Observation(key: 'B:4', kind: RadioKind.ble, mac: '', mfgRecords: [MfgRecord(0x004C, '0215A495BB10')])),
+        contains('fleet-ha-tilt'));
+    expect(ids(const Observation(key: 'B:5', kind: RadioKind.ble, mac: '', serviceData: [ServiceDataRecord('FCD2', '40')])),
+        contains('fleet-ha-bthome'));
+    expect(ids(const Observation(key: 'B:6', kind: RadioKind.ble, mac: '', name: 'Unrelated')), isEmpty);
+    expect(ids(const Observation(key: 'B:7', kind: RadioKind.ble, mac: '', name: 'SBMO-ABCD')), contains('fleet-te-shelly-motion'));
+    expect(ids(const Observation(key: 'B:8', kind: RadioKind.ble, mac: '', mfgRecords: [MfgRecord(0x094F, '0100AA')])),
+        contains('fleet-te-mikrotik-tag'));
+    expect(ids(const Observation(key: 'B:9', kind: RadioKind.ble, mac: '', mfgRecords: [MfgRecord(0x0702, '01')])),
+        contains('fleet-ha-aranet'));
+  });
+
   test('catalog parses with expected stock rows', () {
-    expect(sigs.length, 254);
+    expect(sigs.length, 305);
     final ray = byId['fleet-rayneo']!;
     expect(ray.matchAny, isFalse);
     expect(ray.rules.length, 2);

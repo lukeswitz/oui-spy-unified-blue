@@ -234,6 +234,8 @@ class NotificationService extends ChangeNotifier {
       subtitle: subtitle,
       body: body,
       groupKey: NotifChannel.detector,
+      alertKind: alert.name,
+      alertMac: key,
     );
   }
 
@@ -257,7 +259,7 @@ class NotificationService extends ChangeNotifier {
     return ('${alert.label}: $what', why, body);
   }
 
-  void Function(String title, String detail)? onAlert;
+  void Function(String title, String detail, String? kind, String? mac)? onAlert;
   final classAlertedMacs = <String>{};
 
   void setClassAlert(SignatureClass a, bool on) {
@@ -373,6 +375,13 @@ class NotificationService extends ChangeNotifier {
       subtitle: subtitle,
       body: body,
       groupKey: channel,
+      alertKind: switch (det.engine) {
+        Engine.flockBle || Engine.flockWifi => 'flock',
+        Engine.skySpy => 'drone',
+        Engine.foxhunter => 'foxhunt',
+        _ => 'detector',
+      },
+      alertMac: det.macAddress,
     );
   }
 
@@ -429,9 +438,11 @@ class NotificationService extends ChangeNotifier {
     required String body,
     String? subtitle,
     String? groupKey,
+    String? alertKind,
+    String? alertMac,
   }) async {
     if (channel != NotifChannel.wardrive) {
-      onAlert?.call(title, subtitle == null ? body : '$subtitle · $body');
+      onAlert?.call(title, subtitle == null ? body : '$subtitle · $body', alertKind, alertMac);
     }
     final androidDetails = AndroidNotificationDetails(
       channel,

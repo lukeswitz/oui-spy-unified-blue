@@ -14,11 +14,7 @@ import WidgetKit
 struct OuiSpyLiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: OuiSpyLiveActivityAttributes.self) { context in
-            VStack(alignment: .leading, spacing: 8) {
-                LockScreenView(state: context.state)
-                AlertRow(state: context.state)
-            }
-                .padding(12)
+            ActivityContentView(state: context.state)
                 .activityBackgroundTint(Color(red: 0.031, green: 0.035, blue: 0.055))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
@@ -35,6 +31,7 @@ struct OuiSpyLiveActivityLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         ExpandedBottom(state: context.state)
+                        AlertKindsRow(state: context.state, iconSize: 10, textSize: 11)
                         AlertRow(state: context.state)
                     }
                 }
@@ -46,6 +43,79 @@ struct OuiSpyLiveActivityLiveActivity: Widget {
                 MinimalView(state: context.state)
             }
             .keylineTint(engineColor(context.state.mode))
+        }
+        .supplementalActivityFamilies([.small])
+    }
+}
+
+private struct ActivityContentView: View {
+    let state: OuiSpyLiveActivityAttributes.ContentState
+    @Environment(\.activityFamily) private var family
+
+    var body: some View {
+        switch family {
+        case .small:
+            SmallView(state: state)
+                .padding(8)
+        default:
+            VStack(alignment: .leading, spacing: 8) {
+                LockScreenView(state: state)
+                AlertKindsRow(state: state, iconSize: 11, textSize: 12)
+                AlertRow(state: state)
+            }
+            .padding(12)
+        }
+    }
+}
+
+private struct SmallView: View {
+    let state: OuiSpyLiveActivityAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: state.mode.sfSymbol)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(engineColor(state.mode))
+                Text("\(state.uniqueCount)")
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Spacer(minLength: 0)
+            }
+            AlertKindsRow(state: state, iconSize: 12, textSize: 13)
+            if !state.lastAlert.isEmpty {
+                Text(state.lastAlert)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+    }
+}
+
+private struct AlertKindsRow: View {
+    let state: OuiSpyLiveActivityAttributes.ContentState
+    let iconSize: CGFloat
+    let textSize: CGFloat
+
+    var body: some View {
+        let kinds = state.sortedAlertKinds
+        if !kinds.isEmpty {
+            HStack(spacing: 10) {
+                ForEach(kinds.prefix(5), id: \.key) { k in
+                    HStack(spacing: 3) {
+                        Image(systemName: OuiSpyLiveActivityAttributes.ContentState.alertKindSymbol(k.key))
+                            .font(.system(size: iconSize, weight: .bold))
+                        Text("\(k.value)")
+                            .font(.system(size: textSize, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(.orange)
+                }
+            }
+            .lineLimit(1)
         }
     }
 }
@@ -291,12 +361,6 @@ private struct LockScreenView: View {
                 .foregroundColor(engineColor(state.mode))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("OUI-SPY \(state.displayLabel)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .truncationMode(.tail)
                 Text(lockScreenSubtitle(state))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(.white.opacity(0.7))

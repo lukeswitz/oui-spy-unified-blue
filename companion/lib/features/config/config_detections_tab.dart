@@ -13,6 +13,8 @@ enum _RadioSel { all, ble, wifi }
 
 /// 0 = BLE, 1 = WiFi, 2 = unknown — for a raw DB detection row.
 int _detRadioRank(Map<String, dynamic> d) {
+  final isBle = d['isBle'];
+  if (isBle is bool) return isBle ? 0 : 1;
   final method = (d['detectionMethod'] as String?) ?? '';
   if (isBleMethod(method)) return 0;
   if (isWifiMethod(method)) return 1;
@@ -142,7 +144,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       ),
     );
     if (ok != true) return;
-    final n = await db.clearFlockDetectorDetections();
+    final n = await db.clearFlockDetectorDetections() + await db.clearClassAlerts();
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(
       backgroundColor: AppTheme.success,
@@ -171,7 +173,10 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
 
   Future<void> _load() async {
     final db = ref.read(databaseProvider);
-    final rows = await db.getFlockDetectorDetections();
+    final rows = [
+      ...await db.getFlockDetectorDetections(),
+      ...await db.getClassAlertMaps(),
+    ];
     if (mounted) setState(() { _detections = rows; _loading = false; });
   }
 
@@ -186,6 +191,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       list = list.where((d) => d['engine'] == 'detector').toList();
     } else if (_engineFilter == 'drone') {
       list = list.where((d) => d['engine'] == 'skySpy').toList();
+    } else if (_engineFilter == 'signature') {
+      list = list.where((d) => d['engine'] == 'signature').toList();
     }
 
     if (_noGpsOnly) {
@@ -241,6 +248,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'flockWifi' => AppTheme.flockWifi,
     'detector' => AppTheme.detector,
     'skySpy' => AppTheme.skySpy,
+    'signature' => AppTheme.warning,
     _ => AppTheme.accent,
   };
 
@@ -249,6 +257,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'flockWifi' => 'FLOCK WiFi',
     'detector' => 'DETECTOR',
     'skySpy' => 'DRONE',
+    'signature' => 'SIGNATURE',
     _ => engine,
   };
 
@@ -395,6 +404,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           }).length,
         'detector' => _detections.where((d) => d['engine'] == 'detector').length,
         'drone' => _detections.where((d) => d['engine'] == 'skySpy').length,
+        'signature' => _detections.where((d) => d['engine'] == 'signature').length,
         _ => _detections.length,
       };
 
@@ -479,6 +489,14 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                         color: AppTheme.skySpy,
                         onTap: () => apply(() => setState(() => _engineFilter =
                             _engineFilter == 'drone' ? null : 'drone')),
+                      ),
+                      CommandChip(
+                        label: 'SIGNATURES',
+                        count: _engineCount('signature'),
+                        selected: _engineFilter == 'signature',
+                        color: AppTheme.warning,
+                        onTap: () => apply(() => setState(() => _engineFilter =
+                            _engineFilter == 'signature' ? null : 'signature')),
                       ),
                     ],
                   ),
@@ -761,12 +779,14 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
             'flock' => 'FLOCK',
             'detector' => 'DETECT',
             'drone' => 'DRONES',
+            'signature' => 'SIGNATURES',
             _ => _engineFilter!.toUpperCase(),
           },
           color: switch (_engineFilter!) {
             'flock' => AppTheme.flockBle,
             'detector' => AppTheme.detector,
             'drone' => AppTheme.skySpy,
+            'signature' => AppTheme.warning,
             _ => AppTheme.accent,
           },
           onClear: () => setState(() => _engineFilter = null),
@@ -817,7 +837,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         icon: Icons.videocam_off,
         title: 'NO DETECTIONS',
         message:
-            'Run a wardrive with Flock, Detector, or Sky Spy engines to see detections here.',
+            'Flock, Detector and Sky Spy hits, and every signature alert you are notified about, are listed here.',
       );
     }
 
@@ -1248,7 +1268,10 @@ class _DetectionRow extends ConsumerWidget {
         final db = ref.read(databaseProvider);
         final id = data['id'] as int;
         final messenger = ScaffoldMessenger.of(context);
-        db.deleteDetectionById(id).then((_) {
+        (data['engine'] == 'signature'
+                ? db.deleteClassAlerts(data['macAddress'] as String, data['alertClass'] as String)
+                : db.deleteDetectionById(id))
+            .then((_) {
           onDelete();
           messenger.showSnackBar(
             SnackBar(

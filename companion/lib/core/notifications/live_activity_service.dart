@@ -43,11 +43,18 @@ class LiveActivityService {
   String _lastAlertDetail = '';
   double _lastAlertAt = 0;
   Map<String, Object?>? _lastPayload;
+  final Map<String, Set<String>> _alertMacs = {};
 
-  Future<void> showAlert(String title, String detail) async {
+  Map<String, int> get alertKinds =>
+      {for (final e in _alertMacs.entries) e.key: e.value.length};
+
+  Future<void> showAlert(String title, String detail, [String? kind, String? mac]) async {
     _lastAlert = title;
     _lastAlertDetail = detail;
     _lastAlertAt = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    if (kind != null && mac != null && mac.isNotEmpty) {
+      (_alertMacs[kind] ??= {}).add(mac.toUpperCase());
+    }
     final id = _activityId;
     final last = _lastPayload;
     if (!_supported || id == null || last == null) return;
@@ -55,6 +62,7 @@ class LiveActivityService {
       ..['lastAlert'] = _lastAlert
       ..['lastAlertDetail'] = _lastAlertDetail
       ..['lastAlertAt'] = _lastAlertAt
+      ..['alertKinds'] = alertKinds
       ..['activityId'] = id;
     _lastPayload = upd;
     try {
@@ -66,7 +74,6 @@ class LiveActivityService {
 
   Future<void> update({
     required String primaryMode,
-    String activeLabel = '',
     required int uniqueCount,
     int wifiCount = 0,
     int bleCount = 0,
@@ -89,8 +96,8 @@ class LiveActivityService {
       'lastAlert': _lastAlert,
       'lastAlertDetail': _lastAlertDetail,
       'lastAlertAt': _lastAlertAt,
+      'alertKinds': alertKinds,
       'mode': primaryMode,
-      'activeLabel': activeLabel,
       'uniqueCount': uniqueCount,
       'wifiCount': wifiCount,
       'bleCount': bleCount,
@@ -168,6 +175,7 @@ class LiveActivityService {
       _lastAlert = '';
       _lastAlertDetail = '';
       _lastAlertAt = 0;
+      _alertMacs.clear();
     }
   }
 

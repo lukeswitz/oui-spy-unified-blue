@@ -11,6 +11,8 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
+import 'package:oui_spy/core/notifications/class_alerts.dart';
+import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/classify/bt_sig_registry.dart';
 import 'package:oui_spy/core/classify/vendor_class.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -19,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'co_travel.dart';
 import 'device_explain.dart';
 import 'flood.dart';
+import 'kin_index.dart';
 import 'observation.dart';
 import 'signature_engine.dart';
 
@@ -225,10 +228,17 @@ class ClassifiedDevice {
   final List<Signature> signatures;
   final Set<String> sources;
   final String? vendor;
-  const ClassifiedDevice(this.obs, this.signatures, this.sources, {this.vendor});
+  final String? baseVendor;
+  final Guess? kin;
+  const ClassifiedDevice(this.obs, this.signatures, this.sources, {this.vendor, this.baseVendor, this.kin});
 
   List<String> get signatureNames => [for (final s in signatures) s.name];
-  Guess get guess => DeviceExplain.guess(obs, signatureNames, vendor: vendor);
+  Guess get ownGuess => DeviceExplain.guess(obs, signatureNames, vendor: vendor, baseVendor: baseVendor);
+  Guess get guess {
+    final own = ownGuess;
+    final k = kin;
+    return k != null && (own.confidence == Confidence.low || DeviceExplain.isGeneric(own)) ? k : own;
+  }
   SignatureClass? get primaryClass => signatures.isEmpty ? null : signatures.first.kind;
 }
 
@@ -248,6 +258,7 @@ class DeviceRegistry extends ChangeNotifier {
   final _subs = <StreamSubscription<Observation>>[];
   final _sources = <ObservationSource>[];
   final pairingFlood = PairingFlood();
+  final kinIndex = KinIndex();
   final _path = <GpsSample>[];
   Timer? _tick;
   bool _dirty = false;
@@ -304,12 +315,13 @@ class DeviceRegistry extends ChangeNotifier {
       if (engine != null && engine.hasClusters)
         ...engine.clusterMatch(merged, [for (final d in _devices.values) d.obs], now),
     ];
-    final dev = ClassifiedDevice(
+    final dev = _withKin(ClassifiedDevice(
       merged,
       sigs,
       {...?prev?.sources, if (source.isNotEmpty) source},
       vendor: prev?.vendor ?? (merged.mac.isEmpty ? null : vendorOf?.call(merged.mac)),
-    );
+      baseVendor: prev?.baseVendor ?? _baseVendor(merged),
+    ));
     _devices[o.key] = dev;
     if (prev == null ||
         prev.signatures.length != sigs.length ||
@@ -319,6 +331,23 @@ class DeviceRegistry extends ChangeNotifier {
     }
     if (_devices.length > maxDevices) _evictOldest();
     _dirty = true;
+  }
+
+  ClassifiedDevice _withKin(ClassifiedDevice base) {
+    final o = base.obs;
+    if (o.kind != RadioKind.ble) return base;
+    kinIndex.learn(o, base.ownGuess);
+    final kin = kinIndex.lookup(o);
+    return kin == null
+        ? base
+        : ClassifiedDevice(o, base.signatures, base.sources,
+            vendor: base.vendor, baseVendor: base.baseVendor, kin: kin);
+  }
+
+  String? _baseVendor(Observation o) {
+    if (!o.isAp || !o.randomized) return null;
+    final u = MacUtil.wifiOui24Universal(o.mac);
+    return u == null ? null : vendorOf?.call(u + hexOnly(o.mac).substring(6));
   }
 
   static List<GpsSample> appendTrail(List<GpsSample> trail, GpsSample s, int cap) {
@@ -368,6 +397,7 @@ class DeviceRegistry extends ChangeNotifier {
 
   void clear() {
     _devices.clear();
+    kinIndex.clear();
     notifyListeners();
   }
 
@@ -396,8 +426,38 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
 
 final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
   final oui = ref.read(ouiLookupProvider);
+  final notif = ref.read(notificationServiceProvider);
+  final db = ref.read(databaseProvider);
+  final gpsFix = ref.read(gpsProvider);
+  final lastLogged = <String, int>{};
   final reg = DeviceRegistry(vendorOf: oui.lookup)
-    ..onClassified = ref.read(notificationServiceProvider).onClassified;
+    ..onClassified = (d) {
+      notif.onClassified(d);
+      final alert = alertClassOf(d, notif.classAlerts);
+      if (alert == null) return;
+      final mac = d.obs.mac.isNotEmpty ? d.obs.mac.toUpperCase() : d.obs.key;
+      final key = '$mac|${alert.name}';
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final prev = lastLogged[key];
+      if (prev != null && now - prev < notif.cooldownSeconds * 1000) return;
+      lastLogged[key] = now;
+      final (title, reason, _) = NotificationService.classNotificationText(d, alert);
+      final trail = d.obs.gpsTrail;
+      final pos = gpsFix.lastPosition;
+      db.insertClassAlert(
+        macAddress: mac,
+        deviceName: d.obs.name,
+        alertClass: alert.name,
+        title: title,
+        reason: reason,
+        isBle: d.obs.kind == RadioKind.ble,
+        rssi: d.obs.rssi,
+        channel: d.obs.channel,
+        alertedAt: now,
+        latitude: trail.isNotEmpty ? trail.last.lat : pos?.latitude,
+        longitude: trail.isNotEmpty ? trail.last.lon : pos?.longitude,
+      ).catchError((Object e) => DebugLog.log('CLASSIFY: alert log failed: $e'));
+    };
   reg.loadCatalog();
   reg.attach(EspDetectionSource(ref.read(bleManagerProvider).detections));
   reg.attach(ref.read(phoneBleSourceProvider));

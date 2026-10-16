@@ -1517,7 +1517,6 @@ class WardriveController extends ChangeNotifier {
     _liveActivity.update(
       primaryMode: mode,
       allowStart: allowStart || state == WardriveState.running,
-      activeLabel: _liveActivityLabel(engineNames),
       uniqueCount: uniqueMacs.length,
       wifiCount: _wifiNetworkMacs.length,
       bleCount: uniqueMacs.length - _wifiNetworkMacs.length,
@@ -1529,20 +1528,6 @@ class WardriveController extends ChangeNotifier {
       targetMac: foxhuntTarget ?? '',
       isImperial: isImperial,
     );
-  }
-
-  /// Human label listing every active radio path, e.g. "WiGLE+Flock+Drone".
-  String _liveActivityLabel(Set<String> engineNames) {
-    final parts = <String>[];
-    if (engineNames.contains('wardrive')) parts.add('WiGLE');
-    if (engineNames.contains('flockBle') || engineNames.contains('flockWifi')) {
-      parts.add('Flock');
-    }
-    if (engineNames.contains('skySpy')) parts.add('Drone');
-    if (engineNames.contains('detector')) parts.add('Detect');
-    if (engineNames.contains('foxhunter')) parts.add('Foxhunt');
-    if (engineNames.contains('uniPwn')) parts.add('UniPwn');
-    return parts.isEmpty ? 'Scanning' : parts.join('+');
   }
 
   SessionStats get currentStats {
@@ -1612,7 +1597,6 @@ class WardriveController extends ChangeNotifier {
       _wifiNetworkMacs.add(detection.macAddress);
     }
     _notificationService.onWardriveUpdate(uniqueCount: _wifiNetworkMacs.length);
-    _updateLiveActivity();
     final isFlock = detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi;
     if (isFlock) {
       _flockMacs.add(detection.macAddress);
@@ -1624,6 +1608,7 @@ class WardriveController extends ChangeNotifier {
       _detectorByMac[detection.macAddress] = detection;
       _cachedDetectorDetections = null;
     }
+    _updateLiveActivity();
 
     final key = '${detection.macAddress}|${detection.engine.name}';
     final existing = _dedupedByMac[key];

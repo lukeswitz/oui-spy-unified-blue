@@ -58,7 +58,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration {
@@ -69,6 +69,7 @@ class AppDatabase extends _$AppDatabase {
             'CREATE INDEX IF NOT EXISTS idx_detections_session ON detections (session_id)');
         await customStatement(
             'CREATE INDEX IF NOT EXISTS idx_detections_mac ON detections (mac_address)');
+        await customStatement(_classAlertsDdl);
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
@@ -98,6 +99,9 @@ class AppDatabase extends _$AppDatabase {
         if (from < 8) {
           await customStatement(
               'CREATE INDEX IF NOT EXISTS idx_detections_mac ON detections (mac_address)');
+        }
+        if (from < 9) {
+          await customStatement(_classAlertsDdl);
         }
       },
     );
@@ -489,6 +493,98 @@ class AppDatabase extends _$AppDatabase {
   /// Delete a single detection by its primary key.
   Future<void> deleteDetectionById(int id) =>
       (delete(detections)..where((d) => d.id.equals(id))).go();
+
+  static const _classAlertsDdl = 'CREATE TABLE IF NOT EXISTS class_alerts ('
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+      'mac_address TEXT NOT NULL, '
+      "device_name TEXT NOT NULL DEFAULT '', "
+      'alert_class TEXT NOT NULL, '
+      'title TEXT NOT NULL, '
+      "reason TEXT NOT NULL DEFAULT '', "
+      'is_ble INTEGER NOT NULL, '
+      'rssi INTEGER NOT NULL, '
+      'channel INTEGER NOT NULL, '
+      'alerted_at INTEGER NOT NULL, '
+      'latitude REAL, '
+      'longitude REAL)';
+
+  Future<void> insertClassAlert({
+    required String macAddress,
+    required String deviceName,
+    required String alertClass,
+    required String title,
+    required String reason,
+    required bool isBle,
+    required int rssi,
+    required int channel,
+    required int alertedAt,
+    double? latitude,
+    double? longitude,
+  }) =>
+      customInsert(
+        'INSERT INTO class_alerts (mac_address, device_name, alert_class, title, reason, '
+        'is_ble, rssi, channel, alerted_at, latitude, longitude) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString(macAddress),
+          Variable.withString(deviceName),
+          Variable.withString(alertClass),
+          Variable.withString(title),
+          Variable.withString(reason),
+          Variable.withBool(isBle),
+          Variable.withInt(rssi),
+          Variable.withInt(channel),
+          Variable.withInt(alertedAt),
+          Variable<double>(latitude),
+          Variable<double>(longitude),
+        ],
+      );
+
+  Future<void> deleteClassAlerts(String mac, String alertClass) => customUpdate(
+        'DELETE FROM class_alerts WHERE mac_address = ? AND alert_class = ?',
+        variables: [Variable.withString(mac), Variable.withString(alertClass)],
+        updateKind: UpdateKind.delete,
+      );
+
+  Future<int> clearClassAlerts() =>
+      customUpdate('DELETE FROM class_alerts', updateKind: UpdateKind.delete);
+
+  Future<List<Map<String, dynamic>>> getClassAlertMaps() async {
+    final rows = await customSelect(
+      'SELECT * FROM class_alerts ORDER BY alerted_at DESC',
+    ).get();
+    final seen = <String, Map<String, dynamic>>{};
+    for (final r in rows) {
+      final mac = r.read<String>('mac_address');
+      final cls = r.read<String>('alert_class');
+      final existing = seen['$mac|$cls'];
+      if (existing != null) {
+        existing['count'] = (existing['count'] as int) + 1;
+        continue;
+      }
+      seen['$mac|$cls'] = {
+        'id': r.read<int>('id'),
+        'sessionId': '',
+        'nodeId': '',
+        'macAddress': mac,
+        'deviceName': r.read<String>('title'),
+        'engine': 'signature',
+        'detectionMethod': r.read<String>('reason'),
+        'alertClass': cls,
+        'isBle': r.read<bool>('is_ble'),
+        'rssi': r.read<int>('rssi'),
+        'channel': r.read<int>('channel'),
+        'deviceTimestampMs': 0,
+        'appTimestamp': r.read<int>('alerted_at'),
+        'ssid': r.read<String>('device_name'),
+        'authMode': 0,
+        'count': 1,
+        'latitude': r.readNullable<double>('latitude'),
+        'longitude': r.readNullable<double>('longitude'),
+      };
+    }
+    return seen.values.toList();
+  }
 
   Future<int> clearFlockDetectorDetections() => (delete(detections)
         ..where((d) => d.engine.isIn(['flockBle', 'flockWifi', 'detector', 'skySpy'])))

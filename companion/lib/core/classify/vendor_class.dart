@@ -12,11 +12,47 @@ class VendorRule {
 class VendorClass {
   const VendorClass._();
 
-  static RoleHint? hint(Observation o, String? vendor) {
-    if (vendor == null || o.mac.isEmpty || o.randomized) return null;
-    final r = ruleFor(vendor);
-    return r == null ? null : RoleHint(r.bucket, r.label, 'Made by $vendor (from its MAC address).', r.weight);
+  static RoleHint? hint(Observation o, String? vendor, {String? baseVendor}) {
+    if (o.mac.isEmpty) return null;
+    if (vendor != null && !o.randomized) {
+      final r = ruleForKind(vendor, o.kind);
+      return r == null ? null : RoleHint(r.bucket, r.label, 'Made by $vendor (from its MAC address).', r.weight);
+    }
+    if (baseVendor != null && o.isAp && o.randomized) {
+      final r = ruleForKind(baseVendor, o.kind);
+      return r == null
+          ? null
+          : RoleHint(
+              r.bucket,
+              r.label,
+              'Its network address is a locally-administered variant of a $baseVendor address, '
+              'which routers and phones use for extra networks.',
+              r.weight,
+            );
+    }
+    return null;
   }
+
+  static VendorRule? ruleForKind(String vendor, RadioKind kind) {
+    if (kind == RadioKind.wifi) {
+      final v = vendor.toLowerCase();
+      for (final r in wifiRules) {
+        if (wordMatch(v, r.token)) return r;
+      }
+    }
+    return ruleFor(vendor);
+  }
+
+  static const wifiRules = <VendorRule>[
+    VendorRule('google', 'ap', 'a Google Wifi / Nest Wifi router or Chromecast setup network', 3),
+    VendorRule('motorola mobility', 'hotspot', 'a Motorola phone hotspot', 4),
+    VendorRule('apple', 'ap', 'an iPhone / iPad hotspot or Apple AirPort base station', 3),
+    VendorRule('hewlett packard enterprise', 'ap', 'an HPE Aruba access point', 4),
+    VendorRule('espressif', 'iot', 'an ESP32 / ESP8266 gadget or its setup network', 3),
+    VendorRule('texas instruments', 'iot', 'a Wi-Fi IoT device (TI SimpleLink chip)', 3),
+    VendorRule('silicon laboratories', 'iot', 'a Wi-Fi IoT device (Silicon Labs chip)', 3),
+    VendorRule('nordic semiconductor', 'iot', 'a Wi-Fi IoT device (Nordic chip)', 3),
+  ];
 
   static const tableAssets = [
     'assets/classify/vendor_categories_0.tsv',
@@ -83,7 +119,7 @@ class VendorClass {
     'router': 'router or gateway',
     'isp': 'ISP gateway',
     'iot': 'IoT device',
-    'iot-module': 'radio module (inside another product)',
+    'iot-module': 'radio chip, inside another brand\'s product',
     'industrial': 'industrial device',
     'signage': 'signage display',
     'hacking': 'security-testing tool',
@@ -169,8 +205,8 @@ class VendorClass {
     VendorRule('asustek', 'computer', 'an ASUS computer or router', 1),
     VendorRule('acer', 'computer', 'an Acer computer', 2),
     VendorRule('intel corporate', 'computer', 'a computer with an Intel Wi-Fi card', 1),
-    VendorRule('liteon', 'computer', 'a device with a Lite-On radio module', 1),
-    VendorRule('azurewave', 'computer', 'a device with an AzureWave radio module', 1),
+    VendorRule('liteon', 'computer', 'a laptop or PC (Lite-On Wi-Fi/Bluetooth card)', 1),
+    VendorRule('azurewave', 'computer', 'a laptop or PC (AzureWave Wi-Fi/Bluetooth card)', 2),
     VendorRule('hon hai', 'computer', 'a Foxconn-built device', 1),
     VendorRule('cloud network technology', 'computer', 'a Foxconn-built laptop', 1),
     VendorRule('raspberry pi', 'computer', 'a Raspberry Pi', 3),
@@ -254,12 +290,12 @@ class VendorClass {
     VendorRule('haier', 'home', 'a Haier/GE appliance', 2),
     VendorRule('midea', 'home', 'a Midea appliance', 3),
     VendorRule('espressif', 'iot', 'an ESP32/ESP8266-based IoT gadget', 2),
-    VendorRule('silicon laboratories', 'iot', 'a device with a Silicon Labs radio', 1),
-    VendorRule('texas instruments', 'iot', 'a device with a TI radio', 1),
-    VendorRule('nordic semiconductor', 'iot', 'a device with a Nordic radio', 1),
-    VendorRule('realtek', 'iot', 'a device with a Realtek radio', 1),
-    VendorRule('mediatek', 'iot', 'a device with a MediaTek radio', 1),
-    VendorRule('murata manufacturing', 'iot', 'a device with a Murata radio module', 1),
+    VendorRule('silicon laboratories', 'iot', 'a Zigbee/Z-Wave smart-home device or smart meter (Silicon Labs chip)', 1),
+    VendorRule('texas instruments', 'iot', 'a BLE beacon, asset tag, or fitness tracker (TI chip)', 2),
+    VendorRule('nordic semiconductor', 'iot', 'a BLE beacon, fitness tracker, or wearable (Nordic chip)', 2),
+    VendorRule('realtek', 'iot', 'a router, TV box, or Wi-Fi IoT gadget (Realtek chip)', 2),
+    VendorRule('mediatek', 'iot', 'a router, smart TV, or Wi-Fi IoT gadget (MediaTek chip)', 2),
+    VendorRule('murata manufacturing', 'iot', 'a phone, laptop, or IoT product (Murata Wi-Fi/Bluetooth module)', 2),
     VendorRule('quectel', 'iot', 'a cellular IoT device (Quectel module)', 2),
     VendorRule('u-blox', 'iot', 'a GPS/cellular tracker (u-blox module)', 2),
     VendorRule('telit', 'iot', 'a cellular IoT device (Telit module)', 2),

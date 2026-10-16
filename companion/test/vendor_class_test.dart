@@ -38,6 +38,24 @@ void main() {
     expect(VendorClass.ruleFor('Valve Corporation')?.bucket, 'console');
   });
 
+  test('chip-vendor MACs name the product classes the chip ships in', () {
+    VendorClass.loadTable([for (final a in VendorClass.tableAssets) File(a).readAsStringSync()]);
+    const o = Observation(key: 'B:3', kind: RadioKind.ble, mac: '00:11:22:33:44:55', name: 'TestDevice');
+    expect(DeviceExplain.listLabel(o, vendor: 'Silicon Laboratories'),
+        'Silicon Laboratories · Zigbee/Z-Wave smart-home device or smart meter');
+    expect(VendorClass.ruleFor('Texas Instruments')!.label, contains('TI chip'));
+    expect(VendorClass.ruleFor('Nordic Semiconductor ASA')!.label, contains('Nordic chip'));
+    expect(VendorClass.ruleFor('Realtek Semiconductor Corp.')!.label, contains('Realtek chip'));
+    expect(VendorClass.ruleFor('MediaTek, Inc.')!.label, contains('MediaTek chip'));
+    expect(VendorClass.ruleFor('Murata Manufacturing Co., Ltd.')!.label, contains('Murata'));
+    expect(VendorClass.ruleFor('AzureWave Technology Inc.')!.label, contains('laptop or PC'));
+  });
+
+  test('every Wi-Fi vendor rule matches a real IEEE or Bluetooth SIG company name', () {
+    final names = {...vendors, ...BtSigRegistry.companies.values}.map((n) => n.toLowerCase()).toList();
+    expect([for (final r in VendorClass.wifiRules) if (!names.any((n) => VendorClass.wordMatch(n, r.token))) r.token], isEmpty);
+  });
+
   test('word match rejects partial words', () {
     expect(VendorClass.ruleFor('SonoSite, Inc.'), isNull);
     expect(VendorClass.ruleFor('Engineering LLC'), isNull);

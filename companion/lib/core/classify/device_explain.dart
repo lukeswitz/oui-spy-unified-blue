@@ -1,5 +1,5 @@
 import 'adv_decoder.dart';
-import 'antihunter_class.dart';
+import 'ble_class.dart';
 import 'bt_sig_registry.dart';
 import 'vendor_class.dart';
 import 'observation.dart';
@@ -237,16 +237,22 @@ final List<_SigRule> _sigRules = [
 ];
 
 class DeviceExplain {
-  static Guess guess(Observation device, List<String> signatureNames, {String? vendor}) {
-    final vh = VendorClass.hint(device, vendor);
+  static Guess guess(
+    Observation device,
+    List<String> signatureNames, {
+    String? vendor,
+    String? baseVendor,
+  }) {
+    final vh = VendorClass.hint(device, vendor, baseVendor: baseVendor);
+    final apVendor = vh != null && vh.weight >= 3 && device.kind == RadioKind.wifi && device.isAp;
     final hints = <_Hint>[
       if (vh != null) _Hint(vh.bucket, vh.label, vh.reason, vh.weight),
       ..._uuidHints([...device.serviceUuids, ...device.serviceData.map((s) => s.uuid)]),
       for (final h in AdvPayloadDecoder.roleHints(device)) _Hint(h.bucket, h.label, h.reason, h.weight),
-      for (final h in AntiHunterClass.hints(device)) _Hint(h.bucket, h.label, h.reason, h.weight),
+      for (final h in BleClass.hints(device)) _Hint(h.bucket, h.label, h.reason, h.weight),
       for (final h in BtSigRegistry.hints(device)) _Hint(h.bucket, h.label, h.reason, h.weight),
       ..._signatureHints(signatureNames),
-      if (device.kind == RadioKind.wifi) ..._wifiHints(device, signatureNames),
+      if (device.kind == RadioKind.wifi) ..._wifiHints(device, signatureNames, hasVendor: apVendor),
     ];
     if (hints.isEmpty) {
       return Guess(
@@ -286,8 +292,21 @@ class DeviceExplain {
     );
   }
 
-  static String? listLabel(Observation device, {List<String> signatureNames = const [], String? vendor}) {
-    final g = guess(device, signatureNames, vendor: vendor);
+  static bool isGeneric(Guess g) {
+    final h = g.headline.toLowerCase();
+    return h.contains('bluetooth le advertiser') || h.endsWith('a wi-fi access point');
+  }
+
+  static String stripHedge(String headline) => headline.replaceFirst(RegExp(r'^(Most likely|Probably|Could be) '), '');
+
+  static String hedge(Confidence c) => switch (c) {
+    Confidence.high => 'Most likely',
+    Confidence.medium => 'Probably',
+    Confidence.low => 'Could be',
+  };
+
+  static String? listLabel(Observation device, {List<String> signatureNames = const [], String? vendor, Guess? guessed}) {
+    final g = guessed ?? guess(device, signatureNames, vendor: vendor);
     final h = g.headline.toLowerCase();
     final generic = h.contains('bluetooth le advertiser') || h.contains('wi-fi access point');
     final core = generic ? null : _tidyHeadline(g.headline);
@@ -438,7 +457,7 @@ class DeviceExplain {
     return out;
   }
 
-  static List<_Hint> _wifiHints(Observation device, List<String> signatureNames) {
+  static List<_Hint> _wifiHints(Observation device, List<String> signatureNames, {bool hasVendor = false}) {
     final name = device.name.toLowerCase();
     final specific = signatureNames.any((n) => !_isGeneric(n));
     if (name.startsWith('direct-')) {
@@ -454,7 +473,7 @@ class DeviceExplain {
     if (device.hiddenSsid) {
       return const [_Hint('ap', 'a hidden Wi-Fi access point', 'It hides its network name but is still broadcasting.', 4)];
     }
-    return specific ? const [] : const [_Hint('ap', 'a Wi-Fi access point', 'It is a Wi-Fi network broadcasting its name.', 3)];
+    return specific || hasVendor ? const [] : const [_Hint('ap', 'a Wi-Fi access point', 'It is a Wi-Fi network broadcasting its name.', 3)];
   }
 
   static int? _uuid16(String uuid) {

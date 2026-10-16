@@ -498,6 +498,7 @@ class _DeviceRow extends ConsumerWidget {
           o,
           signatureNames: device.signatureNames,
           vendor: vendor,
+          guessed: guess,
         ) ??
         (o.name.isNotEmpty ? o.name : (o.mac.isNotEmpty ? o.mac : o.key));
     final withYou = ref.read(deviceRegistryProvider).withYou(device);

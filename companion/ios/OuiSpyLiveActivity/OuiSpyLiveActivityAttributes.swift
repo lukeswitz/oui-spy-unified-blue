@@ -25,16 +25,41 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
         var robotType: String
         var exploitStatus: String
         var isImperial: Bool = false
-        var activeLabel: String = ""
         var lastAlert: String = ""
         var lastAlertDetail: String = ""
         var lastAlertAt: Double = 0
+        var alertKinds: [String: Int] = [:]
 
-        /// Title text: prefer the app-supplied multi-engine label (e.g.
-        /// "WiGLE+Flock+Drone") so every active radio path shows; fall back to
-        /// the single-mode label for older payloads.
-        var displayLabel: String {
-            activeLabel.isEmpty ? mode.label : activeLabel.uppercased()
+        var sortedAlertKinds: [(key: String, value: Int)] {
+            alertKinds.filter { $0.value > 0 }.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+        }
+
+        static func alertKindSymbol(_ kind: String) -> String {
+            switch kind {
+            case "flock":          return "video.badge.waveform.fill"
+            case "detector":       return "sensor.tag.radiowaves.forward"
+            case "foxhunt":        return "scope"
+            case "drone":          return "airplane"
+            case "finder":         return "tag.fill"
+            case "beacon":         return "dot.radiowaves.right"
+            case "signage":        return "display"
+            case "wearable":       return "applewatch"
+            case "surveillance":   return "eye.fill"
+            case "hacking":        return "terminal.fill"
+            case "lawEnforcement": return "shield.fill"
+            case "vehicle":        return "car.fill"
+            case "glasses":        return "eyeglasses"
+            case "audio":          return "headphones"
+            case "camera":         return "video.fill"
+            case "thermostat":     return "thermometer.medium"
+            case "lock":           return "lock.fill"
+            case "health":         return "heart.fill"
+            case "home":           return "house.fill"
+            case "isp":            return "wifi.router.fill"
+            case "mesh":           return "point.3.connected.trianglepath.dotted"
+            case "phone":          return "iphone"
+            default:               return "exclamationmark.triangle.fill"
+            }
         }
 
         var distanceDisplay: String {
@@ -77,10 +102,10 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             robotType: String,
             exploitStatus: String,
             isImperial: Bool = false,
-            activeLabel: String = "",
             lastAlert: String = "",
             lastAlertDetail: String = "",
-            lastAlertAt: Double = 0
+            lastAlertAt: Double = 0,
+            alertKinds: [String: Int] = [:]
         ) {
             self.mode = mode
             self.uniqueCount = uniqueCount
@@ -97,10 +122,10 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             self.robotType = robotType
             self.exploitStatus = exploitStatus
             self.isImperial = isImperial
-            self.activeLabel = activeLabel
             self.lastAlert = lastAlert
             self.lastAlertDetail = lastAlertDetail
             self.lastAlertAt = lastAlertAt
+            self.alertKinds = alertKinds
         }
 
         // Backward-compatible decoder: tolerate ContentState payloads written
@@ -108,8 +133,8 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
         private enum CodingKeys: String, CodingKey {
             case mode, uniqueCount, wifiCount, bleCount, flockCount, droneCount,
                  detectorHits, distanceKm, speedKmh, targetMac, rssi, intervalMs,
-                 robotType, exploitStatus, isImperial, activeLabel,
-                 lastAlert, lastAlertDetail, lastAlertAt
+                 robotType, exploitStatus, isImperial,
+                 lastAlert, lastAlertDetail, lastAlertAt, alertKinds
         }
 
         init(from decoder: Decoder) throws {
@@ -129,10 +154,10 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             robotType = try c.decode(String.self, forKey: .robotType)
             exploitStatus = try c.decode(String.self, forKey: .exploitStatus)
             isImperial = try c.decodeIfPresent(Bool.self, forKey: .isImperial) ?? false
-            activeLabel = try c.decodeIfPresent(String.self, forKey: .activeLabel) ?? ""
             lastAlert = try c.decodeIfPresent(String.self, forKey: .lastAlert) ?? ""
             lastAlertDetail = try c.decodeIfPresent(String.self, forKey: .lastAlertDetail) ?? ""
             lastAlertAt = try c.decodeIfPresent(Double.self, forKey: .lastAlertAt) ?? 0
+            alertKinds = try c.decodeIfPresent([String: Int].self, forKey: .alertKinds) ?? [:]
         }
     }
 

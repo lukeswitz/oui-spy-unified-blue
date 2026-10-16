@@ -121,7 +121,7 @@ class OuiLookupService extends ChangeNotifier {
     final le = lawEnforcementOuis[prefix];
     if (le != null) return le;
     final override = _overrides[prefix];
-    final dbVendor = _loaded ? _db[prefix] : null;
+    final dbVendor = _loaded ? longestMatch(_db, macAddress) : null;
     if (override != null) {
       if (dbVendor != null && !dbVendor.startsWith('Flock')) {
         return '$override · $dbVendor';
@@ -149,17 +149,7 @@ class OuiLookupService extends ChangeNotifier {
         if (lines.length < 1000) return false;
 
         // Parse raw master_oui.txt format (with comments, dupes)
-        final newDb = <String, String>{};
-        for (final line in lines) {
-          if (line.startsWith('#') || !line.contains('\t')) continue;
-          final parts = line.split('\t');
-          if (parts.length >= 2) {
-            final prefix = parts[0].trim().toUpperCase();
-            if (prefix.length == 6 && !newDb.containsKey(prefix)) {
-              newDb[prefix] = parts[1].trim();
-            }
-          }
-        }
+        final newDb = parseEntries(lines);
 
         if (newDb.length < 30000) return false; // sanity check
 
@@ -187,16 +177,46 @@ class OuiLookupService extends ChangeNotifier {
   }
 
   void _parseRaw(String content) {
-    _db.clear();
-    for (final line in content.split('\n')) {
+    _db
+      ..clear()
+      ..addAll(parseEntries(content.split('\n')));
+  }
+
+  static String? entryKey(String raw) {
+    final slash = raw.indexOf('/');
+    final hex = raw.substring(0, slash < 0 ? raw.length : slash).replaceAll(RegExp(r'[:\-.\s]'), '').toUpperCase();
+    if (!RegExp(r'^[0-9A-F]+$').hasMatch(hex)) return null;
+    final bits = slash < 0 ? hex.length * 4 : int.tryParse(raw.substring(slash + 1).trim());
+    return switch (bits) {
+      24 when hex.length >= 6 => hex.substring(0, 6),
+      28 when hex.length >= 7 => hex.substring(0, 7),
+      36 when hex.length >= 9 => hex.substring(0, 9),
+      _ => null,
+    };
+  }
+
+  static Map<String, String> parseEntries(Iterable<String> lines) {
+    final out = <String, String>{};
+    for (final line in lines) {
       if (line.isEmpty || line.startsWith('#')) continue;
       final tabIdx = line.indexOf('\t');
       if (tabIdx == -1) continue;
-      final prefix = line.substring(0, tabIdx).trim().toUpperCase();
-      if (prefix.length == 6) {
-        _db.putIfAbsent(prefix, () => line.substring(tabIdx + 1).trim());
-      }
+      final key = entryKey(line.substring(0, tabIdx).trim());
+      final vendor = line.substring(tabIdx + 1).trim();
+      if (key == null || vendor.isEmpty || (key.length > 6 && vendor.startsWith('Private'))) continue;
+      out.putIfAbsent(key, () => vendor);
     }
+    return out;
+  }
+
+  static String? longestMatch(Map<String, String> db, String mac) {
+    final hex = mac.replaceAll(RegExp(r'[:\-.]'), '').toUpperCase();
+    for (final n in const [9, 7, 6]) {
+      if (hex.length < n) continue;
+      final v = db[hex.substring(0, n)];
+      if (v != null) return v;
+    }
+    return null;
   }
 
   /// Extract 6-char hex prefix from MAC string.

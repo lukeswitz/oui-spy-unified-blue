@@ -128,10 +128,10 @@ class LiveActivityHandler {
             robotType: args["robotType"] as? String ?? "",
             exploitStatus: args["exploitStatus"] as? String ?? "",
             isImperial: args["isImperial"] as? Bool ?? false,
-            activeLabel: args["activeLabel"] as? String ?? "",
             lastAlert: args["lastAlert"] as? String ?? "",
             lastAlertDetail: args["lastAlertDetail"] as? String ?? "",
-            lastAlertAt: (args["lastAlertAt"] as? NSNumber)?.doubleValue ?? 0
+            lastAlertAt: (args["lastAlertAt"] as? NSNumber)?.doubleValue ?? 0,
+            alertKinds: (args["alertKinds"] as? [String: NSNumber])?.mapValues { $0.intValue } ?? [:]
         )
     }
 }
