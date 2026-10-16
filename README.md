@@ -27,6 +27,8 @@ ESP32 firmware and a phone app for detecting surveillance hardware, trackers and
 
 On Android set Location to **Allow all the time**, or scanning stops when the screen is off.
 
+The macOS release zip is signed but not notarized, so Gatekeeper blocks the first launch with a warning that macOS cannot verify the app. For a notarized build, use [TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
+
 ## Ways to run a board
 
 | Mode | How | What you get |

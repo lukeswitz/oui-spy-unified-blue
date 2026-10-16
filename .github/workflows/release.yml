@@ -302,8 +302,14 @@ jobs:
             | Platform | File | Instructions |
             |----------|------|--------------|
             | **Android** | `oui-spy-${{ github.ref_name }}.apk` | Download signed APK, tap to install. |
-            | **macOS** | `oui-spy-macos-${{ github.ref_name }}.zip` | Extract, move `.app` to Applications, run. Signed with Developer ID. |
+            | **macOS** | `oui-spy-macos-${{ github.ref_name }}.zip` | Extract, move `.app` to Applications, run. Signed with Developer ID, not notarized; see below. |
             | **iOS** | [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) | Join beta via TestFlight. |
+
+            #### First launch on macOS
+
+            The macOS zip is signed with a Developer ID but not notarized. Notarization is Apple's automated malware scan; without it, Gatekeeper blocks the first launch and macOS shows a warning that it cannot verify the app. On macOS 15 and later, Control-click > Open no longer gets past this. macOS offers an **Open Anyway** button under **System Settings > Privacy & Security** after a blocked launch.
+
+            For a notarized build, install the macOS app from [TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
 
             ### Requirements
             - Boards, node: XIAO ESP32-S3, ESP32-S3 N16R8 DevKitC, LilyGO T-Dongle-S3, XIAO ESP32-C5, LilyGO T-Dongle-C5, M5StickC, M5StickC PLUS, M5StickC PLUS2
