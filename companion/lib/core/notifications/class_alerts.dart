@@ -26,8 +26,34 @@ const _guessBuckets = {
   'bodyworn': SignatureClass.lawEnforcement,
 };
 
+const flockFleetIds = {
+  'fleet-flock-cameras',
+  'fleet-fs-ext-battery',
+  'fleet-penguin',
+  'fleet-pigvision',
+  'fleet-raven',
+};
+
+bool isFlockSignature(Signature s) => flockFleetIds.contains(s.id);
+
+class ClassAlert {
+  const ClassAlert(this.kind, this.label, this.matches);
+  ClassAlert.ofClass(SignatureClass c) : this(c.name, c.label, (s) => s.kind.folded == c);
+  static const flock = ClassAlert('flock', 'Flock', isFlockSignature);
+  final String kind;
+  final String label;
+  final bool Function(Signature) matches;
+}
+
+ClassAlert? classAlertOf(ClassifiedDevice d, Set<SignatureClass> enabled, {required bool flock}) {
+  if (d.signatures.any(isFlockSignature)) return flock ? ClassAlert.flock : null;
+  final c = alertClassOf(d, enabled);
+  return c == null ? null : ClassAlert.ofClass(c);
+}
+
 SignatureClass? alertClassOf(ClassifiedDevice d, Set<SignatureClass> enabled) {
   for (final s in d.signatures) {
+    if (isFlockSignature(s)) continue;
     if (enabled.contains(s.kind.folded)) return s.kind.folded;
   }
   if (d.signatures.isNotEmpty) return null;

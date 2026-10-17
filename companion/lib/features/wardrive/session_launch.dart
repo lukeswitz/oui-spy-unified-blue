@@ -131,7 +131,7 @@ class SessionBar extends ConsumerWidget {
                       ? '${wd.radioTransition!.toUpperCase()}…'
                       : switch (wd.state) {
                           WardriveState.idle => 'SESSION IDLE',
-                          WardriveState.running => 'RECORDING · ${wd.activeLabel} · ${wd.radio.label}',
+                          WardriveState.running => 'RUNNING',
                           WardriveState.paused => 'PAUSED',
                         },
                   overflow: TextOverflow.ellipsis,

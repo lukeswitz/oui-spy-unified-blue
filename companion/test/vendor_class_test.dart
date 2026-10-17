@@ -6,12 +6,12 @@ import 'package:oui_spy/core/classify/bt_sig_registry.dart';
 import 'package:oui_spy/core/classify/device_explain.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/vendor_class.dart';
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 
 void main() {
-  final vendors = {
-    for (final l in const LineSplitter().convert(utf8.decode(gzip.decode(File('assets/oui_vendors.tsv.gz').readAsBytesSync()))))
-      if (l.contains('\t')) l.split('\t')[1].trim(),
-  };
+  final vendors = OuiLookupService.parseEntries(
+    const LineSplitter().convert(utf8.decode(gzip.decode(File('assets/oui_vendors.tsv.gz').readAsBytesSync()))),
+  ).values.toSet();
   BtSigRegistry.load(
     File('assets/bt_sig/company_identifiers.yaml').readAsStringSync(),
     File('assets/bt_sig/member_uuids.yaml').readAsStringSync(),

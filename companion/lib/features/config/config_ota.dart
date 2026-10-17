@@ -42,7 +42,7 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'MAC vendor lookup database (Ringmast4r/OUI-Master-Database)',
+          'MAC vendor lookup database (IEEE MA-L, MA-M and MA-S registries via Wireshark manuf)',
           style: TextStyle(color: t.textDim, fontSize: 11),
         ),
         const SizedBox(height: 12),

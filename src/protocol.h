@@ -149,6 +149,8 @@ enum EngineState : uint8_t {
 #define METHOD_DET_PWNAGOTCHI  6
 #define METHOD_DET_GLASSES     7
 #define METHOD_DET_AXON        8
+#define METHOD_DET_CAMERA      9
+#define METHOD_DET_AMAZON      10
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
@@ -157,7 +159,8 @@ enum EngineState : uint8_t {
 #define SIG_PWNAGOTCHI 0x10
 #define SIG_GLASSES    0x20
 #define SIG_AXON       0x40
-#define SIG_ALL        0x7F
+#define SIG_CAMERA     0x80
+#define SIG_ALL        0xFF
 
 typedef struct __attribute__((packed)) {
     uint8_t  engine_id;          // EngineId

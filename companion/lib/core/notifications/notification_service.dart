@@ -46,6 +46,7 @@ class NotificationService extends ChangeNotifier {
   bool wardriveStatusEnabled = true;
   Set<SignatureClass> classAlerts = {...defaultAlertClasses};
   final _classAlerted = <String, DateTime>{};
+  final _macAlerted = <String, DateTime>{};
   final _classPending = <String, ClassifiedDevice>{};
   Timer? _classRetry;
 
@@ -196,8 +197,10 @@ class NotificationService extends ChangeNotifier {
 
     if (_isRateLimited()) return;
     if (_isCoolingDown(det.macAddress, det.engine)) return;
+    if (_macRecentlyAlerted(det.macAddress)) return;
 
     _recordCooldown(det.macAddress, det.engine);
+    _markMacAlerted(det.macAddress);
     _recordRateLimit();
 
     _fireDetectionNotification(det);
@@ -205,12 +208,13 @@ class NotificationService extends ChangeNotifier {
 
   void onClassified(ClassifiedDevice d) {
     if (!_initialized || !_permissionGranted) return;
-    final alert = alertClassOf(d, classAlerts);
+    final alert = classAlertOf(d, classAlerts, flock: flockEnabled);
     if (alert == null) return;
     final key = d.obs.mac.isNotEmpty ? d.obs.mac : d.obs.key;
     final last = _classAlerted[key];
     final now = DateTime.now();
     if (last != null && now.difference(last).inSeconds < cooldownSeconds) return;
+    if (d.obs.mac.isNotEmpty && _macRecentlyAlerted(d.obs.mac)) return;
     if (_isRateLimited()) {
       _classPending[key] = d;
       _scheduleClassRetry();
@@ -218,6 +222,7 @@ class NotificationService extends ChangeNotifier {
     }
     _classPending.remove(key);
     _classAlerted[key] = now;
+    if (d.obs.mac.isNotEmpty) _markMacAlerted(d.obs.mac);
     if (_classAlerted.length > 1000) {
       _classAlerted.removeWhere((_, t) => now.difference(t).inSeconds >= cooldownSeconds);
     }
@@ -227,20 +232,21 @@ class NotificationService extends ChangeNotifier {
       notifyListeners();
     }
     final (title, subtitle, body) = classNotificationText(d, alert);
+    final channel = alert == ClassAlert.flock ? NotifChannel.flock : NotifChannel.detector;
     _fireNotification(
-      id: _notifId(NotifChannel.detector),
-      channel: NotifChannel.detector,
+      id: _notifId(channel),
+      channel: channel,
       title: title,
       subtitle: subtitle,
       body: body,
-      groupKey: NotifChannel.detector,
-      alertKind: alert.name,
+      groupKey: channel,
+      alertKind: alert.kind,
       alertMac: key,
     );
   }
 
-  static (String, String, String) classNotificationText(ClassifiedDevice d, SignatureClass alert) {
-    final matched = d.signatures.where((s) => s.kind.folded == alert).map((s) => s.name).toSet();
+  static (String, String, String) classNotificationText(ClassifiedDevice d, ClassAlert alert) {
+    final matched = d.signatures.where(alert.matches).map((s) => s.name).toSet();
     final what = matched.firstOrNull ??
         d.guess.headline.replaceFirst(RegExp(r'^(Most likely|Probably|Could be) '), '');
     final why = matched.length > 1
@@ -333,6 +339,19 @@ class NotificationService extends ChangeNotifier {
       Engine.uniPwn => false,
       Engine.pcap => false,
     };
+  }
+
+  bool _macRecentlyAlerted(String mac) {
+    final last = _macAlerted[MacUtil.normalize(mac)];
+    return last != null && DateTime.now().difference(last).inSeconds < cooldownSeconds;
+  }
+
+  void _markMacAlerted(String mac) {
+    final now = DateTime.now();
+    _macAlerted[MacUtil.normalize(mac)] = now;
+    if (_macAlerted.length > 1000) {
+      _macAlerted.removeWhere((_, t) => now.difference(t).inSeconds >= cooldownSeconds);
+    }
   }
 
   bool _isCoolingDown(String mac, Engine engine) {

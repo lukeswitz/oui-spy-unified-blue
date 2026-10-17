@@ -28,10 +28,23 @@ void main() {
     expect(OuiLookupService.longestMatch(db, 'AA:00:01:00:00:01'), 'Vendor Bare');
   });
 
-  test('bundled asset still parses to the same MA-L set', () {
+  test('Wireshark manuf rows use the long name column', () {
+    final db = OuiLookupService.parseEntries(const [
+      '54:E0:19         \tRing        \tRing LLC',
+      '64:33:B5:40/28   \tEagleEyeNetw\tEagle Eye Networks, Inc',
+    ]);
+    expect(db['54E019'], 'Ring LLC');
+    expect(db['6433B54'], 'Eagle Eye Networks, Inc');
+  });
+
+  test('bundled asset carries MA-L, MA-M and MA-S with full vendor names', () {
     final lines = const LineSplitter().convert(utf8.decode(gzip.decode(File('assets/oui_vendors.tsv.gz').readAsBytesSync())));
     final db = OuiLookupService.parseEntries(lines);
-    expect(db.length, greaterThan(39000));
-    expect(db.keys.every((k) => k.length == 6), isTrue);
+    expect(db.keys.where((k) => k.length == 6).length, greaterThan(40000));
+    expect(db.keys.where((k) => k.length == 7).length, greaterThan(6000));
+    expect(db.keys.where((k) => k.length == 9).length, greaterThan(11000));
+    expect(OuiLookupService.longestMatch(db, '54:E0:19:00:00:01'), 'Ring LLC');
+    expect(OuiLookupService.longestMatch(db, 'C8:19:D8:00:00:01'), 'Blink by Amazon');
+    expect(OuiLookupService.longestMatch(db, '64:33:B5:40:00:01'), 'Eagle Eye Networks, Inc');
   });
 }

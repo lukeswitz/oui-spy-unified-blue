@@ -87,6 +87,8 @@ const kAlertSlots = <AlertSlot>[
   AlertSlot(0, 8, 'Axon: appeared'),
   AlertSlot(melodyEngineAxon, 1, 'Axon: still near (heartbeat)'),
   AlertSlot(melodyEngineAxon, 2, 'Axon: lost'),
+  AlertSlot(0, 9, 'Security camera'),
+  AlertSlot(0, 10, 'Amazon Sidewalk'),
   AlertSlot(1, melodyAny, 'Flock BLE'),
   AlertSlot(2, melodyAny, 'Flock WiFi'),
   AlertSlot(4, melodyAny, 'Drone Remote ID'),

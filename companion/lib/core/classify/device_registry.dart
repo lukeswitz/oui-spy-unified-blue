@@ -433,10 +433,10 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
   final reg = DeviceRegistry(vendorOf: oui.lookup)
     ..onClassified = (d) {
       notif.onClassified(d);
-      final alert = alertClassOf(d, notif.classAlerts);
+      final alert = classAlertOf(d, notif.classAlerts, flock: notif.flockEnabled);
       if (alert == null) return;
       final mac = d.obs.mac.isNotEmpty ? d.obs.mac.toUpperCase() : d.obs.key;
-      final key = '$mac|${alert.name}';
+      final key = '$mac|${alert.kind}';
       final now = DateTime.now().millisecondsSinceEpoch;
       final prev = lastLogged[key];
       if (prev != null && now - prev < notif.cooldownSeconds * 1000) return;
@@ -447,7 +447,7 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
       db.insertClassAlert(
         macAddress: mac,
         deviceName: d.obs.name,
-        alertClass: alert.name,
+        alertClass: alert.kind,
         title: title,
         reason: reason,
         isBle: d.obs.kind == RadioKind.ble,

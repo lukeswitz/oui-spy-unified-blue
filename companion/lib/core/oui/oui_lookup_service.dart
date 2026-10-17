@@ -13,9 +13,9 @@ final ouiLookupProvider = ChangeNotifierProvider<OuiLookupService>((ref) {
 
 class OuiLookupService extends ChangeNotifier {
   static const _assetPath = 'assets/oui_vendors.tsv.gz';
-  static const _updateUrl =
-      'https://raw.githubusercontent.com/Ringmast4r/OUI-Master-Database/master/LISTS/master_oui.txt';
-  static const _localFileName = 'oui_vendors.tsv';
+  static const _updateUrl = 'https://www.wireshark.org/download/automated/data/manuf.gz';
+  static const _localFileName = 'oui_vendors_manuf.tsv';
+  static const _legacyLocalFileName = 'oui_vendors.tsv';
 
   static const Map<String, String> _overrides = {
     // Flock Safety — FS Ext Battery (BLE, Silicon Labs EFR32)
@@ -96,6 +96,9 @@ class OuiLookupService extends ChangeNotifier {
   Future<void> init() async {
     if (_loaded) return;
 
+    final legacy = File('${(await _localFile).parent.path}/$_legacyLocalFileName');
+    if (legacy.existsSync()) await legacy.delete();
+
     // Try local (updated) file first
     final localFile = await _localFile;
     if (localFile.existsSync()) {
@@ -134,21 +137,20 @@ class OuiLookupService extends ChangeNotifier {
   Future<bool> checkForUpdate() async {
     try {
       final dio = Dio();
-      final response = await dio.get<String>(
+      final response = await dio.get<List<int>>(
         _updateUrl,
         options: Options(
-          responseType: ResponseType.plain,
+          responseType: ResponseType.bytes,
           receiveTimeout: const Duration(seconds: 30),
         ),
       );
 
       if (response.statusCode == 200 && response.data != null) {
-        final content = response.data!;
+        final content = utf8.decode(gzip.decode(response.data!));
         final lines = content.split('\n');
         // Validate it looks like valid OUI data
         if (lines.length < 1000) return false;
 
-        // Parse raw master_oui.txt format (with comments, dupes)
         final newDb = parseEntries(lines);
 
         if (newDb.length < 30000) return false; // sanity check
@@ -202,7 +204,7 @@ class OuiLookupService extends ChangeNotifier {
       final tabIdx = line.indexOf('\t');
       if (tabIdx == -1) continue;
       final key = entryKey(line.substring(0, tabIdx).trim());
-      final vendor = line.substring(tabIdx + 1).trim();
+      final vendor = line.substring(line.lastIndexOf('\t') + 1).trim();
       if (key == null || vendor.isEmpty || (key.length > 6 && vendor.startsWith('Private'))) continue;
       out.putIfAbsent(key, () => vendor);
     }

@@ -14,8 +14,10 @@ class _WatchItem {
 
 const _watchGroups = <(String, List<_WatchItem>)>[
   ('SURVEILLANCE', [
-    _WatchItem('Surveillance cameras', 'Flock, Arlo and other camera networks', Icons.videocam,
-        classes: {SignatureClass.surveillance, SignatureClass.camera}, flock: true),
+    _WatchItem('Flock', 'Flock cameras, Raven gunshot sensors, Penguin and Pigvision', Icons.camera_outdoor,
+        flock: true),
+    _WatchItem('Other cameras', 'Ring, Nest, Arlo, Hikvision and other security cameras, plus Amazon Sidewalk', Icons.videocam,
+        bits: sigCamera, classes: {SignatureClass.surveillance, SignatureClass.camera}),
     _WatchItem('Police & public safety', 'Axon body cams and Tasers, police and fleet vehicle routers', Icons.local_police,
         bits: sigAxon, classes: {SignatureClass.lawEnforcement}),
     _WatchItem('Drones', 'Drones and drone controllers, including Remote ID', Icons.flight,
@@ -128,7 +130,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
 
     void setOn(_WatchItem w, bool v) {
       final sig = ref.read(detectorSigMaskProvider.notifier);
-      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon]) {
+      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera]) {
         if (w.bits & b != 0) sig.setBit(b, v);
       }
       for (final c in w.classes) {

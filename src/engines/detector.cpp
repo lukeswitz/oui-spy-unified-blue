@@ -4,6 +4,7 @@
 #include "../radio_coex.h"
 #include "../ble_coex.h"
 #include "dedup_ring.h"
+#include "camera_oui.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -51,6 +52,7 @@ static DedupRingISR<32, 3000> wifiDedupISR;
 static DedupRing<32, 10000> sigDedup;
 static DedupRingISR<32, 8000> probeDedup;
 static DedupRingISR<16, 8000> axonDedupISR;
+static DedupRingISR<32, 8000> cameraDedupISR;
 
 static const uint8_t AXON_OUI[3] = {0x00, 0x25, 0xdf};
 
@@ -264,6 +266,38 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
                           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi);
         }
     }
+    if (sigMask & SIG_CAMERA) {
+        int brand = cameraBrandForMac(mac);
+        bool amazonMfg = false;
+        if (dev->haveManufacturerData()) {
+            std::string zm = dev->getManufacturerData();
+            if (zm.size() >= 2) {
+                uint16_t cid = (uint16_t)((uint8_t)zm[0] | ((uint8_t)zm[1] << 8));
+                amazonMfg = (cid == 0x0171);
+            }
+        }
+        bool sidewalkSvc = dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFE03));
+        bool amazonSvc = dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFE00)) ||
+                         dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFE15)) ||
+                         dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFCDC)) ||
+                         dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFD41));
+        bool isCamera = brand >= 0 && brand < CAMERA_BRAND_COUNT;
+        bool isAmazon = amazonMfg || sidewalkSvc || amazonSvc;
+        if ((isCamera || isAmazon) && !sigDedup.check(mac)) {
+            DetectionEvent evt = {};
+            evt.engine_id = ENGINE_DETECTOR;
+            memcpy(evt.mac, mac, 6);
+            evt.rssi = rssi;
+            evt.timestamp_ms = millis();
+            evt.method = isCamera ? METHOD_DET_CAMERA : METHOD_DET_AMAZON;
+            const char* desc = isCamera ? CAMERA_BRANDS[brand]
+                             : (sidewalkSvc || amazonMfg) ? "Amazon Sidewalk" : "Amazon";
+            strncpy(evt.ext.detector.filter_desc, desc, sizeof(evt.ext.detector.filter_desc) - 1);
+            pushDetection(&evt);
+            Serial.printf("[DETECTOR] SIG %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [%s]\n",
+                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi, desc);
+        }
+    }
 }
 
 class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
@@ -296,8 +330,31 @@ class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
 
 static DetectorCallback scanCb;
 
+static void IRAM_ATTR detectorCameraFrameISR(const uint8_t* p, int rssi, uint8_t channel) {
+    const uint8_t* a1 = &p[4];
+    const uint8_t* a2 = &p[10];
+    const uint8_t* cam = a2;
+    int brand = cameraBrandForMac(a2);
+    if (brand < 0 && !(a1[0] & 0x01)) {
+        cam = a1;
+        brand = cameraBrandForMac(a1);
+    }
+    if (brand < 0 || brand >= CAMERA_BRAND_COUNT || cameraDedupISR.check(cam)) return;
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, cam, 6);
+    evt.rssi = rssi;
+    evt.channel = channel;
+    evt.timestamp_ms = millis();
+    evt.method = METHOD_DET_CAMERA;
+    strncpy(evt.ext.detector.filter_desc, CAMERA_BRANDS[brand],
+            sizeof(evt.ext.detector.filter_desc) - 1);
+    pushDetectionFromISR(&evt);
+}
+
 static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
     uint8_t fctl = p[0];
+    if (sigMask & SIG_CAMERA) detectorCameraFrameISR(p, rssi, channel);
     if ((sigMask & SIG_DEAUTH) && (fctl == 0xC0 || fctl == 0xA0)) {
         unsigned long now = millis();
         if (now - deauthWindowStart > 1000) { deauthWindowStart = now; deauthCount = 0; }
@@ -570,22 +627,32 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
                   detectorFilterCount(), uuidFilterCount, sigMask);
 }
 
+static const uint8_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA;
+
+static uint32_t detectorWifiFilter(void) {
+    return (sigMask & SIG_CAMERA) ? (WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA)
+                                  : WIFI_PROMIS_FILTER_MASK_MGMT;
+}
+
 void detectorSetSigMask(uint8_t mask) {
-    const uint8_t wifiBits = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON;
-    bool prevWifi = (sigMask & wifiBits) != 0;
+    bool prevWifi = (sigMask & DETECTOR_WIFI_SIGS) != 0;
+    uint32_t prevFilter = detectorWifiFilter();
     sigMask = mask;
-    bool newWifi = (sigMask & wifiBits) != 0;
-    if (scanning && prevWifi != newWifi &&
-        engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
-        detectorStop();
-        detectorStart();
+    bool newWifi = (sigMask & DETECTOR_WIFI_SIGS) != 0;
+    if (scanning && engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
+        if (prevWifi != newWifi) {
+            detectorStop();
+            detectorStart();
+        } else if (wifiActive && prevFilter != detectorWifiFilter()) {
+            wifiCoexRegister(wifiSnifferCb, detectorWifiFilter());
+        }
     }
 }
 uint8_t detectorGetSigMask(void) { return sigMask; }
 
 bool detectorUsesWifi(void) {
     return (detectorRadioMask & 0x01) != 0 &&
-           (sigMask & (SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON)) != 0;
+           (sigMask & DETECTOR_WIFI_SIGS) != 0;
 }
 
 static void detectorInit(void) {
@@ -601,7 +668,7 @@ static void detectorStart(void) {
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
     bool wantBle  = (detectorRadioMask & 0x02) != 0;
     bool wantWifi = (detectorRadioMask & 0x01) != 0 &&
-                    (sigMask & (SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON)) != 0;
+                    (sigMask & DETECTOR_WIFI_SIGS) != 0;
 
     if (!wardriveOwns && wantBle) {
         bleScan = NimBLEDevice::getScan();
@@ -618,7 +685,7 @@ static void detectorStart(void) {
         }
         wifiSnifferApplyPs();
         wifiApplyRegdomain();
-        wifiCoexRegister(wifiSnifferCb, WIFI_PROMIS_FILTER_MASK_MGMT);
+        wifiCoexRegister(wifiSnifferCb, detectorWifiFilter());
         channelIdx = 0;
         while (channelIdx < channelCount - 1 && !wifiChanEnabled(channels[channelIdx])) channelIdx++;
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
@@ -681,10 +748,10 @@ void detectorHostSuspend(bool suspend) {
             bleCoexRegister(&scanCb, true);
         }
         if ((detectorRadioMask & 0x01) &&
-            (sigMask & (SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON))) {
+            (sigMask & DETECTOR_WIFI_SIGS)) {
             if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
             wifiSnifferApplyPs();
-            wifiCoexRegister(wifiSnifferCb, WIFI_PROMIS_FILTER_MASK_MGMT);
+            wifiCoexRegister(wifiSnifferCb, detectorWifiFilter());
             wifiActive = true;
         }
     }
