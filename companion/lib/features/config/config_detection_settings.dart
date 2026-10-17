@@ -123,10 +123,10 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     final moreOn = moreClasses.where(notif.classAlerts.contains).length;
 
     bool isOn(_WatchItem w) =>
-        (w.bits == 0 || (sigMask & w.bits) == w.bits) &&
-        w.classes.every(notif.classAlerts.contains) &&
-        (!w.flock || notif.flockEnabled) &&
-        (!w.drone || notif.droneEnabled);
+        (sigMask & w.bits) != 0 ||
+        w.classes.any(notif.classAlerts.contains) ||
+        (w.flock && notif.flockEnabled) ||
+        (w.drone && notif.droneEnabled);
 
     void setOn(_WatchItem w, bool v) {
       final sig = ref.read(detectorSigMaskProvider.notifier);

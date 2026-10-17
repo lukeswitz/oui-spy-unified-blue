@@ -20372,7 +20372,7 @@
                 },
                 {
                     "kind": "NAME_GLOB",
-                    "text": "IBR*",
+                    "text": "IBR*-???",
                     "companyId": 0,
                     "dataPrefixHex": "",
                     "radio": "WIFI",
