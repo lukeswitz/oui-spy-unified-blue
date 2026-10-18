@@ -11,6 +11,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
+import 'package:oui_spy/core/db/detection_mapper.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -69,7 +71,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   double _povHeading = double.nan;
   _DetectionLayers? _cachedLayers;
   Detection? _focusedDetection;
-  Detection? _pinnedDetection;
+  List<Detection> _classGroup = const [];
+  String _classGroupLabel = '';
   String _cachedLayersKey = '';
   List<Geofence> _exclusionZones = [];
   bool _reconnectPromptOpen = false;
@@ -175,6 +178,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       }
     }
 
+    _fitToPoints(points);
+  }
+
+  void _fitToPoints(List<LatLng> points) {
     if (points.length < 2) {
       if (points.length == 1) {
         _mapController.move(points.first, 16);
@@ -247,9 +254,55 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
   void _clearFocusedDetection() {
     if (_focusedDetection == null) return;
+    setState(() => _focusedDetection = null);
+  }
+
+  static String _classLabelOf(Detection d) {
+    final cls = detectionAlertClass[d];
+    if (cls == null) return d.engine.label;
+    for (final c in SignatureClass.values) {
+      if (c.name == cls) return c.label;
+    }
+    return cls;
+  }
+
+  Future<void> _showAllOfClass() async {
+    final f = _focusedDetection;
+    if (f == null) return;
+    final cls = detectionAlertClass[f];
+    final List<Detection> group;
+    if (cls != null) {
+      final rows = await ref.read(databaseProvider).getClassAlertMaps();
+      group = [
+        for (final r in rows)
+          if (r['alertClass'] == cls) detectionFromDbRow(r),
+      ];
+    } else {
+      final seen = <String>{};
+      group = [
+        for (final d in [
+          ...ref.read(wardriveProvider).dedupedDetections,
+          ...ref.read(appStateProvider).recentDetections,
+        ])
+          if (d.engine == f.engine && seen.add(d.macAddress)) d,
+      ];
+    }
+    final geo = group.where((d) => _hasMapCoord(d.latitude, d.longitude)).toList();
+    if (!mounted) return;
     setState(() {
-      _pinnedDetection = _focusedDetection;
       _focusedDetection = null;
+      _classGroup = geo;
+      _classGroupLabel = _classLabelOf(f);
+      _followMode = false;
+    });
+    _fitToPoints([for (final d in geo) LatLng(d.latitude!, d.longitude!)]);
+  }
+
+  void _clearClassGroup() {
+    if (_classGroup.isEmpty && _classGroupLabel.isEmpty) return;
+    setState(() {
+      _classGroup = const [];
+      _classGroupLabel = '';
     });
   }
 
@@ -478,7 +531,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         wd.hasSessionData) {
       _lastSessionLoadEpoch = wd.sessionLoadEpoch;
       _focusedDetection = null;
-      _pinnedDetection = null;
+      _classGroup = const [];
+      _classGroupLabel = '';
       _followMode = false;
       _initialFitDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -702,7 +756,20 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 child: Center(
                   child: _FocusedDetectionChip(
                     detection: _focusedDetection!,
+                    classLabel: _classLabelOf(_focusedDetection!),
+                    onShowAll: _showAllOfClass,
                     onClear: _clearFocusedDetection,
+                  ),
+                ),
+              )
+            else if (_classGroup.isNotEmpty)
+              Positioned(
+                top: horizonY + 8, left: 0, right: 0,
+                child: Center(
+                  child: _ClassGroupChip(
+                    label: _classGroupLabel,
+                    count: _classGroup.length,
+                    onClear: _clearClassGroup,
                   ),
                 ),
               ),
@@ -1068,7 +1135,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final key = '$alerted|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
         '${wd.detectorFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
         '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
-        '${_pinnedDetection?.macAddress ?? ''}';
+        '$_classGroupLabel|${_classGroup.length}';
     if (_cachedLayersKey == key && _cachedLayers != null) return _cachedLayers!;
     final layers = _computeDetectionLayers(wd, wt);
     _cachedLayers = layers;
@@ -1104,13 +1171,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             d.latitude ?? droneRidPoint(d)!.latitude,
             d.longitude ?? droneRidPoint(d)!.longitude))
         .toList();
-    final pinned = _pinnedDetection;
-    if (pinned != null &&
-        _hasMapCoord(pinned.latitude, pinned.longitude) &&
-        !allGeo.any((d) =>
-            d.macAddress == pinned.macAddress && d.engine == pinned.engine)) {
-      allGeo.add(pinned);
-    }
     final focused = _focusedDetection;
     final filterActive = wd.flockFilter || wd.detectorFilter;
     final List<Detection> geoDetections;
@@ -1125,9 +1185,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           : (_hasMapCoord(focused.latitude, focused.longitude)
               ? [focused]
               : const <Detection>[]);
+    } else if (_classGroup.isNotEmpty) {
+      geoDetections = _classGroup;
     } else if (filterActive) {
       geoDetections = allGeo.where((d) {
-        if (identical(d, pinned)) return true;
         if (wd.flockFilter &&
             (d.engine == Engine.flockBle || d.engine == Engine.flockWifi)) {
           return true;

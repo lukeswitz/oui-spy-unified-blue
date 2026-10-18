@@ -157,6 +157,8 @@ class UnipwnExtension with _$UnipwnExtension {
 
 final wardriveAdvRaw = Expando<List<int>>('wardriveAdvRaw');
 
+final detectionAlertClass = Expando<String>('detectionAlertClass');
+
 @freezed
 class WardriveExtension with _$WardriveExtension {
   const factory WardriveExtension({

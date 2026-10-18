@@ -559,8 +559,15 @@ class _MapStyleButton extends StatelessWidget {
 }
 
 class _FocusedDetectionChip extends StatelessWidget {
-  const _FocusedDetectionChip({required this.detection, required this.onClear});
+  const _FocusedDetectionChip({
+    required this.detection,
+    required this.classLabel,
+    required this.onShowAll,
+    required this.onClear,
+  });
   final Detection detection;
+  final String classLabel;
+  final VoidCallback onShowAll;
   final VoidCallback onClear;
 
   @override
@@ -572,7 +579,7 @@ class _FocusedDetectionChip extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onClear,
+        onTap: onShowAll,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -599,15 +606,62 @@ class _FocusedDetectionChip extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text('SHOW ALL',
+              Text('SHOW ALL ${classLabel.toUpperCase()}',
                   style: TextStyle(
-                    color: t.textDim,
+                    color: detection.engine.color,
                     fontSize: 8,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1,
                   )),
               const SizedBox(width: 4),
-              Icon(Icons.close, size: 12, color: t.textDim),
+              GestureDetector(
+                onTap: onClear,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(Icons.close, size: 14, color: t.textDim),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClassGroupChip extends StatelessWidget {
+  const _ClassGroupChip({required this.label, required this.count, required this.onClear});
+  final String label;
+  final int count;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onClear,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: t.surface.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.warning.withValues(alpha: 0.6)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${label.toUpperCase()} · $count ON MAP',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  )),
+              const SizedBox(width: 6),
+              Icon(Icons.close, size: 14, color: t.textDim),
             ],
           ),
         ),

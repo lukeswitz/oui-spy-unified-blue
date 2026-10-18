@@ -13,7 +13,7 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
   final authMode = (row['authMode'] as int?) ?? 0;
   final deviceName = (row['deviceName'] as String?) ?? '';
 
-  return Detection(
+  final d = Detection(
     id: '${row['id']}',
     sessionId: row['sessionId'] as String,
     nodeId: row['nodeId'] as String,
@@ -60,4 +60,7 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
           )
         : null,
   );
+  final cls = row['alertClass'];
+  if (cls is String && cls.isNotEmpty) detectionAlertClass[d] = cls;
+  return d;
 }
