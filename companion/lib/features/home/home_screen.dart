@@ -32,7 +32,7 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           children: [
             const StatusBar(),
-            const _PhoneScanBanner(),
+            if (state.isConnected) const _PhoneScanBanner(),
             Expanded(
               child: state.isConnected
                   ? _ConnectedView(state: state)
@@ -189,6 +189,8 @@ class _DisconnectedView extends ConsumerWidget {
                   ),
                 ),
               ),
+            const SizedBox(height: 12),
+            const _PhoneScanBanner(),
             if (isReconnecting) ...[
               const SizedBox(height: 20),
               Container(

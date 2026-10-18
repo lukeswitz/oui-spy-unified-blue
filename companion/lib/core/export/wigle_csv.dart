@@ -9,6 +9,7 @@ class WigleCsv {
   const WigleCsv._();
 
   static const _version = '1.0.0';
+  static final _macPattern = RegExp(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$');
   static final _dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
   static String generate(List<Detection> detections, {IgnoreListState? ignoreList, GeofenceFilter? geofenceFilter, String board = ''}) {
@@ -65,6 +66,7 @@ class WigleCsv {
 
       final mac = d.macAddress;
       final isBleDevice = d.isBleDetection;
+      if (isBleDevice && !_macPattern.hasMatch(mac)) continue;
       final String rawSsid;
       if (d.engine == Engine.skySpy) {
         rawSsid = d.odid?.uavId ?? d.deviceName;

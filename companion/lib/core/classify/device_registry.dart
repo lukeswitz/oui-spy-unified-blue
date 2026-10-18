@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -124,7 +125,10 @@ Observation observationFromDetection(Detection d) {
 }
 
 class EspDetectionSource extends ObservationSource {
-  EspDetectionSource(Stream<Detection> detections) : observations = detections.map(observationFromDetection);
+  EspDetectionSource(Stream<Detection> detections)
+      : observations = detections
+            .where((d) => d.nodeId != BleManager.phoneNodeId)
+            .map(observationFromDetection);
 
   @override
   String get name => 'esp32';
@@ -173,6 +177,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   void _apply() {
     _timer?.cancel();
     _timer = null;
+    if (!scanning) _lastFed.clear();
     if (scanning) {
       _kick();
       _timer = Timer.periodic(scanEvery, (_) => _kick());
@@ -196,6 +201,36 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     }
   }
 
+  void Function(String mac, String name, int rssi, List<int> adv)? onDetection;
+  final Map<String, int> _lastFed = {};
+
+  static List<int> advBytes(AdvertisementData a) {
+    final out = <int>[];
+    void ad(int type, List<int> payload) {
+      if (payload.length > 253) return;
+      out..add(payload.length + 1)..add(type)..addAll(payload);
+    }
+    List<int> le(Guid g) {
+      final s = g.str.replaceAll('-', '');
+      return [for (var i = s.length - 2; i >= 0; i -= 2) int.parse(s.substring(i, i + 2), radix: 16)];
+    }
+    int uuidType(List<int> b, int t16, int t32, int t128) =>
+        b.length == 2 ? t16 : (b.length == 4 ? t32 : t128);
+    if (a.advName.isNotEmpty) ad(0x09, utf8.encode(a.advName));
+    for (final u in a.serviceUuids) {
+      final b = le(u);
+      ad(uuidType(b, 0x03, 0x05, 0x07), b);
+    }
+    a.manufacturerData.forEach((id, data) => ad(0xFF, [id & 0xFF, (id >> 8) & 0xFF, ...data]));
+    a.serviceData.forEach((u, data) {
+      final b = le(u);
+      ad(uuidType(b, 0x16, 0x20, 0x21), [...b, ...data]);
+    });
+    final ap = a.appearance;
+    if (ap != null) ad(0x19, [ap & 0xFF, (ap >> 8) & 0xFF]);
+    return out;
+  }
+
   void _onResults(List<ScanResult> results) {
     if (!scanning) return;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -205,6 +240,16 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       final isMac = !Platform.isIOS && !Platform.isMacOS;
       final mac = isMac ? MacUtil.normalize(id) : '';
       final adv = r.advertisementData;
+      final feed = onDetection;
+      if (feed != null) {
+        final last = _lastFed[id];
+        if (last == null || now - last >= scanEvery.inMilliseconds) {
+          _lastFed[id] = now;
+          feed(isMac ? mac : id,
+              adv.advName.isNotEmpty ? adv.advName : r.device.platformName,
+              r.rssi, advBytes(adv));
+        }
+      }
       _out.add(Observation(
         key: 'BLE:${isMac ? mac : id}',
         kind: RadioKind.ble,
@@ -435,6 +480,7 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
     return p == null ? null : GpsSample(0, p.latitude, p.longitude);
   });
   SharedPreferences.getInstance().then((p) => src.setActive(p.getBool(DeviceRegistry.phoneScanPref) ?? false));
+  src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;
   bool boardAllows(AppState s) => !s.isConnected || s.activeEngines != 0;
   src.setBoardAllows(boardAllows(ref.read(appStateProvider)));
   ref.listen<AppState>(appStateProvider, (_, s) => src.setBoardAllows(boardAllows(s)));

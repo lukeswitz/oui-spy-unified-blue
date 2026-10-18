@@ -13,7 +13,8 @@ class _NodeStatsOverlay extends ConsumerWidget {
     final nodeCount =
         appState.liveKnownNodes
             .where((id) => id != selfId && !appState.isManagerNode(id))
-            .length;
+            .length +
+        (ref.watch(phoneBleSourceProvider).scanning ? 1 : 0);
     final label = '$nodeCount NODE${nodeCount == 1 ? '' : 'S'}';
     final color =
         nodeCount > 0 ? AppTheme.success : AppTheme.warning;

@@ -13,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -1079,7 +1080,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               ),
 
             // Active: node stats overlay (top-left, below map style btn)
-            if (wd.isActive && ref.watch(appStateProvider).isManagerConnected && ref.watch(appStateProvider).meshEnabled)
+            if (wd.isActive &&
+                ((ref.watch(appStateProvider).isManagerConnected && ref.watch(appStateProvider).meshEnabled) ||
+                    ref.watch(phoneBleSourceProvider).scanning))
               Positioned(
                 top: _statsHeight + 48, left: 12,
                 child: _NodeStatsOverlay(ref: ref),

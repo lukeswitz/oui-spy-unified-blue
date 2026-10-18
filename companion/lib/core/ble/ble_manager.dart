@@ -406,6 +406,33 @@ class BleManager {
     _lastSatCount = satelliteCount;
   }
 
+  static const phoneNodeId = 'PHONE';
+
+  void addPhoneDetection(String mac, String name, int rssi, List<int> adv) {
+    final now = DateTime.now();
+    final ext = WardriveExtension(deviceName: name);
+    if (adv.isNotEmpty) wardriveAdvRaw[ext] = adv;
+    _detections.add(Detection(
+      id: '${mac}_${now.millisecondsSinceEpoch}',
+      sessionId: _sessionId,
+      nodeId: phoneNodeId,
+      macAddress: mac,
+      engine: Engine.wardrive,
+      method: 'ble_adv',
+      rssi: rssi,
+      channel: 0,
+      deviceTimestampMs: 0,
+      appTimestamp: now,
+      deviceName: name,
+      sourceNodeId: phoneNodeId,
+      latitude: _lastLat,
+      longitude: _lastLon,
+      accuracy: _lastAccuracy,
+      satelliteCount: _lastSatCount,
+      wardrive: ext,
+    ));
+  }
+
   // -- Scanning --
 
   /// Scan for OUI-SPY devices. Results arrive on FlutterBluePlus.onScanResults.
@@ -651,6 +678,19 @@ class BleManager {
     _board = parts.length > 2 ? parts[2] : '';
     _role = parts.length > 3 ? parts[3] : '';
     DebugLog.log('BLE: nodeId=$_nodeId board=$_board role=$_role');
+    final expect = _reconnectExpectNodeId;
+    if (expect != null && _nodeId != expect) {
+      DebugLog.log('BLE: reconnect reached $_nodeId, expected $expect — dropping it untouched');
+      for (final sub in _subscriptions) {
+        await sub.cancel();
+      }
+      _subscriptions.clear();
+      await device.disconnect();
+      _currentState = NodeConnectionState.reconnecting;
+      _connectionState.add(NodeConnectionState.reconnecting);
+      throw Exception('reconnect: different board');
+    }
+    _reconnectRejected.clear();
     await _readDeviceConfig();
 
     // Subscribe to detection notifications
@@ -1650,21 +1690,73 @@ class BleManager {
     _reconnectTimer = Timer(delay, () async {
       if (_device == null || _userInitiatedDisconnect) return;
       final target = _device!;
-      final found = await _scanForRemoteId(target.remoteId.toString());
+      final expectNodeId = _nodeId;
+      final expectRole = _role;
+      final expectMgr = expectRole == 'mgr';
+      var found = await _scanForRemoteId(target.remoteId.toString());
+      if (found == null && expectNodeId.isNotEmpty) {
+        found = await _scanForSameRole(expectMgr, exclude: _reconnectRejected);
+        if (found != null) {
+          DebugLog.log('BLE: saved id gone — trying ${found.remoteId} (address may have rotated)');
+        }
+      }
       if (_device == null || _userInitiatedDisconnect) return;
       _isReconnect = true;
+      _reconnectExpectNodeId = expectNodeId.isEmpty ? null : expectNodeId;
       try {
         await connect(found ?? target, sessionId: _sessionId);
       } catch (e) {
         DebugLog.log('BLE: reconnect attempt failed: $e');
+      } finally {
+        _reconnectExpectNodeId = null;
+      }
+      if (_currentState == NodeConnectionState.ready &&
+          _device != target &&
+          _primaryDeviceId == target.remoteId.toString()) {
+        markAsPrimary();
       }
       if (_device != null &&
           !_userInitiatedDisconnect &&
           _currentState != NodeConnectionState.ready) {
+        if (_device != target) {
+          _reconnectRejected.add(_device!.remoteId.toString());
+          _device = target;
+          _nodeId = expectNodeId;
+          _role = expectRole;
+        }
         _reconnectAttempt++;
         _attemptReconnect();
       }
     });
+  }
+
+  String? _reconnectExpectNodeId;
+  final Set<String> _reconnectRejected = {};
+
+  Future<BluetoothDevice?> _scanForSameRole(bool mgr,
+      {required Set<String> exclude,
+      Duration timeout = const Duration(seconds: 6)}) async {
+    final completer = Completer<BluetoothDevice?>();
+    final sub = scanResults.listen((results) {
+      for (final r in results) {
+        final id = r.device.remoteId.toString();
+        if (exclude.contains(id)) continue;
+        final n = '${r.device.platformName} ${r.advertisementData.advName}'.toUpperCase();
+        if (!n.contains('OUI-SPY')) continue;
+        if (n.contains('OUI-SPY-MGR') != mgr) continue;
+        if (!completer.isCompleted) completer.complete(r.device);
+      }
+    });
+    try {
+      await startScan(timeout: timeout);
+    } on Exception catch (e) {
+      DebugLog.log('BLE: role scan error $e');
+    }
+    final found = await completer.future
+        .timeout(timeout + const Duration(seconds: 2), onTimeout: () => null);
+    await sub.cancel();
+    await stopScan();
+    return found;
   }
 
   List<String> _parseDeviceInfo(List<int> data) {
