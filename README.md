@@ -36,6 +36,9 @@ The macOS release zip is signed but not notarized, so Gatekeeper blocks the firs
 | **App** | Phone connected over Bluetooth | Every engine, live feed, map, GPS from the phone, PCAP saved on the phone |
 | **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
 | **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
+| **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's radios: Bluetooth and Wi-Fi on Android, Bluetooth on iPhone |
+
+Phone and board also work together: the board keeps detecting while the phone foxhunts a device the phone found, or both scan into one session.
 
 **Offline scan** (SETTINGS → NODE → HARDWARE) keeps a board scanning after the phone disconnects. Hits buffer to flash and upload on reconnect; the setting survives a reboot.
 
@@ -86,10 +89,10 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
-- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it.
+- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
 - **Classification**: OUI vendor categories, Bluetooth SIG company and service IDs, AntiHunter tables, Fieldwatch signatures. Each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …), a confidence dot, and its decoded advertisement (Apple Continuity type, manufacturer data, service UUIDs). Class alerts are on by default.
-- **Phone scan**: off by default. Turn on from the DEVICES menu (SCAN WITH THIS PHONE) to have the phone's own Bluetooth listen alongside the board, 8 s every 20 s. The ESP32 / PHONE filter shows which radio saw each device.
-- **Notifications**: title is the matched target (watchlist name, signature, probed SSID); body is device, MAC prefix, RSSI, method.
+- **Phone scan**: phone icon in the status bar, off at launch. Android scans Bluetooth and Wi-Fi, with or without a board; iPhone and Mac scan Bluetooth only. Hits show as node PHONE. iOS hides MACs, so iPhone hits skip foxhunt and WiGLE CSV.
+- **Notifications**: title is the matched target (watchlist name, signature, probed SSID); body is RSSI, channel, name, MAC.
 - **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
 - **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
@@ -97,7 +100,7 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **Geofences**: inside a zone the app drops detections from the feed, log and notifications, and the board stops beeping. Radios keep scanning; a T-Dongle still writes to its SD card.
 - **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
 - **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
-- **iOS**: live counts on the Lock Screen and Dynamic Island during a session.
+- **iOS**: live counts and alerts on the Lock Screen, Dynamic Island and CarPlay during a session.
 
 <img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
 
@@ -146,6 +149,7 @@ Foxhunt picks, in order: the target set in the app, else the last Detector / Flo
 - One MANAGER connects to the phone; up to 6 NODES report to it over ESP-NOW on 2.4 GHz channel 1.
 - Nodes join on their own within about 10 s. Single hop: every node must reach the manager directly, about 200 m line of sight.
 - Default is plaintext broadcast. SETTINGS → NODE → MESH can switch to AES-256-GCM with a shared key.
+- Boards use a random MAC each boot; the node ID stays fixed.
 - A node silent for 45 s drops off and rejoins when back in range.
 - Buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings set on the manager are pushed to every node.
 - Any mix of node boards works under one manager (e.g. T-Dongle-S3 + T-Dongle-C5 + M5StickC PLUS + XIAO).
