@@ -17,7 +17,7 @@ import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
 
-enum DeviceSort { recent, rssi, confidence }
+enum DeviceSort { recent, rssi, confidence, kind, name, vendor, channel, firstSeen }
 
 Color confidenceColor(Confidence c) => switch (c) {
   Confidence.high => AppTheme.success,
@@ -228,10 +228,17 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     );
   }
 
+  static String _textKey(String s) => s.isEmpty ? '\u{10FFFF}' : s.toLowerCase();
+
   static String _sortLabel(DeviceSort s) => switch (s) {
     DeviceSort.recent => 'TIME',
     DeviceSort.rssi => 'RSSI',
     DeviceSort.confidence => 'CONF',
+    DeviceSort.kind => 'CLASS',
+    DeviceSort.name => 'NAME',
+    DeviceSort.vendor => 'VENDOR',
+    DeviceSort.channel => 'CH',
+    DeviceSort.firstSeen => 'FIRST SEEN',
   };
 
   Future<void> _openSortSheet() => showSortSheet<DeviceSort>(
@@ -322,6 +329,13 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
         (a, b) => guesses[a.obs.key]!.confidence.index.compareTo(
           guesses[b.obs.key]!.confidence.index,
         ),
+      DeviceSort.kind => (a, b) => _textKey(a.signatures.isEmpty ? '' : a.signatures.first.kind.label)
+          .compareTo(_textKey(b.signatures.isEmpty ? '' : b.signatures.first.kind.label)),
+      DeviceSort.name => (a, b) => _textKey(a.obs.name).compareTo(_textKey(b.obs.name)),
+      DeviceSort.vendor => (a, b) => _textKey(a.vendor ?? '').compareTo(_textKey(b.vendor ?? '')),
+      DeviceSort.channel => (a, b) => (a.obs.channel > 0 ? a.obs.channel : 1 << 30)
+          .compareTo(b.obs.channel > 0 ? b.obs.channel : 1 << 30),
+      DeviceSort.firstSeen => (a, b) => b.obs.firstSeenMs.compareTo(a.obs.firstSeenMs),
     });
     final ordered = _sortAscending ? shown.reversed.toList() : shown;
     final flood = reg.pairingFlood.notice;
@@ -393,7 +407,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                         child: ListView.builder(
                           padding: EdgeInsets.symmetric(vertical: barGap(context)),
                           itemCount: ordered.length,
-                          itemBuilder: (context, i) => _DeviceRow(
+                          itemBuilder: (context, i) => DeviceRow(
                             device: ordered[i],
                             guess: guesses[ordered[i].obs.key]!,
                           ),
@@ -450,8 +464,8 @@ class _FloodBanner extends StatelessWidget {
   }
 }
 
-class _DeviceRow extends ConsumerWidget {
-  const _DeviceRow({required this.device, required this.guess});
+class DeviceRow extends ConsumerWidget {
+  const DeviceRow({super.key, required this.device, required this.guess});
 
   final ClassifiedDevice device;
   final Guess guess;
@@ -480,11 +494,15 @@ class _DeviceRow extends ConsumerWidget {
     final ble = o.kind == RadioKind.ble;
     final kinds = {for (final s in device.signatures) s.kind}.toList();
     final accent = kinds.isEmpty ? t.textDim : classColor(kinds.first);
-    final sub = [
-      if (o.name.isNotEmpty && o.name != title) o.name,
-      if (vendor != null && vendor != title) vendor,
-    ].join(' · ');
+    final lowerTitle = title.toLowerCase();
+    final name = o.name.isNotEmpty && !lowerTitle.contains(o.name.toLowerCase()) ? o.name : null;
+    final vend = vendor != null && !lowerTitle.contains(vendor.toLowerCase()) ? vendor : null;
     final text = Theme.of(context).textTheme;
+    final iconSize = barIconSize(context) * 0.75;
+    Widget flag(String tip, IconData i, Color c) => Padding(
+          padding: EdgeInsets.only(left: gap * 0.6),
+          child: Tooltip(message: tip, child: Icon(i, size: iconSize, color: c)),
+        );
     Widget tag(String label, Color c, {IconData? icon}) => Container(
           padding: EdgeInsets.symmetric(horizontal: gap * 0.7, vertical: gap * 0.25),
           decoration: BoxDecoration(
@@ -499,7 +517,14 @@ class _DeviceRow extends ConsumerWidget {
                 Icon(icon, size: barIconSize(context) * 0.6, color: c),
                 SizedBox(width: gap * 0.3),
               ],
-              Text(label, style: barLabelStyle(context, c).copyWith(fontSize: (text.labelSmall?.fontSize ?? 11) * 0.95)),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: barLabelStyle(context, c).copyWith(fontSize: (text.labelSmall?.fontSize ?? 11) * 0.95),
+                ),
+              ),
             ],
           ),
         );
@@ -521,115 +546,126 @@ class _DeviceRow extends ConsumerWidget {
               border: Border(left: BorderSide(color: accent, width: gap * 0.6)),
             ),
             padding: EdgeInsets.fromLTRB(gap * 1.4, gap * 1.1, gap * 1.4, gap * 1.1),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: kMinInteractiveDimension * 0.8,
-                  height: kMinInteractiveDimension * 0.8,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.16),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    ble ? Icons.bluetooth : Icons.wifi,
-                    size: barIconSize(context) * 0.9,
-                    color: accent,
-                  ),
-                ),
-                SizedBox(width: gap * 1.4),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.circle, size: gap * 0.8, color: confidenceColor(guess.confidence)),
-                          SizedBox(width: gap * 0.5),
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: text.bodyMedium?.copyWith(
-                                color: Color.lerp(accent, t.textPrimary, 0.35),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(top: gap * 0.6),
+                      child: Icon(Icons.circle, size: gap * 0.8, color: confidenceColor(guess.confidence)),
+                    ),
+                    SizedBox(width: gap * 0.6),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodyMedium?.copyWith(
+                          color: Color.lerp(accent, t.textPrimary, 0.35),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      if (sub.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(top: gap * 0.2),
-                          child: Text(
-                            sub,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.bodySmall?.copyWith(color: t.textDim),
+                    ),
+                    SizedBox(width: gap),
+                    Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                          text: '${o.rssi}',
+                          style: text.titleMedium?.copyWith(
+                            color: rssiColor(o.rssi),
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      if (o.mac.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(top: gap * 0.2),
-                          child: Text(
+                        TextSpan(text: ' dBm', style: text.labelSmall?.copyWith(color: t.textDim)),
+                      ]),
+                    ),
+                  ],
+                ),
+                SizedBox(height: gap * 0.5),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (kinds.isNotEmpty)
+                            Flexible(child: tag(kinds.first.label.toUpperCase(), classColor(kinds.first))),
+                          if (authMeta != null) ...[
+                            flag(authMeta.$1, auth == 0 ? Icons.lock_open : Icons.lock, authMeta.$2),
+                            SizedBox(width: gap * 0.3),
+                            Text(authMeta.$1, style: barLabelStyle(context, authMeta.$2)),
+                          ],
+                          if (o.hiddenSsid) flag('Hidden network', Icons.visibility_off, AppTheme.warning),
+                          if (o.randomized) flag('Random MAC', Icons.shuffle, t.textDim),
+                          if (withYou) flag('With you', Icons.directions_walk, AppTheme.error),
+                        ],
+                      ),
+                    ),
+                    if (!ble && o.channel > 0) ...[
+                      SizedBox(width: gap),
+                      Text(
+                        'CH ${o.channel}',
+                        style: text.labelMedium?.copyWith(
+                          color: o.channel > 14 ? AppTheme.wardrive : AppTheme.detector,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (o.mac.isNotEmpty || name != null || vend != null)
+                  Padding(
+                    padding: EdgeInsets.only(top: gap * 0.5),
+                    child: Row(
+                      children: [
+                        if (!ble && name != null) ...[
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodyMedium?.copyWith(color: t.textPrimary, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          SizedBox(width: gap * 1.2),
+                        ],
+                        if (o.mac.isNotEmpty)
+                          Text(
                             o.mac,
                             maxLines: 1,
                             softWrap: false,
-                            style: text.bodySmall?.copyWith(
-                              color: t.textDim,
-                              fontFamily: 'monospace',
+                            style: text.bodySmall?.copyWith(color: t.textDim, fontFamily: 'monospace'),
+                          ),
+                        if (ble && (name != null || vend != null))
+                          Expanded(
+                            child: Text(
+                              [if (o.mac.isNotEmpty) '', ?name, ?vend].join(' · '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.bodySmall?.copyWith(color: t.textSecondary),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                SizedBox(width: gap),
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
+                if (live.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(top: gap * 0.5),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
                         children: [
-                          Text(
-                            '${o.rssi}',
-                            style: text.titleMedium?.copyWith(
-                              color: rssiColor(o.rssi),
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          SizedBox(width: gap * 0.3),
-                          Text('dBm', style: text.labelSmall?.copyWith(color: t.textDim)),
-                        ],
-                      ),
-                      SizedBox(height: gap * 0.6),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: gap * 0.6,
-                        runSpacing: gap * 0.6,
-                        children: [
-                          for (final k in kinds) tag(k.label.toUpperCase(), classColor(k)),
-                          if (kinds.isEmpty) tag('UNCLASSIFIED', t.textDim),
-                          tag(ble ? 'BLE' : 'WIFI', ble ? kPillBle : kPillWifi),
-                          if (authMeta != null)
-                            tag(authMeta.$1, authMeta.$2, icon: auth == 0 ? Icons.lock_open : Icons.lock),
-                          if (!ble && o.channel > 0) tag('CH ${o.channel}', t.textSecondary),
-                          if (o.hiddenSsid) tag('HIDDEN', AppTheme.warning),
-                          if (o.randomized) tag('RANDOM MAC', t.textDim),
-                          for (final f in live)
+                          for (final f in live) ...[
                             tag(f.display.toUpperCase(), f.emphasis ? AppTheme.error : AppTheme.accent),
-                          if (withYou) tag('WITH YOU', AppTheme.error, icon: Icons.directions_walk),
+                            SizedBox(width: gap * 0.5),
+                          ],
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),

@@ -28,6 +28,7 @@ enum FeedMetric {
   rssi('RSSI'),
   count('COUNT'),
   name('NAME'),
+  kind('CLASS'),
   channel('CH');
 
   const FeedMetric(this.label);
@@ -218,6 +219,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         sorted.sort((a, b) => dir(a.count.compareTo(b.count)));
       case FeedMetric.name:
         sorted.sort((a, b) => dir(a.deviceName.toLowerCase().compareTo(b.deviceName.toLowerCase())));
+      case FeedMetric.kind:
+        sorted.sort((a, b) {
+          final e = a.engine.label.compareTo(b.engine.label);
+          return dir(e != 0 ? e : a.method.compareTo(b.method));
+        });
       case FeedMetric.channel:
         sorted.sort((a, b) => dir(a.channel.compareTo(b.channel)));
     }
@@ -544,6 +550,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         (FeedMetric.count, false) => 'Most hits first',
         (FeedMetric.name, true) => 'A → Z',
         (FeedMetric.name, false) => 'Z → A',
+        (FeedMetric.kind, true) => 'A → Z',
+        (FeedMetric.kind, false) => 'Z → A',
         (FeedMetric.channel, true) => 'Lowest channel first',
         (FeedMetric.channel, false) => 'Highest channel first',
       };

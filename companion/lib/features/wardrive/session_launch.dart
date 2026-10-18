@@ -190,6 +190,7 @@ class SessionBar extends ConsumerWidget {
                 child: Row(
                   children: [
                     Flexible(
+                      flex: wd.isActive && !busy ? 0 : 1,
                       child: Text(
                         busy
                             ? '${wd.radioTransition!.toUpperCase()}…'
@@ -209,7 +210,13 @@ class SessionBar extends ConsumerWidget {
                     ),
                     if (wd.isActive && !busy) ...[
                       const SizedBox(width: 8),
-                      const Flexible(child: _SessionSourcesChip()),
+                      const Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: _SessionSourcesChip(),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -242,6 +249,10 @@ class SessionBar extends ConsumerWidget {
                   key: const ValueKey('session-stop'),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.error,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1),
                   ),
                   onPressed: wd.radioTransition == 'stopping' ? null : wd.stopSession,
@@ -547,6 +558,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
       ),
       content: SizedBox(
         width: double.maxFinite,
+        child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -667,6 +679,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
               );
             }),
           ],
+        ),
         ),
       ),
       actions: [
