@@ -169,7 +169,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         _ownScan = false;
         notifyListeners();
       }
-      if (scanning) {
+      if (scanning && _duty == null) {
         Future<void>.delayed(const Duration(milliseconds: 1500), _kick);
       }
     });
@@ -217,8 +217,11 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     }
     if (scanning) {
       _kick();
-      _timer = Timer.periodic(scanEvery, (_) => _refreshScan());
-      if (canScanWifi) {
+      final duty = _duty;
+      _timer = duty == null
+          ? Timer.periodic(scanEvery, (_) => _refreshScan())
+          : Timer.periodic(Duration(milliseconds: duty.every), (_) => _kick());
+      if (canScanWifi && radioMask & 0x01 != 0) {
         _wifiKick();
         _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
       }
@@ -227,6 +230,23 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
     }
     notifyListeners();
+  }
+
+  int radioMask = 0x03;
+
+  ({int on, int every})? _duty;
+
+  void setDuty(({int on, int every})? duty) {
+    if (duty == _duty) return;
+    _duty = duty;
+    if (scanning) _apply();
+  }
+
+  void setRadioMask(int mask) {
+    if (mask == radioMask) return;
+    radioMask = mask;
+    if (mask & 0x02 == 0 && _ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
+    _apply();
   }
 
   static const wifiEvery = Duration(seconds: 30);
@@ -269,7 +289,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         final mac = MacUtil.normalize(ap.bssid);
         if (mac.isEmpty) continue;
         if (_isFoxTarget(mac)) _foxHit(ap.level, DateTime.now());
-        if (!scanning) continue;
+        if (!scanning || radioMask & 0x01 == 0) continue;
         final ch = wifiChannel(ap.frequency);
         final auth = wifiAuthMode(ap.capabilities);
         onWifi?.call(mac, ap.ssid, ap.level, ch, auth);
@@ -294,13 +314,17 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   Future<void> _kick() async {
-    if (!scanning || FlutterBluePlus.isScanningNow) return;
+    if (!scanning || radioMask & 0x02 == 0 || FlutterBluePlus.isScanningNow) return;
     if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
     _lastKick = DateTime.now();
     _ownScan = true;
     notifyListeners();
     try {
-      await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency);
+      final duty = _duty;
+      await FlutterBluePlus.startScan(
+        timeout: duty == null ? null : Duration(milliseconds: duty.on),
+        androidScanMode: AndroidScanMode.lowLatency,
+      );
     } on Exception catch (e) {
       _ownScan = false;
       notifyListeners();
@@ -422,7 +446,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         if (_isFoxTarget(r.device.remoteId.toString())) _foxHit(r.rssi, r.timeStamp);
       }
     }
-    if (!scanning) return;
+    if (!scanning || radioMask & 0x02 == 0) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final fix = here?.call();
     for (final r in results) {
@@ -678,6 +702,8 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   bool sessionRunning() => ref.read(wardriveProvider).state == WardriveState.running;
   bool boardAllows(AppState s) => sessionRunning() || (s.isConnected && s.activeEngines != 0);
   void sync(AppState s) {
+    final wd = ref.read(wardriveProvider);
+    src.setDuty(s.isConnected ? (on: wd.bleScanDuration, every: wd.bleScanInterval) : null);
     src.setBoardAllows(boardAllows(s));
     src.setFoxTarget(s.foxhuntViaPhone ? s.foxhunterTarget : null);
   }

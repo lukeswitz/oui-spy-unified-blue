@@ -680,13 +680,19 @@ class _DetectionList extends StatelessWidget {
     final t = AppTheme.of(context);
     if (detections.isEmpty) return const SizedBox.shrink();
 
-    final grouped = <String, List<Detection>>{};
+    final byKey = <String, List<Detection>>{};
     for (final d in detections) {
       final key = d.engine == Engine.wardrive
           ? (d.isBleDetection ? 'WARDRIVE BLE' : 'WARDRIVE WIFI')
           : d.engine.label;
-      (grouped[key] ??= []).add(d);
+      (byKey[key] ??= []).add(d);
     }
+    int rank(String k) => k == 'WARDRIVE BLE' ? 2 : k == 'WARDRIVE WIFI' ? 1 : 0;
+    final grouped = {
+      for (final k in byKey.keys.toList()..sort((a, b) => rank(a).compareTo(rank(b))))
+        k: byKey[k]!,
+    };
+    final perGroup = grouped.length > 1 ? 3 : 10;
 
     return Container(
       constraints: const BoxConstraints(maxHeight: 100),
@@ -718,7 +724,7 @@ class _DetectionList extends StatelessWidget {
                 ],
               ),
             ),
-            ...entry.value.take(10).map((d) => _DetListRow(d: d, onTap: onDetectionTap)),
+            ...entry.value.take(perGroup).map((d) => _DetListRow(d: d, onTap: onDetectionTap)),
           ],
         ],
       ),

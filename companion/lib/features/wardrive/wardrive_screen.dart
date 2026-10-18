@@ -1602,7 +1602,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
   Widget _runControls(WidgetRef ref, WardriveController wd) {
-    if (wd.radioTransition != null) {
+    if (wd.radioTransition == 'stopping') {
       return const SizedBox.shrink();
     }
     return switch (wd.state) {

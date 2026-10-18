@@ -741,7 +741,11 @@ class WardriveController extends ChangeNotifier {
       currentPosition = cached;
     }
 
-    await _enableEnginesSequentially(_fleetEngines);
+    try {
+      await _enableEnginesSequentially(_fleetEngines).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      DebugLog.log('WARDRIVE: engine start incomplete (link busy?): $e');
+    }
 
     radioTransition = null;
     WakelockPlus.enable();

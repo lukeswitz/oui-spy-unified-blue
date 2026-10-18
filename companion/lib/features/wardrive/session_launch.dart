@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -173,7 +175,7 @@ class SessionBar extends ConsumerWidget {
                     backgroundColor: AppTheme.error,
                     textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1),
                   ),
-                  onPressed: busy ? null : wd.stopSession,
+                  onPressed: wd.radioTransition == 'stopping' ? null : wd.stopSession,
                   icon: const Icon(Icons.stop),
                   label: const Text('STOP'),
                 ),
@@ -284,20 +286,29 @@ Future<bool> _primeLocationPermission(BuildContext context) async {
 
 Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   final app = ref.read(appStateProvider);
-  if (!app.isManagerConnected) return true;
+  final phone = ref.read(phoneBleSourceProvider);
+  final phoneChoice = phone.active && PhoneBleSource.canScanWifi;
   final mgrId = AppState.canonicalNodeId(app.nodeId);
-  final nodes = app.liveKnownNodes.where((id) => id != mgrId).toList()..sort();
+  final nodes = app.isManagerConnected
+      ? (app.liveKnownNodes.where((id) => id != mgrId).toList()..sort())
+      : <String>[];
+  if (phoneChoice) nodes.add(BleManager.phoneNodeId);
   if (nodes.isEmpty) return true;
   final result = await showDialog<Map<String, int>>(
     context: context,
     builder: (_) => RadioRolePopup(
       nodes: nodes,
       labelFor: app.labelForNode,
-      initial: {for (final n in nodes) n: app.wardriveRadioForNode(n)},
+      initial: {
+        for (final n in nodes)
+          n: n == BleManager.phoneNodeId ? phone.radioMask : app.wardriveRadioForNode(n),
+      },
     ),
   );
   if (result == null) return false;
-  await app.applyNodeRadioRoles(result);
+  final phoneMask = result.remove(BleManager.phoneNodeId);
+  if (phoneMask != null) phone.setRadioMask(phoneMask);
+  if (result.isNotEmpty) await app.applyNodeRadioRoles(result);
   if (!app.isManagerConnected && result.length == 1) {
     setWardriveRadio(ref, result.values.first);
   }
