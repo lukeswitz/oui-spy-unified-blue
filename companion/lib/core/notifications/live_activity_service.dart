@@ -48,9 +48,14 @@ class LiveActivityService {
   Map<String, int> get alertKinds =>
       {for (final e in _alertMacs.entries) e.key: e.value.length};
 
-  Future<void> showAlert(String title, String detail, [String? kind, String? mac]) async {
+  String _lastAlertKind = '';
+
+  bool get canAlert => _supported && _activityId != null && _lastPayload != null;
+
+  Future<void> showAlert(String title, String detail, [String? kind, String? mac, bool alert = false]) async {
     _lastAlert = title;
     _lastAlertDetail = detail;
+    _lastAlertKind = kind ?? '';
     _lastAlertAt = DateTime.now().millisecondsSinceEpoch / 1000.0;
     if (kind != null && mac != null && mac.isNotEmpty) {
       (_alertMacs[kind] ??= {}).add(mac.toUpperCase());
@@ -63,10 +68,11 @@ class LiveActivityService {
       ..['lastAlertDetail'] = _lastAlertDetail
       ..['lastAlertAt'] = _lastAlertAt
       ..['alertKinds'] = alertKinds
+      ..['lastAlertKind'] = _lastAlertKind
       ..['activityId'] = id;
     _lastPayload = upd;
     try {
-      await _channel.invokeMethod('updateActivity', upd);
+      await _channel.invokeMethod('updateActivity', {...upd, 'alert': alert});
     } catch (e) {
       DebugLog.log('LIVE_ACTIVITY: alert update error: $e');
     }
@@ -97,6 +103,7 @@ class LiveActivityService {
       'lastAlertDetail': _lastAlertDetail,
       'lastAlertAt': _lastAlertAt,
       'alertKinds': alertKinds,
+      'lastAlertKind': _lastAlertKind,
       'mode': primaryMode,
       'uniqueCount': uniqueCount,
       'wifiCount': wifiCount,
@@ -174,6 +181,7 @@ class LiveActivityService {
       _lastPayload = null;
       _lastAlert = '';
       _lastAlertDetail = '';
+      _lastAlertKind = '';
       _lastAlertAt = 0;
       _alertMacs.clear();
     }

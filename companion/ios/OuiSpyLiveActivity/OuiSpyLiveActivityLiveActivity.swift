@@ -15,6 +15,7 @@ struct OuiSpyLiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: OuiSpyLiveActivityAttributes.self) { context in
             ActivityContentView(state: context.state)
+                .opacity(context.isStale ? 0.55 : 1)
                 .activityBackgroundTint(Color(red: 0.031, green: 0.035, blue: 0.055))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
@@ -29,7 +30,7 @@ struct OuiSpyLiveActivityLiveActivity: Widget {
                     ExpandedCenter(state: context.state)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ExpandedBottom(state: context.state)
                         AlertKindsRow(state: context.state, iconSize: 10, textSize: 11)
                         AlertRow(state: context.state)
@@ -38,7 +39,9 @@ struct OuiSpyLiveActivityLiveActivity: Widget {
             } compactLeading: {
                 CompactLeading(state: context.state)
             } compactTrailing: {
-                CompactTrailing(state: context.state)
+                HiddenWhenLimitedWidth {
+                    CompactTrailing(state: context.state)
+                }
             } minimal: {
                 MinimalView(state: context.state)
             }
@@ -63,7 +66,7 @@ private struct ActivityContentView: View {
                 AlertKindsRow(state: state, iconSize: 11, textSize: 12)
                 AlertRow(state: state)
             }
-            .padding(12)
+            .padding(14)
         }
     }
 }
@@ -73,26 +76,60 @@ private struct SmallView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: state.mode.sfSymbol)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(engineColor(state.mode))
-                Text("\(state.uniqueCount)")
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                if state.mode == .wardrive || state.mode == .wardriveFlock {
+                    SmallCount(icon: "wifi", value: state.wifiCount, color: engineColor(.wardrive))
+                    SmallCount(icon: "dot.radiowaves.left.and.right", value: state.bleCount, color: engineColor(.flockBle))
+                } else {
+                    Text("\(state.uniqueCount)")
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .contentTransition(.numericText(value: Double(state.uniqueCount)))
+                }
                 Spacer(minLength: 0)
             }
             AlertKindsRow(state: state, iconSize: 12, textSize: 13)
             if !state.lastAlert.isEmpty {
-                Text(state.lastAlert)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                HStack(spacing: 4) {
+                    Text(state.lastAlert)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 2)
+                    if state.lastAlertAt > 0 {
+                        Text(Date(timeIntervalSince1970: state.lastAlertAt), style: .relative)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.5))
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 52, alignment: .trailing)
+                    }
+                }
             }
         }
+    }
+}
+
+private struct SmallCount: View {
+    let icon: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+            Text("\(value)")
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .contentTransition(.numericText(value: Double(value)))
+        }
+        .foregroundColor(color)
     }
 }
 
@@ -136,6 +173,30 @@ private struct CompactLeading: View {
         Image(systemName: state.mode.sfSymbol)
             .font(.system(size: 12, weight: .bold))
             .foregroundColor(engineColor(state.mode))
+    }
+}
+
+private struct HiddenWhenLimitedWidth<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if #available(iOS 27.0, *) {
+            LimitedWidthGate(content: content)
+        } else {
+            content()
+        }
+    }
+}
+
+@available(iOS 27.0, *)
+private struct LimitedWidthGate<Content: View>: View {
+    @Environment(\.isDynamicIslandLimitedInWidth) private var limited
+    let content: () -> Content
+
+    var body: some View {
+        if !limited {
+            content()
+        }
     }
 }
 
@@ -196,9 +257,11 @@ private struct ExpandedLeading: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(engineColor(state.mode))
             Text(state.mode.label)
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundColor(.gray)
-                .tracking(2)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.white.opacity(0.6))
+                .tracking(1)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 }
@@ -214,9 +277,8 @@ private struct ExpandedTrailing: View {
                     .font(.system(size: 24, weight: .bold, design: .monospaced))
                     .foregroundColor(rssiColor(state.rssi))
                 Text("dBm")
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundColor(.gray)
-                    .tracking(1)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
             }
         case .uniPwn:
             VStack(alignment: .trailing, spacing: 2) {
@@ -232,9 +294,10 @@ private struct ExpandedTrailing: View {
                 Text("\(state.uniqueCount)")
                     .font(.system(size: 24, weight: .bold, design: .monospaced))
                     .foregroundColor(.white)
+                    .contentTransition(.numericText(value: Double(state.uniqueCount)))
                 Text("UNIQUE")
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundColor(.gray)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
                     .tracking(1)
             }
         }
@@ -316,35 +379,41 @@ private struct AlertRow: View {
 
     var body: some View {
         if !state.lastAlert.isEmpty {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.orange)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) {
-                        Text(state.lastAlert)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer(minLength: 4)
-                        if state.lastAlertAt > 0 {
-                            Text(Date(timeIntervalSince1970: state.lastAlertAt), style: .relative)
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white.opacity(0.5))
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: 70, alignment: .trailing)
-                        }
-                    }
-                    if !state.lastAlertDetail.isEmpty {
-                        Text(state.lastAlertDetail)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.65))
+            let detail = state.lastAlertDetail.split(separator: "\n").first.map(String.init) ?? ""
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.22))
+                    Image(systemName: OuiSpyLiveActivityAttributes.ContentState.alertKindSymbol(state.lastAlertKind))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.orange)
+                }
+                .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(state.lastAlert)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.7))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 }
+                Spacer(minLength: 4)
+                if state.lastAlertAt > 0 {
+                    Text(Date(timeIntervalSince1970: state.lastAlertAt), style: .relative)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.55))
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 64, alignment: .trailing)
+                }
             }
+            .padding(10)
+            .background(ContainerRelativeShape().fill(Color.white.opacity(0.08)))
         }
     }
 }
@@ -398,12 +467,14 @@ private struct LockScreenView: View {
                         Image(systemName: "wifi").font(.system(size: 12))
                         Text("\(s.wifiCount)")
                             .font(.system(size: 19, weight: .bold, design: .monospaced))
+                            .contentTransition(.numericText(value: Double(s.wifiCount)))
                     }
                     .foregroundColor(engineColor(.wardrive))
                     HStack(spacing: 3) {
                         Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 12))
                         Text("\(s.bleCount)")
                             .font(.system(size: 19, weight: .bold, design: .monospaced))
+                            .contentTransition(.numericText(value: Double(s.bleCount)))
                     }
                     .foregroundColor(engineColor(.flockBle))
                 }
@@ -414,6 +485,7 @@ private struct LockScreenView: View {
                 Text("\(s.uniqueCount)")
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
                     .foregroundColor(.white)
+                    .contentTransition(.numericText(value: Double(s.uniqueCount)))
                 lockScreenBadges(s)
             }
         }
@@ -563,9 +635,57 @@ extension OuiSpyLiveActivityAttributes.ContentState {
     }
 }
 
+extension OuiSpyLiveActivityAttributes.ContentState {
+    fileprivate static var alertSample: OuiSpyLiveActivityAttributes.ContentState {
+        var s = wardriveSample
+        s.lastAlert = "Cameras: Arlo"
+        s.lastAlertDetail = "-87 dBm · Wi-Fi · ch 1"
+        s.lastAlertAt = Date().addingTimeInterval(-4).timeIntervalSince1970
+        s.alertKinds = ["camera": 3, "finder": 1]
+        s.lastAlertKind = "camera"
+        return s
+    }
+}
+
 #Preview("Notification", as: .content, using: OuiSpyLiveActivityAttributes.preview) {
     OuiSpyLiveActivityLiveActivity()
 } contentStates: {
+    OuiSpyLiveActivityAttributes.ContentState.alertSample
     OuiSpyLiveActivityAttributes.ContentState.wardriveSample
     OuiSpyLiveActivityAttributes.ContentState.foxhuntSample
+}
+
+#Preview("Island expanded", as: .dynamicIsland(.expanded), using: OuiSpyLiveActivityAttributes.preview) {
+    OuiSpyLiveActivityLiveActivity()
+} contentStates: {
+    OuiSpyLiveActivityAttributes.ContentState.alertSample
+    OuiSpyLiveActivityAttributes.ContentState.foxhuntSample
+}
+
+#Preview("Island compact", as: .dynamicIsland(.compact), using: OuiSpyLiveActivityAttributes.preview) {
+    OuiSpyLiveActivityLiveActivity()
+} contentStates: {
+    OuiSpyLiveActivityAttributes.ContentState.alertSample
+    OuiSpyLiveActivityAttributes.ContentState.foxhuntSample
+}
+
+#Preview("CarPlay 240x78") {
+    ActivityContentView(state: .alertSample)
+        .environment(\.activityFamily, .small)
+        .frame(width: 240, height: 78)
+        .background(Color(red: 0.031, green: 0.035, blue: 0.055))
+}
+
+#Preview("CarPlay 240x100") {
+    ActivityContentView(state: .alertSample)
+        .environment(\.activityFamily, .small)
+        .frame(width: 240, height: 100)
+        .background(Color(red: 0.031, green: 0.035, blue: 0.055))
+}
+
+#Preview("CarPlay 170x78") {
+    ActivityContentView(state: .alertSample)
+        .environment(\.activityFamily, .small)
+        .frame(width: 170, height: 78)
+        .background(Color(red: 0.031, green: 0.035, blue: 0.055))
 }

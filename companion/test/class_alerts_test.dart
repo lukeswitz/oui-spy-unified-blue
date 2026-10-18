@@ -20,7 +20,7 @@ void main() {
         NotificationService.classNotificationText(d, ClassAlert.ofClass(SignatureClass.surveillance));
     expect(title, 'Surveillance: Flock Safety');
     expect(subtitle, 'Signature match');
-    expect(body, 'Signal -61 dBm over Wi-Fi. MAC B4:1E:52:11:22:33.');
+    expect(body, '-61 dBm · Wi-Fi\nB4:1E:52:11:22:33');
   });
 
   test('Flock fleet alerts on the Flock toggle only, never as cameras', () {

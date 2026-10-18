@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,6 +30,8 @@ class NotificationService extends ChangeNotifier {
   NotificationService() {
     _loadPrefs();
   }
+
+  static const _detectionCategory = 'detection';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -89,6 +91,14 @@ class NotificationService extends ChangeNotifier {
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true,
+        notificationCategories: [
+          DarwinNotificationCategory(
+            _detectionCategory,
+            options: {
+              DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
+            },
+          ),
+        ],
       );
       const settings = InitializationSettings(
         android: androidSettings,
@@ -231,13 +241,12 @@ class NotificationService extends ChangeNotifier {
       classAlertedMacs.add(d.obs.mac.toUpperCase());
       notifyListeners();
     }
-    final (title, subtitle, body) = classNotificationText(d, alert);
+    final (title, _, body) = classNotificationText(d, alert);
     final channel = alert == ClassAlert.flock ? NotifChannel.flock : NotifChannel.detector;
     _fireNotification(
       id: _notifId(channel),
       channel: channel,
       title: title,
-      subtitle: subtitle,
       body: body,
       groupKey: channel,
       alertKind: alert.kind,
@@ -258,14 +267,15 @@ class NotificationService extends ChangeNotifier {
                 : 'Classifier estimate';
     final radio = d.obs.kind == RadioKind.ble ? 'Bluetooth' : 'Wi-Fi';
     final body = [
-      'Signal ${d.obs.rssi} dBm over $radio${d.obs.channel > 0 ? ' on channel ${d.obs.channel}' : ''}.',
-      if (d.obs.name.isNotEmpty && d.obs.name != what) 'Name ${d.obs.name}.',
-      if (d.obs.mac.isNotEmpty) 'MAC ${d.obs.mac.toUpperCase()}.',
-    ].join(' ');
+      '${d.obs.rssi} dBm · $radio${d.obs.channel > 0 ? ' · ch ${d.obs.channel}' : ''}',
+      if (d.obs.name.isNotEmpty && d.obs.name != what) d.obs.name,
+      if (d.obs.mac.isNotEmpty) d.obs.mac.toUpperCase(),
+    ].join('\n');
     return ('${alert.label}: $what', why, body);
   }
 
-  void Function(String title, String detail, String? kind, String? mac)? onAlert;
+  void Function(String title, String detail, String? kind, String? mac, bool alert)? onAlert;
+  bool Function()? activityCanAlert;
   final classAlertedMacs = <String>{};
 
   void setClassAlert(SignatureClass a, bool on) {
@@ -433,12 +443,12 @@ class NotificationService extends ChangeNotifier {
   }
 
   static String _detectionBody(Detection det, String title) => [
-        'Signal ${det.rssi} dBm${det.channel > 0 ? ' on channel ${det.channel}' : ''}.',
-        if (det.deviceName.isNotEmpty && det.deviceName != title) 'Name ${det.deviceName}.',
-        if (det.ssid.isNotEmpty) 'Network "${det.ssid}".',
-        'MAC ${det.macAddress.toUpperCase()}.',
-        if (det.sourceNodeId.isNotEmpty) 'Seen by node ${det.sourceNodeId}.',
-      ].join(' ');
+        '${det.rssi} dBm${det.channel > 0 ? ' · ch ${det.channel}' : ''}',
+        if (det.deviceName.isNotEmpty && det.deviceName != title) det.deviceName,
+        if (det.ssid.isNotEmpty) '"${det.ssid}"',
+        det.macAddress.toUpperCase(),
+        if (det.sourceNodeId.isNotEmpty) 'via node ${det.sourceNodeId}',
+      ].join('\n');
 
   void _fireMilestoneNotification(int count) {
     _fireNotification(
@@ -460,9 +470,14 @@ class NotificationService extends ChangeNotifier {
     String? alertKind,
     String? alertMac,
   }) async {
+    final viaActivity = channel != NotifChannel.wardrive &&
+        soundEnabled &&
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed &&
+        (activityCanAlert?.call() ?? false);
     if (channel != NotifChannel.wardrive) {
-      onAlert?.call(title, subtitle == null ? body : '$subtitle · $body', alertKind, alertMac);
+      onAlert?.call(title, subtitle == null ? body : '$subtitle · $body', alertKind, alertMac, viaActivity);
     }
+    if (viaActivity) return;
     final androidDetails = AndroidNotificationDetails(
       channel,
       channel,
@@ -481,6 +496,8 @@ class NotificationService extends ChangeNotifier {
       presentSound: soundEnabled,
       subtitle: subtitle,
       threadIdentifier: groupKey,
+      categoryIdentifier: channel == NotifChannel.wardrive ? null : _detectionCategory,
+      interruptionLevel: channel == NotifChannel.wardrive ? null : InterruptionLevel.timeSensitive,
     );
 
     final details = NotificationDetails(
@@ -642,5 +659,6 @@ final notificationServiceProvider =
   final svc = NotificationService();
   final la = ref.read(liveActivityServiceProvider);
   svc.onAlert = la.showAlert;
+  svc.activityCanAlert = () => la.canAlert;
   return svc;
 });

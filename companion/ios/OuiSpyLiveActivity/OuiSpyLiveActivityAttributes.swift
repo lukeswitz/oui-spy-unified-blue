@@ -29,6 +29,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
         var lastAlertDetail: String = ""
         var lastAlertAt: Double = 0
         var alertKinds: [String: Int] = [:]
+        var lastAlertKind: String = ""
 
         var sortedAlertKinds: [(key: String, value: Int)] {
             alertKinds.filter { $0.value > 0 }.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
@@ -105,7 +106,8 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             lastAlert: String = "",
             lastAlertDetail: String = "",
             lastAlertAt: Double = 0,
-            alertKinds: [String: Int] = [:]
+            alertKinds: [String: Int] = [:],
+            lastAlertKind: String = ""
         ) {
             self.mode = mode
             self.uniqueCount = uniqueCount
@@ -126,6 +128,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             self.lastAlertDetail = lastAlertDetail
             self.lastAlertAt = lastAlertAt
             self.alertKinds = alertKinds
+            self.lastAlertKind = lastAlertKind
         }
 
         // Backward-compatible decoder: tolerate ContentState payloads written
@@ -134,7 +137,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             case mode, uniqueCount, wifiCount, bleCount, flockCount, droneCount,
                  detectorHits, distanceKm, speedKmh, targetMac, rssi, intervalMs,
                  robotType, exploitStatus, isImperial,
-                 lastAlert, lastAlertDetail, lastAlertAt, alertKinds
+                 lastAlert, lastAlertDetail, lastAlertAt, alertKinds, lastAlertKind
         }
 
         init(from decoder: Decoder) throws {
@@ -158,6 +161,7 @@ struct OuiSpyLiveActivityAttributes: ActivityAttributes {
             lastAlertDetail = try c.decodeIfPresent(String.self, forKey: .lastAlertDetail) ?? ""
             lastAlertAt = try c.decodeIfPresent(Double.self, forKey: .lastAlertAt) ?? 0
             alertKinds = try c.decodeIfPresent([String: Int].self, forKey: .alertKinds) ?? [:]
+            lastAlertKind = try c.decodeIfPresent(String.self, forKey: .lastAlertKind) ?? ""
         }
     }
 

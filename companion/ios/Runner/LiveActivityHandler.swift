@@ -67,9 +67,15 @@ class LiveActivityHandler {
 
         let state = contentState(from: args)
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(30))
+        let alert: AlertConfiguration? = (args["alert"] as? Bool ?? false)
+            ? AlertConfiguration(
+                title: "\(state.lastAlert)",
+                body: "\(state.lastAlertDetail)",
+                sound: .default)
+            : nil
 
         Task {
-            await currentActivity?.update(content)
+            await currentActivity?.update(content, alertConfiguration: alert)
             result(nil)
         }
     }
@@ -131,7 +137,8 @@ class LiveActivityHandler {
             lastAlert: args["lastAlert"] as? String ?? "",
             lastAlertDetail: args["lastAlertDetail"] as? String ?? "",
             lastAlertAt: (args["lastAlertAt"] as? NSNumber)?.doubleValue ?? 0,
-            alertKinds: (args["alertKinds"] as? [String: NSNumber])?.mapValues { $0.intValue } ?? [:]
+            alertKinds: (args["alertKinds"] as? [String: NSNumber])?.mapValues { $0.intValue } ?? [:],
+            lastAlertKind: args["lastAlertKind"] as? String ?? ""
         )
     }
 }

@@ -17,7 +17,7 @@ void main() {
     final (title, subtitle, body, channel) = NotificationService.detectionNotificationText(det)!;
     expect(title, 'Nokia router');
     expect(subtitle, 'Detector · WATCHLIST');
-    expect(body, 'Signal -87 dBm on channel 6. MAC 40:48:6E:8B:D3:1A.');
+    expect(body, '-87 dBm · ch 6\n40:48:6E:8B:D3:1A');
     expect(channel, NotifChannel.detector);
   });
 
@@ -31,7 +31,7 @@ void main() {
     final (title, subtitle, body, _) = NotificationService.detectionNotificationText(det)!;
     expect(title, 'Probe request for "Villasenor"');
     expect(subtitle, 'Detector · PROBE');
-    expect(body, 'Signal -89 dBm on channel 6. MAC 5C:FC:E1:00:6A:24.');
+    expect(body, '-89 dBm · ch 6\n5C:FC:E1:00:6A:24');
   });
 
   test('pwnagotchi hit carries hit, class, engine and device data', () {
@@ -52,7 +52,7 @@ void main() {
     final (title, subtitle, body, channel) = NotificationService.detectionNotificationText(det)!;
     expect(title, 'Pwnagotchi');
     expect(subtitle, 'Detector · PWNAGOTCHI');
-    expect(body, 'Signal -61 dBm on channel 6. Name pwny. MAC DE:AD:BE:EF:00:01. Seen by node node2.');
+    expect(body, '-61 dBm · ch 6\npwny\nDE:AD:BE:EF:00:01\nvia node node2');
     expect(channel, NotifChannel.detector);
   });
 }
