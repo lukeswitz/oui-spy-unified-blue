@@ -46,13 +46,13 @@ enum WardriveTarget {
   final String description;
   final IconData icon;
 
-  Color get color => switch (this) {
+  Color get color => AppTheme.themed(switch (this) {
     WardriveTarget.flock => const Color(0xFFB44AFF),
     WardriveTarget.drone => const Color(0xFF4AFFEA),
     WardriveTarget.wigle => const Color(0xFFFFAA4A),
     WardriveTarget.detector => const Color(0xFF4A9EFF),
     WardriveTarget.wigleFlock => const Color(0xFF4A9EFF),
-  };
+  });
 
   List<Engine> engines(WardriveRadio radio) => switch (this) {
     WardriveTarget.flock => switch (radio) {

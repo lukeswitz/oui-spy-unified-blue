@@ -51,7 +51,7 @@ class DetectorScreen extends ConsumerWidget {
       body: ListView(
         children: [
           ListTile(
-            leading: const Icon(Icons.track_changes, color: AppTheme.detector),
+            leading: Icon(Icons.track_changes, color: AppTheme.detector),
             title: Text('Watching for',
                 style: TextStyle(color: t.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
             subtitle: Text(
@@ -80,7 +80,7 @@ class DetectorScreen extends ConsumerWidget {
             for (final d in detections.take(50)) DetectionRow(detection: d),
           const Divider(height: 1),
           ListTile(
-            leading: const Icon(Icons.history, color: AppTheme.detector),
+            leading: Icon(Icons.history, color: AppTheme.detector),
             title: Text('History',
                 style: TextStyle(color: t.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
             subtitle: Text(

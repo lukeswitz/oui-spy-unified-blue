@@ -723,7 +723,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
                     const SizedBox(width: 3),
                     Text(
                       '+${widget.nodeCount}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.flockBle,
                         fontSize: 9,
                         fontWeight: FontWeight.w700,

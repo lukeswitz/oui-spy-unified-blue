@@ -270,7 +270,9 @@ class _PhoneScanChip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final src = ref.watch(phoneBleSourceProvider);
-    const color = AppTheme.detector;
+    final t = AppTheme.of(context);
+    final color = src.active ? AppTheme.detector : t.textDim;
+    final showLabel = !src.active && !ref.watch(appStateProvider).isConnected;
     return Tooltip(
       message: 'Scan with this device',
       child: InkWell(
@@ -286,10 +288,27 @@ class _PhoneScanChip extends ConsumerWidget {
             borderRadius: BorderRadius.circular(6),
             border: Border.all(color: color.withValues(alpha: src.active ? 0.6 : 0.35), width: 0.5),
           ),
-          child: Icon(
-            src.radioListening ? Icons.wifi_tethering : _phoneIcon,
-            size: 16,
-            color: color,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                src.radioListening ? Icons.wifi_tethering : _phoneIcon,
+                size: 16,
+                color: color,
+              ),
+              if (showLabel) ...[
+                const SizedBox(width: 5),
+                Text(
+                  'ONBOARD SCAN',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1,
+                    color: color,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

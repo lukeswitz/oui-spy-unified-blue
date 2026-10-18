@@ -784,14 +784,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: t.surface.withValues(alpha: 0.92),
+                      color: Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                           color: AppTheme.warning.withValues(alpha: 0.7)),
                     ),
                     child: Text(
                       '${wd.geofenceSuppressed} HIDDEN — INSIDE EXCLUSION ZONE',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.warning,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
@@ -909,7 +909,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               Positioned(
                 top: 0, left: 0, right: 0,
                 child: Container(
-                  color: t.background.withValues(alpha: 0.96),
+                  color: Colors.transparent,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1608,7 +1608,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     return switch (wd.state) {
       WardriveState.idle => const SizedBox.shrink(),
       WardriveState.running => Row(mainAxisSize: MainAxisSize.min, children: [
-          _OutlinePill(label: 'PAUSE', color: AppTheme.textSecondary,
+          _OutlinePill(label: 'PAUSE', color: AppTheme.of(context).textSecondary,
               onTap: () => ref.read(wardriveProvider).pauseSession()),
           const SizedBox(width: 12),
           _Pill(label: 'STOP', color: AppTheme.error,

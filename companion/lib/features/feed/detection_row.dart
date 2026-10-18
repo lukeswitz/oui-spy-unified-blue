@@ -79,7 +79,7 @@ class DetectionRow extends ConsumerWidget {
                                 text: headline,
                                 style: TextStyle(
                                   color: detection.isBleDetection
-                                      ? const Color(0xFF4FA8FF)
+                                      ? AppTheme.themed(const Color(0xFF4FA8FF))
                                       : t.textPrimary,
                                   fontSize: 15,
                                   fontFamily: headlineIsMac ? 'monospace' : null,
@@ -137,7 +137,7 @@ class DetectionRow extends ConsumerWidget {
                       if (nodeLabel.isNotEmpty || detection.sourceNodeId.isNotEmpty) ...[
                         Text(
                           nodeLabel.isNotEmpty ? nodeLabel : detection.sourceNodeId,
-                          style: const TextStyle(color: AppTheme.warning, fontSize: 12),
+                          style: TextStyle(color: AppTheme.warning, fontSize: 12),
                         ),
                         const SizedBox(width: 8),
                       ],
@@ -249,8 +249,8 @@ void showDetectionDetails(
             ),
             const SizedBox(height: 12),
             ListTile(
-                leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
-                title: const Text('Foxhunt This Device',
+                leading: Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
+                title: Text('Foxhunt This Device',
                     style: TextStyle(color: AppTheme.foxhunter)),
                 subtitle: Text('Track by RSSI proximity',
                     style: TextStyle(color: t.textDim, fontSize: 11)),
@@ -261,8 +261,8 @@ void showDetectionDetails(
               ),
             if (showMapAction && detection.latitude != null)
               ListTile(
-                leading: const Icon(Icons.map, color: AppTheme.gpsGood),
-                title: const Text('Show on Map',
+                leading: Icon(Icons.map, color: AppTheme.gpsGood),
+                title: Text('Show on Map',
                     style: TextStyle(color: AppTheme.gpsGood)),
                 subtitle: Text('Zoom to detection location',
                     style: TextStyle(color: t.textDim, fontSize: 11)),
@@ -294,8 +294,8 @@ void showDetectionDetails(
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppTheme.error),
-              title: const Text('Delete Detection',
+              leading: Icon(Icons.delete_outline, color: AppTheme.error),
+              title: Text('Delete Detection',
                   style: TextStyle(color: AppTheme.error)),
               subtitle: Text('Remove all MACs of this device',
                   style: TextStyle(color: t.textDim, fontSize: 11)),
@@ -835,7 +835,7 @@ class _DetailLine extends StatelessWidget {
     ));
     if (OuiLookupService.isLawEnforcement(detection.macAddress)) {
       tokens.add(const SizedBox(width: 5));
-      tokens.add(const Icon(Icons.local_police, size: 13, color: AppTheme.warning));
+      tokens.add(Icon(Icons.local_police, size: 13, color: AppTheme.warning));
     }
     final isGenericMethod =
         detection.method == 'wifi_ap' || detection.method == 'ble_adv';
@@ -1057,7 +1057,7 @@ class _FaaLookupTileState extends ConsumerState<_FaaLookupTile> {
       children: [
         ListTile(
           leading: _loading
-              ? const SizedBox(
+              ? SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
@@ -1065,14 +1065,14 @@ class _FaaLookupTileState extends ConsumerState<_FaaLookupTile> {
                     color: AppTheme.skySpy,
                   ),
                 )
-              : const Icon(Icons.policy_outlined, color: AppTheme.skySpy),
+              : Icon(Icons.policy_outlined, color: AppTheme.skySpy),
           title: Text(
             'FAA RemoteID Lookup',
             style: TextStyle(color: widget.t.textPrimary),
           ),
           subtitle: _error != null
               ? Text(_error!,
-                  style: const TextStyle(color: AppTheme.error, fontSize: 11))
+                  style: TextStyle(color: AppTheme.error, fontSize: 11))
               : Text('Query ${widget.uasId}',
                   style: TextStyle(color: widget.t.textDim, fontSize: 11,
                       fontFamily: 'monospace'),
@@ -1129,7 +1129,7 @@ class _FaaResultSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.policy_outlined, color: AppTheme.skySpy, size: 18),
+                  Icon(Icons.policy_outlined, color: AppTheme.skySpy, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1264,7 +1264,7 @@ class _TransportBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = _odidTransportLabel(method);
     final color = switch (method) {
-      'odid_ble' => const Color(0xFF4FA8FF),
+      'odid_ble' => AppTheme.themed(const Color(0xFF4FA8FF)),
       'odid_nan' => Engine.skySpy.color,
       'odid_beacon' => Engine.skySpy.color.withValues(alpha: 0.7),
       _ => Engine.skySpy.color,
@@ -1362,14 +1362,14 @@ class DroneDetectionRow extends ConsumerWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.hub, size: 11, color: AppTheme.warning),
+                          Icon(Icons.hub, size: 11, color: AppTheme.warning),
                           const SizedBox(width: 3),
                           Flexible(
                             child: Text(
                               nodeLabel.isNotEmpty ? nodeLabel : d.sourceNodeId,
                               overflow: TextOverflow.ellipsis,
                               softWrap: false,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.warning,
                                 fontSize: 11,
                                 fontFamily: 'monospace',

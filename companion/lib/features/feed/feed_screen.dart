@@ -613,7 +613,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('CLEAR', style: TextStyle(color: AppTheme.error)),
+            child: Text('CLEAR', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),

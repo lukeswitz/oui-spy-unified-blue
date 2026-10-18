@@ -30,7 +30,7 @@ class _WatchlistPanelState extends ConsumerState<WatchlistPanel> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'WATCHLIST',
                 style: TextStyle(color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2),
               ),
@@ -220,7 +220,7 @@ class SignaturesPanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'SIGNATURES',
             style: TextStyle(color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2),
           ),
@@ -301,7 +301,7 @@ class _WatchlistChip extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 entry.identifier.toUpperCase(),
-                style: const TextStyle(color: AppTheme.detector, fontSize: 11, fontFamily: 'monospace'),
+                style: TextStyle(color: AppTheme.detector, fontSize: 11, fontFamily: 'monospace'),
               ),
               if (entry.description.isNotEmpty) ...[
                 const SizedBox(width: 4),

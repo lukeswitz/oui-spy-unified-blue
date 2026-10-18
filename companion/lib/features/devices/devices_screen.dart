@@ -483,7 +483,6 @@ class _DeviceRow extends ConsumerWidget {
     final sub = [
       if (o.name.isNotEmpty && o.name != title) o.name,
       if (vendor != null && vendor != title) vendor,
-      if (o.mac.isNotEmpty) o.mac,
     ].join(' · ');
     final text = Theme.of(context).textTheme;
     Widget tag(String label, Color c, {IconData? icon}) => Container(
@@ -570,8 +569,48 @@ class _DeviceRow extends ConsumerWidget {
                             style: text.bodySmall?.copyWith(color: t.textDim),
                           ),
                         ),
-                      SizedBox(height: gap * 0.7),
+                      if (o.mac.isNotEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(top: gap * 0.2),
+                          child: Text(
+                            o.mac,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: text.bodySmall?.copyWith(
+                              color: t.textDim,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: gap),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '${o.rssi}',
+                            style: text.titleMedium?.copyWith(
+                              color: rssiColor(o.rssi),
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: gap * 0.3),
+                          Text('dBm', style: text.labelSmall?.copyWith(color: t.textDim)),
+                        ],
+                      ),
+                      SizedBox(height: gap * 0.6),
                       Wrap(
+                        alignment: WrapAlignment.end,
                         spacing: gap * 0.6,
                         runSpacing: gap * 0.6,
                         children: [
@@ -590,24 +629,6 @@ class _DeviceRow extends ConsumerWidget {
                       ),
                     ],
                   ),
-                ),
-                SizedBox(width: gap),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '${o.rssi}',
-                      style: text.titleMedium?.copyWith(
-                        color: rssiColor(o.rssi),
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(width: gap * 0.3),
-                    Text('dBm', style: text.labelSmall?.copyWith(color: t.textDim)),
-                  ],
                 ),
               ],
             ),

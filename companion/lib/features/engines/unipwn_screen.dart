@@ -181,7 +181,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                     children: [
                       Text(
                         'TARGET: ${_selectedTarget!.toUpperCase()}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.uniPwn,
                           fontSize: 12,
                           fontFamily: 'monospace',
@@ -317,12 +317,12 @@ class _UnipwnNodePicker extends ConsumerWidget {
 }
 
 class _ExploitButton extends StatelessWidget {
-  const _ExploitButton({
+  _ExploitButton({
     required this.label,
     required this.icon,
     required this.onTap,
-    this.color = AppTheme.uniPwn,
-  });
+    Color? color,
+  }) : color = color ?? AppTheme.uniPwn;
   final String label;
   final IconData icon;
   final VoidCallback onTap;

@@ -279,7 +279,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
 
     final Color scopeColor = switch (entry.scope) {
       IgnoreScope.wifi => AppTheme.wardrive,
-      IgnoreScope.ble => const Color(0xFF4A9EFF),
+      IgnoreScope.ble => AppTheme.themed(const Color(0xFF4A9EFF)),
       IgnoreScope.both => AppTheme.accent,
     };
 
@@ -294,7 +294,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
           color: AppTheme.error.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: const Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
+        child: Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
       ),
       onDismissed: (_) => ref.read(ignoreListProvider).remove(entry),
       child: Container(

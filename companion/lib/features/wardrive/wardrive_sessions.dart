@@ -45,7 +45,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
           // Row 1: stats text
           Row(
             children: [
-              const Icon(Icons.check_circle, size: 14, color: AppTheme.success),
+              Icon(Icons.check_circle, size: 14, color: AppTheme.success),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -127,12 +127,12 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: wd.droneCount > 0
-                      ? const Color(0xFF4AFFEA).withValues(alpha: 0.10)
+                      ? AppTheme.themed(const Color(0xFF4AFFEA)).withValues(alpha: 0.10)
                       : t.surface.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: wd.droneCount > 0
-                        ? const Color(0xFF4AFFEA).withValues(alpha: 0.35)
+                        ? AppTheme.themed(const Color(0xFF4AFFEA)).withValues(alpha: 0.35)
                         : t.border,
                   ),
                 ),
@@ -141,14 +141,14 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   children: [
                     Icon(Icons.flight, size: 12,
                         color: wd.droneCount > 0
-                            ? const Color(0xFF4AFFEA)
+                            ? AppTheme.themed(const Color(0xFF4AFFEA))
                             : t.textDim),
                     const SizedBox(width: 4),
                     Text(
                       '${wd.droneCount}',
                       style: TextStyle(
                         color: wd.droneCount > 0
-                            ? const Color(0xFF4AFFEA)
+                            ? AppTheme.themed(const Color(0xFF4AFFEA))
                             : t.textDim,
                         fontSize: 10,
                         fontFamily: 'monospace', fontWeight: FontWeight.w700,
@@ -257,7 +257,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (isUploading)
-                          const SizedBox(
+                          SizedBox(
                             width: 12, height: 12,
                             child: CircularProgressIndicator(
                               strokeWidth: 1.5, color: AppTheme.warning,
@@ -306,10 +306,10 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (wdgQueued)
-                          const Icon(Icons.hourglass_top,
+                          Icon(Icons.hourglass_top,
                               size: 14, color: AppTheme.wdgwars)
                         else if (wdgUploading)
-                          const SizedBox(
+                          SizedBox(
                             width: 12, height: 12,
                             child: CircularProgressIndicator(
                               strokeWidth: 1.5, color: AppTheme.wdgwars,
@@ -432,7 +432,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                           color: AppTheme.warning.withValues(alpha: 0.15),
                                           borderRadius: BorderRadius.circular(2),
                                         ),
-                                        child: const Text('RAVEN',
+                                        child: Text('RAVEN',
                                           style: TextStyle(
                                             color: AppTheme.warning, fontSize: 7,
                                             fontWeight: FontWeight.w700,
@@ -559,7 +559,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                       ),
                                       child: Text(
                                         isFullMac ? 'MAC' : 'OUI',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppTheme.detector, fontSize: 7,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -1166,7 +1166,7 @@ Future<bool> _confirmWigleUpload(BuildContext context) async {
         FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: AppTheme.accent,
-            foregroundColor: AppTheme.background,
+            foregroundColor: Theme.of(ctx).colorScheme.onPrimary,
           ),
           onPressed: () => Navigator.pop(ctx, true),
           child: const Text('UPLOAD'),
@@ -1349,7 +1349,7 @@ class _SessionRow extends ConsumerWidget {
                             const SizedBox(width: 2),
                             Text(
                               '$fc',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.flockBle, fontSize: 10,
                                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
                               ),
@@ -1375,7 +1375,7 @@ class _SessionRow extends ConsumerWidget {
                             const SizedBox(width: 2),
                             Text(
                               '$dc',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.detector, fontSize: 10,
                                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
                               ),
@@ -1397,13 +1397,13 @@ class _SessionRow extends ConsumerWidget {
                         return Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.flight,
-                                size: 11, color: Color(0xFF4AFFEA)),
+                            Icon(Icons.flight,
+                                size: 11, color: AppTheme.themed(const Color(0xFF4AFFEA))),
                             const SizedBox(width: 2),
                             Text(
                               '$dc',
-                              style: const TextStyle(
-                                color: Color(0xFF4AFFEA), fontSize: 10,
+                              style: TextStyle(
+                                color: AppTheme.themed(const Color(0xFF4AFFEA)), fontSize: 10,
                                 fontFamily: 'monospace', fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1538,7 +1538,7 @@ class _SessionRow extends ConsumerWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      const SizedBox(
+                      SizedBox(
                         width: 9,
                         height: 9,
                         child: CircularProgressIndicator(
@@ -1553,7 +1553,7 @@ class _SessionRow extends ConsumerWidget {
                             : 'CHECK ${wd.rescanCur}/${wd.rescanTotal}'
                                 '${wd.rescanNewDetector > 0 ? ' +${wd.rescanNewDetector}d' : ''}'
                                 '${wd.rescanNewFlock > 0 ? ' +${wd.rescanNewFlock}f' : ''}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.detector,
                           fontSize: 9,
                           fontFamily: 'monospace',
@@ -1698,11 +1698,11 @@ class _FoxhuntBadge extends StatelessWidget {
         border: Border.all(color: AppTheme.foxhunter.withValues(alpha: 0.5)),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.gps_fixed, color: AppTheme.foxhunter, size: 20),
+        Icon(Icons.gps_fixed, color: AppTheme.foxhunter, size: 20),
         const SizedBox(height: 4),
         Text(
           mac.substring(0, 8),
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.foxhunter, fontSize: 9, fontFamily: 'monospace',
           ),
         ),

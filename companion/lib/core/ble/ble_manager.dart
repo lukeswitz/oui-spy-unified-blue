@@ -1727,10 +1727,16 @@ class BleManager {
         }
       }
       if (_device == null || _userInitiatedDisconnect) return;
+      if (found == null) {
+        DebugLog.log('BLE: board not seen in reconnect scan — scanning again');
+        _reconnectAttempt++;
+        _attemptReconnect();
+        return;
+      }
       _isReconnect = true;
       _reconnectExpectNodeId = expectNodeId.isEmpty ? null : expectNodeId;
       try {
-        await connect(found ?? target, sessionId: _sessionId);
+        await connect(found, sessionId: _sessionId);
       } catch (e) {
         DebugLog.log('BLE: reconnect attempt failed: $e');
       } finally {

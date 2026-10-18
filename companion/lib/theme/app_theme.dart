@@ -297,31 +297,98 @@ class AppTheme {
   static const border = Color(0xFF232736);
   static const textPrimary = Color(0xFFF0F1F5);
   static const textSecondary = Color(0xFFB0B5C8);
-  static const textDim = Color(0xFF8890A8);
+  static Color textDim = const Color(0xFF8890A8);
   static Color accent = AppStyle.standard.accent;
-  static const error = Color(0xFFE65A6B);
-  static const success = Color(0xFF5AE6A1);
-  static const warning = Color(0xFFE6A85A);
+  static Color error = const Color(0xFFE65A6B);
+  static Color success = const Color(0xFF5AE6A1);
+  static Color warning = const Color(0xFFE6A85A);
 
   // Engine colors — muted neon, same saturation/lightness family
-  static const detector = Color(0xFF6B8AFF);
-  static const flockBle = Color(0xFF9B6BFF);
-  static const flockWifi = Color(0xFFE66B9B);
-  static const foxhunter = Color(0xFF5AE6A1);
-  static const skySpy = Color(0xFF5AE6D6);
-  static const uniPwn = Color(0xFFE65A6B);
-  static const wardrive = Color(0xFFE6895A);
+  static Color detector = const Color(0xFF6B8AFF);
+  static Color flockBle = const Color(0xFF9B6BFF);
+  static Color flockWifi = const Color(0xFFE66B9B);
+  static Color foxhunter = const Color(0xFF5AE6A1);
+  static Color skySpy = const Color(0xFF5AE6D6);
+  static Color uniPwn = const Color(0xFFE65A6B);
+  static Color wardrive = const Color(0xFFE6895A);
 
   // Upload targets
-  static const wigle = Color(0xFFE6A85A);
-  static const wdgwars = Color(0xFF00E5FF);
-  static const wdgwarsAlt = Color(0xFFA855F7);
+  static Color wigle = const Color(0xFFE6A85A);
+  static Color wdgwars = const Color(0xFF00E5FF);
+  static Color wdgwarsAlt = const Color(0xFFA855F7);
 
   // GPS quality colors
-  static const gpsGood = Color(0xFF5AE6A1);
-  static const gpsFair = Color(0xFFE6A85A);
-  static const gpsPoor = Color(0xFFE65A6B);
-  static const gpsNone = Color(0xFF8890A8);
+  static Color gpsGood = const Color(0xFF5AE6A1);
+  static Color gpsFair = const Color(0xFFE6A85A);
+  static Color gpsPoor = const Color(0xFFE65A6B);
+  static Color gpsNone = const Color(0xFF8890A8);
+
+  static const _base = <String, Color>{
+    'error': Color(0xFFE65A6B),
+    'success': Color(0xFF5AE6A1),
+    'warning': Color(0xFFE6A85A),
+    'detector': Color(0xFF6B8AFF),
+    'flockBle': Color(0xFF9B6BFF),
+    'flockWifi': Color(0xFFE66B9B),
+    'foxhunter': Color(0xFF5AE6A1),
+    'skySpy': Color(0xFF5AE6D6),
+    'uniPwn': Color(0xFFE65A6B),
+    'wardrive': Color(0xFFE6895A),
+    'wigle': Color(0xFFE6A85A),
+    'wdgwars': Color(0xFF00E5FF),
+    'wdgwarsAlt': Color(0xFFA855F7),
+    'gpsGood': Color(0xFF5AE6A1),
+    'gpsFair': Color(0xFFE6A85A),
+    'gpsPoor': Color(0xFFE65A6B),
+    'gpsNone': Color(0xFF8890A8),
+  };
+
+  static double contrast(Color a, Color b) {
+    final la = a.computeLuminance(), lb = b.computeLuminance();
+    final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  static Color readableOnLight(Color c) {
+    const white = Color(0xFFFFFFFF);
+    var hsl = HSLColor.fromColor(c);
+    while (contrast(hsl.toColor(), white) < 4.5 && hsl.lightness > 0.05) {
+      hsl = hsl.withLightness(hsl.lightness - 0.02);
+    }
+    return hsl.toColor();
+  }
+
+  static Brightness? _applied;
+  static final Map<int, Color> _lightCache = {};
+
+  static Color themed(Color c) => _applied == Brightness.light
+      ? _lightCache.putIfAbsent(c.toARGB32(), () => readableOnLight(c))
+      : c;
+
+  static bool applyBrightness(Brightness b) {
+    if (_applied == b) return false;
+    _applied = b;
+    Color pick(String k) => b == Brightness.light ? readableOnLight(_base[k]!) : _base[k]!;
+    error = pick('error');
+    success = pick('success');
+    warning = pick('warning');
+    detector = pick('detector');
+    flockBle = pick('flockBle');
+    flockWifi = pick('flockWifi');
+    foxhunter = pick('foxhunter');
+    skySpy = pick('skySpy');
+    uniPwn = pick('uniPwn');
+    wardrive = pick('wardrive');
+    wigle = pick('wigle');
+    wdgwars = pick('wdgwars');
+    wdgwarsAlt = pick('wdgwarsAlt');
+    gpsGood = pick('gpsGood');
+    gpsFair = pick('gpsFair');
+    gpsPoor = pick('gpsPoor');
+    gpsNone = pick('gpsNone');
+    textDim = b == Brightness.light ? _lightTextDim : const Color(0xFF8890A8);
+    return true;
+  }
 
   static const _lightBackground = Color(0xFFF2F3F8);
   static const _lightSurface = Color(0xFFFFFFFF);
@@ -348,7 +415,7 @@ class AppTheme {
     border: border,
     textPrimary: textPrimary,
     textSecondary: textSecondary,
-    textDim: textDim,
+    textDim: Color(0xFF8890A8),
   );
 
   static ResolvedTheme of(BuildContext context) {

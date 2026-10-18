@@ -95,7 +95,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
           ),
           if (target != null)
             IconButton(
-              icon: const Icon(Icons.clear, color: AppTheme.error),
+              icon: Icon(Icons.clear, color: AppTheme.error),
               onPressed: _clearTarget,
               tooltip: 'Clear target',
             ),

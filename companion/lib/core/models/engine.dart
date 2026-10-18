@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:oui_spy/theme/app_theme.dart';
 
 /// All scan engines available in the OUI-SPY firmware.
 enum Engine {
@@ -16,12 +17,14 @@ enum Engine {
   pcap(
       'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF13A884), 0x80);
 
-  const Engine(this.label, this.description, this.color, this.bitmask);
+  const Engine(this.label, this.description, this.baseColor, this.bitmask);
 
   final String label;
   final String description;
-  final Color color;
+  final Color baseColor;
   final int bitmask;
+
+  Color get color => AppTheme.themed(baseColor);
 
   bool get isBle =>
       this == detector ||

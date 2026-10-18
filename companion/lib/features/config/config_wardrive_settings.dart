@@ -303,7 +303,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
       children: [
         Row(
           children: [
-            const Icon(Icons.language, size: 16, color: AppTheme.warning),
+            Icon(Icons.language, size: 16, color: AppTheme.warning),
             const SizedBox(width: 6),
             Text(
               'WIGLE',
@@ -324,7 +324,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.check_circle, size: 10, color: AppTheme.success),
+                    Icon(Icons.check_circle, size: 10, color: AppTheme.success),
                     const SizedBox(width: 4),
                     Text('LINKED', style: TextStyle(
                       color: AppTheme.success, fontSize: 8,
@@ -342,7 +342,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
           if (wigle.rateLimited) ...[
             const SizedBox(height: 8),
             Text(WigleApi.rateLimitMessage,
-                style: const TextStyle(color: AppTheme.error, fontSize: 11)),
+                style: TextStyle(color: AppTheme.error, fontSize: 11)),
           ],
           const SizedBox(height: 10),
           Row(
@@ -490,12 +490,12 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline, size: 14, color: AppTheme.error),
+                        Icon(Icons.error_outline, size: 14, color: AppTheme.error),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             wigle.error!,
-                            style: const TextStyle(color: AppTheme.error, fontSize: 10),
+                            style: TextStyle(color: AppTheme.error, fontSize: 10),
                           ),
                         ),
                       ],
@@ -647,7 +647,7 @@ class _WigleStatsCard extends StatelessWidget {
               _WigleStat(
                 icon: Icons.bluetooth, label: 'BT',
                 value: _formatCount(s.discoveredBt),
-                color: const Color(0xFF4A9EFF),
+                color: AppTheme.themed(const Color(0xFF4A9EFF)),
               ),
               _WigleStat(
                 icon: Icons.cell_tower, label: 'Cell',
@@ -761,10 +761,10 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
         children: [
           Row(
             children: [
-              const Icon(Icons.sports_esports, size: 16, color: AppTheme.wdgwars),
+              Icon(Icons.sports_esports, size: 16, color: AppTheme.wdgwars),
               const SizedBox(width: 6),
               ShaderMask(
-                shaderCallback: (r) => const LinearGradient(
+                shaderCallback: (r) => LinearGradient(
                   colors: [AppTheme.wdgwars, AppTheme.wdgwarsAlt],
                 ).createShader(r),
                 child: const Text(
@@ -786,7 +786,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: AppTheme.wdgwars.withValues(alpha: 0.4)),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.check_circle, size: 10, color: AppTheme.wdgwars),
@@ -840,7 +840,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
           ] else ...[
             Row(
               children: [
-                const Icon(Icons.key, size: 14, color: AppTheme.wdgwars),
+                Icon(Icons.key, size: 14, color: AppTheme.wdgwars),
                 const SizedBox(width: 6),
                 Text('API Key', style: TextStyle(
                   color: t.textPrimary, fontSize: 12, fontWeight: FontWeight.w600,
@@ -860,7 +860,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
               decoration: InputDecoration(
                 labelText: 'X-API-Key',
                 labelStyle: TextStyle(color: t.textDim, fontSize: 12),
-                prefixIcon: const Icon(Icons.vpn_key_outlined, size: 16, color: AppTheme.wdgwars),
+                prefixIcon: Icon(Icons.vpn_key_outlined, size: 16, color: AppTheme.wdgwars),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscureKey ? Icons.visibility_off : Icons.visibility,
@@ -880,7 +880,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppTheme.wdgwars),
+                  borderSide: BorderSide(color: AppTheme.wdgwars),
                 ),
               ),
             ),
@@ -918,12 +918,12 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline, size: 14, color: AppTheme.error),
+                    Icon(Icons.error_outline, size: 14, color: AppTheme.error),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         w.error!,
-                        style: const TextStyle(color: AppTheme.error, fontSize: 10),
+                        style: TextStyle(color: AppTheme.error, fontSize: 10),
                       ),
                     ),
                   ],
@@ -1011,7 +1011,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const SizedBox(width: 14, height: 14,
+            SizedBox(width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.wdgwars)),
             const SizedBox(width: 8),
             Text('Loading stats...', style: TextStyle(color: t.textDim, fontSize: 11)),
@@ -1031,7 +1031,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_circle, size: 20, color: AppTheme.wdgwars),
+              Icon(Icons.account_circle, size: 20, color: AppTheme.wdgwars),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1052,9 +1052,9 @@ class _WdgwarsStatsCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.emoji_events, size: 12, color: AppTheme.wdgwars),
+                      Icon(Icons.emoji_events, size: 12, color: AppTheme.wdgwars),
                       const SizedBox(width: 4),
-                      Text('#${s.rank}', style: const TextStyle(
+                      Text('#${s.rank}', style: TextStyle(
                         color: AppTheme.wdgwars, fontSize: 12,
                         fontWeight: FontWeight.w700, fontFamily: 'monospace',
                       )),
@@ -1074,13 +1074,13 @@ class _WdgwarsStatsCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.groups, size: 12, color: AppTheme.wdgwarsAlt),
+                      Icon(Icons.groups, size: 12, color: AppTheme.wdgwarsAlt),
                       const SizedBox(width: 4),
                       Text(
                         s.gangRole.isEmpty
                             ? s.gang
                             : '${s.gang} · ${s.gangRole.toUpperCase()}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.wdgwarsAlt,
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
@@ -1104,7 +1104,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
               ),
               _WigleStat(
                 icon: Icons.flight, label: 'Air',
-                value: _fmt(s.aircraft), color: const Color(0xFFc4b5fd),
+                value: _fmt(s.aircraft), color: AppTheme.themed(const Color(0xFFc4b5fd)),
               ),
               _WigleStat(
                 icon: Icons.hub, label: 'Mesh',
@@ -1129,7 +1129,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
               ),
               _WigleStat(
                 icon: Icons.shield, label: 'Reinforced',
-                value: _fmt(s.reinforced), color: const Color(0xFFc4b5fd),
+                value: _fmt(s.reinforced), color: AppTheme.themed(const Color(0xFFc4b5fd)),
               ),
               _WigleStat(
                 icon: Icons.toll, label: 'Credits',
@@ -1153,7 +1153,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Text(_fmt(s.total), style: const TextStyle(
+                      Text(_fmt(s.total), style: TextStyle(
                         color: AppTheme.wdgwars, fontSize: 18,
                         fontWeight: FontWeight.w700, fontFamily: 'monospace',
                       )),
@@ -1176,7 +1176,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        Text(_fmt(flockCams!), style: const TextStyle(
+                        Text(_fmt(flockCams!), style: TextStyle(
                           color: AppTheme.flockWifi, fontSize: 18,
                           fontWeight: FontWeight.w700, fontFamily: 'monospace',
                         )),

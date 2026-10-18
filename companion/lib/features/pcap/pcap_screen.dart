@@ -379,7 +379,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                     label: Text(isPaused ? 'RESUME' : 'PAUSE'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.warning,
-                      side: const BorderSide(color: AppTheme.warning),
+                      side: BorderSide(color: AppTheme.warning),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
@@ -472,11 +472,11 @@ class _StateCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.bolt, size: 13, color: AppTheme.warning),
+                  Icon(Icons.bolt, size: 13, color: AppTheme.warning),
                   const SizedBox(width: 4),
                   Text(
                     'AUTO',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.warning, fontSize: 10,
                       fontFamily: 'monospace', fontWeight: FontWeight.w700,
                       letterSpacing: 1,
@@ -1057,11 +1057,11 @@ class _AutoPcapCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 2),
                 child: Row(
                   children: [
-                    const Icon(Icons.hourglass_bottom, size: 12, color: AppTheme.warning),
+                    Icon(Icons.hourglass_bottom, size: 12, color: AppTheme.warning),
                     const SizedBox(width: 4),
                     Text(
                       'cooldown active — ${(cooldownRemainingMs / 1000).ceil()}s remaining',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.warning, fontSize: 10,
                         fontFamily: 'monospace',
                       ),

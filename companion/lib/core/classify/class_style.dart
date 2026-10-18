@@ -26,7 +26,7 @@ final _classColors = <SignatureClass, Color>{
   SignatureClass.other: AppTheme.textDim,
 };
 
-Color classColor(SignatureClass k) => _classColors[k] ?? AppTheme.textDim;
+Color classColor(SignatureClass k) => AppTheme.themed(_classColors[k] ?? AppTheme.textDim);
 
 IconData classIcon(SignatureClass c) => switch (c) {
       SignatureClass.finder => Icons.track_changes,

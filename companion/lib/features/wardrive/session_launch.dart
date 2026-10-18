@@ -25,6 +25,65 @@ bool targetEngineRunning(AppState app, WardriveTarget m) {
   };
 }
 
+class _SessionSourcesChip extends ConsumerWidget {
+  const _SessionSourcesChip();
+
+  static Color get _wifiColor => AppTheme.themed(const Color(0xFF6B8AFF));
+  static Color get _bleColor => AppTheme.themed(const Color(0xFF9B6BFF));
+
+  static List<Widget> _source(IconData icon, int mask, Color color) => [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 3),
+        if (mask & 0x01 != 0) Icon(Icons.wifi, size: 11, color: _wifiColor),
+        if (mask & 0x02 != 0) Icon(Icons.bluetooth, size: 11, color: _bleColor),
+      ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final app = ref.watch(appStateProvider);
+    final wd = ref.watch(wardriveProvider);
+    final phone = ref.watch(phoneBleSourceProvider);
+    final parts = <List<Widget>>[];
+    if (app.isManagerConnected) {
+      final self = AppState.canonicalNodeId(app.nodeId);
+      final n = app.liveKnownNodes.where((id) => id != self && !app.isManagerNode(id)).length;
+      parts.add([
+        Icon(Icons.hub, size: 13, color: AppTheme.success),
+        const SizedBox(width: 3),
+        Text('$n', style: TextStyle(color: AppTheme.success, fontSize: 11, fontWeight: FontWeight.w700)),
+      ]);
+    } else if (app.isConnected) {
+      parts.add(_source(Icons.memory, wd.radioBitmask, AppTheme.accent));
+    }
+    if (phone.scanning) {
+      parts.add(_source(Icons.smartphone, PhoneBleSource.canScanWifi ? phone.radioMask : 0x02, AppTheme.detector));
+    }
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: t.background,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: t.border, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < parts.length; i++) ...[
+            if (i > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: Text('·', style: TextStyle(color: t.textDim, fontSize: 11)),
+              ),
+            ...parts[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class SessionBar extends ConsumerWidget {
   const SessionBar({super.key});
 
@@ -128,21 +187,31 @@ class SessionBar extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  busy
-                      ? '${wd.radioTransition!.toUpperCase()}…'
-                      : switch (wd.state) {
-                          WardriveState.idle => 'SESSION IDLE',
-                          WardriveState.running => 'RUNNING',
-                          WardriveState.paused => 'PAUSED',
-                        },
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: wd.isActive ? Engine.wardrive.color : t.textDim,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
-                  ),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        busy
+                            ? '${wd.radioTransition!.toUpperCase()}…'
+                            : switch (wd.state) {
+                                WardriveState.idle => 'SESSION IDLE',
+                                WardriveState.running => 'RUNNING',
+                                WardriveState.paused => 'PAUSED',
+                              },
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: wd.isActive ? Engine.wardrive.color : t.textDim,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                    if (wd.isActive && !busy) ...[
+                      const SizedBox(width: 8),
+                      const Flexible(child: _SessionSourcesChip()),
+                    ],
+                  ],
                 ),
               ),
               if (!wd.isActive)
@@ -292,8 +361,13 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   final nodes = app.isManagerConnected
       ? (app.liveKnownNodes.where((id) => id != mgrId).toList()..sort())
       : <String>[];
+  final selfId = app.isConnected && !app.isManagerConnected
+      ? (mgrId.isNotEmpty ? mgrId : 'LOCAL')
+      : null;
+  if (selfId != null && phoneChoice) nodes.add(selfId);
   if (phoneChoice) nodes.add(BleManager.phoneNodeId);
   if (nodes.isEmpty) return true;
+  final wd = ref.read(wardriveProvider);
   final result = await showDialog<Map<String, int>>(
     context: context,
     builder: (_) => RadioRolePopup(
@@ -301,17 +375,20 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
       labelFor: app.labelForNode,
       initial: {
         for (final n in nodes)
-          n: n == BleManager.phoneNodeId ? phone.radioMask : app.wardriveRadioForNode(n),
+          n: n == BleManager.phoneNodeId
+              ? phone.radioMask
+              : n == selfId
+                  ? wd.radioBitmask
+                  : app.wardriveRadioForNode(n),
       },
     ),
   );
   if (result == null) return false;
   final phoneMask = result.remove(BleManager.phoneNodeId);
   if (phoneMask != null) phone.setRadioMask(phoneMask);
+  final selfMask = selfId == null ? null : result.remove(selfId);
+  if (selfMask != null) setWardriveRadio(ref, selfMask);
   if (result.isNotEmpty) await app.applyNodeRadioRoles(result);
-  if (!app.isManagerConnected && result.length == 1) {
-    setWardriveRadio(ref, result.values.first);
-  }
   return true;
 }
 
@@ -427,9 +504,9 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
     for (final n in widget.nodes) n: widget.initial[n] ?? 0x03,
   };
 
-  static const _wifiColor = Color(0xFF6B8AFF);
-  static const _bleColor = Color(0xFF9B6BFF);
-  static const _bothColor = Color(0xFF5AE6D6);
+  static Color get _wifiColor => AppTheme.themed(const Color(0xFF6B8AFF));
+  static Color get _bleColor => AppTheme.themed(const Color(0xFF9B6BFF));
+  static Color get _bothColor => AppTheme.themed(const Color(0xFF5AE6D6));
 
   static Color _radioColor(int mask) => switch (mask & 0x03) {
     0x01 => _wifiColor,
@@ -543,6 +620,9 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                         style: ButtonStyle(
                           visualDensity: VisualDensity.compact,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: WidgetStateProperty.all(
+                            const EdgeInsets.symmetric(horizontal: 4),
+                          ),
                           textStyle: WidgetStateProperty.all(
                             const TextStyle(
                               fontSize: 11,
@@ -554,6 +634,11 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                                 ? selColor.withValues(alpha: 0.22)
                                 : Colors.transparent,
                           ),
+                          foregroundColor: WidgetStateProperty.resolveWith(
+                            (states) => states.contains(WidgetState.selected)
+                                ? t.textPrimary
+                                : t.textSecondary,
+                          ),
                           side: WidgetStateProperty.all(
                             BorderSide(color: selColor.withValues(alpha: 0.45)),
                           ),
@@ -561,26 +646,15 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                         segments: const [
                           ButtonSegment(
                             value: 0x01,
-                            icon: Icon(Icons.wifi, size: 15, color: _wifiColor),
-                            label: Text('WiFi'),
+                            label: Text('WiFi', maxLines: 1, softWrap: false),
                           ),
                           ButtonSegment(
                             value: 0x02,
-                            icon: Icon(
-                              Icons.bluetooth,
-                              size: 15,
-                              color: _bleColor,
-                            ),
-                            label: Text('BLE'),
+                            label: Text('BLE', maxLines: 1, softWrap: false),
                           ),
                           ButtonSegment(
                             value: 0x03,
-                            icon: Icon(
-                              Icons.sensors,
-                              size: 15,
-                              color: _bothColor,
-                            ),
-                            label: Text('Both'),
+                            label: Text('Both', maxLines: 1, softWrap: false),
                           ),
                         ],
                         selected: {mask},
@@ -603,7 +677,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
         FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: AppTheme.accent,
-            foregroundColor: AppTheme.background,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
           ),
           onPressed: () => Navigator.pop(context, _roles),
           child: const Text('START'),

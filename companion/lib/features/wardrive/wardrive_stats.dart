@@ -23,7 +23,7 @@ class WardriveStats extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: t.background.withValues(alpha: 0.88),
+        color: Colors.transparent,
         border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: Column(
@@ -80,7 +80,7 @@ class WardriveStats extends ConsumerWidget {
           icon: Icons.flight,
           unique: stats.droneCount,
           total: null,
-          color: const Color(0xFF4AFFEA)
+          color: AppTheme.themed(const Color(0xFF4AFFEA))
         ),
       if (stats.detectorCount > 0)
         (

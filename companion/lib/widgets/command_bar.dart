@@ -26,8 +26,8 @@ final kPillPalette =<Color>[
 Color pillColor(int i) => kPillPalette[i % kPillPalette.length];
 
 final kPillAll =AppTheme.accent;
-const kPillBle = AppTheme.flockBle;
-const kPillWifi = AppTheme.wardrive;
+Color get kPillBle => AppTheme.flockBle;
+Color get kPillWifi => AppTheme.wardrive;
 
 (String, Color) wifiAuthMeta(int mode) => switch (mode) {
       0 => ('OPEN', AppTheme.error),

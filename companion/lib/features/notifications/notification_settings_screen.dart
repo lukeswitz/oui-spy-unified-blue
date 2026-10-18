@@ -37,7 +37,7 @@ class NotificationSettingsBody extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.warning_amber, color: AppTheme.warning, size: 18),
+                Icon(Icons.warning_amber, color: AppTheme.warning, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -60,7 +60,7 @@ class NotificationSettingsBody extends ConsumerWidget {
           icon: Icons.gps_fixed,
           label: 'Foxhunt Proximity',
           subtitle: 'Alert when target signal crosses thresholds',
-          color: const Color(0xFF4AFF8A),
+          color: AppTheme.themed(const Color(0xFF4AFF8A)),
           value: notif.foxhuntEnabled,
           onChanged: notif.setFoxhuntEnabled,
         ),

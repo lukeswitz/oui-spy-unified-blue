@@ -638,7 +638,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                   color: AppTheme.warning.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.bluetooth_disabled, size: 32, color: AppTheme.warning),
+                child: Icon(Icons.bluetooth_disabled, size: 32, color: AppTheme.warning),
               ),
               const SizedBox(height: 14),
               Text(
@@ -711,12 +711,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       icon: icon,
       label: label,
       subtitle: subtitle,
-      color: selected ? const Color(0xFF4AB8FF) : null,
+      color: selected ? AppTheme.themed(const Color(0xFF4AB8FF)) : null,
       onTap: () => ref.read(gpsProvider).setSource(source),
       trailing: Icon(
         selected ? Icons.check_circle : Icons.circle_outlined,
         size: 18,
-        color: selected ? const Color(0xFF4AB8FF) : AppTheme.textDim,
+        color: selected ? AppTheme.themed(const Color(0xFF4AB8FF)) : AppTheme.textDim,
       ),
     );
   }
@@ -735,7 +735,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: Icons.volume_up,
           label: 'Buzzer',
           subtitle: 'Audible alerts on detections',
-          color: const Color(0xFFFFB84A),
+          color: AppTheme.themed(const Color(0xFFFFB84A)),
           value: _buzzerEnabled,
           onChanged: (v) {
             setState(() => _buzzerEnabled = v);
@@ -751,7 +751,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             max: 255,
             divisions: 254,
             value: _buzzerVolume.toDouble(),
-            color: const Color(0xFFFFB84A),
+            color: AppTheme.themed(const Color(0xFFFFB84A)),
             onChanged: (v) {
               setState(() => _buzzerVolume = v.round());
               _writeHardwareConfig();
@@ -762,7 +762,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             icon: Icons.music_note,
             label: 'Alert sounds',
             subtitle: 'Compose melodies and assign them to detections',
-            color: const Color(0xFFFFB84A),
+            color: AppTheme.themed(const Color(0xFFFFB84A)),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => const AlertSoundsScreen(),
             )),
@@ -774,7 +774,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: Icons.lightbulb,
           label: 'Status LED',
           subtitle: 'Power and activity indicator',
-          color: const Color(0xFF4AFF8A),
+          color: AppTheme.themed(const Color(0xFF4AFF8A)),
           value: _ledEnabled,
           onChanged: (v) {
             setState(() => _ledEnabled = v);
@@ -789,7 +789,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           max: 255,
           divisions: 255,
           value: _neopixelBrightness.toDouble(),
-          color: const Color(0xFFB44AFF),
+          color: AppTheme.themed(const Color(0xFFB44AFF)),
           onChanged: (v) {
             setState(() => _neopixelBrightness = v.round());
             _writeHardwareConfig();
@@ -802,7 +802,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: _hwGps.active ? Icons.satellite_alt : Icons.satellite_alt_outlined,
           label: 'On-board GPS module',
           value: _hwGps.active ? 'FIX · ${_hwGps.satellites} sats' : 'NO FIX',
-          color: _hwGps.active ? const Color(0xFF4AFF8A) : const Color(0xFFFF6B6B),
+          color: _hwGps.active ? AppTheme.themed(const Color(0xFF4AFF8A)) : AppTheme.themed(const Color(0xFFFF6B6B)),
         ),
         ConfigInfoRow(
           icon: Icons.edit_location_alt,
@@ -811,8 +811,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               ? 'HARDWARE'
               : (_hwGps.fallback ? 'PHONE (FALLBACK)' : 'PHONE'),
           color: _hwGps.fallback
-              ? const Color(0xFFFFB84A)
-              : const Color(0xFF4AB8FF),
+              ? AppTheme.themed(const Color(0xFFFFB84A))
+              : AppTheme.themed(const Color(0xFF4AB8FF)),
         ),
         _gpsSourceRow(
           GpsSource.phone,
@@ -833,7 +833,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: Icons.lan,
           label: 'Extended Repo OUI set',
           subtitle: 'Double the OUIs, expect false postives.',
-          color: const Color(0xFFFF6B6B),
+          color: AppTheme.themed(const Color(0xFFFF6B6B)),
           value: _flockExtendedOui,
           onChanged: (v) {
             setState(() => _flockExtendedOui = v);
@@ -844,7 +844,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: Icons.fingerprint,
           label: 'Report OUI-only WiFi hits',
           subtitle: 'Report a WiFi device on a Flock OUI match alone, without a probe or other corroborating signal. More hits, more false positives.',
-          color: const Color(0xFFFF6B6B),
+          color: AppTheme.themed(const Color(0xFFFF6B6B)),
           value: _flockAllowOuiOnly,
           onChanged: (v) {
             setState(() => _flockAllowOuiOnly = v);
@@ -858,7 +858,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: Icons.cloud_off,
           label: 'Keep scanning while disconnected (EXPERIMENTAL)',
           subtitle: 'EXPERIMENTAL — may be unstable. Node keeps scanning when the app is closed; detections import on reconnect.',
-          color: const Color(0xFF4AB8FF),
+          color: AppTheme.themed(const Color(0xFF4AB8FF)),
           value: _offlineScanEnabled,
           onChanged: (v) {
             setState(() => _offlineScanEnabled = v);
@@ -870,7 +870,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             icon: Icons.my_location,
             label: 'Tag away detections with last GPS',
             subtitle: 'Detections seen while away get the phone\'s last-known location (approximate).',
-            color: const Color(0xFF4AB8FF),
+            color: AppTheme.themed(const Color(0xFF4AB8FF)),
             value: _offlineGpsTag,
             onChanged: (v) {
               setState(() => _offlineGpsTag = v);
@@ -942,7 +942,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       await ref.read(bleManagerProvider).wifiDisconnect();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WiFi disconnected'), backgroundColor: AppTheme.warning),
+        SnackBar(content: const Text('WiFi disconnected'), backgroundColor: AppTheme.warning),
       );
     } catch (e) {
       if (!mounted) return;
@@ -981,7 +981,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       _passController.clear();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WiFi credentials wiped'), backgroundColor: AppTheme.error),
+        SnackBar(content: const Text('WiFi credentials wiped'), backgroundColor: AppTheme.error),
       );
     } catch (e) {
       if (!mounted) return;
@@ -996,15 +996,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final pass = _passController.text;
     if (ssid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('SSID required'), backgroundColor: AppTheme.warning),
+        SnackBar(content: const Text('SSID required'), backgroundColor: AppTheme.warning),
       );
       return;
     }
     final ble = ref.read(bleManagerProvider);
     if (ble.wifiConfig == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Firmware too old — no WiFi config characteristic. Flash latest via webflasher.'),
+        SnackBar(
+          content: const Text('Firmware too old — no WiFi config characteristic. Flash latest via webflasher.'),
           backgroundColor: AppTheme.error,
         ),
       );
@@ -1015,8 +1015,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       DebugLog.log('CONFIG: WiFi creds pushed: $ssid');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved. Connecting to AP (up to 20s)...'),
+        SnackBar(
+          content: const Text('Saved. Connecting to AP (up to 20s)...'),
           backgroundColor: AppTheme.success,
         ),
       );
@@ -1039,8 +1039,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved, but could not connect — verify creds/range'),
+        SnackBar(
+          content: const Text('Saved, but could not connect — verify creds/range'),
           backgroundColor: AppTheme.warning,
         ),
       );
@@ -1261,7 +1261,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           if (id != 'LOCAL' && id != appState.nodeId)
             TextButton(
               onPressed: () => Navigator.pop(ctx, '__forget__'),
-              child: const Text('FORGET', style: TextStyle(color: AppTheme.error)),
+              child: Text('FORGET', style: TextStyle(color: AppTheme.error)),
             ),
           if (appState.nodeLabels.containsKey(id))
             TextButton(

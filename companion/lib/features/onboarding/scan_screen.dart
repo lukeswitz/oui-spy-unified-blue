@@ -289,7 +289,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   color: AppTheme.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(_error!, style: const TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: 'monospace')),
+                child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: 'monospace')),
               ),
             ),
 

@@ -164,7 +164,7 @@ class _CollectionStatsView extends ConsumerWidget {
             _MiniStatTile(icon: Icons.wifi, label: 'WIFI',
                 value: _fmt(stats.wifiUnique), color: AppTheme.wardrive),
             _MiniStatTile(icon: Icons.bluetooth, label: 'BLE',
-                value: _fmt(stats.bleUnique), color: const Color(0xFF4A9EFF)),
+                value: _fmt(stats.bleUnique), color: AppTheme.themed(const Color(0xFF4A9EFF))),
             _MiniStatTile(icon: Icons.router, label: 'SSIDS',
                 value: _fmt(stats.ssidCount), color: AppTheme.skySpy),
             _MiniStatTile(icon: Icons.route, label: 'SESSIONS',

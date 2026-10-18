@@ -138,7 +138,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('CLEAR', style: TextStyle(color: AppTheme.error)),
+            child: Text('CLEAR', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -1100,9 +1100,9 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                         Navigator.pop(ctx);
                         _startFoxhunt(det);
                       },
-                      icon: const Icon(Icons.gps_fixed, size: 14,
+                      icon: Icon(Icons.gps_fixed, size: 14,
                           color: AppTheme.foxhunter),
-                      label: const Text('Foxhunt', style: TextStyle(
+                      label: Text('Foxhunt', style: TextStyle(
                         color: AppTheme.foxhunter, fontSize: 11,
                       )),
                     ),

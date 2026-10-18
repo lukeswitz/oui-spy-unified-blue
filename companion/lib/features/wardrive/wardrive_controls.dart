@@ -21,7 +21,7 @@ class _IdleControls extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: th.background.withValues(alpha: 0.92),
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: th.border, width: 0.5),
           ),
@@ -29,7 +29,7 @@ class _IdleControls extends StatelessWidget {
             children: [
               Icon(Icons.straighten, size: 12, color: th.textDim),
               const SizedBox(width: 6),
-              Text('DIST', style: TextStyle(
+              Text('DIST MARKERS', style: TextStyle(
                 color: th.textDim, fontSize: 8,
                 fontWeight: FontWeight.w600, letterSpacing: 1,
               )),
@@ -189,7 +189,7 @@ class _IconBtn extends StatelessWidget {
           decoration: BoxDecoration(
             color: active
                 ? AppTheme.accent.withValues(alpha: 0.18)
-                : t.surface.withValues(alpha: 0.92),
+                : Colors.transparent,
             shape: BoxShape.circle,
             border: Border.all(
               color: active
@@ -225,7 +225,6 @@ class _CompassResetBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
     return Tooltip(
       message: 'Tap to reset north up',
       child: Material(
@@ -237,7 +236,7 @@ class _CompassResetBtn extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: t.surface.withValues(alpha: 0.95),
+              color: Colors.transparent,
               shape: BoxShape.circle,
               border: Border.all(
                 color: AppTheme.accent.withValues(alpha: 0.55),
@@ -360,13 +359,12 @@ class _LayerLoadingPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!alprLoading && !territoriesLoading) return const SizedBox.shrink();
-    final t = AppTheme.of(context);
     final color = alprLoading ? AppTheme.flockWifi : AppTheme.wdgwars;
     final label = alprLoading ? 'Loading ALPRs' : 'Loading territories';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: t.surface.withValues(alpha: 0.9),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),
@@ -490,7 +488,7 @@ class _MapStyleButton extends StatelessWidget {
               ),
               const Spacer(),
               if (df.loading)
-                const SizedBox(
+                SizedBox(
                   width: 12,
                   height: 12,
                   child: CircularProgressIndicator(
@@ -548,7 +546,7 @@ class _MapStyleButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: t.surface.withValues(alpha: 0.9),
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: t.border),
         ),
@@ -584,7 +582,7 @@ class _FocusedDetectionChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: t.surface.withValues(alpha: 0.92),
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: detection.engine.color.withValues(alpha: 0.6)),
           ),
@@ -647,7 +645,7 @@ class _ClassGroupChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: t.surface.withValues(alpha: 0.92),
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppTheme.warning.withValues(alpha: 0.6)),
           ),
@@ -697,7 +695,7 @@ class _DetectionList extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(maxHeight: 100),
       decoration: BoxDecoration(
-        color: t.background.withValues(alpha: 0.92),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: t.border),
       ),
@@ -751,7 +749,7 @@ class _FeedToggle extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         decoration: BoxDecoration(
-          color: t.background.withValues(alpha: 0.92),
+          color: Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: t.border),
         ),

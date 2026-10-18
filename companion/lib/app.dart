@@ -134,13 +134,20 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
     final themeMode = ref.watch(themeModeProvider);
     final style = ref.watch(appStyleProvider);
     ref.watch(use24HourTimeProvider); // loads AppTime.use24Hour at startup
-    if (AppTheme.accent != style.accent) {
-      AppTheme.accent = style.accent;
+    final fixed = style.brightness;
+    final effective = fixed ??
+        switch (themeMode) {
+          ThemeMode.light => Brightness.light,
+          ThemeMode.dark => Brightness.dark,
+          ThemeMode.system => WidgetsBinding.instance.platformDispatcher.platformBrightness,
+        };
+    final accentChanged = AppTheme.accent != style.accent;
+    if (accentChanged) AppTheme.accent = style.accent;
+    if (AppTheme.applyBrightness(effective) | accentChanged) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) (context as Element).visitChildren(_rebuildAll);
       });
     }
-    final fixed = style.brightness;
     return MaterialApp.router(
       title: 'OUI-SPY',
       theme: AppTheme.themeFor(style, fixed ?? Brightness.light),

@@ -166,7 +166,7 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
     final actions = [
       IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
       IconButton(
-        icon: const Icon(Icons.delete_sweep, color: AppTheme.error),
+        icon: Icon(Icons.delete_sweep, color: AppTheme.error),
         tooltip: 'Delete all',
         onPressed: _confirmDeleteAll,
       ),
@@ -228,8 +228,8 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                         leading: Icon(
                           isBle ? Icons.bluetooth : Icons.wifi,
                           color: isBle
-                              ? const Color(0xFFB44AFF)
-                              : const Color(0xFF4AB4FF),
+                              ? AppTheme.themed(const Color(0xFFB44AFF))
+                              : AppTheme.themed(const Color(0xFF4AB4FF)),
                         ),
                         title: Row(
                           children: [
@@ -255,7 +255,7 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                                   ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'LIVE',
                                   style: TextStyle(
                                     color: AppTheme.success,
@@ -283,7 +283,7 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                               onPressed: () => _share(e.file),
                             ),
                             IconButton(
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.delete_outline,
                                 size: 18,
                                 color: AppTheme.error,

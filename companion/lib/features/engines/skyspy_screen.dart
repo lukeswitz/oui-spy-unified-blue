@@ -108,11 +108,11 @@ class _DroneRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.flight, color: AppTheme.skySpy, size: 16),
+              Icon(Icons.flight, color: AppTheme.skySpy, size: 16),
               const SizedBox(width: 8),
               Expanded(child: Text(
                 group.uavId,
-                style: const TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'monospace'),
+                style: TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'monospace'),
               )),
               Text('${detection.rssi} dBm',
                   style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),

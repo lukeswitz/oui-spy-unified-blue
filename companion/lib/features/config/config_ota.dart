@@ -631,7 +631,7 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('FLASH ANYWAY', style: TextStyle(color: AppTheme.error)),
+              child: Text('FLASH ANYWAY', style: TextStyle(color: AppTheme.error)),
             ),
           ],
         ),
