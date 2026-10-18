@@ -117,7 +117,7 @@ static const uint8_t     kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 static void sendAckPacket(const MeshCommandPacket* cmd);
 static void sendOneSweep(const uint8_t* encrypted, size_t encLen);
-static void sendOnRendezvous(const uint8_t* data, size_t len);
+static bool sendOnRendezvous(const uint8_t* data, size_t len);
 static void retryTaskFn(void* arg);
 
 static volatile bool      pendingInviteApply = false;
@@ -171,12 +171,29 @@ static bool txDedupCheck(uint8_t engine_id, const uint8_t mac[6], uint8_t channe
     return false;
 }
 
+static void txDedupForget(uint8_t engine_id, const uint8_t mac[6], uint8_t channel) {
+    uint8_t buf[8] = { engine_id, channel, mac[0],mac[1],mac[2],mac[3],mac[4],mac[5] };
+    uint32_t h = fnv1a(buf, sizeof(buf));
+    for (int i = 0; i < MESH_TX_DEDUP_SLOTS; i++) {
+        if (txDedup[i].hash == h) { txDedup[i].hash = 0; txDedup[i].ts = 0; }
+    }
+}
+
 struct MeshTxItem {
     uint16_t len;
     uint8_t  data[MESH_TX_MAX_LEN];
 };
 static QueueHandle_t meshTxQueue = NULL;
 static TaskHandle_t  meshTxTaskHandle = NULL;
+
+#ifdef OUISPY_ROLE_MANAGER
+#define MGR_BATCH_QUEUE_DEPTH 14
+struct MgrBatchItem {
+    uint16_t len;
+    uint8_t  data[sizeof(MeshDetectionBatchPacket)];
+};
+static QueueHandle_t mgrBatchQueue = NULL;
+#endif
 static void meshTxTaskFn(void* arg);
 static bool enqueueTx(const uint8_t* data, size_t len);
 
@@ -191,10 +208,16 @@ typedef struct {
     uint8_t namelen;
     char    name[MESH_DET_REC_NAME_MAX];
     uint8_t ielen;
-    uint8_t ie[MESH_DET_REC_IE_MAX];
+    uint8_t ie[MESH_DET_REC_ADV_MAX];
 } DetRec;
 static QueueHandle_t detRecQueue = NULL;
 static void flushDetBatches(void);
+
+static bool detRecBacklogHigh(void) {
+    if (!detRecQueue) return false;
+    UBaseType_t used = uxQueueMessagesWaiting(detRecQueue);
+    return used > 0 && uxQueueSpacesAvailable(detRecQueue) <= used;
+}
 #ifdef OUISPY_NETCOUNT
 static void ncInjectTaskFn(void* arg);
 #endif
@@ -1077,61 +1100,19 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     if (plainLen >= offsetof(MeshDetectionBatchPacket, data) &&
         (plainBuf[0] == MESH_PKT_DETECTION_BATCH || plainBuf[0] == MESH_PKT_DETECTION_BATCH_IE)) {
 #ifdef OUISPY_ROLE_MANAGER
-        MeshDetectionBatchPacket b;
-        size_t cp = plainLen <= sizeof(b) ? plainLen : sizeof(b);
-        memcpy(&b, plainBuf, cp);
-        if (memcmp(b.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
-        size_t dataLen = plainLen - offsetof(MeshDetectionBatchPacket, data);
-        if (dataLen > sizeof(b.data)) dataLen = sizeof(b.data);
-        const bool withIe = b.pkt_type == MESH_PKT_DETECTION_BATCH_IE;
-        size_t off = 0; uint32_t got = 0;
-        for (uint8_t i = 0; i < b.count && off + 11 <= dataLen; i++) {
-            const uint8_t* p = b.data + off;
-            uint8_t nl = p[10];
-            if (off + 11 + nl > dataLen) break;
-            uint8_t il = 0;
-            if (withIe) {
-                if (off + 12 + nl > dataLen) break;
-                il = p[11 + nl];
-                if (off + 12 + nl + il > dataLen) break;
+        MgrBatchItem item;
+        item.len = (uint16_t)(plainLen <= sizeof(item.data) ? plainLen : sizeof(item.data));
+        memcpy(item.data, plainBuf, item.len);
+        const MeshDetectionBatchPacket* hdr = (const MeshDetectionBatchPacket*)item.data;
+        if (memcmp(hdr->source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        recordLiveSeen(hdr->source_node_id);
+        if (!mgrBatchQueue || xQueueSend(mgrBatchQueue, &item, 0) != pdTRUE) {
+            if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+                s.rx_errors++;
+                memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+                xSemaphoreGive(meshMutex);
             }
-            DetectionEvent evt = {};
-            memcpy(evt.source_node_id, b.source_node_id, MESH_NODE_ID_LEN);
-            evt.engine_id = ENGINE_WARDRIVE;
-            memcpy(evt.mac, p, 6);
-            evt.rssi    = (int8_t)p[6];
-            evt.channel = p[7];
-            evt.method  = p[8];
-            evt.ext.wardrive.auth_mode = p[9];
-            if (evt.channel == 0) {
-                size_t c = nl < sizeof(evt.ext.wardrive.device_name) - 1
-                             ? nl : sizeof(evt.ext.wardrive.device_name) - 1;
-                memcpy(evt.ext.wardrive.device_name, p + 11, c);
-            } else {
-                size_t c = nl < sizeof(evt.ext.wardrive.ssid) - 1
-                             ? nl : sizeof(evt.ext.wardrive.ssid) - 1;
-                memcpy(evt.ext.wardrive.ssid, p + 11, c);
-            }
-            if (il && evt.method == METHOD_WIFI_AP) {
-                uint8_t c = il < sizeof(evt.ext.wardrive.adv) ? il : sizeof(evt.ext.wardrive.adv);
-                c -= c % 3;
-                memcpy(evt.ext.wardrive.adv, p + 12 + nl, c);
-                evt.ext.wardrive.adv_len = c;
-            }
-#ifdef OUISPY_NETCOUNT
-            if (evt.channel != 0) ncRecordWifiMac(evt.mac);
-#else
-            pushDetection(&evt);
-#endif
-            off += 11 + nl + (withIe ? 1 + il : 0);
-            got++;
-        }
-        recordLiveSeen(b.source_node_id);
-        if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-            MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
-            s.rx_count += got;
-            memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
-            xSemaphoreGive(meshMutex);
         }
 #endif
         return;
@@ -1193,6 +1174,72 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         xSemaphoreGive(meshMutex);
     }
 }
+
+#ifdef OUISPY_ROLE_MANAGER
+bool meshMgrDrainBatch(void (*emit)(const DetectionEvent*)) {
+    MgrBatchItem item;
+    if (!mgrBatchQueue || xQueueReceive(mgrBatchQueue, &item, 0) != pdTRUE) return false;
+    const MeshDetectionBatchPacket* b = (const MeshDetectionBatchPacket*)item.data;
+    if (item.len < offsetof(MeshDetectionBatchPacket, data)) return true;
+    size_t dataLen = item.len - offsetof(MeshDetectionBatchPacket, data);
+    if (dataLen > sizeof(b->data)) dataLen = sizeof(b->data);
+    const bool withIe = b->pkt_type == MESH_PKT_DETECTION_BATCH_IE;
+    size_t off = 0; uint32_t got = 0;
+    for (uint8_t i = 0; i < b->count && off + 11 <= dataLen; i++) {
+        const uint8_t* p = b->data + off;
+        uint8_t nl = p[10];
+        if (off + 11 + nl > dataLen) break;
+        uint8_t il = 0;
+        if (withIe) {
+            if (off + 12 + nl > dataLen) break;
+            il = p[11 + nl];
+            if (off + 12 + nl + il > dataLen) break;
+        }
+        DetectionEvent evt = {};
+        memcpy(evt.source_node_id, b->source_node_id, MESH_NODE_ID_LEN);
+        evt.engine_id = ENGINE_WARDRIVE;
+        memcpy(evt.mac, p, 6);
+        evt.rssi    = (int8_t)p[6];
+        evt.channel = p[7];
+        evt.method  = p[8];
+        evt.ext.wardrive.auth_mode = p[9];
+        if (evt.channel == 0) {
+            size_t c = nl < sizeof(evt.ext.wardrive.device_name) - 1
+                         ? nl : sizeof(evt.ext.wardrive.device_name) - 1;
+            memcpy(evt.ext.wardrive.device_name, p + 11, c);
+        } else {
+            size_t c = nl < sizeof(evt.ext.wardrive.ssid) - 1
+                         ? nl : sizeof(evt.ext.wardrive.ssid) - 1;
+            memcpy(evt.ext.wardrive.ssid, p + 11, c);
+        }
+        if (il && evt.method == METHOD_WIFI_AP) {
+            uint8_t c = il < sizeof(evt.ext.wardrive.adv) ? il : sizeof(evt.ext.wardrive.adv);
+            c -= c % 3;
+            memcpy(evt.ext.wardrive.adv, p + 12 + nl, c);
+            evt.ext.wardrive.adv_len = c;
+        } else if (il && evt.channel == 0) {
+            uint8_t c = il < sizeof(evt.ext.wardrive.adv) ? il : sizeof(evt.ext.wardrive.adv);
+            memcpy(evt.ext.wardrive.adv, p + 12 + nl, c);
+            evt.ext.wardrive.adv_len = c;
+        }
+#ifdef OUISPY_NETCOUNT
+        if (evt.channel != 0) ncRecordWifiMac(evt.mac);
+        (void)emit;
+#else
+        emit(&evt);
+#endif
+        off += 11 + nl + (withIe ? 1 + il : 0);
+        got++;
+    }
+    if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
+        s.rx_count += got;
+        memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
+        xSemaphoreGive(meshMutex);
+    }
+    return true;
+}
+#endif
 
 #ifndef OUISPY_ROLE_MANAGER
 struct MeshRxItem {
@@ -1409,7 +1456,8 @@ static void meshSchedTaskFn(void* arg) {
         if (!sliceOn && !reacquire) { g_lastHomeMs = millis(); continue; }
         uint32_t gap = (uint32_t)(millis() - g_lastHomeMs);
         if (sliceOn && gap < MESH_HOME_MAX_GAP_MS &&
-            meshMgrSilenceMs() < MESH_MGR_SILENCE_FORCE_MS) continue;
+            meshMgrSilenceMs() < MESH_MGR_SILENCE_FORCE_MS &&
+            !detRecBacklogHigh()) continue;
         if (reacquire && !probe && gap < MESH_REACQUIRE_MS) continue;
         g_meshWindow = true;
         g_meshRxWin++;
@@ -1427,6 +1475,7 @@ static void meshSchedTaskFn(void* arg) {
             if (el >= (probe ? MESH_PROBE_WINDOW_MS : MESH_RX_WINDOW_MS)) break;
             if (el >= MESH_RX_MIN_MS && meshTxQueue &&
                 uxQueueMessagesWaiting(meshTxQueue) == 0 &&
+                (!detRecQueue || uxQueueMessagesWaiting(detRecQueue) == 0) &&
                 meshMgrSilenceMs() < MESH_MGR_SILENCE_FORCE_MS) break;
             vTaskDelay(pdMS_TO_TICKS(20));
         }
@@ -1466,6 +1515,12 @@ void meshInit(void) {
     if (!meshTxQueue) {
         Serial.println("[MESH] tx queue create FAIL");
     }
+#ifdef OUISPY_ROLE_MANAGER
+    mgrBatchQueue = xQueueCreate(MGR_BATCH_QUEUE_DEPTH, sizeof(MgrBatchItem));
+    if (!mgrBatchQueue) {
+        Serial.println("[MESH] mgr batch queue create FAIL");
+    }
+#endif
 #ifndef OUISPY_ROLE_MANAGER
     meshRxQueue = MESH_QUEUE_CREATE(8, sizeof(MeshRxItem));
     if (!meshRxQueue) {
@@ -1745,10 +1800,18 @@ void meshEnqueueWardriveRecord(const DetectionEvent* evt) {
         il -= il % 3;
         r.ielen = il;
         memcpy(r.ie, evt->ext.wardrive.adv, il);
+    } else if (evt->engine_id == ENGINE_WARDRIVE && evt->channel == 0) {
+        uint8_t il = evt->ext.wardrive.adv_len;
+        if (il > MESH_DET_REC_ADV_MAX) il = MESH_DET_REC_ADV_MAX;
+        r.ielen = il;
+        memcpy(r.ie, evt->ext.wardrive.adv, il);
     }
 
-    if (xQueueSend(detRecQueue, &r, 0) == pdTRUE && meshTxTaskHandle)
-        xTaskNotifyGive(meshTxTaskHandle);
+    if (xQueueSend(detRecQueue, &r, 0) != pdTRUE) {
+        txDedupForget(evt->engine_id, evt->mac, evt->channel);
+        return;
+    }
+    if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
 #else
     (void)evt;
 #endif
@@ -1879,7 +1942,10 @@ void meshBroadcastDetection(const DetectionEvent* evt, bool spooled) {
         return;
     }
 
-    sendOnRendezvous(encrypted, encLen);
+    if (!sendOnRendezvous(encrypted, encLen)) {
+        if (!spooled) txDedupForget(evt->engine_id, evt->mac, evt->channel);
+        return;
+    }
     esp_err_t result = ESP_OK;
 
     if (result == ESP_OK) {
@@ -1912,8 +1978,8 @@ static bool enqueueTx(const uint8_t* data, size_t len) {
     return true;
 }
 
-static void sendOnRendezvous(const uint8_t* data, size_t len) {
-    enqueueTx(data, len);
+static bool sendOnRendezvous(const uint8_t* data, size_t len) {
+    return enqueueTx(data, len);
 }
 
 static void meshTxTaskFn(void* arg) {

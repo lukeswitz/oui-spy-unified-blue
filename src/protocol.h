@@ -470,6 +470,7 @@ static inline uint8_t ouispyBoardCode(void) {
 
 #define MESH_DET_REC_NAME_MAX  32
 #define MESH_DET_REC_IE_MAX    30
+#define MESH_DET_REC_ADV_MAX   31
 #define MESH_DET_BATCH_BUDGET  215
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;                          // MESH_PKT_DETECTION_BATCH
@@ -659,7 +660,9 @@ static inline bool pushDetection(const DetectionEvent* evt) {
 #if defined(OUISPY_ENGINE_DIAG) || defined(OUISPY_ENGINE_MATRIX)
     if (evt && evt->engine_id < ENGINE_COUNT) g_diagDetCount[evt->engine_id]++;
 #endif
+#ifndef OUISPY_ROLE_MANAGER
     if (uxQueueSpacesAvailable(detectionQueue) <= DETQ_ISR_RESERVE) return false;
+#endif
     return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(2)) == pdTRUE;
 }
 

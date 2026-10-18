@@ -35,7 +35,8 @@ volatile bool    hwAlertsSuppressed = false;
 static void detectionNotifyTask(void*) {
     DetectionEvent evt;
     for (;;) {
-        if (xQueueReceive(detectionQueue, &evt, portMAX_DELAY) == pdTRUE) {
+        bool batch = meshMgrDrainBatch(bleGattNotifyDetection);
+        if (xQueueReceive(detectionQueue, &evt, batch ? 0 : pdMS_TO_TICKS(10)) == pdTRUE) {
             bleGattNotifyDetection(&evt);
 #ifdef OUISPY_PCAP_SELFTEST
             Serial.printf("[RELAY] det eng=%u src=%.4s mac=%02x:%02x:%02x:%02x:%02x:%02x -> app(ble=%d)\n",
@@ -133,7 +134,7 @@ void setup() {
 
     wifiStaSetEnabled(false);
 
-    detectionQueue  = xQueueCreate(40, sizeof(DetectionEvent));
+    detectionQueue  = xQueueCreate(20, sizeof(DetectionEvent));
     engineCmdQueue  = xQueueCreate(8,  sizeof(EngineCommand));
     peerStatusQueue = xQueueCreate(MESH_PEER_STATUS_QUEUE_DEPTH, sizeof(MeshStatusPacket));
     if (!detectionQueue || !engineCmdQueue || !peerStatusQueue) {
