@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -82,6 +83,7 @@ class DeflockProvider extends ChangeNotifier {
   final Map<int, AlprNode> _byId = {};
   bool _showAlpr = false;
   bool _loading = false;
+  CancelToken? _cancel;
   Timer? _persistTimer;
   String? _error;
 
@@ -104,6 +106,7 @@ class DeflockProvider extends ChangeNotifier {
 
   Future<void> setShowAlpr(bool on) async {
     _showAlpr = on;
+    if (!on) _cancel?.cancel();
     await _prefs.setBool(_keyShow, on);
     notifyListeners();
   }
@@ -152,11 +155,12 @@ class DeflockProvider extends ChangeNotifier {
 
     _loading = true;
     _error = null;
+    final cancel = _cancel = CancelToken();
     notifyListeners();
 
     try {
       final union = _unionOf(missing);
-      final fetched = await _api.fetchBounds(union);
+      final fetched = await _api.fetchBounds(union, cancel: cancel);
       final stamp = DateTime.now();
       final buckets = {for (final k in missing) k: <AlprNode>[]};
       for (final n in fetched) {
@@ -170,7 +174,11 @@ class DeflockProvider extends ChangeNotifier {
     } on DeflockApiException catch (e) {
       _error = e.message;
       DebugLog.log('DEFLOCK: fetch failed: ${e.message}');
+    } on DioException catch (e) {
+      if (!CancelToken.isCancel(e)) rethrow;
+      DebugLog.log('DEFLOCK: fetch canceled (layer off)');
     } finally {
+      _cancel = null;
       _loading = false;
       notifyListeners();
     }

@@ -51,33 +51,42 @@ class _PhoneScanBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final src = ref.watch(phoneBleSourceProvider);
-    if (!src.active) return const SizedBox.shrink();
     final t = AppTheme.of(context);
+    final on = src.active;
+    final status = !on
+        ? 'Off'
+        : src.scanning
+            ? 'Scanning now'
+            : 'Runs while the board is scanning';
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      padding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
       decoration: BoxDecoration(
-        color: AppTheme.detector.withValues(alpha: 0.12),
+        color: on ? AppTheme.detector.withValues(alpha: 0.12) : t.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.detector.withValues(alpha: 0.4)),
+        border: Border.all(
+            color: on ? AppTheme.detector.withValues(alpha: 0.4) : t.border),
       ),
       child: Row(
         children: [
-          const Icon(Icons.bluetooth_searching, size: 20, color: AppTheme.detector),
+          Icon(src.scanning ? Icons.bluetooth_searching : Icons.bluetooth,
+              size: 20, color: on ? AppTheme.detector : t.textDim),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('This phone is scanning for nearby devices',
-                style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
-          ),
-          FilledButton.icon(
-            onPressed: () => src.setEnabled(false),
-            icon: const Icon(Icons.stop, size: 18),
-            label: const Text('Stop'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.error,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(0, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Phone Bluetooth scan',
+                    style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(status, style: TextStyle(color: t.textDim, fontSize: 11)),
+              ],
             ),
+          ),
+          Switch(
+            value: on,
+            activeTrackColor: AppTheme.detector,
+            onChanged: src.setEnabled,
           ),
         ],
       ),

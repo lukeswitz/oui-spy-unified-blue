@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,9 +13,16 @@ class _FakeApi extends DeflockApi {
   int calls = 0;
 
   @override
-  Future<List<AlprNode>> fetchBounds(GeoBounds bounds) async {
+  Future<List<AlprNode>> fetchBounds(GeoBounds bounds, {CancelToken? cancel}) async {
     calls++;
     return nodes.where((n) => bounds.contains(n.position)).toList();
+  }
+}
+
+class _HangingApi extends DeflockApi {
+  @override
+  Future<List<AlprNode>> fetchBounds(GeoBounds bounds, {CancelToken? cancel}) async {
+    throw await cancel!.whenCancel;
   }
 }
 
@@ -150,6 +158,18 @@ void main() {
         osmContributionAllowed(
             FlockConfidence.verified, AlprMapVerdict.unknown),
         isFalse);
+  });
+
+  test('turning the layer off cancels an in-flight fetch', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final p = DeflockProvider(prefs, api: _HangingApi());
+    await p.setShowAlpr(true);
+    final f = p.ensureAround(0.01, 0.01);
+    expect(p.loading, isTrue);
+    await p.setShowAlpr(false);
+    await f;
+    expect(p.loading, isFalse);
+    expect(p.error, isNull);
   });
 
   test('OSM note link points at the detection position', () {

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -154,12 +155,25 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   bool get active => _active;
 
+  bool _boardAllows = true;
+  bool get scanning => _active && _boardAllows;
+
   void setActive(bool on) {
     if (on == _active) return;
     _active = on;
+    _apply();
+  }
+
+  void setBoardAllows(bool allow) {
+    if (allow == _boardAllows) return;
+    _boardAllows = allow;
+    _apply();
+  }
+
+  void _apply() {
     _timer?.cancel();
     _timer = null;
-    if (on) {
+    if (scanning) {
       _kick();
       _timer = Timer.periodic(scanEvery, (_) => _kick());
     }
@@ -173,7 +187,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   Future<void> _kick() async {
-    if (!_active || FlutterBluePlus.isScanningNow) return;
+    if (!scanning || FlutterBluePlus.isScanningNow) return;
     if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
     try {
       await FlutterBluePlus.startScan(timeout: scanWindow);
@@ -183,7 +197,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   void _onResults(List<ScanResult> results) {
-    if (!_active) return;
+    if (!scanning) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final fix = here?.call();
     for (final r in results) {
@@ -421,6 +435,9 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
     return p == null ? null : GpsSample(0, p.latitude, p.longitude);
   });
   SharedPreferences.getInstance().then((p) => src.setActive(p.getBool(DeviceRegistry.phoneScanPref) ?? false));
+  bool boardAllows(AppState s) => !s.isConnected || s.activeEngines != 0;
+  src.setBoardAllows(boardAllows(ref.read(appStateProvider)));
+  ref.listen<AppState>(appStateProvider, (_, s) => src.setBoardAllows(boardAllows(s)));
   return src;
 });
 

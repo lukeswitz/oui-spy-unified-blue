@@ -69,6 +69,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   double _povHeading = double.nan;
   _DetectionLayers? _cachedLayers;
   Detection? _focusedDetection;
+  Detection? _pinnedDetection;
   String _cachedLayersKey = '';
   List<Geofence> _exclusionZones = [];
   bool _reconnectPromptOpen = false;
@@ -246,7 +247,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
   void _clearFocusedDetection() {
     if (_focusedDetection == null) return;
-    setState(() => _focusedDetection = null);
+    setState(() {
+      _pinnedDetection = _focusedDetection;
+      _focusedDetection = null;
+    });
   }
 
   static bool _hasMapCoord(double? lat, double? lon) {
@@ -474,6 +478,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         wd.hasSessionData) {
       _lastSessionLoadEpoch = wd.sessionLoadEpoch;
       _focusedDetection = null;
+      _pinnedDetection = null;
       _followMode = false;
       _initialFitDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1062,7 +1067,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final alerted = ref.read(notificationServiceProvider).classAlertedMacs.length;
     final key = '$alerted|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
         '${wd.detectorFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
-        '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}';
+        '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
+        '${_pinnedDetection?.macAddress ?? ''}';
     if (_cachedLayersKey == key && _cachedLayers != null) return _cachedLayers!;
     final layers = _computeDetectionLayers(wd, wt);
     _cachedLayers = layers;
@@ -1098,6 +1104,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             d.latitude ?? droneRidPoint(d)!.latitude,
             d.longitude ?? droneRidPoint(d)!.longitude))
         .toList();
+    final pinned = _pinnedDetection;
+    if (pinned != null &&
+        _hasMapCoord(pinned.latitude, pinned.longitude) &&
+        !allGeo.any((d) =>
+            d.macAddress == pinned.macAddress && d.engine == pinned.engine)) {
+      allGeo.add(pinned);
+    }
     final focused = _focusedDetection;
     final filterActive = wd.flockFilter || wd.detectorFilter;
     final List<Detection> geoDetections;
@@ -1114,6 +1127,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               : const <Detection>[]);
     } else if (filterActive) {
       geoDetections = allGeo.where((d) {
+        if (identical(d, pinned)) return true;
         if (wd.flockFilter &&
             (d.engine == Engine.flockBle || d.engine == Engine.flockWifi)) {
           return true;

@@ -91,6 +91,7 @@ class DeflockApi {
             Dio(BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 60),
+              headers: {'User-Agent': 'oui-spy-companion/1.0'},
               validateStatus: (s) => s != null && s < 500,
             ));
 
@@ -114,11 +115,11 @@ class DeflockApi {
   }
 
   /// ALPR nodes inside [bounds]. Falls through to the next mirror on 429/5xx.
-  Future<List<AlprNode>> fetchBounds(GeoBounds bounds) async {
+  Future<List<AlprNode>> fetchBounds(GeoBounds bounds, {CancelToken? cancel}) async {
     DeflockApiException? last;
     for (final url in endpoints) {
       try {
-        return await _fetchFrom(url, bounds);
+        return await _fetchFrom(url, bounds, cancel);
       } on DeflockApiException catch (e) {
         last = e;
       }
@@ -126,15 +127,17 @@ class DeflockApi {
     throw last ?? DeflockApiException('Overpass unreachable');
   }
 
-  Future<List<AlprNode>> _fetchFrom(String url, GeoBounds bounds) async {
+  Future<List<AlprNode>> _fetchFrom(String url, GeoBounds bounds, CancelToken? cancel) async {
     final Response<dynamic> resp;
     try {
       resp = await _dio.post<dynamic>(
         url,
         data: {'data': query(bounds)},
         options: Options(contentType: Headers.formUrlEncodedContentType),
+        cancelToken: cancel,
       );
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) rethrow;
       final host = Uri.parse(url).host;
       final detail = e.message ?? e.error?.toString() ?? '';
       throw DeflockApiException(
