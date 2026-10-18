@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -23,11 +24,9 @@ class DetectionRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final engine = detection.engine;
-    final hasGps = detection.latitude != null;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
-    final connected = ref.watch(appStateProvider).isConnected;
     final nodeLabel = detection.sourceNodeId.isEmpty
         ? ''
         : ref.watch(appStateProvider).labelForNode(detection.sourceNodeId);
@@ -51,7 +50,7 @@ class DetectionRow extends ConsumerWidget {
         border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
         decoration: BoxDecoration(
           border: Border(
             left: BorderSide(color: engine.color, width: 3),
@@ -60,98 +59,52 @@ class DetectionRow extends ConsumerWidget {
         child: Builder(builder: (_) {
           final headline = _headline(detection, manufacturer);
           final headlineIsMac = headline == detection.macAddress.toUpperCase();
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          return LayoutBuilder(builder: (_, box) {
+          final gap = (box.maxWidth * 0.04).clamp(12.0, 32.0);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text.rich(
-                      TextSpan(children: [
-                        TextSpan(
-                          text: headline,
-                          style: TextStyle(
-                            color: detection.isBleDetection
-                                ? const Color(0xFF4FA8FF)
-                                : t.textPrimary,
-                            fontSize: 15,
-                            fontFamily: headlineIsMac ? 'monospace' : null,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: headlineIsMac ? 0.5 : 0,
-                            height: 1.1,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(
+                                text: headline,
+                                style: TextStyle(
+                                  color: detection.isBleDetection
+                                      ? const Color(0xFF4FA8FF)
+                                      : t.textPrimary,
+                                  fontSize: 15,
+                                  fontFamily: headlineIsMac ? 'monospace' : null,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (manufacturer != null && manufacturer.isNotEmpty)
+                                TextSpan(
+                                  text: '  $manufacturer',
+                                  style: TextStyle(color: t.textDim, fontSize: 13),
+                                ),
+                            ]),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
-                        if (manufacturer != null && manufacturer.isNotEmpty) ...[
-                          TextSpan(
-                            text: '  ·  ',
-                            style: TextStyle(
-                              color: t.textDim.withValues(alpha: 0.55),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          TextSpan(
-                            text: manufacturer,
-                            style: TextStyle(
-                              color: t.textDim,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                        if (detection.isWifiDetection &&
+                            (detection.wardrive?.authMode ?? 0) > 0) ...[
+                          const SizedBox(width: 8),
+                          _AuthPill(authMode: detection.wardrive!.authMode),
                         ],
-                      ]),
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: true,
-                      maxLines: 2,
+                      ],
                     ),
-                  ),
-                  if (detection.sourceNodeId.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 120),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppTheme.warning.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.hub,
-                              size: 11, color: AppTheme.warning),
-                          const SizedBox(width: 3),
-                          Flexible(
-                            child: Text(
-                              nodeLabel.isNotEmpty
-                                  ? nodeLabel
-                                  : detection.sourceNodeId,
-                              overflow: TextOverflow.ellipsis,
-                              softWrap: false,
-                              style: const TextStyle(
-                                color: AppTheme.warning,
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: 8),
-                  _RssiBlock(rssi: detection.rssi),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
+                    const SizedBox(height: 6),
+                    SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: _DetailLine(
                         detection: detection,
@@ -161,67 +114,47 @@ class DetectionRow extends ConsumerWidget {
                         t: t,
                       ),
                     ),
-                  ),
-                  if (detection.isWifiDetection &&
-                      (detection.wardrive?.authMode ?? 0) > 0) ...[
-                    const SizedBox(width: 8),
-                    _AuthPill(authMode: detection.wardrive!.authMode),
+                    if (detection.flock != null) ...[
+                      const SizedBox(height: 4),
+                      _FlockConfidenceLine(
+                        confidence: detection.flock!.confidence(detection.method),
+                        method: detection.method,
+                      ),
+                    ],
                   ],
-                  const SizedBox(width: 8),
-                  Text(timeStr,
-                      style: TextStyle(
-                        color: t.textDim,
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w700,
-                      )),
-                  const SizedBox(width: 6),
-                  _ActionIcon(
-                      label: 'Hunt',
-                      icon: Icons.gps_fixed,
-                      color: AppTheme.foxhunter,
-                      tooltip: connected ? 'Foxhunt' : 'Foxhunt (node disconnected)',
-                      onTap: connected ? () => _startFoxhunt(context, ref) : null,
-                    ),
-                  const SizedBox(width: 6),
-                  _ActionIcon(
-                    label: 'Map',
-                    icon: detection.approxGps ? Icons.location_searching : Icons.location_on,
-                    color: !hasGps
-                        ? AppTheme.gpsNone
-                        : detection.approxGps
-                            ? AppTheme.gpsFair
-                            : AppTheme.gpsGood,
-                    tooltip: !hasGps
-                        ? 'No GPS fix'
-                        : detection.approxGps
-                            ? 'Last-known GPS (approx)'
-                            : 'Show on map',
-                    onTap: hasGps ? () => _zoomOnMap(context, ref) : null,
+                ),
+              ),
+              SizedBox(width: gap),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _RssiBlock(rssi: detection.rssi),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (nodeLabel.isNotEmpty || detection.sourceNodeId.isNotEmpty) ...[
+                        Text(
+                          nodeLabel.isNotEmpty ? nodeLabel : detection.sourceNodeId,
+                          style: const TextStyle(color: AppTheme.warning, fontSize: 12),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(timeStr, style: TextStyle(color: t.textDim, fontSize: 12)),
+                    ],
                   ),
                 ],
               ),
-              if (detection.flock != null) ...[
-                const SizedBox(height: 2),
-                _FlockConfidenceLine(
-                  confidence: detection.flock!.confidence(detection.method),
-                  method: detection.method,
-                ),
-              ],
             ],
           );
+          });
         }),
       ),
     ),
     ),
     );
   }
-
-  void _zoomOnMap(BuildContext context, WidgetRef ref) =>
-      detectionZoomOnMap(context, ref, detection);
-
-  void _startFoxhunt(BuildContext context, WidgetRef ref) =>
-      detectionStartFoxhunt(context, ref, detection);
 
   void _showActions(BuildContext context, WidgetRef ref) =>
       showDetectionDetails(context, ref, detection);
@@ -250,6 +183,7 @@ void detectionStartFoxhunt(
   ref.read(appStateProvider).setFoxhunterTarget(
         detection.macAddress,
         channel: detection.channel,
+        fromPhone: detection.sourceNodeId == BleManager.phoneNodeId,
       );
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
@@ -270,7 +204,6 @@ void showDetectionDetails(
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
     final t = AppTheme.of(context);
     final vendor = ref.read(ouiLookupProvider).lookup(detection.macAddress);
-    final connected = ref.read(appStateProvider).isConnected;
     if (detection.flock != null &&
         detection.latitude != null &&
         detection.longitude != null) {
@@ -315,8 +248,7 @@ void showDetectionDetails(
               ),
             ),
             const SizedBox(height: 12),
-            if (connected)
-              ListTile(
+            ListTile(
                 leading: const Icon(Icons.gps_fixed, color: AppTheme.foxhunter),
                 title: const Text('Foxhunt This Device',
                     style: TextStyle(color: AppTheme.foxhunter)),
@@ -724,61 +656,19 @@ Color _rssiColor(int rssi) {
   return Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
 }
 
-class _ActionIcon extends StatelessWidget {
-  const _ActionIcon({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.tooltip,
-    required this.onTap,
-  });
-  final String label;
-  final IconData icon;
-  final Color color;
-  final String tooltip;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null;
-    final fg = enabled ? color : color.withValues(alpha: 0.35);
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(8));
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: fg.withValues(alpha: enabled ? 0.16 : 0.08),
-        shape: shape,
-        child: InkWell(
-          customBorder: shape,
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 36),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 16, color: fg),
-                  const SizedBox(width: 4),
-                  Text(
-                    label,
-                    style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 String _headline(Detection d, String? manufacturer) {
   if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;
   if (d.deviceName.isNotEmpty) return d.deviceName;
+  if (_isPlatformId(d.macAddress)) return 'Unnamed BLE device';
   return d.macAddress.toUpperCase();
 }
+
+final _platformIdPattern = RegExp(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-');
+
+bool _isPlatformId(String id) => _platformIdPattern.hasMatch(id);
+
+String _shortId(String id) =>
+    _isPlatformId(id) ? 'ID ${id.substring(0, 8).toUpperCase()}' : id.toUpperCase();
 
 List<String> _flockSignalLabels(FlockExtension? flock) {
   if (flock == null || flock.signals == 0) return const [];
@@ -925,7 +815,7 @@ class _DetailLine extends StatelessWidget {
     final tokens = <Widget>[];
     if (showMac) {
       tokens.add(Text(
-        detection.macAddress.toUpperCase(),
+        _shortId(detection.macAddress),
         style: TextStyle(
           color: t.textSecondary,
           fontSize: 11,
@@ -1413,8 +1303,6 @@ class DroneDetectionRow extends ConsumerWidget {
     final nodeLabel = d.sourceNodeId.isEmpty
         ? ''
         : ref.watch(appStateProvider).labelForNode(d.sourceNodeId);
-    final hasGps = d.odid?.droneLat != null && d.odid!.droneLat != 0;
-
     final methodsUnique = <String>[];
     final seenMethods = <String>{};
     for (final m in group.methods) {
@@ -1550,14 +1438,6 @@ class DroneDetectionRow extends ConsumerWidget {
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.w700,
                       )),
-                  const SizedBox(width: 6),
-                  _ActionIcon(
-                    label: 'Map',
-                    icon: Icons.location_on,
-                    color: hasGps ? AppTheme.gpsGood : AppTheme.gpsNone,
-                    tooltip: hasGps ? 'Show on map' : 'No GPS fix',
-                    onTap: hasGps ? () => detectionZoomOnMap(context, ref, d) : null,
-                  ),
                 ],
               ),
             ],

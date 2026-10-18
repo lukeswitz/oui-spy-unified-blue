@@ -18,7 +18,8 @@ import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/classify/bt_sig_registry.dart';
 import 'package:oui_spy/core/classify/vendor_class.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:wifi_scan/wifi_scan.dart';
 
 import 'co_travel.dart';
 import 'device_explain.dart';
@@ -138,7 +139,6 @@ class EspDetectionSource extends ObservationSource {
 }
 
 class PhoneBleSource extends ObservationSource with ChangeNotifier {
-  static const scanWindow = Duration(seconds: 8);
   static const scanEvery = Duration(seconds: 20);
 
   final _out = StreamController<Observation>.broadcast();
@@ -149,7 +149,39 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   PhoneBleSource({this.here}) {
     _sub = FlutterBluePlus.onScanResults.listen(_onResults);
+    _adapterSub = FlutterBluePlus.adapterState.listen((s) {
+      if (s == BluetoothAdapterState.on) {
+        if (_foxTarget != null) {
+          _foxScan();
+        } else {
+          _kick();
+        }
+      }
+      notifyListeners();
+    });
+    _busySub = FlutterBluePlus.isScanning.listen((busy) {
+      if (busy) return;
+      if (_foxTarget != null) {
+        _foxScan();
+        return;
+      }
+      if (_ownScan) {
+        _ownScan = false;
+        notifyListeners();
+      }
+      if (scanning) {
+        Future<void>.delayed(const Duration(milliseconds: 1500), _kick);
+      }
+    });
   }
+
+  StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<bool>? _busySub;
+  DateTime _lastKick = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _ownScan = false;
+
+  bool get bluetoothOn => FlutterBluePlus.adapterStateNow == BluetoothAdapterState.on;
+  bool get radioListening => _ownScan;
 
   @override
   String get name => 'phone';
@@ -177,27 +209,113 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   void _apply() {
     _timer?.cancel();
     _timer = null;
-    if (!scanning) _lastFed.clear();
+    _wifiTimer?.cancel();
+    _wifiTimer = null;
+    if (!scanning) {
+      _lastFed.clear();
+      if (_ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
+    }
     if (scanning) {
       _kick();
-      _timer = Timer.periodic(scanEvery, (_) => _kick());
+      _timer = Timer.periodic(scanEvery, (_) => _refreshScan());
+      if (canScanWifi) {
+        _wifiKick();
+        _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
+      }
+    }
+    if (_foxTarget != null && canScanWifi && _wifiTimer == null) {
+      _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
     }
     notifyListeners();
   }
 
-  Future<void> setEnabled(bool on) async {
-    setActive(on);
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(DeviceRegistry.phoneScanPref, on);
+  static const wifiEvery = Duration(seconds: 30);
+  static bool get canScanWifi => Platform.isAndroid;
+  Timer? _wifiTimer;
+  void Function(String bssid, String ssid, int rssi, int channel, int authMode)? onWifi;
+
+  static int wifiChannel(int mhz) {
+    if (mhz == 2484) return 14;
+    if (mhz >= 2412 && mhz < 2484) return (mhz - 2407) ~/ 5;
+    if (mhz >= 5955 && mhz <= 7115) return (mhz - 5950) ~/ 5;
+    if (mhz >= 5000 && mhz < 5955) return (mhz - 5000) ~/ 5;
+    return 0;
+  }
+
+  static int wifiAuthMode(String caps) {
+    final c = caps.toUpperCase();
+    if (c.contains('SAE')) return 6;
+    if (c.contains('EAP')) return 5;
+    if (c.contains('WPA2') && c.contains('WPA-')) return 4;
+    if (c.contains('WPA2') || c.contains('RSN')) return 3;
+    if (c.contains('WPA')) return 2;
+    if (c.contains('WEP')) return 1;
+    return 0;
+  }
+
+  Future<void> _wifiKick() async {
+    if ((!scanning && _foxTarget == null) || !canScanWifi) return;
+    try {
+      if (await WiFiScan.instance.canStartScan() == CanStartScan.yes) {
+        await WiFiScan.instance.startScan();
+        await Future<void>.delayed(const Duration(seconds: 4));
+      }
+      if (!scanning) return;
+      if (await WiFiScan.instance.canGetScannedResults() != CanGetScannedResults.yes) return;
+      final aps = await WiFiScan.instance.getScannedResults();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final fix = here?.call();
+      for (final ap in aps) {
+        final mac = MacUtil.normalize(ap.bssid);
+        if (mac.isEmpty) continue;
+        if (_isFoxTarget(mac)) _foxHit(ap.level, DateTime.now());
+        if (!scanning) continue;
+        final ch = wifiChannel(ap.frequency);
+        final auth = wifiAuthMode(ap.capabilities);
+        onWifi?.call(mac, ap.ssid, ap.level, ch, auth);
+        _out.add(Observation(
+          key: 'WIFI:$mac',
+          kind: RadioKind.wifi,
+          mac: mac,
+          name: ap.ssid,
+          rssi: ap.level,
+          firstSeenMs: now,
+          lastSeenMs: now,
+          channel: ch,
+          authMode: auth,
+          hiddenSsid: ap.ssid.trim().isEmpty,
+          isAp: true,
+          gpsTrail: fix == null ? const [] : [GpsSample(now, fix.lat, fix.lon, ap.level)],
+        ));
+      }
+    } on Exception catch (e) {
+      DebugLog.log('CLASSIFY: phone wifi scan failed: $e');
+    }
   }
 
   Future<void> _kick() async {
     if (!scanning || FlutterBluePlus.isScanningNow) return;
     if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
+    _lastKick = DateTime.now();
+    _ownScan = true;
+    notifyListeners();
     try {
-      await FlutterBluePlus.startScan(timeout: scanWindow);
+      await FlutterBluePlus.startScan(androidScanMode: AndroidScanMode.lowLatency);
     } on Exception catch (e) {
+      _ownScan = false;
+      notifyListeners();
       DebugLog.log('CLASSIFY: phone scan failed: $e');
+    }
+  }
+
+  static const scanRestartAfter = Duration(minutes: 25);
+
+  void _refreshScan() {
+    if (!scanning || _foxTarget != null) return;
+    if (!FlutterBluePlus.isScanningNow) {
+      _kick();
+    } else if (_ownScan && DateTime.now().difference(_lastKick) >= scanRestartAfter) {
+      FlutterBluePlus.stopScan();
     }
   }
 
@@ -231,7 +349,79 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     return out;
   }
 
+  String? _foxTarget;
+  DateTime? _foxSeen;
+  Timer? _foxLostTimer;
+  void Function(int rssi, int intervalMs)? onFoxRssi;
+
+  bool _isFoxTarget(String id) {
+    final fox = _foxTarget;
+    if (fox == null) return false;
+    if (id.toUpperCase() == fox.toUpperCase()) return true;
+    final mac = MacUtil.normalize(id);
+    return mac.isNotEmpty && mac == MacUtil.normalize(fox);
+  }
+
+  void _foxHit(int rssi, DateTime at) {
+    final prev = _foxSeen;
+    if (prev != null && !at.isAfter(prev)) return;
+    _foxSeen = at;
+    onFoxRssi?.call(rssi, prev == null ? 1 : at.difference(prev).inMilliseconds.clamp(1, 60000));
+  }
+
+  void setFoxTarget(String? id) {
+    if (id == _foxTarget) return;
+    _foxTarget = id;
+    _foxSeen = null;
+    _foxLostTimer?.cancel();
+    _foxLostTimer = null;
+    if (id == null) {
+      if (FlutterBluePlus.isScanningNow) FlutterBluePlus.stopScan();
+      _apply();
+      return;
+    }
+    _timer?.cancel();
+    _timer = null;
+    _foxLostTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      final seen = _foxSeen;
+      if (seen != null && DateTime.now().difference(seen) > const Duration(seconds: 10)) {
+        onFoxRssi?.call(-100, 0);
+      }
+    });
+    if (canScanWifi && _wifiTimer == null) {
+      _wifiKick();
+      _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
+    }
+    _foxScan();
+  }
+
+  bool _foxStarting = false;
+
+  Future<void> _foxScan() async {
+    if (_foxTarget == null || _foxStarting) return;
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
+    _foxStarting = true;
+    try {
+      if (FlutterBluePlus.isScanningNow) await FlutterBluePlus.stopScan();
+      if (_foxTarget == null) return;
+      _ownScan = true;
+      notifyListeners();
+      await FlutterBluePlus.startScan(continuousUpdates: true);
+    } on Exception catch (e) {
+      _ownScan = false;
+      notifyListeners();
+      DebugLog.log('CLASSIFY: phone foxhunt scan failed: $e');
+    } finally {
+      _foxStarting = false;
+    }
+  }
+
   void _onResults(List<ScanResult> results) {
+    if (_foxTarget != null) {
+      for (final r in results) {
+        if (_isFoxTarget(r.device.remoteId.toString())) _foxHit(r.rssi, r.timeStamp);
+      }
+    }
     if (!scanning) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final fix = here?.call();
@@ -276,7 +466,11 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
+    _wifiTimer?.cancel();
+    _foxLostTimer?.cancel();
     _sub?.cancel();
+    _adapterSub?.cancel();
+    _busySub?.cancel();
     _out.close();
     super.dispose();
   }
@@ -305,7 +499,6 @@ class DeviceRegistry extends ChangeNotifier {
   static const catalogAsset = 'assets/fieldwatch-signatures-v2.json';
   static const maxDevices = 2000;
   static const _trailCap = 48;
-  static const phoneScanPref = 'phoneBleScanEnabled';
 
   DeviceRegistry({SignatureEngine? engine, this.vendorOf}) : _engine = engine;
 
@@ -479,11 +672,28 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
     final p = gps.lastPosition;
     return p == null ? null : GpsSample(0, p.latitude, p.longitude);
   });
-  SharedPreferences.getInstance().then((p) => src.setActive(p.getBool(DeviceRegistry.phoneScanPref) ?? false));
   src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;
-  bool boardAllows(AppState s) => !s.isConnected || s.activeEngines != 0;
-  src.setBoardAllows(boardAllows(ref.read(appStateProvider)));
-  ref.listen<AppState>(appStateProvider, (_, s) => src.setBoardAllows(boardAllows(s)));
+  src.onWifi = ref.read(bleManagerProvider).addPhoneWifiDetection;
+  src.onFoxRssi = ref.read(bleManagerProvider).addPhoneFoxRssi;
+  bool sessionRunning() => ref.read(wardriveProvider).state == WardriveState.running;
+  bool boardAllows(AppState s) => sessionRunning() || (s.isConnected && s.activeEngines != 0);
+  void sync(AppState s) {
+    src.setBoardAllows(boardAllows(s));
+    src.setFoxTarget(s.foxhuntViaPhone ? s.foxhunterTarget : null);
+  }
+  sync(ref.read(appStateProvider));
+  ref.listen<AppState>(appStateProvider, (_, s) => sync(s));
+  ref.listen<WardriveController>(wardriveProvider, (_, _) => sync(ref.read(appStateProvider)));
+  var wasScanning = false;
+  src.addListener(() {
+    if (src.scanning && !wasScanning) {
+      gps.start().catchError((Object e) {
+        DebugLog.log('GPS: start failed from phone scan: $e');
+        return false;
+      });
+    }
+    wasScanning = src.scanning;
+  });
   return src;
 });
 

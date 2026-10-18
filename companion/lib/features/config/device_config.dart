@@ -51,6 +51,7 @@ import 'package:oui_spy/core/wdgwars/wdgwars_api.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
+import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 

@@ -252,6 +252,14 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     _ => AppTheme.accent,
   };
 
+  Color _colorOf(Map<String, dynamic> d) => d['engine'] == 'signature'
+      ? alertKindColor(d['alertClass'] as String?)
+      : _engineColor(d['engine'] as String);
+
+  String _labelOf(Map<String, dynamic> d) => d['engine'] == 'signature'
+      ? alertKindLabel(d['alertClass'] as String?)
+      : _engineLabel(d['engine'] as String);
+
   String _engineLabel(String engine) => switch (engine) {
     'flockBle' => 'FLOCK BLE',
     'flockWifi' => 'FLOCK WiFi',
@@ -868,10 +876,9 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       itemCount: items.length,
       itemBuilder: (_, i) => _DetectionRow(
         data: items[i],
-        engineColor: _engineColor(items[i]['engine'] as String),
-        engineLabel: _engineLabel(items[i]['engine'] as String),
+        engineColor: _colorOf(items[i]),
+        engineLabel: _labelOf(items[i]),
         onShowMap: () => _showOnMap(items[i]),
-        onFoxhunt: () => _startFoxhunt(items[i]),
         onDelete: _load,
       ),
     );
@@ -922,8 +929,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     final markers = geoItems.map((d) {
       final lat = d['latitude'] as double;
       final lon = d['longitude'] as double;
-      final engineStr = d['engine'] as String;
-      final color = _engineColor(engineStr);
+      final color = _colorOf(d);
 
       return Marker(
         point: LatLng(lat, lon),
@@ -987,7 +993,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   void _showMarkerSheet(Map<String, dynamic> det) {
     final t = AppTheme.of(context);
     final mac = (det['macAddress'] as String).toUpperCase();
-    final engineStr = det['engine'] as String;
     final deviceName = det['deviceName'] as String? ?? '';
     final ssid = det['ssid'] as String? ?? '';
     final rssi = det['rssi'] as int;
@@ -1016,7 +1021,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 Container(
                   width: 10, height: 10,
                   decoration: BoxDecoration(
-                    color: _engineColor(engineStr),
+                    color: _colorOf(det),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1033,7 +1038,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 18),
                 child: Text(vendor, style: TextStyle(
-                  color: _engineColor(engineStr).withValues(alpha: 0.8),
+                  color: _colorOf(det).withValues(alpha: 0.8),
                   fontSize: 12,
                 )),
               ),
@@ -1054,7 +1059,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               ),
               child: Column(
                 children: [
-                  _markerDetailRow('Engine', _engineLabel(engineStr), t),
+                  _markerDetailRow('Engine', _labelOf(det), t),
                   if (method.isNotEmpty) _markerDetailRow('Method', method, t),
                   _markerDetailRow('RSSI', '$rssi dBm', t),
                   if (channel > 0) _markerDetailRow('Channel', '$channel', t),
@@ -1247,14 +1252,12 @@ class _DetectionRow extends ConsumerWidget {
     required this.engineColor,
     required this.engineLabel,
     required this.onShowMap,
-    required this.onFoxhunt,
     required this.onDelete,
   });
   final Map<String, dynamic> data;
   final Color engineColor;
   final String engineLabel;
   final VoidCallback onShowMap;
-  final VoidCallback onFoxhunt;
   final VoidCallback onDelete;
 
   void _showDetailSheet(BuildContext context, WidgetRef ref) {
@@ -1288,7 +1291,6 @@ class _DetectionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
-    final connected = ref.watch(appStateProvider).isConnected;
     final mac = (data['macAddress'] as String).toUpperCase();
     final rssi = data['rssi'] as int;
     final channel = data['channel'] as int? ?? 0;
@@ -1520,74 +1522,6 @@ class _DetectionRow extends ConsumerWidget {
                     color: t.textDim, fontSize: 9,
                     fontFamily: 'monospace',
                   )),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          // ── Bottom: action buttons ──
-          Container(
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: t.border, width: 0.5)),
-            ),
-            child: Row(
-              children: [
-                // Map button
-                Expanded(
-                  child: GestureDetector(
-                    onTap: hasGps ? onShowMap : null,
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.place,
-                            size: 16,
-                            color: hasGps ? AppTheme.accent : t.textDim.withValues(alpha: 0.3),
-                          ),
-                          const SizedBox(width: 6),
-                          Text('MAP', style: TextStyle(
-                            color: hasGps ? AppTheme.accent : t.textDim.withValues(alpha: 0.3),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
-                          )),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                ...[
-                  Container(width: 0.5, height: 20, color: t.border),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: connected ? onFoxhunt : null,
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.gps_fixed, size: 16,
-                              color: connected
-                                  ? AppTheme.foxhunter
-                                  : t.textDim.withValues(alpha: 0.3)),
-                            const SizedBox(width: 6),
-                            Text('FOXHUNT', style: TextStyle(
-                              color: connected
-                                  ? AppTheme.foxhunter
-                                  : t.textDim.withValues(alpha: 0.3),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1,
-                            )),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

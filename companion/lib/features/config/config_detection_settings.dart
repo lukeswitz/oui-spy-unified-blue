@@ -60,28 +60,7 @@ const _moreGroups = <(String, List<SignatureClass>)>[
   ]),
 ];
 
-IconData _classIcon(SignatureClass c) => switch (c) {
-      SignatureClass.finder => Icons.track_changes,
-      SignatureClass.beacon => Icons.cell_tower,
-      SignatureClass.signage => Icons.tv,
-      SignatureClass.wearable || SignatureClass.bodyworn => Icons.watch,
-      SignatureClass.surveillance => Icons.videocam,
-      SignatureClass.drone => Icons.flight,
-      SignatureClass.hacking => Icons.bug_report,
-      SignatureClass.lawEnforcement => Icons.local_police,
-      SignatureClass.vehicle => Icons.directions_car,
-      SignatureClass.glasses => Icons.visibility,
-      SignatureClass.audio => Icons.headphones,
-      SignatureClass.camera => Icons.photo_camera,
-      SignatureClass.thermostat => Icons.thermostat,
-      SignatureClass.lock => Icons.lock,
-      SignatureClass.health => Icons.favorite,
-      SignatureClass.home => Icons.home,
-      SignatureClass.isp => Icons.router,
-      SignatureClass.mesh => Icons.hub,
-      SignatureClass.phone => Icons.smartphone,
-      SignatureClass.other => Icons.devices_other,
-    };
+IconData _classIcon(SignatureClass c) => classIcon(c);
 
 void _pushPage(BuildContext context, String title, Widget body) {
   Navigator.of(context).push(MaterialPageRoute(
@@ -104,8 +83,6 @@ class _DetectionSettingsTab extends ConsumerStatefulWidget {
 class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
   Future<void> _setPhoneScan(bool on) async {
     ref.read(phoneBleSourceProvider).setActive(on);
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(DeviceRegistry.phoneScanPref, on);
     if (mounted) setState(() {});
   }
 

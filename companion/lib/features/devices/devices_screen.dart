@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/classify/adv_decoder.dart';
 import 'package:oui_spy/core/classify/device_explain.dart';
@@ -15,7 +16,6 @@ import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 enum DeviceSort { recent, rssi, confidence }
 
@@ -25,31 +25,6 @@ Color confidenceColor(Confidence c) => switch (c) {
   Confidence.low => AppTheme.gpsNone,
 };
 
-final _classColors =<SignatureClass, Color>{
-  SignatureClass.finder: Color(0xFFE66B9B),
-  SignatureClass.beacon: AppTheme.wardrive,
-  SignatureClass.signage: Color(0xFF8890A8),
-  SignatureClass.wearable: AppTheme.skySpy,
-  SignatureClass.surveillance: AppTheme.error,
-  SignatureClass.drone: AppTheme.warning,
-  SignatureClass.hacking: AppTheme.uniPwn,
-  SignatureClass.bodyworn: AppTheme.flockWifi,
-  SignatureClass.lawEnforcement: Color(0xFF3B82F6),
-  SignatureClass.vehicle: Color(0xFF84CC16),
-  SignatureClass.glasses: AppTheme.wdgwars,
-  SignatureClass.audio: AppTheme.flockBle,
-  SignatureClass.camera: Color(0xFFF97316),
-  SignatureClass.thermostat: AppTheme.foxhunter,
-  SignatureClass.lock: Color(0xFFEAB308),
-  SignatureClass.health: Color(0xFFEC4899),
-  SignatureClass.home: AppTheme.wdgwarsAlt,
-  SignatureClass.isp: Color(0xFF06B6D4),
-  SignatureClass.mesh: Color(0xFF14B8A6),
-  SignatureClass.phone: AppTheme.accent,
-  SignatureClass.other: AppTheme.textDim,
-};
-
-Color classColor(SignatureClass k) => _classColors[k] ?? AppTheme.textDim;
 
 Color rssiColor(int rssi) => rssi >= -60
     ? AppTheme.success
@@ -118,8 +93,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     );
     if (yes != true) return false;
     src.setActive(true);
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(DeviceRegistry.phoneScanPref, true);
     return true;
   }
 
@@ -302,8 +275,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                 final src = ref.read(phoneBleSourceProvider);
                 if (src.active) {
                   src.setActive(false);
-                  final p = await SharedPreferences.getInstance();
-                  await p.setBool(DeviceRegistry.phoneScanPref, false);
                   if (_source == 'phone') _source = null;
                 } else {
                   await _ensurePhoneScan(context);

@@ -8,7 +8,6 @@ final alertableClasses = [
 ];
 
 const defaultAlertClasses = {
-  SignatureClass.finder,
   SignatureClass.surveillance,
   SignatureClass.camera,
   SignatureClass.drone,

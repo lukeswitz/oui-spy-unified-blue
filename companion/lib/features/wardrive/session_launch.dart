@@ -145,6 +145,7 @@ class SessionBar extends ConsumerWidget {
               ),
               if (!wd.isActive)
                 FilledButton.icon(
+                  key: const ValueKey('session-start'),
                   style: FilledButton.styleFrom(
                     backgroundColor: Engine.wardrive.color,
                     foregroundColor: Colors.white,
@@ -167,7 +168,11 @@ class SessionBar extends ConsumerWidget {
                   icon: Icon(wd.state == WardriveState.paused ? Icons.play_arrow : Icons.pause),
                 ),
                 FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+                  key: const ValueKey('session-stop'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.error,
+                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1),
+                  ),
                   onPressed: busy ? null : wd.stopSession,
                   icon: const Icon(Icons.stop),
                   label: const Text('STOP'),

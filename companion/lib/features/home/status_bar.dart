@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/features/config/widgets/config_widgets.dart';
+import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 
@@ -87,6 +91,8 @@ class _StatusBarState extends ConsumerState<StatusBar> {
             color: _gpsColor,
           ),
           const Spacer(),
+          const _PhoneScanChip(),
+          const SizedBox(width: 10),
           // Device name + node count — tap to switch device
           Flexible(
             child: InkWell(
@@ -251,6 +257,128 @@ class _ConnectionChip extends StatelessWidget {
   }
 }
 
+
+IconData get _phoneIcon => Platform.isAndroid
+    ? Icons.phone_android
+    : Platform.isMacOS
+        ? Icons.laptop_mac
+        : Icons.phone_iphone;
+
+class _PhoneScanChip extends ConsumerWidget {
+  const _PhoneScanChip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final src = ref.watch(phoneBleSourceProvider);
+    const color = AppTheme.detector;
+    return Tooltip(
+      message: 'Scan with this device',
+      child: InkWell(
+        onTap: () => showCommandSheet<void>(
+          context: context,
+          builder: (_) => const _PhoneScanSheet(),
+        ),
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: src.active ? 0.2 : 0.04),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: color.withValues(alpha: src.active ? 0.6 : 0.35), width: 0.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_phoneIcon, size: 14, color: color),
+              const SizedBox(width: 5),
+              Text(
+                src.active ? 'PHONE SCAN ON' : 'PHONE SCAN',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1,
+                  color: color,
+                ),
+              ),
+              if (src.active) ...[
+                const SizedBox(width: 3),
+                Icon(
+                  src.radioListening ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                  size: 11,
+                  color: color,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhoneScanSheet extends ConsumerStatefulWidget {
+  const _PhoneScanSheet();
+
+  @override
+  ConsumerState<_PhoneScanSheet> createState() => _PhoneScanSheetState();
+}
+
+class _PhoneScanSheetState extends ConsumerState<_PhoneScanSheet> {
+  bool _showInfo = false;
+
+  static String get _radios =>
+      PhoneBleSource.canScanWifi ? 'Bluetooth and Wi-Fi' : 'Bluetooth only';
+
+  static String get _limits => Platform.isAndroid
+      ? 'Works with or without a board. Compared with a board: Android allows 4 Wi-Fi scans '
+          'every 2 minutes, and 1 every 30 minutes in the background. Bluetooth scans '
+          'continuously during a session. No Flock, drone ID, probe-request, deauth or PCAP detection.'
+      : 'Bluetooth only, while the app is open. Apple hides device MAC addresses, so these hits '
+          'cannot be foxhunted or uploaded to WiGLE. No Wi-Fi, Flock, drone ID or PCAP detection; '
+          'those need a board.';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final src = ref.watch(phoneBleSourceProvider);
+    final status = !src.active
+        ? _radios
+        : !src.bluetoothOn
+            ? 'Bluetooth is off'
+            : !src.scanning
+                ? 'Ready · press START to scan'
+                : src.radioListening
+                    ? 'Scanning · $_radios'
+                    : 'Waiting for the radio · $_radios';
+    return CommandSheet(
+      title: 'THIS DEVICE',
+      trailing: IconButton(
+        tooltip: 'Limits',
+        icon: Icon(_showInfo ? Icons.info : Icons.info_outline, size: 20, color: t.textDim),
+        onPressed: () => setState(() => _showInfo = !_showInfo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConfigToggleRow(
+            icon: _phoneIcon,
+            label: 'Scan with this device',
+            subtitle: status,
+            color: AppTheme.detector,
+            value: src.active,
+            onChanged: src.setActive,
+          ),
+          if (_showInfo)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+              child: Text(_limits, style: TextStyle(color: t.textDim, fontSize: 13)),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 class _InfoChip extends StatelessWidget {
   const _InfoChip({

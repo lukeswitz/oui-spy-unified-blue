@@ -13,6 +13,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/classify/class_style.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/app_state.dart';
@@ -1149,6 +1151,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   _DetectionLayers _computeDetectionLayers(WardriveController wd, WardriveThemeData wt) {
     final appState = ref.read(appStateProvider);
     final alertedMacs = ref.read(notificationServiceProvider).classAlertedMacs;
+    final alertKinds = ref.read(notificationServiceProvider).classAlertKinds;
     bool isAlerted(Detection d) => alertedMacs.contains(d.macAddress.toUpperCase());
     final source = <Detection>[...wd.dedupedDetections];
     final seenKeys = <String>{
@@ -1474,9 +1477,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         continue;
       }
 
-      final pinColor = isAlerted(d) && d.engine != Engine.detector && d.engine != Engine.flockBle && d.engine != Engine.flockWifi
-          ? AppTheme.warning
-          : wt.engineColor(d.engine);
+      final classPin = isAlerted(d) && d.engine != Engine.detector && d.engine != Engine.flockBle && d.engine != Engine.flockWifi;
+      final alertKind = alertKinds[d.macAddress.toUpperCase()];
+      final pinColor = classPin ? alertKindColor(alertKind) : wt.engineColor(d.engine);
       final box = (fan.length + pinHead + 5) * 2;
       pins.add(Marker(
         point: LatLng(d.latitude!, d.longitude!),
@@ -1511,7 +1514,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                     ? Icons.radar
                     : OuiLookupService.isLawEnforcement(d.macAddress)
                         ? Icons.local_police
-                        : Icons.videocam,
+                        : classPin
+                            ? alertKindIcon(alertKind)
+                            : Icons.videocam,
                 size: pinHead * 0.58,
                 color: Colors.white,
               ),

@@ -107,7 +107,10 @@ class AppState extends ChangeNotifier {
 
   int foxhunterChannel = 0;
 
-  void setFoxhunterTarget(String mac, {int channel = 0, String? nodeId}) {
+  bool _foxFromPhone = false;
+
+  void setFoxhunterTarget(String mac, {int channel = 0, String? nodeId, bool fromPhone = false}) {
+    _foxFromPhone = fromPhone;
     final effective = nodeId
         ?? foxhunterTargetNodeId
         ?? (isManagerConnected && knownNodes.isNotEmpty
@@ -116,14 +119,16 @@ class AppState extends ChangeNotifier {
     foxhunterTarget = mac;
     foxhunterChannel = channel;
     foxhunterTargetNodeId = effective;
-    if (!isEngineActive(Engine.foxhunter)) {
-      _ble.enableEngine(
-        Engine.foxhunter,
-        radio: engineRadio[Engine.foxhunter] ?? 0x03,
-        targetNodeId: effective,
-      );
+    if (!foxhuntViaPhone) {
+      if (!isEngineActive(Engine.foxhunter)) {
+        _ble.enableEngine(
+          Engine.foxhunter,
+          radio: engineRadio[Engine.foxhunter] ?? 0x03,
+          targetNodeId: effective,
+        );
+      }
+      _ble.setFoxhunterTarget(mac, channel: channel, nodeId: effective);
     }
-    _ble.setFoxhunterTarget(mac, channel: channel, nodeId: effective);
     _liveActivity.update(
       primaryMode: 'foxhunter',
       allowStart: true,
@@ -137,6 +142,11 @@ class AppState extends ChangeNotifier {
 
   void setFoxhunterTargetNode(String? nodeId) {
     if (foxhunterTargetNodeId == nodeId) return;
+    if (foxhuntViaPhone) {
+      foxhunterTargetNodeId = nodeId;
+      notifyListeners();
+      return;
+    }
     final wasActive = foxhunterTarget != null && isEngineActive(Engine.foxhunter);
     if (wasActive && foxhunterTargetNodeId != null) {
       _ble.disableEngine(Engine.foxhunter, targetNodeId: foxhunterTargetNodeId);
@@ -162,6 +172,7 @@ class AppState extends ChangeNotifier {
 
   void clearFoxhunterTarget() {
     final nodeId = foxhunterTargetNodeId;
+    _foxFromPhone = false;
     foxhunterTarget = null;
     foxhunterChannel = 0;
     foxhunterTargetNodeId = null;
@@ -578,7 +589,16 @@ class AppState extends ChangeNotifier {
   }
 
   bool isEngineActive(Engine engine) {
+    if (engine == Engine.foxhunter && foxhuntViaPhone) return true;
     return (activeEngines & engine.bitmask) != 0;
+  }
+
+  static final _macPattern = RegExp(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$');
+
+  bool get foxhuntViaPhone {
+    final target = foxhunterTarget;
+    if (target == null) return false;
+    return !isConnected || _foxFromPhone || !_macPattern.hasMatch(target);
   }
 
   EngineState getEngineState(Engine engine) {

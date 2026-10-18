@@ -13,16 +13,20 @@ class _NodeStatsOverlay extends ConsumerWidget {
     final nodeCount =
         appState.liveKnownNodes
             .where((id) => id != selfId && !appState.isManagerNode(id))
-            .length +
-        (ref.watch(phoneBleSourceProvider).scanning ? 1 : 0);
+            .length;
+    final showHeader = appState.isManagerConnected && appState.meshEnabled;
     final label = '$nodeCount NODE${nodeCount == 1 ? '' : 'S'}';
     final color =
         nodeCount > 0 ? AppTheme.success : AppTheme.warning;
     final perNode = <String, int>{...wd.detectionsPerNode};
     final selfRaw = wd.localWifiCount + wd.localBleCount;
-    if (selfRaw > 0) {
+    final selfScans = appState.isConnected && !appState.isManagerConnected;
+    if (selfRaw > 0 || selfScans) {
       final selfBucket = appState.nodeId.isNotEmpty ? appState.nodeId : 'LOCAL';
       perNode[selfBucket] = (perNode[selfBucket] ?? 0) + selfRaw;
+    }
+    if (ref.watch(phoneBleSourceProvider).scanning) {
+      perNode[BleManager.phoneNodeId] ??= 0;
     }
     final nodeEntries = perNode.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
@@ -39,7 +43,7 @@ class _NodeStatsOverlay extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          if (showHeader) Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.hub, size: 10, color: color),

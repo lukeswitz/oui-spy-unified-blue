@@ -408,6 +408,9 @@ class BleManager {
 
   static const phoneNodeId = 'PHONE';
 
+  void addPhoneFoxRssi(int rssi, int intervalMs) =>
+      _foxhunterRssiStream.add((rssi: rssi, intervalMs: intervalMs));
+
   void addPhoneDetection(String mac, String name, int rssi, List<int> adv) {
     final now = DateTime.now();
     final ext = WardriveExtension(deviceName: name);
@@ -430,6 +433,29 @@ class BleManager {
       accuracy: _lastAccuracy,
       satelliteCount: _lastSatCount,
       wardrive: ext,
+    ));
+  }
+
+  void addPhoneWifiDetection(String bssid, String ssid, int rssi, int channel, int authMode) {
+    final now = DateTime.now();
+    _detections.add(Detection(
+      id: '${bssid}_${now.millisecondsSinceEpoch}',
+      sessionId: _sessionId,
+      nodeId: phoneNodeId,
+      macAddress: bssid,
+      engine: Engine.wardrive,
+      method: 'wifi_ap',
+      rssi: rssi,
+      channel: channel,
+      deviceTimestampMs: 0,
+      appTimestamp: now,
+      ssid: ssid,
+      sourceNodeId: phoneNodeId,
+      latitude: _lastLat,
+      longitude: _lastLon,
+      accuracy: _lastAccuracy,
+      satelliteCount: _lastSatCount,
+      wardrive: WardriveExtension(ssid: ssid, authMode: authMode),
     ));
   }
 

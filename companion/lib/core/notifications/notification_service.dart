@@ -239,6 +239,7 @@ class NotificationService extends ChangeNotifier {
     _recordRateLimit();
     if (d.obs.mac.isNotEmpty) {
       classAlertedMacs.add(d.obs.mac.toUpperCase());
+      classAlertKinds[d.obs.mac.toUpperCase()] = alert.kind;
       notifyListeners();
     }
     final (title, _, body) = classNotificationText(d, alert);
@@ -277,6 +278,7 @@ class NotificationService extends ChangeNotifier {
   void Function(String title, String detail, String? kind, String? mac, bool alert)? onAlert;
   bool Function()? activityCanAlert;
   final classAlertedMacs = <String>{};
+  final classAlertKinds = <String, String>{};
 
   void setClassAlert(SignatureClass a, bool on) {
     on ? classAlerts.add(a) : classAlerts.remove(a);

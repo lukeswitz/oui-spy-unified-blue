@@ -84,6 +84,11 @@ class _EngineCardState extends ConsumerState<EngineCard>
     super.dispose();
   }
 
+  bool get _canToggle =>
+      widget.engine == Engine.wardrive ||
+      widget.engine == Engine.foxhunter ||
+      ref.watch(appStateProvider).isConnected;
+
   void _toggleEngine(bool value) {
     if (widget.engine == Engine.wardrive) {
       if (value) {
@@ -95,6 +100,14 @@ class _EngineCardState extends ConsumerState<EngineCard>
     }
 
     final appState = ref.read(appStateProvider);
+    if (widget.engine == Engine.foxhunter && appState.foxhuntViaPhone && !value) {
+      appState.clearFoxhunterTarget();
+      return;
+    }
+    if (widget.engine == Engine.foxhunter && value && !appState.isConnected) {
+      _navigateToEngine();
+      return;
+    }
     if (widget.engine == Engine.foxhunter && value) {
       if (appState.foxhunterTarget == null ||
           (appState.isManagerConnected && appState.foxhunterTargetNodeId == null)) {
@@ -340,7 +353,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
                       scale: 0.65,
                       child: Switch(
                         value: active,
-                        onChanged: _toggleEngine,
+                        onChanged: _canToggle ? _toggleEngine : null,
                         activeTrackColor: color.withValues(alpha: 0.25),
                         activeThumbColor: color,
                       ),
@@ -415,7 +428,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
                       child: FittedBox(
                         child: Switch(
                           value: active,
-                          onChanged: _toggleEngine,
+                          onChanged: _canToggle ? _toggleEngine : null,
                           activeTrackColor: color.withValues(alpha: 0.25),
                           activeThumbColor: color,
                         ),
@@ -571,7 +584,7 @@ class _EngineCardState extends ConsumerState<EngineCard>
                   scale: 0.5,
                   child: Switch(
                     value: active,
-                    onChanged: _toggleEngine,
+                    onChanged: _canToggle ? _toggleEngine : null,
                     activeTrackColor: color.withValues(alpha: 0.25),
                     activeThumbColor: color,
                   ),

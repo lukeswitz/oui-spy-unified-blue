@@ -21,4 +21,16 @@ void main() {
     expect(p.serviceUuids.single.toUpperCase(), contains('180F'));
     expect(p.serviceData.single.uuid.toUpperCase(), contains('FEAA'));
   });
+
+  test('Android Wi-Fi frequency and capabilities map to channel and auth', () {
+    expect(PhoneBleSource.wifiChannel(2412), 1);
+    expect(PhoneBleSource.wifiChannel(2484), 14);
+    expect(PhoneBleSource.wifiChannel(5180), 36);
+    expect(PhoneBleSource.wifiChannel(5955), 1);
+    expect(PhoneBleSource.wifiAuthMode('[WPA2-PSK-CCMP][ESS]'), 3);
+    expect(PhoneBleSource.wifiAuthMode('[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]'), 4);
+    expect(PhoneBleSource.wifiAuthMode('[RSN-SAE-CCMP][ESS]'), 6);
+    expect(PhoneBleSource.wifiAuthMode('[WPA2-EAP-CCMP][ESS]'), 5);
+    expect(PhoneBleSource.wifiAuthMode('[ESS]'), 0);
+  });
 }

@@ -32,63 +32,13 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           children: [
             const StatusBar(),
-            if (state.isConnected) const _PhoneScanBanner(),
             Expanded(
-              child: state.isConnected
+              child: state.isConnected || ref.watch(phoneBleSourceProvider).active
                   ? _ConnectedView(state: state)
                   : _DisconnectedView(state: state),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _PhoneScanBanner extends ConsumerWidget {
-  const _PhoneScanBanner();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final src = ref.watch(phoneBleSourceProvider);
-    final t = AppTheme.of(context);
-    final on = src.active;
-    final status = !on
-        ? 'Off'
-        : src.scanning
-            ? 'Scanning now'
-            : 'Runs while the board is scanning';
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
-      decoration: BoxDecoration(
-        color: on ? AppTheme.detector.withValues(alpha: 0.12) : t.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: on ? AppTheme.detector.withValues(alpha: 0.4) : t.border),
-      ),
-      child: Row(
-        children: [
-          Icon(src.scanning ? Icons.bluetooth_searching : Icons.bluetooth,
-              size: 20, color: on ? AppTheme.detector : t.textDim),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Phone Bluetooth scan',
-                    style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
-                Text(status, style: TextStyle(color: t.textDim, fontSize: 11)),
-              ],
-            ),
-          ),
-          Switch(
-            value: on,
-            activeTrackColor: AppTheme.detector,
-            onChanged: src.setEnabled,
-          ),
-        ],
       ),
     );
   }
@@ -189,8 +139,6 @@ class _DisconnectedView extends ConsumerWidget {
                   ),
                 ),
               ),
-            const SizedBox(height: 12),
-            const _PhoneScanBanner(),
             if (isReconnecting) ...[
               const SizedBox(height: 20),
               Container(
