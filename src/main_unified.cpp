@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include "opsec_mac.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
@@ -1414,6 +1415,8 @@ void setup() {
     Serial.println("  No boot selector. BLE GATT only.");
     Serial.println("========================================\n");
     Serial.printf("[VERSION] OUI-SPY FW=%s (0x%06X)\n", FW_VERSION, FW_VERSION_NUM);
+
+    opsecRandomizeBaseMac();
 
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);

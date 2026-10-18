@@ -1,4 +1,5 @@
 #include "mesh_espnow.h"
+#include "opsec_mac.h"
 #include "engine_registry.h"
 #include "engines/wardrive.h"
 #include "ignore_list.h"
@@ -1499,9 +1500,10 @@ void meshInit(void) {
     memset(pendingCmds, 0, sizeof(pendingCmds));
 
     uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_BT);
+    opsecFactoryBtMac(mac);
     snprintf(localNodeId, MESH_NODE_ID_LEN, "%02X%02X", mac[4], mac[5]);
     meshAddFleetMac(mac);
+    if (esp_read_mac(mac, ESP_MAC_BT) == ESP_OK) meshAddFleetMac(mac);
     if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) meshAddFleetMac(mac);
     if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) == ESP_OK) meshAddFleetMac(mac);
 

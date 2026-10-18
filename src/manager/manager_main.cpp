@@ -3,6 +3,7 @@
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
 #include "../protocol.h"
+#include "../opsec_mac.h"
 #include "../det_spool.h"
 #include "../ble_gatt.h"
 #include "../mesh_espnow.h"
@@ -117,6 +118,8 @@ void setup() {
     Serial.println("  OUI-SPY MANAGER (WROOM) — BLE+mesh");
     Serial.println("========================================");
     Serial.printf("[VERSION] OUI-SPY FW=%s (0x%06X)\n", FW_VERSION, FW_VERSION_NUM);
+
+    opsecRandomizeBaseMac();
 
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);
