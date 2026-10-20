@@ -99,7 +99,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
   int _neopixelBrightness = 50;
   int _cooldownMs = 5000;
   int _heartbeatMs = 30000;
-  int _rediscoverMs = 30000;
+  int _rediscoverMs = 10000;
   int _hbActiveMs = 3000;
   bool _loading = true;
 
@@ -752,10 +752,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             divisions: 254,
             value: _buzzerVolume.toDouble(),
             color: AppTheme.themed(const Color(0xFFFFB84A)),
-            onChanged: (v) {
-              setState(() => _buzzerVolume = v.round());
-              _writeHardwareConfig();
-            },
+            onChanged: (v) => setState(() => _buzzerVolume = v.round()),
+            onChangeEnd: (_) => _writeHardwareConfig(),
           ),
         if (hasBuzzer && _buzzerEnabled)
           ConfigActionRow(
@@ -790,10 +788,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           divisions: 255,
           value: _neopixelBrightness.toDouble(),
           color: AppTheme.themed(const Color(0xFFB44AFF)),
-          onChanged: (v) {
-            setState(() => _neopixelBrightness = v.round());
-            _writeHardwareConfig();
-          },
+          onChanged: (v) => setState(() => _neopixelBrightness = v.round()),
+          onChangeEnd: (_) => _writeHardwareConfig(),
         ),
 
         const SizedBox(height: 16),

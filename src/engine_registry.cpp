@@ -398,7 +398,7 @@ static bool autoPcapMacRecent(const uint8_t* mac, unsigned long cooldownMs) {
 }
 
 void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
-    if (!autoPcapEnabled) return;
+    if (!autoPcapEnabled || hwAlertsSuppressed) return;
     switch (src) {
         case ENGINE_DETECTOR:
         case ENGINE_FLOCK_BLE:

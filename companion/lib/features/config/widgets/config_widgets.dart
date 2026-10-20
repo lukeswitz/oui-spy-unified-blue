@@ -103,6 +103,7 @@ class ConfigSliderRow extends StatelessWidget {
     required this.divisions,
     required this.value,
     required this.onChanged,
+    this.onChangeEnd,
     this.color,
   });
   final IconData icon;
@@ -113,6 +114,7 @@ class ConfigSliderRow extends StatelessWidget {
   final int divisions;
   final double value;
   final ValueChanged<double> onChanged;
+  final ValueChanged<double>? onChangeEnd;
   final Color? color;
 
   @override
@@ -157,6 +159,7 @@ class ConfigSliderRow extends StatelessWidget {
               activeColor: c,
               inactiveColor: t.border,
               onChanged: onChanged,
+              onChangeEnd: onChangeEnd,
             ),
           ),
         ],

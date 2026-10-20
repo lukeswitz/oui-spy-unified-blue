@@ -471,7 +471,6 @@ class WardriveController extends ChangeNotifier {
   bool _inExclusion = false;
   bool get inExclusion => _inExclusion;
   Set<Engine> _pausedByExclusion = {};
-  bool _autoPcapPausedByExclusion = false;
 
   bool get isRunning => state == WardriveState.running;
   bool get isActive => state != WardriveState.idle;
@@ -1700,16 +1699,10 @@ class WardriveController extends ChangeNotifier {
       for (final e in _pausedByExclusion) {
         _ble.disableEngine(e);
       }
-      _autoPcapPausedByExclusion = _ble.latestPcapStats.autoEnabled;
-      if (_autoPcapPausedByExclusion) _ble.setAutoPcap(false);
     } else {
       DebugLog.log('WARDRIVE: exited exclusion zone — restoring radios');
       _enableEnginesSequentially(_pausedByExclusion.toList());
       _pausedByExclusion = {};
-      if (_autoPcapPausedByExclusion) {
-        _ble.setAutoPcap(true);
-        _autoPcapPausedByExclusion = false;
-      }
     }
     notifyListeners();
   }

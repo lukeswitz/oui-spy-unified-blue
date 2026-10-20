@@ -47,9 +47,10 @@ void melodyApply(const uint8_t* d, size_t len) {
         if (len < 4 + (size_t)n * 3) n = (uint8_t)((len - 4) / 3);
         portENTER_CRITICAL(&melMux);
         int i = melFind(d[1], d[2]);
-        if (i < 0 && melCount < MELODY_MAX_ENTRIES) i = melCount++;
+        bool added = false;
+        if (i < 0 && melCount < MELODY_MAX_ENTRIES) { i = melCount++; added = true; }
         if (i >= 0) {
-            changed = melTable[i].engine != d[1] || melTable[i].method != d[2] ||
+            changed = added || melTable[i].engine != d[1] || melTable[i].method != d[2] ||
                       melTable[i].n != n || memcmp(melTable[i].notes, d + 4, (size_t)n * 3) != 0;
             melTable[i].engine = d[1];
             melTable[i].method = d[2];

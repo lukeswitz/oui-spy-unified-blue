@@ -9,9 +9,9 @@ import 'package:oui_spy/core/debug_log.dart';
 const int melodyMaxNotes = 8;
 const int melodyAny = 0xFF;
 const int melodyEngineAxon = 0xFE;
-const int melodyOpSet = 0x01;
 const int melodyOpClearAll = 0x03;
 const int melodyOpPreview = 0x04;
+const int melodyOpSync = 0x05;
 const String melodySilent = 'silent';
 
 class MelodyNote {
@@ -169,7 +169,7 @@ class MelodyState extends ChangeNotifier {
   }
 
   List<Uint8List> serializeForFirmware() {
-    final ops = <Uint8List>[Uint8List.fromList([melodyOpClearAll])];
+    final entries = <List<int>>[];
     for (final slot in kAlertSlots) {
       final id = _assign[slot.key];
       if (id == null) continue;
@@ -181,10 +181,13 @@ class MelodyState extends ChangeNotifier {
         if (m == null) continue;
         notes = m.encodeNotes();
       }
-      ops.add(Uint8List.fromList(
-          [melodyOpSet, slot.engine, slot.method, notes.length ~/ 3, ...notes]));
+      entries.add([slot.engine, slot.method, notes.length ~/ 3, ...notes]);
     }
-    return ops;
+    if (entries.isEmpty) return [Uint8List.fromList([melodyOpClearAll])];
+    return [
+      for (var i = 0; i < entries.length; i++)
+        Uint8List.fromList([melodyOpSync, i, entries.length, ...entries[i]]),
+    ];
   }
 
   static Uint8List previewOp(List<MelodyNote> notes) {

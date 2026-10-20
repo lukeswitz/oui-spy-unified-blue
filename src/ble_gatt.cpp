@@ -1272,27 +1272,33 @@ static void mgrLoadConfigCaches(void) {
     hw[3] = p.getUChar("bz_vol", 100);
     hw[4] = p.getBool("flock_ext", false) ? 1 : 0;
     hw[5] = p.getBool("offl_scan", false) ? 1 : 0;
+    bool hwSet = p.isKey("buzzer");
     p.end();
     hw[6] = flockGetAllowOuiOnly() ? 1 : 0;
-    mgrCacheConfig(MESH_CFG_KIND_HW, hw, 7);
+    if (hwSet) mgrCacheConfig(MESH_CFG_KIND_HW, hw, 7);
 
     Preferences q;
     q.begin("ouispy-alert", true);
     uint16_t cool = q.getUShort("cooldown", 5000);
     uint16_t hb   = q.getUShort("heartbeat", 30000);
-    uint16_t rd   = q.getUShort("rediscover", 30000);
+    uint16_t rd   = q.getUShort("rediscover", 10000);
     uint16_t act  = q.getUShort("hb_active", 3000);
+    bool alSet = q.isKey("cooldown");
     q.end();
     uint8_t al[8] = { (uint8_t)(cool & 0xFF), (uint8_t)(cool >> 8),
                       (uint8_t)(hb & 0xFF),   (uint8_t)(hb >> 8),
                       (uint8_t)(rd & 0xFF),   (uint8_t)(rd >> 8),
                       (uint8_t)(act & 0xFF),  (uint8_t)(act >> 8) };
-    mgrCacheConfig(MESH_CFG_KIND_ALERT, al, 8);
+    if (alSet) mgrCacheConfig(MESH_CFG_KIND_ALERT, al, 8);
 
+    Preferences r;
+    r.begin("ouispy-mgrap", true);
+    bool apSet = r.isKey("en");
+    r.end();
     uint8_t ap[5] = { (uint8_t)mgrAutoPcapEnabled,
                       (uint8_t)(mgrAutoPcapDurationSec & 0xFF), (uint8_t)(mgrAutoPcapDurationSec >> 8),
                       (uint8_t)(mgrAutoPcapCooldownSec & 0xFF),  (uint8_t)(mgrAutoPcapCooldownSec >> 8) };
-    mgrCacheConfig(MESH_CFG_KIND_AUTOPCAP, ap, 5);
+    if (apSet) mgrCacheConfig(MESH_CFG_KIND_AUTOPCAP, ap, 5);
 }
 #endif
 
@@ -1340,7 +1346,7 @@ class AlertConfigCallbacks : public NimBLECharacteristicCallbacks {
         uint8_t buf[8];
         uint16_t cool = p.getUShort("cooldown", 5000);
         uint16_t hb   = p.getUShort("heartbeat", 30000);
-        uint16_t redis = p.getUShort("rediscover", 30000);
+        uint16_t redis = p.getUShort("rediscover", 10000);
         uint16_t active = p.getUShort("hb_active", 3000);
         p.end();
 

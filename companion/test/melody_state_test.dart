@@ -7,7 +7,7 @@ void main() {
 
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('firmware ops: clear-all first, SET layout, silent has zero notes', () async {
+  test('firmware ops: indexed SYNC layout, silent has zero notes', () async {
     final s = MelodyState();
     await Future<void>.delayed(Duration.zero);
     final axon = kAlertSlots.firstWhere((e) => e.engine == 0 && e.method == 8);
@@ -16,9 +16,9 @@ void main() {
     await s.assign(flock, melodySilent);
 
     final ops = s.serializeForFirmware();
-    expect(ops.first, [melodyOpClearAll]);
-    expect(ops[1], [melodyOpSet, 0, 8, 2, 72, 6, 4, 67, 11, 3]);
-    expect(ops[2], [melodyOpSet, 1, melodyAny, 0]);
+    expect(ops.length, 2);
+    expect(ops[0], [melodyOpSync, 0, 2, 0, 8, 2, 72, 6, 4, 67, 11, 3]);
+    expect(ops[1], [melodyOpSync, 1, 2, 1, melodyAny, 0]);
     expect(ops.every((o) => o.length <= 32), isTrue);
   });
 
@@ -38,6 +38,8 @@ void main() {
     await s.assign(kAlertSlots.first, 'u1');
     await s.deleteMelody('u1');
     expect(s.assignmentFor(kAlertSlots.first), isNull);
-    expect(s.serializeForFirmware().length, 1);
+    expect(s.serializeForFirmware(), [
+      [melodyOpClearAll]
+    ]);
   });
 }

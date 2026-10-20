@@ -717,7 +717,7 @@ static void statusHeartbeatTask(void* param) {
             static uint8_t lastMask = 0xFF;
             static uint8_t lastFilt[512];
             static size_t lastFiltLen = 0;
-            uint8_t m = engineGetActiveMask();
+            uint8_t m = (uint8_t)((engineGetActiveMask() | engineGetAutoPcapPausedMask()) & ~ENGINE_BITMASK(ENGINE_PCAP));
             int fc = detectorFilterCount();
             uint8_t fb[512];
             size_t fn = detectorSerialize(fb, sizeof(fb));
