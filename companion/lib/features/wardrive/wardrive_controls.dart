@@ -189,7 +189,7 @@ class _IconBtn extends StatelessWidget {
           decoration: BoxDecoration(
             color: active
                 ? AppTheme.accent.withValues(alpha: 0.18)
-                : Colors.transparent,
+                : t.surface.withValues(alpha: 0.92),
             shape: BoxShape.circle,
             border: Border.all(
               color: active
@@ -225,6 +225,7 @@ class _CompassResetBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
     return Tooltip(
       message: 'Tap to reset north up',
       child: Material(
@@ -236,7 +237,7 @@ class _CompassResetBtn extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.transparent,
+              color: t.surface.withValues(alpha: 0.95),
               shape: BoxShape.circle,
               border: Border.all(
                 color: AppTheme.accent.withValues(alpha: 0.55),
@@ -359,12 +360,13 @@ class _LayerLoadingPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!alprLoading && !territoriesLoading) return const SizedBox.shrink();
+    final t = AppTheme.of(context);
     final color = alprLoading ? AppTheme.flockWifi : AppTheme.wdgwars;
     final label = alprLoading ? 'Loading ALPRs' : 'Loading territories';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.transparent,
+        color: t.surface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),
@@ -546,7 +548,7 @@ class _MapStyleButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.transparent,
+          color: t.surface.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: t.border),
         ),
@@ -582,7 +584,7 @@ class _FocusedDetectionChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.transparent,
+            color: t.surface.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: detection.engine.color.withValues(alpha: 0.6)),
           ),
@@ -645,7 +647,7 @@ class _ClassGroupChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.transparent,
+            color: t.surface.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppTheme.warning.withValues(alpha: 0.6)),
           ),

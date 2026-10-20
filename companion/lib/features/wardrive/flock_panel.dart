@@ -51,7 +51,7 @@ class _FlockPanelState extends State<FlockPanel> {
             decoration: BoxDecoration(
               color: count > 0
                   ? accent.withValues(alpha: 0.2)
-                  : Colors.transparent,
+                  : t.surface.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: count > 0
@@ -89,7 +89,7 @@ class _FlockPanelState extends State<FlockPanel> {
             margin: const EdgeInsets.only(top: 4),
             constraints: const BoxConstraints(maxHeight: 140, maxWidth: 240),
             decoration: BoxDecoration(
-              color: Colors.transparent,
+              color: t.background.withValues(alpha: 0.95),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: accent.withValues(alpha: 0.3)),
             ),

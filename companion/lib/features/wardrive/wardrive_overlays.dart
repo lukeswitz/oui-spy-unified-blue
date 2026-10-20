@@ -35,7 +35,7 @@ class _NodeStatsOverlay extends ConsumerWidget {
       padding: const EdgeInsets.all(8),
       constraints: const BoxConstraints(maxWidth: 220),
       decoration: BoxDecoration(
-        color: Colors.transparent,
+        color: t.background.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: t.border, width: 0.5),
       ),

@@ -23,7 +23,7 @@ class WardriveStats extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.transparent,
+        color: t.background.withValues(alpha: 0.88),
         border: Border(bottom: BorderSide(color: t.border, width: 0.5)),
       ),
       child: Column(
