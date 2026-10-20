@@ -97,12 +97,28 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
 - **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
 - **Map layers**: *MAPPED ALPRs* scores each Flock hit against cameras already on OpenStreetMap (`ON MAP` within 75 m, `UNMAPPED` beyond 250 m). Turning it on sends the visible map area to `overpass-api.de` (fallback `overpass.private.coffee`). *WDG TERRITORY* shows WDGWars territory for a linked account.
-- **Geofences**: inside a zone the app drops detections from the feed, log and notifications, and the board stops beeping. Radios keep scanning; a T-Dongle still writes to its SD card.
+- **Geofences**: inside a zone the app drops detections from the feed, log and notifications, and the board stops beeping and starts no auto-PCAP. During a map session the app also turns the session's radios off until you leave the zone, and the map shows **RADIOS OFF — INSIDE EXCLUSION ZONE**. Engines you start from HOME keep scanning, and a T-Dongle still writes their hits to its SD card.
 - **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
 - **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
 - **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
+- **Android**: during a session, an ongoing notification shows live counts and the last alert.
 
 <img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
+
+## Internet services
+
+The app has no analytics or crash reporting. It connects to the services below, and only when you use the feature named in the second column. Detections, sessions and captures stay on the phone until you upload or export them. The board itself goes online only to download a firmware update that you start from the app.
+
+| Service | When the app connects | What it sends | Usage rules the app follows |
+|---|---|---|---|
+| [WiGLE](https://api.wigle.net) | You sign in, the app loads your saved sign-in, or you upload a session | Your API name and token, and the session file when you upload | If WiGLE answers with a rate-limit error (HTTP 429), the app sends nothing to WiGLE for 24 hours and shows "Try again in 24hr" on HOME and in **Settings → Data → Accounts**. Each session uploads once, after you confirm. |
+| [WDGWars](https://wdgwars.pl) | You link your account, the app loads your saved key, you upload a session, or you turn on **WDG TERRITORY** | Your API key, the session file (compressed), and territory requests | Identifies itself as `oui-spy-companion/1.0`. Retries an upload twice, after 2 and 8 seconds, only when the connection drops or the server has an internal error. On a rate-limit answer it shows the wait time the server asks for. While the territory layer is on, it refreshes at most every 5 minutes. After an upload it shows the counts the server returns: networks imported, new and merged. |
+| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (`overpass-api.de`, fallback `overpass.private.coffee`) | **MAPPED ALPRs** is on (it is off by default) and you move the map or open a Flock detection | The corners of the area you are looking at | Identifies itself as `oui-spy-companion/1.0`. Keeps each map area for 7 days and asks only for areas it does not have, one request at a time. After a rate-limit answer (HTTP 429) it waits 30 seconds, or longer if the server asks. |
+| [OpenFreeMap](https://openfreemap.org) map styles: Dark (the default), Fiord, Liberty, Bright, Positron | A map is on screen | The tile numbers for the area in view | OpenFreeMap needs no account or API key and sets no limit on map views or requests. Tiles stay on the phone for up to 30 days, in a cache of up to 50 MB. The map shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap" in the bottom-right corner. |
+| [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map) imagery: Satellite (US) | You pick Satellite (US) | The tile numbers for the area in view | USGS imagery is public domain, needs no account, and the USGS states "There are no restrictions". It covers the United States only; elsewhere the map shows no imagery. Tiles stay on the phone for 7 days, in a cache of up to 200 MB. Past zoom 16 the map enlarges zoom-16 tiles. The map shows the USGS credit. |
+| [GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) | You tap **Check for Update** in **Settings → Node → Firmware** | Nothing about you or your board | Identifies itself as `oui-spy-companion/1.0`. GitHub allows 60 checks per hour from one network address. When GitHub reports that limit, the check stays off until the reset time GitHub sends. The firmware file comes from the same GitHub release. |
+| [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** under **Settings → Data → Export → OUI DATABASE** | Nothing | Downloads the MAC vendor list at most once every 7 days, as the file asks, and identifies itself as `oui-spy-companion/1.0`. |
+| [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** on a drone detection | The drone's serial number from its Remote ID broadcast | Identifies itself as `oui-spy-companion/1.0`. Keeps a found registration for 30 days. Retries only when the server answers HTTP 502, up to 3 attempts. |
 
 ## Standalone controls
 
@@ -186,7 +202,7 @@ cd companion && flutter pub get && flutter build apk --release   # or ipa / maco
 ```
 
 **Firmware libraries:** [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus), [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library); ESP-IDF ESP-NOW and mbedTLS.
-**Map tiles:** [CARTO](https://carto.com/basemaps/) vector, [Esri](https://www.esri.com/), [OpenStreetMap](https://www.openstreetmap.org/), [OpenTopoMap](https://opentopomap.org/). Vendor OUIs from the IEEE MA-L, MA-M and MA-S registries via [Wireshark manuf](https://www.wireshark.org/download/automated/data/manuf.gz).
+**Map tiles:** [OpenFreeMap](https://openfreemap.org/) with [OpenMapTiles](https://openmaptiles.org/) and [OpenStreetMap](https://www.openstreetmap.org/copyright) data; satellite imagery from [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map). Vendor OUIs from the IEEE MA-L, MA-M and MA-S registries via [Wireshark manuf](https://www.wireshark.org/download/automated/data/manuf.gz).
 
 ## Credits
 

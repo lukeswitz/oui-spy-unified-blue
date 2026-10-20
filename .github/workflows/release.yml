@@ -271,7 +271,9 @@ jobs:
             - Map: SHOW ALL shows every detection of a class.
             - Boards use a random MAC each boot.
             - App themes and node temperatures.
-            - WDGWars upload shows the server's result counts.
+            - WDGWars upload shows how many networks were imported, new and merged.
+            - Android: an ongoing notification shows live counts and the last alert during a session.
+            - README lists every internet service the app uses, what each one receives, and the usage rules the app follows.
 
             **Changed**
             - New four-tab layout; history and rules moved, refreshed list rows.
@@ -283,6 +285,14 @@ jobs:
             - Classifier: iBeacon now "Beacons", Honeywell moved to industrial.
             - Shorter notification body: RSSI, channel, name, MAC.
             - App reconnects to a rebooted board by node ID.
+            - Map styles now come from OpenFreeMap, which needs no account and sets no request limit: Dark (the default), Fiord, Liberty, Bright and Positron.
+            - Satellite (US) uses USGS imagery: public domain, no account, United States only.
+            - CARTO, OpenStreetMap, Topo, Terrain and Esri Satellite styles removed: CARTO and Esri require an account, and the OpenStreetMap and Topo servers limit heavy use. A saved choice switches to the nearest new style.
+            - MAPPED ALPRs waits at least 30 seconds after an Overpass rate limit.
+            - The OUI database downloads at most once a week, as Wireshark asks.
+            - The firmware update check pauses until GitHub's rate limit resets.
+            - FAA lookups identify as the app instead of as a web browser.
+            - After a WiGLE rate limit the app makes no WiGLE requests for 24 hours.
 
             **Fixed**
             - Mesh nodes scanning BLE missed manager commands, on every chip.
@@ -301,6 +311,10 @@ jobs:
             - SHOW ALL removed a HISTORY detection from the map.
             - Camera alert toggle showed off while alerts still fired.
             - A session started right after connecting could switch itself off.
+            - A map session started inside an exclusion zone kept scanning. The radios now stay off in a zone, and the map shows RADIOS OFF.
+            - Auto-PCAP could stay off after the app closed inside an exclusion zone.
+            - A manager pushed default alert timings to its nodes when none had been set in the app.
+            - Offline scan could restart with fewer engines after a reboot during an auto-PCAP capture.
             - StickC boards missing from the OTA list.
 
             Flash the manager and every node together; the mesh record format changed.
