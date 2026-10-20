@@ -28,6 +28,8 @@ class ConfigToggleRow extends StatelessWidget {
     required this.color,
     required this.value,
     required this.onChanged,
+    this.notify = true,
+    this.onNotify,
   });
   final IconData icon;
   final String label;
@@ -35,6 +37,8 @@ class ConfigToggleRow extends StatelessWidget {
   final Color color;
   final bool value;
   final ValueChanged<bool>? onChanged;
+  final bool notify;
+  final ValueChanged<bool>? onNotify;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +71,15 @@ class ConfigToggleRow extends StatelessWidget {
               ],
             ),
           ),
+          if (onNotify != null)
+            IconButton(
+              tooltip: notify ? 'Notifications on' : 'Notifications off, still logged',
+              icon: Icon(
+                notify ? Icons.notifications_active : Icons.notifications_off_outlined,
+                color: value && notify ? color : t.textDim,
+              ),
+              onPressed: value ? () => onNotify!(!notify) : null,
+            ),
           Switch.adaptive(
             value: value,
             onChanged: onChanged,

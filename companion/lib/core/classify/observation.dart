@@ -40,6 +40,9 @@ class Observation {
   final int channel;
   final int? authMode;
   final bool isAp;
+  final String? detectorMethod;
+  final String? detectorDesc;
+  final String? detectorNode;
 
   const Observation({
     required this.key,
@@ -61,6 +64,9 @@ class Observation {
     this.channel = 0,
     this.authMode,
     this.isAp = false,
+    this.detectorMethod,
+    this.detectorDesc,
+    this.detectorNode,
   }) : rssiMin = rssiMin ?? rssi,
        rssiMax = rssiMax ?? rssi;
 
@@ -87,6 +93,9 @@ class Observation {
     channel: channel,
     authMode: authMode,
     isAp: isAp,
+    detectorMethod: detectorMethod,
+    detectorDesc: detectorDesc,
+    detectorNode: detectorNode,
   );
 
   Observation merge(Observation next) => Observation(
@@ -109,6 +118,9 @@ class Observation {
     channel: next.channel != 0 ? next.channel : channel,
     authMode: next.authMode ?? authMode,
     isAp: isAp || next.isAp,
+    detectorMethod: next.detectorMethod ?? detectorMethod,
+    detectorDesc: next.detectorMethod != null ? next.detectorDesc : detectorDesc,
+    detectorNode: next.detectorMethod != null ? next.detectorNode : detectorNode,
   );
 }
 

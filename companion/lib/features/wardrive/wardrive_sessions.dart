@@ -625,11 +625,11 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
     final origin = box != null
         ? box.localToGlobal(Offset.zero) & box.size
         : const Rect.fromLTWH(0, 0, 100, 100);
-    await Share.shareXFiles(
-      [XFile(file.path)],
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(file.path)],
       subject: 'OUI-SPY WiGLE CSV',
       sharePositionOrigin: origin,
-    );
+    ));
   }
 
   Future<void> _uploadToWigle(BuildContext context, WidgetRef wRef, String sid) async {
@@ -1037,11 +1037,11 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
       final origin = box != null
           ? box.localToGlobal(Offset.zero) & box.size
           : const Rect.fromLTWH(0, 0, 100, 100);
-      await Share.shareXFiles(
-        [XFile(file.path)],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path)],
         subject: 'OUI-SPY WiGLE CSV',
         sharePositionOrigin: origin,
-      );
+      ));
     } else {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -9,8 +9,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
+import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/notifications/class_alerts.dart';
@@ -119,6 +122,9 @@ Observation observationFromDetection(Detection d) {
     hiddenSsid: !ble && d.method == 'wifi_ap' && d.ssid.trim().isEmpty,
     isAp: !ble && d.method == 'wifi_ap',
     vendorIeOuis: ieOuis,
+    detectorMethod: d.engine == Engine.detector ? d.method : null,
+    detectorDesc: d.engine == Engine.detector ? d.detector?.filterDescription : null,
+    detectorNode: d.engine == Engine.detector && d.sourceNodeId.isNotEmpty ? d.sourceNodeId : null,
     gpsTrail: d.latitude != null && d.longitude != null && !d.approxGps
         ? [GpsSample(at, d.latitude!, d.longitude!, d.rssi)]
         : const [],
@@ -602,7 +608,8 @@ class DeviceRegistry extends ChangeNotifier {
     if (prev == null ||
         prev.signatures.length != sigs.length ||
         prev.obs.mfgRecords.length != merged.mfgRecords.length ||
-        prev.obs.serviceUuids.length != merged.serviceUuids.length) {
+        prev.obs.serviceUuids.length != merged.serviceUuids.length ||
+        prev.obs.detectorMethod != merged.detectorMethod) {
       onClassified?.call(dev);
     }
     if (_devices.length > maxDevices) _evictOldest();
@@ -728,9 +735,20 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
   final notif = ref.read(notificationServiceProvider);
   final db = ref.read(databaseProvider);
   final gpsFix = ref.read(gpsProvider);
+  final ignore = ref.read(ignoreListProvider);
+  final geofence = ref.read(geofenceFilterProvider);
   final lastLogged = <String, int>{};
   final reg = DeviceRegistry(vendorOf: oui.lookup)
     ..onClassified = (d) {
+      final trail = d.obs.gpsTrail;
+      final pos = gpsFix.lastPosition;
+      if (ignore.shouldSuppress(mac: d.obs.mac, ssid: d.obs.name, isBle: d.obs.kind == RadioKind.ble) ||
+          geofence.isExcludedNullable(
+            trail.isNotEmpty ? trail.last.lat : pos?.latitude,
+            trail.isNotEmpty ? trail.last.lon : pos?.longitude,
+          )) {
+        return;
+      }
       notif.onClassified(d);
       final alert = classAlertOf(d, notif.classAlerts, flock: notif.flockEnabled);
       if (alert == null) return;
@@ -741,8 +759,6 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
       if (prev != null && now - prev < notif.cooldownSeconds * 1000) return;
       lastLogged[key] = now;
       final (title, reason, _) = NotificationService.classNotificationText(d, alert);
-      final trail = d.obs.gpsTrail;
-      final pos = gpsFix.lastPosition;
       db.insertClassAlert(
         macAddress: mac,
         deviceName: d.obs.name,

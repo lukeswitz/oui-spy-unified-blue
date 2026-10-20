@@ -182,11 +182,11 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
     if (!mounted) return;
     final size2 = MediaQuery.of(context).size;
     final origin = Rect.fromLTWH(size2.width / 2 - 1, size2.height / 2 - 1, 2, 2);
-    await Share.shareXFiles(
-      [XFile(f.path, mimeType: 'application/vnd.tcpdump.pcap')],
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(f.path, mimeType: 'application/vnd.tcpdump.pcap')],
       subject: 'OUI-SPY PCAP ($size bytes)',
       sharePositionOrigin: origin,
-    );
+    ));
   }
 
   @override
@@ -799,11 +799,11 @@ class _SavedPcapsSectionState extends State<_SavedPcapsSection> {
     if (!mounted) return;
     final size2 = MediaQuery.of(context).size;
     final origin = Rect.fromLTWH(size2.width / 2 - 1, size2.height / 2 - 1, 2, 2);
-    await Share.shareXFiles(
-      [XFile(f.path, mimeType: 'application/vnd.tcpdump.pcap')],
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(f.path, mimeType: 'application/vnd.tcpdump.pcap')],
       subject: 'OUI-SPY PCAP ($size bytes)',
       sharePositionOrigin: origin,
-    );
+    ));
   }
 
   Future<void> _deleteFile(File f) async {

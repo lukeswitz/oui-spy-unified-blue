@@ -58,11 +58,11 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
     if (!mounted) return;
     final s = MediaQuery.of(context).size;
     final origin = Rect.fromLTWH(s.width / 2 - 1, s.height / 2 - 1, 2, 2);
-    await Share.shareXFiles(
-      [XFile(f.path, mimeType: 'application/vnd.tcpdump.pcap')],
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(f.path, mimeType: 'application/vnd.tcpdump.pcap')],
       subject: 'OUI-SPY PCAP ($size bytes)',
       sharePositionOrigin: origin,
-    );
+    ));
   }
 
   bool _isActiveCapture(File f) {

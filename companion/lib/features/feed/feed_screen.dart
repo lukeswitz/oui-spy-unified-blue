@@ -654,11 +654,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final filename = 'oui_spy_feed_$ts.csv';
       final file = File('${dir.path}/$filename');
       await file.writeAsString(csv);
-      await Share.shareXFiles(
-        [XFile(file.path)],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path)],
         subject: 'OUI-SPY Feed Export (${detections.length} detections)',
         sharePositionOrigin: origin,
-      );
+      ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }

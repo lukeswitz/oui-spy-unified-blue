@@ -586,6 +586,28 @@ class AppDatabase extends _$AppDatabase {
     return seen.values.toList();
   }
 
+  Future<List<Map<String, dynamic>>> getAlertHistoryMaps() async {
+    final engineRows = await getFlockDetectorDetections();
+    final byMac = <String, Map<String, dynamic>>{};
+    for (final r in engineRows) {
+      for (final m in r['memberMacs'] as List<String>) {
+        byMac.putIfAbsent(m.toUpperCase(), () => r);
+      }
+    }
+    final out = [...engineRows];
+    for (final c in await getClassAlertMaps()) {
+      final host = byMac[(c['macAddress'] as String).toUpperCase()];
+      if (host == null) {
+        out.add(c);
+        continue;
+      }
+      ((host['mergedClasses'] ??= <(String, String)>[]) as List<(String, String)>)
+          .add((c['macAddress'] as String, c['alertClass'] as String));
+      host['classTitle'] ??= c['deviceName'];
+    }
+    return out;
+  }
+
   Future<int> clearFlockDetectorDetections() => (delete(detections)
         ..where((d) => d.engine.isIn(['flockBle', 'flockWifi', 'detector', 'skySpy'])))
       .go();

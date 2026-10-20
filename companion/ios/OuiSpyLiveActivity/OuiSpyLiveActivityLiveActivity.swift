@@ -30,11 +30,7 @@ struct OuiSpyLiveActivityLiveActivity: Widget {
                     ExpandedCenter(state: context.state)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ExpandedBottom(state: context.state)
-                        AlertKindsRow(state: context.state, iconSize: 10, textSize: 11)
-                        AlertRow(state: context.state)
-                    }
+                    ExpandedBottomRegion(state: context.state)
                 }
             } compactLeading: {
                 CompactLeading(state: context.state)
@@ -61,12 +57,13 @@ private struct ActivityContentView: View {
             SmallView(state: state)
                 .padding(8)
         default:
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 5) {
                 LockScreenView(state: state)
                 AlertKindsRow(state: state, iconSize: 11, textSize: 12)
                 AlertRow(state: state)
             }
-            .padding(14)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
     }
 }
@@ -252,9 +249,9 @@ private struct ExpandedLeading: View {
     let state: OuiSpyLiveActivityAttributes.ContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 6) {
             Image(systemName: state.mode.sfSymbol)
-                .font(.system(size: 18, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundColor(engineColor(state.mode))
             Text(state.mode.label)
                 .font(.system(size: 10, weight: .semibold))
@@ -272,9 +269,9 @@ private struct ExpandedTrailing: View {
     var body: some View {
         switch state.mode {
         case .foxhunter:
-            VStack(alignment: .trailing, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text("\(state.rssi)")
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
                     .foregroundColor(rssiColor(state.rssi))
                 Text("dBm")
                     .font(.system(size: 10, weight: .semibold))
@@ -290,13 +287,13 @@ private struct ExpandedTrailing: View {
                     .foregroundColor(.gray)
             }
         default:
-            VStack(alignment: .trailing, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(state.uniqueCount)")
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
                     .foregroundColor(.white)
                     .contentTransition(.numericText(value: Double(state.uniqueCount)))
                 Text("UNIQUE")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(.white.opacity(0.6))
                     .tracking(1)
             }
@@ -319,6 +316,26 @@ private struct ExpandedCenter: View {
     }
 }
 
+private struct ExpandedBottomRegion: View {
+    let state: OuiSpyLiveActivityAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    ExpandedBottom(state: state)
+                    AlertKindsRow(state: state, iconSize: 10, textSize: 11)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    ExpandedBottom(state: state)
+                    AlertKindsRow(state: state, iconSize: 10, textSize: 11)
+                }
+            }
+            AlertRow(state: state, compact: true)
+        }
+    }
+}
+
 private struct ExpandedBottom: View {
     let state: OuiSpyLiveActivityAttributes.ContentState
 
@@ -326,7 +343,8 @@ private struct ExpandedBottom: View {
         switch state.mode {
         case .wardrive, .wardriveFlock:
             HStack(spacing: 12) {
-                StatPill(icon: "wifi", value: "\(state.uniqueCount)", color: engineColor(.wardrive))
+                StatPill(icon: "wifi", value: "\(state.wifiCount)", color: engineColor(.wardrive))
+                StatPill(icon: "dot.radiowaves.left.and.right", value: "\(state.bleCount)", color: engineColor(.flockBle))
                 if state.flockCount > 0 || state.mode == .wardriveFlock {
                     StatPill(icon: "video.fill", value: "\(state.flockCount)", color: engineColor(.flockBle))
                 }
@@ -338,7 +356,7 @@ private struct ExpandedBottom: View {
                 }
                 StatPill(icon: "road.lanes", value: state.distanceDisplay, color: .gray)
                 if state.speedKmh > 0 {
-                    StatPill(icon: "speedometer", value: state.speedDisplay, color: .gray)
+                    StatPill(icon: "speedometer", value: state.speedDisplay + (state.isImperial ? "mph" : "km/h"), color: .gray)
                 }
             }
         case .flockBle, .flockWifi, .flockDual:
@@ -354,12 +372,12 @@ private struct ExpandedBottom: View {
         case .detector:
             HStack(spacing: 12) {
                 StatPill(icon: "sensor.tag.radiowaves.forward", value: "\(state.detectorHits)", color: engineColor(.detector))
-                StatPill(icon: "wifi", value: "\(state.uniqueCount)", color: .gray)
+                StatPill(icon: "number", value: "\(state.uniqueCount)", color: .gray)
             }
         case .skySpy:
             HStack(spacing: 12) {
                 StatPill(icon: "airplane", value: "\(state.droneCount)", color: engineColor(.skySpy))
-                StatPill(icon: "wifi", value: "\(state.uniqueCount)", color: .gray)
+                StatPill(icon: "number", value: "\(state.uniqueCount)", color: .gray)
             }
         case .foxhunter:
             RssiBar(rssi: state.rssi)
@@ -376,43 +394,56 @@ private struct ExpandedBottom: View {
 
 private struct AlertRow: View {
     let state: OuiSpyLiveActivityAttributes.ContentState
+    var compact = false
 
     var body: some View {
         if !state.lastAlert.isEmpty {
-            let detail = state.lastAlertDetail.split(separator: "\n").first.map(String.init) ?? ""
-            HStack(spacing: 10) {
+            let lines = state.lastAlertDetail.split(separator: "\n").map(String.init)
+            let extra = lines.dropFirst().joined(separator: " \u{00b7} ")
+            HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(Color.orange.opacity(0.22))
                     Image(systemName: OuiSpyLiveActivityAttributes.ContentState.alertKindSymbol(state.lastAlertKind))
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.orange)
                 }
-                .frame(width: 34, height: 34)
+                .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(state.lastAlert)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    if !detail.isEmpty {
-                        Text(detail)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(state.lastAlert)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(compact ? 1 : 2)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        if state.lastAlertAt > 0 {
+                            Text(Date(timeIntervalSince1970: state.lastAlertAt), style: .relative)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.5))
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 56, alignment: .trailing)
+                        }
+                    }
+                    if let first = lines.first {
+                        Text(first)
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
-                            .truncationMode(.tail)
+                            .minimumScaleFactor(0.75)
+                    }
+                    if !extra.isEmpty {
+                        Text(extra)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.55))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                 }
-                Spacer(minLength: 4)
-                if state.lastAlertAt > 0 {
-                    Text(Date(timeIntervalSince1970: state.lastAlertAt), style: .relative)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.55))
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 64, alignment: .trailing)
-                }
             }
-            .padding(10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, compact ? 5 : 8)
             .background(ContainerRelativeShape().fill(Color.white.opacity(0.08)))
         }
     }
@@ -433,7 +464,7 @@ private struct LockScreenView: View {
                 Text(lockScreenSubtitle(state))
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.7)
                     .truncationMode(.tail)
             }
@@ -461,60 +492,27 @@ private struct LockScreenView: View {
                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                 .foregroundColor(engineColor(s.mode))
         case .wardrive, .wardriveFlock:
-            VStack(alignment: .trailing, spacing: 3) {
-                HStack(spacing: 12) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "wifi").font(.system(size: 12))
-                        Text("\(s.wifiCount)")
-                            .font(.system(size: 19, weight: .bold, design: .monospaced))
-                            .contentTransition(.numericText(value: Double(s.wifiCount)))
-                    }
-                    .foregroundColor(engineColor(.wardrive))
-                    HStack(spacing: 3) {
-                        Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 12))
-                        Text("\(s.bleCount)")
-                            .font(.system(size: 19, weight: .bold, design: .monospaced))
-                            .contentTransition(.numericText(value: Double(s.bleCount)))
-                    }
-                    .foregroundColor(engineColor(.flockBle))
+            HStack(spacing: 12) {
+                HStack(spacing: 3) {
+                    Image(systemName: "wifi").font(.system(size: 12))
+                    Text("\(s.wifiCount)")
+                        .font(.system(size: 19, weight: .bold, design: .monospaced))
+                        .contentTransition(.numericText(value: Double(s.wifiCount)))
                 }
-                lockScreenBadges(s)
-            }
-        default:
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("\(s.uniqueCount)")
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
-                    .contentTransition(.numericText(value: Double(s.uniqueCount)))
-                lockScreenBadges(s)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func lockScreenBadges(_ s: OuiSpyLiveActivityAttributes.ContentState) -> some View {
-        HStack(spacing: 6) {
-            if s.flockCount > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "video.fill").font(.system(size: 8))
-                    Text("\(s.flockCount)").font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundColor(engineColor(.wardrive))
+                HStack(spacing: 3) {
+                    Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: 12))
+                    Text("\(s.bleCount)")
+                        .font(.system(size: 19, weight: .bold, design: .monospaced))
+                        .contentTransition(.numericText(value: Double(s.bleCount)))
                 }
                 .foregroundColor(engineColor(.flockBle))
             }
-            if s.droneCount > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "airplane").font(.system(size: 8))
-                    Text("\(s.droneCount)").font(.system(size: 9, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(engineColor(.skySpy))
-            }
-            if s.detectorHits > 0 {
-                HStack(spacing: 2) {
-                    Image(systemName: "sensor.tag.radiowaves.forward").font(.system(size: 8))
-                    Text("\(s.detectorHits)").font(.system(size: 9, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(engineColor(.detector))
-            }
+        default:
+            Text("\(s.uniqueCount)")
+                .font(.system(size: 22, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .contentTransition(.numericText(value: Double(s.uniqueCount)))
         }
     }
 
@@ -525,7 +523,7 @@ private struct LockScreenView: View {
         default:
             // Aggregate every active engine's count so the subtitle reflects
             // all running radios, not just the primary mode.
-            var parts: [String] = []
+            var parts: [String] = [s.mode.label]
             if s.mode != .wardrive && s.mode != .wardriveFlock && s.uniqueCount > 0 {
                 parts.append("\(s.uniqueCount) unique")
             }
@@ -533,7 +531,8 @@ private struct LockScreenView: View {
             if s.droneCount > 0 { parts.append("\(s.droneCount) drones") }
             if s.detectorHits > 0 { parts.append("\(s.detectorHits) hits") }
             if s.distanceKm > 0 { parts.append("\(s.distanceValueOnly)\(s.distanceUnitLabel)") }
-            return parts.isEmpty ? "Scanning" : parts.joined(separator: " \u{00b7} ")
+            if s.speedKmh > 0 { parts.append("\(s.speedDisplay)\(s.isImperial ? "mph" : "km/h")") }
+            return parts.joined(separator: " \u{00b7} ")
         }
     }
 }

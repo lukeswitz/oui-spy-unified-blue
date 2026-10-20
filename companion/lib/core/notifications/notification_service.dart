@@ -6,8 +6,10 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/classify/device_explain.dart' show Confidence;
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
@@ -24,6 +26,7 @@ class NotifChannel {
   static const drone = 'drone_alerts';
   static const foxhunt = 'foxhunt_alerts';
   static const wardrive = 'wardrive_status';
+  static const liveStatus = 'live_status';
 }
 
 class NotificationService extends ChangeNotifier {
@@ -47,6 +50,11 @@ class NotificationService extends ChangeNotifier {
   bool foxhuntEnabled = false; // foxhunt is high-frequency, off by default
   bool wardriveStatusEnabled = true;
   Set<SignatureClass> classAlerts = {...defaultAlertClasses};
+  Set<String> mutedAlerts = {};
+  static const noisyThreshold = 10;
+  final _sent = <(DateTime, String)>[];
+  DateTime? _noisyAskedAt;
+  ({String key, int count, int total})? noisyPrompt;
   final _classAlerted = <String, DateTime>{};
   final _macAlerted = <String, DateTime>{};
   final _classPending = <String, ClassifiedDevice>{};
@@ -191,6 +199,15 @@ class NotificationService extends ChangeNotifier {
         description: 'Wardrive session milestones and status',
         importance: Importance.low,
       ),
+      AndroidNotificationChannel(
+        NotifChannel.liveStatus,
+        'Live Scan Status',
+        description: 'Ongoing counts and the latest alert while a scan runs',
+        importance: Importance.low,
+        playSound: false,
+        enableVibration: false,
+        showBadge: false,
+      ),
     ];
 
     for (final channel in channels) {
@@ -204,6 +221,8 @@ class NotificationService extends ChangeNotifier {
 
     final enabled = _isEngineEnabled(det.engine);
     if (!enabled) return;
+    if (det.engine == Engine.detector && detectorMethodClass.containsKey(det.method)) return;
+    if (mutedAlerts.contains(muteKeyOf(det))) return;
 
     if (_isRateLimited()) return;
     if (_isCoolingDown(det.macAddress, det.engine)) return;
@@ -219,11 +238,11 @@ class NotificationService extends ChangeNotifier {
   void onClassified(ClassifiedDevice d) {
     if (!_initialized || !_permissionGranted) return;
     final alert = classAlertOf(d, classAlerts, flock: flockEnabled);
-    if (alert == null) return;
+    if (alert == null || mutedAlerts.contains(alert.kind)) return;
+    if (d.obs.detectorMethod != null && mutedAlerts.contains('det:${d.obs.detectorMethod}')) return;
     final key = d.obs.mac.isNotEmpty ? d.obs.mac : d.obs.key;
-    final last = _classAlerted[key];
     final now = DateTime.now();
-    if (last != null && now.difference(last).inSeconds < cooldownSeconds) return;
+    if (_classAlerted.containsKey(key)) return;
     if (d.obs.mac.isNotEmpty && _macRecentlyAlerted(d.obs.mac)) return;
     if (_isRateLimited()) {
       _classPending[key] = d;
@@ -233,44 +252,122 @@ class NotificationService extends ChangeNotifier {
     _classPending.remove(key);
     _classAlerted[key] = now;
     if (d.obs.mac.isNotEmpty) _markMacAlerted(d.obs.mac);
-    if (_classAlerted.length > 1000) {
-      _classAlerted.removeWhere((_, t) => now.difference(t).inSeconds >= cooldownSeconds);
-    }
+    if (_classAlerted.length > 5000) _classAlerted.remove(_classAlerted.keys.first);
     _recordRateLimit();
     if (d.obs.mac.isNotEmpty) {
       classAlertedMacs.add(d.obs.mac.toUpperCase());
       classAlertKinds[d.obs.mac.toUpperCase()] = alert.kind;
       notifyListeners();
     }
-    final (title, _, body) = classNotificationText(d, alert);
+    final (title, why, body) = classNotificationText(d, alert);
     final channel = alert == ClassAlert.flock ? NotifChannel.flock : NotifChannel.detector;
     _fireNotification(
       id: _notifId(channel),
       channel: channel,
       title: title,
+      subtitle: why,
       body: body,
       groupKey: channel,
       alertKind: alert.kind,
       alertMac: key,
+      muteKey: alert.kind,
     );
+  }
+
+  static String muteKeyOf(Detection det) => switch (det.engine) {
+        Engine.flockBle || Engine.flockWifi => 'flock',
+        Engine.skySpy => 'drone',
+        Engine.foxhunter => 'foxhunt',
+        _ => det.method.endsWith('watchlist') ? 'det:watchlist' : 'det:${det.method}',
+      };
+
+  static String muteLabel(String k) {
+    if (k.startsWith('det:')) {
+      final m = k.substring(4);
+      if (m == 'watchlist') return 'Watchlist hits';
+      for (final e in detectorMethodsByBit.entries) {
+        if (e.value.contains(m)) return detectorSignatures.firstWhere((s) => s.bit == e.key).label;
+      }
+      return methodLabel(m);
+    }
+    return switch (k) {
+      'flock' => 'Flock',
+      'drone' => 'Drones',
+      'foxhunt' => 'Foxhunt',
+      _ => SignatureClass.values.where((c) => c.name == k).firstOrNull?.label ?? k,
+    };
+  }
+
+  bool isMuted(Iterable<String> keys) => keys.any(mutedAlerts.contains);
+
+  void setMuted(Iterable<String> keys, bool muted) {
+    for (final k in keys) {
+      if (k == 'foxhunt') {
+        foxhuntEnabled = !muted;
+      } else {
+        muted ? mutedAlerts.add(k) : mutedAlerts.remove(k);
+      }
+    }
+    notifyListeners();
+    _savePrefs();
+  }
+
+  void _noteSent(String key) {
+    final now = DateTime.now();
+    _sent
+      ..add((now, key))
+      ..removeWhere((e) => now.difference(e.$1).inSeconds >= 60);
+    if (_sent.length < noisyThreshold || noisyPrompt != null) return;
+    if (_noisyAskedAt != null && now.difference(_noisyAskedAt!).inMinutes < 10) return;
+    final counts = <String, int>{};
+    for (final e in _sent) {
+      counts[e.$2] = (counts[e.$2] ?? 0) + 1;
+    }
+    final top = counts.entries.reduce((a, b) => b.value > a.value ? b : a);
+    _noisyAskedAt = now;
+    noisyPrompt = (key: top.key, count: top.value, total: _sent.length);
+    notifyListeners();
+  }
+
+  void resolveNoisy(bool mute) {
+    final p = noisyPrompt;
+    noisyPrompt = null;
+    if (mute && p != null) {
+      setMuted([p.key], true);
+    } else {
+      notifyListeners();
+    }
   }
 
   static (String, String, String) classNotificationText(ClassifiedDevice d, ClassAlert alert) {
     final matched = d.signatures.where(alert.matches).map((s) => s.name).toSet();
+    final method = d.obs.detectorMethod;
+    final desc = d.obs.detectorDesc?.trim() ?? '';
+    final board = method == null
+        ? null
+        : desc.isNotEmpty
+            ? desc
+            : detectorMethodName(method) ?? methodLabel(method);
     final what = matched.firstOrNull ??
-        d.guess.headline.replaceFirst(RegExp(r'^(Most likely|Probably|Could be) '), '');
+        (board != null && d.guess.confidence == Confidence.low
+            ? board
+            : d.guess.headline.replaceFirst(RegExp(r'^(Most likely|Probably|Could be) '), ''));
     final why = matched.length > 1
         ? 'Matched ${matched.join(', ')}'
         : matched.isNotEmpty
             ? 'Signature match'
-            : d.vendor != null
-                ? 'Vendor ${d.vendor}'
-                : 'Classifier estimate';
+            : board != null
+                ? 'Board detector: $board'
+                : d.vendor != null
+                    ? 'Vendor ${d.vendor}'
+                    : 'Classifier estimate';
     final radio = d.obs.kind == RadioKind.ble ? 'Bluetooth' : 'Wi-Fi';
     final body = [
       '${d.obs.rssi} dBm · $radio${d.obs.channel > 0 ? ' · ch ${d.obs.channel}' : ''}',
       if (d.obs.name.isNotEmpty && d.obs.name != what) d.obs.name,
+      if ((matched.isNotEmpty || board != null) && d.vendor != null && d.vendor != what) d.vendor!,
       if (d.obs.mac.isNotEmpty) d.obs.mac.toUpperCase(),
+      if (d.obs.detectorNode != null) 'via node ${d.obs.detectorNode}',
     ].join('\n');
     return ('${alert.label}: $what', why, body);
   }
@@ -327,6 +424,7 @@ class NotificationService extends ChangeNotifier {
         subtitle: 'Signal crossed -50 dBm',
         body: 'Signal is now $rssi dBm, up from $previousRssi dBm. MAC ${mac.toUpperCase()}.',
         groupKey: NotifChannel.foxhunt,
+        muteKey: 'foxhunt',
       );
     } else if (rssi > -65 && previousRssi <= -65) {
       _lastFoxhuntNotif = now;
@@ -337,6 +435,7 @@ class NotificationService extends ChangeNotifier {
         subtitle: 'Signal crossed -65 dBm',
         body: 'Signal is now $rssi dBm, up from $previousRssi dBm. MAC ${mac.toUpperCase()}.',
         groupKey: NotifChannel.foxhunt,
+        muteKey: 'foxhunt',
       );
     }
   }
@@ -413,6 +512,7 @@ class NotificationService extends ChangeNotifier {
         _ => 'detector',
       },
       alertMac: det.macAddress,
+      muteKey: muteKeyOf(det),
     );
   }
 
@@ -432,25 +532,38 @@ class NotificationService extends ChangeNotifier {
   static String _detectorHeadline(Detection det) {
     final why = det.detector?.filterDescription?.trim() ?? '';
     if (why.isNotEmpty || det.method == 'probe_ssid') return detectorTitle(det);
-    return switch (det.method) {
-      'tracker' => 'Find My Tracker',
-      'flipper' => 'Flipper Zero',
-      'deauth_storm' => 'Deauth Attack',
-      'pwnagotchi' => 'Pwnagotchi',
-      'glasses' => 'Meta Smart Glasses',
-      'axon' => 'Axon Device',
-      'ble_watchlist' || 'wifi_watchlist' => 'Watchlist Hit',
-      _ => detectorTitle(det),
-    };
+    return detectorMethodName(det.method) ?? detectorTitle(det);
   }
+
+  static String? detectorMethodName(String method) => switch (method) {
+        'tracker' => 'Find My Tracker',
+        'flipper' => 'Flipper Zero',
+        'deauth_storm' => 'Deauth Attack',
+        'pwnagotchi' => 'Pwnagotchi',
+        'glasses' => 'Meta Smart Glasses',
+        'axon' => 'Axon Device',
+        'ble_watchlist' || 'wifi_watchlist' => 'Watchlist Hit',
+        _ => null,
+      };
 
   static String _detectionBody(Detection det, String title) => [
         '${det.rssi} dBm${det.channel > 0 ? ' · ch ${det.channel}' : ''}',
         if (det.deviceName.isNotEmpty && det.deviceName != title) det.deviceName,
         if (det.ssid.isNotEmpty) '"${det.ssid}"',
+        ?_droneLine(det.odid),
         det.macAddress.toUpperCase(),
         if (det.sourceNodeId.isNotEmpty) 'via node ${det.sourceNodeId}',
       ].join('\n');
+
+  static String? _droneLine(OdidExtension? o) {
+    if (o == null) return null;
+    final parts = [
+      if (o.heightAgl != null) '${o.heightAgl} m AGL' else if (o.altitudeMsl != null) '${o.altitudeMsl} m MSL',
+      if (o.droneSpeed != null) '${o.droneSpeed} m/s',
+      if (o.operatorId != null && o.operatorId!.isNotEmpty) 'Operator ${o.operatorId}',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
 
   void _fireMilestoneNotification(int count) {
     _fireNotification(
@@ -471,7 +584,9 @@ class NotificationService extends ChangeNotifier {
     String? groupKey,
     String? alertKind,
     String? alertMac,
+    String? muteKey,
   }) async {
+    if (muteKey != null) _noteSent(muteKey);
     final viaActivity = channel != NotifChannel.wardrive &&
         soundEnabled &&
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed &&
@@ -479,7 +594,6 @@ class NotificationService extends ChangeNotifier {
     if (channel != NotifChannel.wardrive) {
       onAlert?.call(title, subtitle == null ? body : '$subtitle · $body', alertKind, alertMac, viaActivity);
     }
-    if (viaActivity) return;
     final androidDetails = AndroidNotificationDetails(
       channel,
       channel,
@@ -495,11 +609,15 @@ class NotificationService extends ChangeNotifier {
     final darwinDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
-      presentSound: soundEnabled,
+      presentSound: soundEnabled && !viaActivity,
       subtitle: subtitle,
       threadIdentifier: groupKey,
       categoryIdentifier: channel == NotifChannel.wardrive ? null : _detectionCategory,
-      interruptionLevel: channel == NotifChannel.wardrive ? null : InterruptionLevel.timeSensitive,
+      interruptionLevel: channel == NotifChannel.wardrive
+          ? null
+          : viaActivity
+              ? InterruptionLevel.passive
+              : InterruptionLevel.timeSensitive,
     );
 
     final details = NotificationDetails(
@@ -563,6 +681,7 @@ class NotificationService extends ChangeNotifier {
     maxPerMinute = p.getInt('notif_max_per_min') ?? 10;
     soundEnabled = p.getBool('notif_sound') ?? true;
     vibrationEnabled = p.getBool('notif_vibration') ?? true;
+    mutedAlerts = {...?p.getStringList('notif_muted')};
     final ac = p.getStringList('notif_alert_classes');
     final ca = p.getStringList('notif_class_alerts');
     if (ac != null) {
@@ -593,6 +712,7 @@ class NotificationService extends ChangeNotifier {
     p.setBool('notif_sound', soundEnabled);
     p.setBool('notif_vibration', vibrationEnabled);
     p.setStringList('notif_alert_classes', [for (final a in classAlerts) a.name]);
+    p.setStringList('notif_muted', [...mutedAlerts]);
   }
 
   void setFlockEnabled(bool v) {

@@ -12,6 +12,17 @@ const int sigAxon = 0x40;
 const int sigCamera = 0x80;
 const int sigAll = 0xFF;
 
+const detectorMethodsByBit = {
+  sigTracker: ['tracker'],
+  sigFlipper: ['flipper'],
+  sigDeauth: ['deauth_storm'],
+  sigProbe: ['probe_ssid'],
+  sigPwnagotchi: ['pwnagotchi'],
+  sigGlasses: ['glasses'],
+  sigAxon: ['axon'],
+  sigCamera: ['camera', 'amazon'],
+};
+
 class DetectorSignature {
   final int bit;
   final String label;

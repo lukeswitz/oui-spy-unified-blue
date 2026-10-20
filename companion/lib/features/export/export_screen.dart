@@ -104,11 +104,11 @@ class ExportScreen extends ConsumerWidget {
         : const Rect.fromLTWH(0, 0, 100, 100);
     try {
       final file = await db.createBackup();
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/x-sqlite3')],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, mimeType: 'application/x-sqlite3')],
         subject: 'OUI-SPY Database Backup',
         sharePositionOrigin: origin,
-      );
+      ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Backup failed: $e')));
     }
@@ -235,11 +235,11 @@ class ExportScreen extends ConsumerWidget {
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$filename');
     await file.writeAsString(content);
-    await Share.shareXFiles(
-      [XFile(file.path)],
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(file.path)],
       subject: 'OUI-SPY Export',
       sharePositionOrigin: origin,
-    );
+    ));
   }
 }
 

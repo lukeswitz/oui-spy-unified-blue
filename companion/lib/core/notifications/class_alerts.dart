@@ -1,6 +1,7 @@
 import 'package:oui_spy/core/classify/device_explain.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/detector_signatures.dart';
 
 final alertableClasses = [
   for (final c in SignatureClass.values)
@@ -44,9 +45,28 @@ class ClassAlert {
   final bool Function(Signature) matches;
 }
 
+const _detectorBitClass = {
+  sigCamera: SignatureClass.camera,
+  sigTracker: SignatureClass.finder,
+  sigGlasses: SignatureClass.glasses,
+  sigFlipper: SignatureClass.hacking,
+  sigPwnagotchi: SignatureClass.hacking,
+  sigAxon: SignatureClass.lawEnforcement,
+};
+
+final detectorMethodClass = {
+  for (final e in detectorMethodsByBit.entries)
+    if (_detectorBitClass[e.key] case final c?)
+      for (final m in e.value) m: c,
+};
+
 ClassAlert? classAlertOf(ClassifiedDevice d, Set<SignatureClass> enabled, {required bool flock}) {
-  if (d.signatures.any(isFlockSignature)) return flock ? ClassAlert.flock : null;
-  final c = alertClassOf(d, enabled);
+  final board = detectorMethodClass[d.obs.detectorMethod];
+  if (d.signatures.any(isFlockSignature)) {
+    if (flock) return ClassAlert.flock;
+    return board == null ? null : ClassAlert.ofClass(board);
+  }
+  final c = alertClassOf(d, enabled) ?? board;
   return c == null ? null : ClassAlert.ofClass(c);
 }
 

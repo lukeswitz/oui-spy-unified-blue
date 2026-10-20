@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart' show NotifChannel;
 
 class LiveActivityService {
   LiveActivityService();
@@ -15,13 +19,22 @@ class LiveActivityService {
   String? _activityId;
   String? _mode;
   Future<String?>? _startInFlight;
-  bool get isActive => _activityId != null || _startInFlight != null;
+  bool _android = false;
+  bool _androidShown = false;
+  Timer? _androidPostTimer;
+  DateTime _androidLastPost = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _androidStatusId = 0x0A11;
+  bool get isActive => _activityId != null || _startInFlight != null || _androidShown;
 
   /// Mode the visible activity was started with — identifies its owner.
   String? get activeMode => _mode;
 
   /// Check if Live Activities are supported on this device.
   Future<void> init() async {
+    if (Platform.isAndroid) {
+      _android = true;
+      return;
+    }
     if (!Platform.isIOS) {
       _supported = false;
       return;
@@ -58,7 +71,22 @@ class LiveActivityService {
     _lastAlertKind = kind ?? '';
     _lastAlertAt = DateTime.now().millisecondsSinceEpoch / 1000.0;
     if (kind != null && mac != null && mac.isNotEmpty) {
-      (_alertMacs[kind] ??= {}).add(mac.toUpperCase());
+      final m = mac.toUpperCase();
+      if (!_alertMacs.values.any((s) => s.contains(m))) (_alertMacs[kind] ??= {}).add(m);
+    }
+    if (_android) {
+      final last = _lastPayload;
+      if (!_androidShown || last == null) return;
+      _lastPayload = {
+        ...last,
+        'lastAlert': _lastAlert,
+        'lastAlertDetail': _lastAlertDetail,
+        'lastAlertAt': _lastAlertAt,
+        'alertKinds': alertKinds,
+        'lastAlertKind': _lastAlertKind,
+      };
+      await _postAndroid();
+      return;
     }
     final id = _activityId;
     final last = _lastPayload;
@@ -96,7 +124,7 @@ class LiveActivityService {
     bool isImperial = false,
     bool allowStart = false,
   }) async {
-    if (!_supported) return;
+    if (!_supported && !_android) return;
 
     final payload = <String, Object?>{
       'lastAlert': _lastAlert,
@@ -122,6 +150,13 @@ class LiveActivityService {
     };
 
     _lastPayload = payload;
+    if (_android) {
+      if (!_androidShown && !allowStart) return;
+      if (!_androidShown) _mode = primaryMode;
+      _androidShown = true;
+      await _postAndroid();
+      return;
+    }
     try {
       if (_activityId != null) {
         payload['activityId'] = _activityId;
@@ -156,6 +191,20 @@ class LiveActivityService {
 
   /// End every Live Activity of our type and forget the local handle.
   Future<void> end() async {
+    if (_android) {
+      _androidPostTimer?.cancel();
+      _androidPostTimer = null;
+      if (_androidShown) {
+        try {
+          await FlutterLocalNotificationsPlugin().cancel(_androidStatusId);
+        } catch (e) {
+          DebugLog.log('LIVE_STATUS: cancel error: $e');
+        }
+      }
+      _androidShown = false;
+      _resetState();
+      return;
+    }
     if (!Platform.isIOS) return;
     if (_activityId == null && _startInFlight != null) {
       _activityId = await _startInFlight;
@@ -176,15 +225,115 @@ class LiveActivityService {
     } catch (e) {
       DebugLog.log('LIVE_ACTIVITY: end error: $e');
     } finally {
-      _activityId = null;
-      _mode = null;
-      _lastPayload = null;
-      _lastAlert = '';
-      _lastAlertDetail = '';
-      _lastAlertKind = '';
-      _lastAlertAt = 0;
-      _alertMacs.clear();
+      _resetState();
     }
+  }
+
+  void _resetState() {
+    _activityId = null;
+    _mode = null;
+    _lastPayload = null;
+    _lastAlert = '';
+    _lastAlertDetail = '';
+    _lastAlertKind = '';
+    _lastAlertAt = 0;
+    _alertMacs.clear();
+  }
+
+  Future<void> _postAndroid() async {
+    final p = _lastPayload;
+    if (p == null || !_androidShown) return;
+    final wait = 1000 - DateTime.now().difference(_androidLastPost).inMilliseconds;
+    if (wait > 0) {
+      _androidPostTimer ??= Timer(Duration(milliseconds: wait), () {
+        _androidPostTimer = null;
+        _postAndroid();
+      });
+      return;
+    }
+    _androidLastPost = DateTime.now();
+    final (title, text, big) = androidStatusText(p);
+    final at = _lastAlertAt;
+    try {
+      await FlutterLocalNotificationsPlugin().show(
+        _androidStatusId,
+        title,
+        text,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            NotifChannel.liveStatus,
+            'Live Scan Status',
+            channelDescription: 'Ongoing counts and the latest alert while a scan runs',
+            importance: Importance.low,
+            priority: Priority.low,
+            ongoing: true,
+            autoCancel: false,
+            onlyAlertOnce: true,
+            silent: true,
+            showWhen: at > 0,
+            when: at > 0 ? (at * 1000).round() : null,
+            category: AndroidNotificationCategory.status,
+            styleInformation: BigTextStyleInformation(big, contentTitle: title),
+          ),
+        ),
+      );
+    } catch (e) {
+      DebugLog.log('LIVE_STATUS: post error: $e');
+    }
+  }
+
+  static const _modeLabels = {
+    'detector': 'DETECTOR',
+    'flockBle': 'FLOCK BLE',
+    'flockWifi': 'FLOCK WiFi',
+    'flockDual': 'FLOCK WiFi+BLE',
+    'foxhunter': 'FOXHUNT',
+    'skySpy': 'SKY SPY',
+    'uniPwn': 'UNIPWN',
+    'wardrive': 'WARDRIVE',
+    'wardriveFlock': 'WIGLE+FLOCK',
+  };
+
+  static String _kindLabel(String k) => switch (k) {
+        'flock' => 'Flock',
+        'drone' => 'Drones',
+        'foxhunt' => 'Foxhunt',
+        'detector' => 'Detector',
+        _ => SignatureClass.values.where((c) => c.name == k).firstOrNull?.label ?? k,
+      };
+
+  static (String, String, String) androidStatusText(Map<String, Object?> p) {
+    int n(String k) => (p[k] as num?)?.toInt() ?? 0;
+    final mode = p['mode'] as String? ?? 'wardrive';
+    final label = _modeLabels[mode] ?? mode.toUpperCase();
+    final imperial = p['isImperial'] == true;
+    final title = switch (mode) {
+      'foxhunter' => '$label · ${n('rssi')} dBm',
+      'uniPwn' => '$label · ${p['exploitStatus'] ?? ''}',
+      'wardrive' || 'wardriveFlock' => '$label · WiFi ${n('wifiCount')} · BLE ${n('bleCount')}',
+      _ => '$label · ${n('uniqueCount')} unique',
+    };
+    final km = (p['distanceKm'] as num?)?.toDouble() ?? 0;
+    final kmh = (p['speedKmh'] as num?)?.toDouble() ?? 0;
+    final stats = [
+      if (mode == 'foxhunter') (p['targetMac'] as String? ?? '').toUpperCase(),
+      if (n('flockCount') > 0) '${n('flockCount')} cameras',
+      if (n('droneCount') > 0) '${n('droneCount')} drones',
+      if (n('detectorHits') > 0) '${n('detectorHits')} hits',
+      if (km > 0) imperial ? '${(km * 0.621371).toStringAsFixed(1)} mi' : '${km.toStringAsFixed(1)} km',
+      if (kmh > 0) imperial ? '${(kmh * 0.621371).round()} mph' : '${kmh.round()} km/h',
+    ].where((s) => s.isNotEmpty).join(' · ');
+    final kinds = [...?(p['alertKinds'] as Map?)?.cast<String, int>().entries]
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final kindLine = [for (final k in kinds) '${_kindLabel(k.key)} ${k.value}'].join(' · ');
+    final alert = p['lastAlert'] as String? ?? '';
+    final detail = (p['lastAlertDetail'] as String? ?? '').split('\n').where((l) => l.isNotEmpty);
+    final big = [stats, kindLine, alert, ...detail].where((l) => l.isNotEmpty).join('\n');
+    return (
+      title,
+      alert.isNotEmpty ? alert : (stats.isNotEmpty ? stats : 'Scanning'),
+      big.isNotEmpty ? big : 'Scanning',
+    );
   }
 
   Future<void> endAll() => end();

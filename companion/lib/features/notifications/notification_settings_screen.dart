@@ -55,6 +55,21 @@ class NotificationSettingsBody extends ConsumerWidget {
             ),
           ),
 
+        if (notif.mutedAlerts.isNotEmpty) ...[
+          const ConfigSectionHeader(label: 'MUTED · LOGGED, NO NOTIFICATION'),
+          for (final k in {for (final k in notif.mutedAlerts) NotificationService.muteLabel(k): k}.entries)
+            ConfigToggleRow(
+              icon: Icons.notifications_off_outlined,
+              label: k.key,
+              color: AppTheme.detector,
+              value: false,
+              onChanged: (_) => notif.setMuted(
+                [for (final m in notif.mutedAlerts) if (NotificationService.muteLabel(m) == k.key) m],
+                false,
+              ),
+            ),
+          const SizedBox(height: 16),
+        ],
         const ConfigSectionHeader(label: 'FOXHUNT'),
         ConfigToggleRow(
           icon: Icons.gps_fixed,

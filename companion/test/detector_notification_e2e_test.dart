@@ -34,14 +34,14 @@ void main() {
     expect(body, '-89 dBm · ch 6\n5C:FC:E1:00:6A:24');
   });
 
-  test('pwnagotchi hit carries hit, class, engine and device data', () {
+  test('deauth hit carries hit, engine and device data; pwnagotchi mute keys', () {
     final det = Detection(
       id: 'x',
       sessionId: 's',
       nodeId: 'n',
       macAddress: 'de:ad:be:ef:00:01',
       engine: Engine.detector,
-      method: 'pwnagotchi',
+      method: 'deauth_storm',
       rssi: -61,
       channel: 6,
       deviceTimestampMs: 0,
@@ -49,10 +49,34 @@ void main() {
       deviceName: 'pwny',
       sourceNodeId: 'node2',
     );
-    final (title, subtitle, body, channel) = NotificationService.detectionNotificationText(det)!;
-    expect(title, 'Pwnagotchi');
-    expect(subtitle, 'Detector · PWNAGOTCHI');
+    final (title, _, body, channel) = NotificationService.detectionNotificationText(det)!;
+    expect(title, 'Deauth Attack');
     expect(body, '-61 dBm · ch 6\npwny\nDE:AD:BE:EF:00:01\nvia node node2');
     expect(channel, NotifChannel.detector);
+    expect(NotificationService.muteKeyOf(det.copyWith(method: 'pwnagotchi')), 'det:pwnagotchi');
+    expect(NotificationService.muteLabel('det:pwnagotchi'), 'Pwnagotchi');
+    expect(NotificationService.muteLabel('det:amazon'), 'Security cameras & Amazon');
+    expect(NotificationService.muteKeyOf(det.copyWith(method: 'wifi_watchlist')), 'det:watchlist');
+  });
+
+  test('drone notification carries height, speed and operator', () {
+    final det = Detection(
+      id: 'd',
+      sessionId: 's',
+      nodeId: 'n',
+      macAddress: '02:00:00:00:00:01',
+      engine: Engine.skySpy,
+      method: 'odid_ble',
+      rssi: -70,
+      channel: 6,
+      deviceTimestampMs: 0,
+      appTimestamp: DateTime(2026),
+      odid: const OdidExtension(uavId: 'UAV1', heightAgl: 42, droneSpeed: 7, operatorId: 'OP1'),
+    );
+    final (title, _, body, channel) = NotificationService.detectionNotificationText(det)!;
+    expect(title, 'Drone: UAV1');
+    expect(body, '-70 dBm · ch 6\n42 m AGL · 7 m/s · Operator OP1\n02:00:00:00:00:01');
+    expect(channel, NotifChannel.drone);
+    expect(NotificationService.muteKeyOf(det), 'drone');
   });
 }

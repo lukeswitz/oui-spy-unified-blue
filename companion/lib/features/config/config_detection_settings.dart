@@ -117,13 +117,22 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
       if (w.drone) notif.setDroneEnabled(v);
     }
 
+    List<String> muteKeys(_WatchItem w) => [
+          for (final c in w.classes) c.name,
+          if (w.flock) 'flock',
+          if (w.drone) 'drone',
+          for (final e in detectorMethodsByBit.entries)
+            if (w.bits & e.key != 0)
+              for (final m in e.value) 'det:$m',
+        ];
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: 14, left: 2, right: 2),
           child: Text(
-            'Choose what OUI-SPY watches for. When it finds one you get a notification and a pin on the map.',
+            'Choose what OUI-SPY watches for. When it finds one you get a notification and a pin on the map. Tap the bell to log a type without notifying.',
             style: TextStyle(color: t.textDim, fontSize: 12, height: 1.3),
           ),
         ),
@@ -137,6 +146,8 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               color: AppTheme.detector,
               value: isOn(w),
               onChanged: (v) => setOn(w, v),
+              notify: !notif.isMuted(muteKeys(w)),
+              onNotify: (v) => notif.setMuted(muteKeys(w), !v),
             ),
           const SizedBox(height: 12),
         ],
@@ -210,6 +221,8 @@ class _MoreTypesPage extends ConsumerWidget {
               color: AppTheme.detector,
               value: notif.classAlerts.contains(c),
               onChanged: (v) => notif.setClassAlert(c, v),
+              notify: !notif.mutedAlerts.contains(c.name),
+              onNotify: (v) => notif.setMuted([c.name], !v),
             ),
         ],
         const SizedBox(height: 20),

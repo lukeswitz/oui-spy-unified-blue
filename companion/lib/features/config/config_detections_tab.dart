@@ -19,10 +19,10 @@ int _detRadioRank(Map<String, dynamic> d) {
   if (isBleMethod(method)) return 0;
   if (isWifiMethod(method)) return 1;
   final engine = (d['engine'] as String?) ?? '';
-  if (engine == 'flockBle' || engine == 'detector') return 0;
+  if (engine == 'flockBle') return 0;
   if (engine == 'flockWifi') return 1;
   final ch = (d['channel'] as int?) ?? 0;
-  return (ch >= 1 && ch <= 14) ? 1 : 0;
+  return (ch >= 1 && ch <= 14) || ch >= 30 ? 1 : 0;
 }
 
 /// Detection-method label — the exact text shown on each detections-tab row.
@@ -173,10 +173,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
 
   Future<void> _load() async {
     final db = ref.read(databaseProvider);
-    final rows = [
-      ...await db.getFlockDetectorDetections(),
-      ...await db.getClassAlertMaps(),
-    ];
+    final rows = await db.getAlertHistoryMaps();
     if (mounted) setState(() { _detections = rows; _loading = false; });
   }
 
@@ -192,7 +189,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     } else if (_engineFilter == 'drone') {
       list = list.where((d) => d['engine'] == 'skySpy').toList();
     } else if (_engineFilter == 'signature') {
-      list = list.where((d) => d['engine'] == 'signature').toList();
+      list = list.where((d) => d['engine'] == 'signature' || d['mergedClasses'] != null).toList();
     }
 
     if (_noGpsOnly) {
@@ -382,11 +379,11 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final file = File('${dir.path}/oui_spy_detections_$ts.csv');
       await file.writeAsString(csv);
-      await Share.shareXFiles(
-        [XFile(file.path)],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path)],
         subject: 'OUI-SPY Detections Export (${items.length} detections)',
         sharePositionOrigin: origin,
-      );
+      ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
@@ -412,7 +409,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           }).length,
         'detector' => _detections.where((d) => d['engine'] == 'detector').length,
         'drone' => _detections.where((d) => d['engine'] == 'skySpy').length,
-        'signature' => _detections.where((d) => d['engine'] == 'signature').length,
+        'signature' => _detections.where((d) => d['engine'] == 'signature' || d['mergedClasses'] != null).length,
         _ => _detections.length,
       };
 
@@ -1273,7 +1270,12 @@ class _DetectionRow extends ConsumerWidget {
         final messenger = ScaffoldMessenger.of(context);
         (data['engine'] == 'signature'
                 ? db.deleteClassAlerts(data['macAddress'] as String, data['alertClass'] as String)
-                : db.deleteDetectionById(id))
+                : Future.wait([
+                    db.deleteDetectionById(id),
+                    for (final (mac, cls) in (data['mergedClasses'] as List<(String, String)>?) ??
+                        const <(String, String)>[])
+                      db.deleteClassAlerts(mac, cls),
+                  ]))
             .then((_) {
           onDelete();
           messenger.showSnackBar(
@@ -1391,6 +1393,14 @@ class _DetectionRow extends ConsumerWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(deviceName, style: TextStyle(
                             color: t.textSecondary, fontSize: 12,
+                          ), overflow: TextOverflow.ellipsis),
+                        ),
+                      if (data['classTitle'] case final String ct when ct != deviceName)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(ct, style: TextStyle(
+                            color: alertKindColor((data['mergedClasses'] as List<(String, String)>).first.$2),
+                            fontSize: 12, fontWeight: FontWeight.w600,
                           ), overflow: TextOverflow.ellipsis),
                         ),
                     ],

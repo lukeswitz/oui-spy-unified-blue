@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/db/app_database.dart';
@@ -43,5 +44,29 @@ void main() {
     expect((await db.getClassAlertMaps()).length, 1);
     expect(await db.clearClassAlerts(), 1);
     expect(await db.getClassAlertMaps(), isEmpty);
+  });
+
+  test('history merges a class alert into the engine row for the same mac', () async {
+    await db.insertDetection(DetectionsCompanion(
+      sessionId: const drift.Value('s1'),
+      nodeId: const drift.Value('n'),
+      macAddress: const drift.Value('aa:00:00:00:00:01'),
+      engine: const drift.Value('detector'),
+      detectionMethod: const drift.Value('camera'),
+      rssi: const drift.Value(-90),
+      channel: const drift.Value(6),
+      deviceTimestampMs: const drift.Value(0),
+      appTimestamp: const drift.Value(50),
+    ));
+    await log('AA:00:00:00:00:01', 'camera', 100);
+    await log('AA:00:00:00:00:02', 'finder', 150, ble: true);
+
+    final rows = await db.getAlertHistoryMaps();
+    expect(rows.length, 2);
+    final host = rows.firstWhere((r) => r['engine'] == 'detector');
+    expect(host['mergedClasses'], [('AA:00:00:00:00:01', 'camera')]);
+    expect(host['classTitle'], 'Cameras: Test');
+    expect(rows.where((r) => r['engine'] == 'signature').single['alertClass'], 'finder');
+    expect((await db.getClassAlertMaps()).length, 2);
   });
 }

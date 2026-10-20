@@ -301,7 +301,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return switch (i) {
       0 => 'Theme, units, auto-connect',
       1 => 'Re-log thresholds, scan timing, channels',
-      2 => 'What to watch for, how you are alerted, your lists',
+      2 => 'What to watch for, notifications, your lists',
       3 => ble.currentConnectionState != NodeConnectionState.ready
           ? (ble.isConnected ? 'Connecting…' : 'Not connected')
           : [
@@ -883,15 +883,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
 
   Widget _buildAlertsTab() {
     final appState = ref.watch(appStateProvider);
-    final t = AppTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(2, 8, 2, 12),
-          child: Text('How you are alerted',
-              style: TextStyle(color: t.textPrimary, fontSize: 20, fontWeight: FontWeight.w700)),
-        ),
         const NotificationSettingsBody(
           shrinkWrap: true,
           physics: NeverScrollableScrollPhysics(),

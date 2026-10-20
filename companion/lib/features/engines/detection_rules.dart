@@ -98,11 +98,11 @@ class _WatchlistPanelState extends ConsumerState<WatchlistPanel> {
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}/ouispy-watchlist.json');
     await f.writeAsString(ref.read(watchlistProvider).exportJson());
-    await Share.shareXFiles(
-      [XFile(f.path, mimeType: 'application/json')],
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(f.path, mimeType: 'application/json')],
       subject: 'OUI-SPY Watchlist',
       sharePositionOrigin: origin,
-    );
+    ));
   }
 
   void _showEditDialog([WatchlistEntry? existing]) {

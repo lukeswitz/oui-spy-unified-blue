@@ -264,8 +264,34 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
+  Future<void> _askMuteNoisy(({String key, int count, int total}) p) async {
+    final notif = ref.read(notificationServiceProvider);
+    final label = NotificationService.muteLabel(p.key);
+    final t = AppTheme.of(context);
+    final mute = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        title: Text('Lots of alerts', style: TextStyle(color: t.textPrimary)),
+        content: Text(
+          '${p.total} notifications in the last minute, ${p.count} from $label. '
+          'Turn off $label notifications? Detections are still logged.',
+          style: TextStyle(color: t.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Turn off $label')),
+        ],
+      ),
+    );
+    notif.resolveNoisy(mute ?? false);
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen(notificationServiceProvider.select((n) => n.noisyPrompt), (prev, p) {
+      if (p != null && prev == null) _askMuteNoisy(p);
+    });
     final location = GoRouterState.of(context).uri.path;
     final index = _routes.indexOf(location);
     return Scaffold(

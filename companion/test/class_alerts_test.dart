@@ -64,4 +64,46 @@ void main() {
     );
     expect(alertClassOf(randomized, alertableClasses.toSet()), isNull);
   });
+
+  test('board detector hit is classifier evidence: one class alert, board wording, node kept', () {
+    expect(detectorMethodClass['pwnagotchi'], SignatureClass.hacking);
+    expect(detectorMethodClass['amazon'], SignatureClass.camera);
+    expect(detectorMethodClass.containsKey('deauth_storm'), isFalse);
+    expect(detectorMethodClass.containsKey('probe_ssid'), isFalse);
+    const d = ClassifiedDevice(
+      Observation(
+        key: 'BLE:02:00:00:00:00:09',
+        kind: RadioKind.ble,
+        mac: '02:00:00:00:00:09',
+        rssi: -61,
+        detectorMethod: 'pwnagotchi',
+        detectorNode: 'node2',
+      ),
+      [],
+      {'esp32'},
+    );
+    final a = classAlertOf(d, {}, flock: false)!;
+    expect(a.kind, 'hacking');
+    final (title, why, body) = NotificationService.classNotificationText(d, a);
+    expect(title, 'Pentest: Pwnagotchi');
+    expect(why, 'Board detector: Pwnagotchi');
+    expect(body, '-61 dBm · Bluetooth\n02:00:00:00:00:09\nvia node node2');
+  });
+
+  test('board evidence yields to an enabled signature class and to the Flock toggle', () {
+    const cam = Observation(
+      key: 'W:7',
+      kind: RadioKind.wifi,
+      mac: 'B4:1E:52:11:22:35',
+      detectorMethod: 'camera',
+      detectorDesc: 'Ring',
+    );
+    const withSig = ClassifiedDevice(cam, [_sig], {'esp32'});
+    expect(classAlertOf(withSig, {SignatureClass.surveillance}, flock: false)!.kind, 'surveillance');
+    expect(classAlertOf(withSig, {}, flock: false)!.kind, 'camera');
+    const flockSig = Signature(id: 'fleet-flock-cameras', name: 'Flock Safety Cameras', kind: SignatureClass.surveillance);
+    const withFlock = ClassifiedDevice(cam, [flockSig], {'esp32'});
+    expect(classAlertOf(withFlock, {}, flock: true)!.kind, 'flock');
+    expect(classAlertOf(withFlock, {}, flock: false)!.kind, 'camera');
+  });
 }

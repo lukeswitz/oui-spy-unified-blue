@@ -45,6 +45,60 @@ void main() {
     expect(o.channel, 0);
   });
 
+  test('detector hit carries board evidence; evidence moves as one on merge', () {
+    final cam = Detection(
+      id: 'c',
+      sessionId: 's',
+      nodeId: 'n',
+      macAddress: '02:00:00:00:00:01',
+      engine: Engine.detector,
+      method: 'camera',
+      rssi: -90,
+      channel: 6,
+      deviceTimestampMs: 0,
+      appTimestamp: DateTime.fromMillisecondsSinceEpoch(1000),
+      sourceNodeId: 'n2',
+      detector: const DetectorExtension(filterDescription: 'Ring'),
+    );
+    final o = observationFromDetection(cam);
+    expect(o.kind, RadioKind.wifi);
+    expect((o.detectorMethod, o.detectorDesc, o.detectorNode), ('camera', 'Ring', 'n2'));
+    final w = observationFromDetection(det(mac: '02:00:00:00:00:01', method: 'wifi_ap'));
+    expect(w.detectorMethod, isNull);
+    final m = w.merge(o).merge(w);
+    expect((m.detectorMethod, m.detectorDesc, m.detectorNode), ('camera', 'Ring', 'n2'));
+    final axon = observationFromDetection(cam.copyWith(method: 'axon', detector: null, sourceNodeId: ''));
+    final a = m.merge(axon);
+    expect((a.detectorMethod, a.detectorDesc, a.detectorNode), ('axon', null, null));
+  });
+
+  test('board hit on a device the phone already saw re-runs classification once', () {
+    final reg = DeviceRegistry(engine: engine);
+    var fired = 0;
+    reg.onClassified = (_) => fired++;
+    reg.ingest(observationFromDetection(det(mac: '02:00:00:00:00:02', method: 'ble_adv', channel: 0)), source: 'phone');
+    expect(fired, 1);
+    final hit = Detection(
+      id: 't',
+      sessionId: 's',
+      nodeId: 'n',
+      macAddress: '02:00:00:00:00:02',
+      engine: Engine.detector,
+      method: 'tracker',
+      rssi: -70,
+      channel: 0,
+      deviceTimestampMs: 0,
+      appTimestamp: DateTime.fromMillisecondsSinceEpoch(2000),
+    );
+    reg.ingest(observationFromDetection(hit), source: 'esp32');
+    expect(reg.count, 1);
+    expect(fired, 2);
+    expect(reg.devices.single.obs.detectorMethod, 'tracker');
+    reg.ingest(observationFromDetection(hit), source: 'esp32');
+    expect(fired, 2);
+    reg.dispose();
+  });
+
   test('registry merges by key and classifies', () {
     final reg = DeviceRegistry(engine: engine);
     reg.ingest(observationFromDetection(det(mac: 'E0:0A:F6:11:22:33', method: 'wifi_ap')), source: 'esp32');
