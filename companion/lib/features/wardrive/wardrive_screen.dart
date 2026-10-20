@@ -740,6 +740,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           final h = c.maxHeight;
           final w = c.maxWidth;
           final horizonY = isPov ? h * horizonFrac : 0.0;
+          final pills = [
+            for (final m in WardriveController.selectableTargets)
+              if (m != WardriveTarget.wigle &&
+                  ((wd.isActive && wd.isTargetSelected(m)) ||
+                      targetEngineRunning(appEngines, m)))
+                _ScanningPill(color: m.color, label: m.label),
+          ];
 
           return Stack(children: [
             // Sky on top band.
@@ -753,54 +760,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               top: horizonY, left: 0, right: 0, bottom: 0,
               child: mapStack,
             ),
-            if (_focusedDetection != null)
-              Positioned(
-                top: horizonY + 8, left: 0, right: 0,
-                child: Center(
-                  child: _FocusedDetectionChip(
-                    detection: _focusedDetection!,
-                    classLabel: _classLabelOf(_focusedDetection!),
-                    onShowAll: _showAllOfClass,
-                    onClear: _clearFocusedDetection,
-                  ),
-                ),
-              )
-            else if (_classGroup.isNotEmpty)
-              Positioned(
-                top: horizonY + 8, left: 0, right: 0,
-                child: Center(
-                  child: _ClassGroupChip(
-                    label: _classGroupLabel,
-                    count: _classGroup.length,
-                    onClear: _clearClassGroup,
-                  ),
-                ),
-              ),
-            if (wd.isActive && wd.geofenceSuppressed > 0)
-              Positioned(
-                top: horizonY + 8, left: 0, right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                          color: AppTheme.warning.withValues(alpha: 0.7)),
-                    ),
-                    child: Text(
-                      '${wd.geofenceSuppressed} HIDDEN — INSIDE EXCLUSION ZONE',
-                      style: TextStyle(
-                        color: AppTheme.warning,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             if (wt.synthwaveSky)
               Positioned(
                 top: horizonY - 28, left: 0, right: 0, height: 36,
@@ -950,16 +909,50 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   }
                 },
                 child: Center(
-                  child: Wrap(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     spacing: 6,
-                    runSpacing: 4,
-                    alignment: WrapAlignment.center,
                     children: [
-                      for (final m in WardriveController.selectableTargets)
-                        if (m != WardriveTarget.wigle &&
-                            ((wd.isActive && wd.isTargetSelected(m)) ||
-                                targetEngineRunning(appEngines, m)))
-                          _ScanningPill(color: m.color, label: m.label),
+                      if (pills.isNotEmpty)
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          alignment: WrapAlignment.center,
+                          children: pills,
+                        ),
+                      if (_focusedDetection != null)
+                        _FocusedDetectionChip(
+                          detection: _focusedDetection!,
+                          classLabel: _classLabelOf(_focusedDetection!),
+                          onShowAll: _showAllOfClass,
+                          onClear: _clearFocusedDetection,
+                        )
+                      else if (_classGroup.isNotEmpty)
+                        _ClassGroupChip(
+                          label: _classGroupLabel,
+                          count: _classGroup.length,
+                          onClear: _clearClassGroup,
+                        ),
+                      if (wd.isActive && wd.geofenceSuppressed > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                                color: AppTheme.warning.withValues(alpha: 0.7)),
+                          ),
+                          child: Text(
+                            '${wd.geofenceSuppressed} HIDDEN — INSIDE EXCLUSION ZONE',
+                            style: TextStyle(
+                              color: AppTheme.warning,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1086,7 +1079,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 ((ref.watch(appStateProvider).isManagerConnected && ref.watch(appStateProvider).meshEnabled) ||
                     ref.watch(phoneBleSourceProvider).scanning))
               Positioned(
-                top: _statsHeight + 48, left: 12,
+                top: _statsHeight + 8 + math.max(40.0, _chipsHeight + 8),
+                left: 12,
                 child: _NodeStatsOverlay(ref: ref),
               ),
 
