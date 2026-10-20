@@ -55,11 +55,23 @@ class OtaProgress {
       bytesTotal == 0 ? 0.0 : (bytesSent / bytesTotal).clamp(0.0, 1.0);
 }
 
+class GithubRateLimited implements Exception {
+  GithubRateLimited(this.until);
+  final DateTime until;
+  @override
+  String toString() {
+    final t = until.toLocal();
+    return 'GitHub rate limit reached. Try again after '
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+}
+
 class OtaService {
   OtaService(this._ble);
 
   final BleManager _ble;
   final Dio _dio = Dio();
+  DateTime? _githubRetryAt;
 
   static const String githubOwner = 'lukeswitz';
   static const String githubRepo = 'oui-spy-unified-blue';
@@ -133,19 +145,38 @@ class OtaService {
     final url = _otaApiOverride.isNotEmpty
         ? _otaApiOverride
         : 'https://api.github.com/repos/$githubOwner/$githubRepo/releases/latest';
-    final resp = await _dio.get<Map<String, dynamic>>(
-      url,
-      options: Options(
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-        responseType: ResponseType.json,
-        connectTimeout: const Duration(seconds: 12),
-        receiveTimeout: const Duration(seconds: 12),
-      ),
-    );
-    return resp.data;
+    final retryAt = _githubRetryAt;
+    if (retryAt != null && DateTime.now().isBefore(retryAt)) throw GithubRateLimited(retryAt);
+    try {
+      final resp = await _dio.get<Map<String, dynamic>>(
+        url,
+        options: Options(
+          headers: {
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'oui-spy-companion/1.0',
+          },
+          responseType: ResponseType.json,
+          connectTimeout: const Duration(seconds: 12),
+          receiveTimeout: const Duration(seconds: 12),
+        ),
+      );
+      return resp.data;
+    } on DioException catch (e) {
+      final until = githubRetryAt(e.response?.statusCode, e.response?.headers, DateTime.now());
+      if (until == null) rethrow;
+      _githubRetryAt = until;
+      throw GithubRateLimited(until);
+    }
+  }
+
+  static DateTime? githubRetryAt(int? status, Headers? headers, DateTime now) {
+    if (status != 403 && status != 429) return null;
+    final retryAfter = int.tryParse(headers?.value('retry-after') ?? '');
+    if (retryAfter != null) return now.add(Duration(seconds: retryAfter));
+    if (headers?.value('x-ratelimit-remaining') != '0') return null;
+    final reset = int.tryParse(headers?.value('x-ratelimit-reset') ?? '');
+    return reset == null ? null : DateTime.fromMillisecondsSinceEpoch(reset * 1000);
   }
 
   OtaRelease? _releaseFromJson(Map<String, dynamic> data, String board, String role,

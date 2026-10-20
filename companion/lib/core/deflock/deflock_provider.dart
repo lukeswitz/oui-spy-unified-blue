@@ -83,6 +83,7 @@ class DeflockProvider extends ChangeNotifier {
   final Map<int, AlprNode> _byId = {};
   bool _showAlpr = false;
   bool _loading = false;
+  DateTime? _retryAt;
   CancelToken? _cancel;
   Timer? _persistTimer;
   String? _error;
@@ -128,7 +129,8 @@ class DeflockProvider extends ChangeNotifier {
 
   /// Fetch whatever of [bounds] is not already cached, in ONE Overpass call.
   Future<void> ensureBounds(GeoBounds bounds, {bool force = false}) async {
-    if (_loading) return;
+    final retryAt = _retryAt;
+    if (_loading || (retryAt != null && DateTime.now().isBefore(retryAt))) return;
     _error = null;
     final wanted = _tileKeysFor(bounds);
     final now = DateTime.now();
@@ -173,6 +175,8 @@ class DeflockProvider extends ChangeNotifier {
       _reindex();
     } on DeflockApiException catch (e) {
       _error = e.message;
+      final ra = e.retryAfter;
+      if (ra != null) _retryAt = DateTime.now().add(ra);
       DebugLog.log('DEFLOCK: fetch failed: ${e.message}');
     } on DioException catch (e) {
       if (!CancelToken.isCancel(e)) rethrow;

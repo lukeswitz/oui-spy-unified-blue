@@ -219,30 +219,20 @@ class UnitFormatter {
 
 
 
-const String _esriRest =
-    'https://services.arcgisonline.com/ArcGIS/rest/services';
-const String _cartoGl = 'https://basemaps.cartocdn.com/gl';
-
-const String _osm = '© OpenStreetMap';
-const String _carto = '© CARTO, © OpenStreetMap';
-const String _esriImagery = '© Esri, Maxar, Earthstar Geographics';
-const String _esriTopo = '© Esri, HERE, Garmin, USGS, OpenStreetMap';
+const String _ofm = 'https://tiles.openfreemap.org/styles';
+const String _ofmCredit = 'OpenFreeMap © OpenMapTiles Data from OpenStreetMap';
 
 enum MapStyle {
-  cartoDark('Carto Dark', '$_cartoGl/dark-matter-gl-style/style.json',
-      attribution: _carto, isVector: true, isDark: true),
-  cartoLight('Positron', '$_cartoGl/positron-gl-style/style.json',
-      attribution: _carto, isVector: true),
-  cartoVoyager('Voyager', '$_cartoGl/voyager-gl-style/style.json',
-      attribution: _carto, isVector: true),
-  satellite('Satellite', '$_esriRest/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      attribution: _esriImagery, isDark: true),
-  osm('OpenStreetMap', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      attribution: _osm),
-  openTopo('Topo', 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
-      attribution: '$_osm, SRTM, OpenTopoMap (CC-BY-SA)'),
-  terrain('Terrain', '$_esriRest/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-      attribution: _esriTopo),
+  dark('Dark', '$_ofm/dark', attribution: _ofmCredit, isVector: true, isDark: true),
+  fiord('Fiord', '$_ofm/fiord', attribution: _ofmCredit, isVector: true, isDark: true),
+  liberty('Liberty', '$_ofm/liberty', attribution: _ofmCredit, isVector: true),
+  bright('Bright', '$_ofm/bright', attribution: _ofmCredit, isVector: true),
+  positron('Positron', '$_ofm/positron', attribution: _ofmCredit, isVector: true),
+  satellite('Satellite (US)',
+      'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Imagery: U.S. Geological Survey, National Geospatial Program',
+      isDark: true,
+      maxNativeZoom: 16),
   ;
 
   const MapStyle(
@@ -251,6 +241,7 @@ enum MapStyle {
     required this.attribution,
     this.isVector = false,
     this.isDark = false,
+    this.maxNativeZoom = 19,
   });
 
   final String label;
@@ -258,21 +249,34 @@ enum MapStyle {
   final String attribution;
   final bool isVector;
   final bool isDark;
+  final int maxNativeZoom;
 }
 
 class MapStyleNotifier extends StateNotifier<MapStyle> {
-  MapStyleNotifier() : super(MapStyle.cartoDark) {
+  MapStyleNotifier() : super(MapStyle.dark) {
     _load();
   }
 
   static const _key = 'map_style';
+  static const _removed = {
+    'cartoDark': MapStyle.dark,
+    'cartoLight': MapStyle.positron,
+    'cartoVoyager': MapStyle.liberty,
+    'osm': MapStyle.liberty,
+    'openTopo': MapStyle.liberty,
+    'terrain': MapStyle.liberty,
+  };
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final value = prefs.getString(_key);
     if (value != null) {
       final match = MapStyle.values.where((s) => s.name == value);
-      if (match.isNotEmpty) state = match.first;
+      if (match.isNotEmpty) {
+        state = match.first;
+      } else if (_removed[value] case final s?) {
+        state = s;
+      }
     }
   }
 

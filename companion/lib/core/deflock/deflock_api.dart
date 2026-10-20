@@ -117,14 +117,17 @@ class DeflockApi {
   /// ALPR nodes inside [bounds]. Falls through to the next mirror on 429/5xx.
   Future<List<AlprNode>> fetchBounds(GeoBounds bounds, {CancelToken? cancel}) async {
     DeflockApiException? last;
+    Duration? wait;
     for (final url in endpoints) {
       try {
         return await _fetchFrom(url, bounds, cancel);
       } on DeflockApiException catch (e) {
         last = e;
+        final ra = e.retryAfter;
+        if (ra != null && (wait == null || ra > wait)) wait = ra;
       }
     }
-    throw last ?? DeflockApiException('Overpass unreachable');
+    throw DeflockApiException(last?.message ?? 'Overpass unreachable', retryAfter: wait);
   }
 
   Future<List<AlprNode>> _fetchFrom(String url, GeoBounds bounds, CancelToken? cancel) async {
@@ -146,8 +149,9 @@ class DeflockApi {
 
     final code = resp.statusCode ?? 0;
     if (code == 429) {
+      final ra = int.tryParse(resp.headers.value('retry-after')?.trim() ?? '');
       throw DeflockApiException('Overpass rate limited — try again shortly',
-          retryAfter: const Duration(seconds: 30));
+          retryAfter: Duration(seconds: ra != null && ra > 30 ? ra : 30));
     }
     if (code != 200) {
       throw DeflockApiException('Overpass HTTP $code');

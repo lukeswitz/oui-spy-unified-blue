@@ -91,6 +91,8 @@ class OuiLookupService extends ChangeNotifier {
   bool get isLoaded => _loaded;
   int get entryCount => _db.length;
   DateTime? get lastUpdated => _lastUpdated;
+  static const updateInterval = Duration(days: 7);
+  DateTime? get nextUpdateAt => _lastUpdated?.add(updateInterval);
 
   /// Initialize from local cache or bundled asset.
   Future<void> init() async {
@@ -135,45 +137,44 @@ class OuiLookupService extends ChangeNotifier {
   }
 
   Future<bool> checkForUpdate() async {
-    try {
-      final dio = Dio();
-      final response = await dio.get<List<int>>(
-        _updateUrl,
-        options: Options(
-          responseType: ResponseType.bytes,
-          receiveTimeout: const Duration(seconds: 30),
-        ),
-      );
+    final next = nextUpdateAt;
+    if (next != null && DateTime.now().isBefore(next)) return false;
+    final dio = Dio();
+    final response = await dio.get<List<int>>(
+      _updateUrl,
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: {'User-Agent': 'oui-spy-companion/1.0'},
+        receiveTimeout: const Duration(seconds: 30),
+      ),
+    );
 
-      if (response.statusCode == 200 && response.data != null) {
-        final content = utf8.decode(gzip.decode(response.data!));
-        final lines = content.split('\n');
-        // Validate it looks like valid OUI data
-        if (lines.length < 1000) return false;
+    if (response.statusCode == 200 && response.data != null) {
+      final content = utf8.decode(gzip.decode(response.data!));
+      final lines = content.split('\n');
+      // Validate it looks like valid OUI data
+      if (lines.length < 1000) return false;
 
-        final newDb = parseEntries(lines);
+      final newDb = parseEntries(lines);
 
-        if (newDb.length < 30000) return false; // sanity check
+      if (newDb.length < 30000) return false; // sanity check
 
-        // Write deduplicated TSV locally
-        final localFile = await _localFile;
-        final buffer = StringBuffer();
-        for (final entry in newDb.entries) {
-          buffer.write(entry.key);
-          buffer.write('\t');
-          buffer.writeln(entry.value);
-        }
-        await localFile.writeAsString(buffer.toString());
-
-        // Reload — overrides are applied at lookup time, not in _db
-        _db.clear();
-        _db.addAll(newDb);
-        _lastUpdated = DateTime.now();
-        notifyListeners();
-        return true;
+      // Write deduplicated TSV locally
+      final localFile = await _localFile;
+      final buffer = StringBuffer();
+      for (final entry in newDb.entries) {
+        buffer.write(entry.key);
+        buffer.write('\t');
+        buffer.writeln(entry.value);
       }
-    } catch (_) {
-      // Network error — keep using existing data
+      await localFile.writeAsString(buffer.toString());
+
+      // Reload — overrides are applied at lookup time, not in _db
+      _db.clear();
+      _db.addAll(newDb);
+      _lastUpdated = DateTime.now();
+      notifyListeners();
+      return true;
     }
     return false;
   }

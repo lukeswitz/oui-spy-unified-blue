@@ -19,11 +19,14 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
     try {
       final oui = ref.read(ouiLookupProvider);
       final updated = await oui.checkForUpdate();
+      final next = oui.nextUpdateAt;
       setState(() {
         _updating = false;
         _status = updated
             ? 'Updated to ${oui.entryCount} vendors'
-            : 'Already up to date (${oui.entryCount} vendors)';
+            : next != null && DateTime.now().isBefore(next)
+                ? 'Wireshark publishes this list weekly. Next check after ${_formatDate(next)}'
+                : 'Already up to date (${oui.entryCount} vendors)';
       });
     } catch (e) {
       setState(() {

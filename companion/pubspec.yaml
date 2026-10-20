@@ -50,7 +50,6 @@ dependencies:
   package_info_plus: ^10.2.2
   device_info_plus: ^13.3.0
   vector_map_tiles: ^8.0.0
-  vector_tile_renderer: ^5.2.1
   wifi_scan: ^0.5.0
 
 dev_dependencies:

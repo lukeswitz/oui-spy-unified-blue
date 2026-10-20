@@ -1,76 +1,159 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
-import 'package:vector_tile_renderer/vector_tile_renderer.dart' show ThemeReader;
 
 import 'package:oui_spy/theme/app_theme.dart';
 
-final Map<String, Future<Style>> _styleCache = {};
+const tileCacheTtl = Duration(days: 7);
+const _tileCacheMaxAge = Duration(days: 30);
+const _tileCacheMaxBytes = 200 * 1024 * 1024;
 
-Object? _rgbaForTransparent(Object? node) {
-  if (node == 'transparent') return 'rgba(0,0,0,0)';
-  if (node is Map) {
-    return node.map((k, v) => MapEntry(k as String, _rgbaForTransparent(v)));
+final Dio _tileDio = Dio(BaseOptions(
+  responseType: ResponseType.bytes,
+  connectTimeout: const Duration(seconds: 15),
+  receiveTimeout: const Duration(seconds: 30),
+));
+
+Future<Directory>? _tileDir;
+
+Future<Directory> _openTileDir() async {
+  final base = await getApplicationCacheDirectory();
+  final dir = Directory('${base.path}/map_tiles');
+  await dir.create(recursive: true);
+  unawaited(pruneTileCache(dir, DateTime.now()));
+  return dir;
+}
+
+@visibleForTesting
+Future<void> pruneTileCache(Directory dir, DateTime now,
+    {int maxBytes = _tileCacheMaxBytes}) async {
+  final files = <(File, FileStat)>[];
+  await for (final e in dir.list()) {
+    if (e is File) files.add((e, await e.stat()));
   }
-  if (node is List) return node.map(_rgbaForTransparent).toList();
-  return node;
+  files.sort((a, b) => b.$2.modified.compareTo(a.$2.modified));
+  var total = 0;
+  for (final (f, s) in files) {
+    total += s.size;
+    if (total > maxBytes || now.difference(s.modified) > _tileCacheMaxAge) {
+      await f.delete();
+    }
+  }
 }
 
-Future<Style> _readStyle(String url) async {
-  final style = await StyleReader(uri: url).read();
-  final response = await Dio().get<Map<String, dynamic>>(url);
-  final raw = response.data;
-  if (raw == null) return style;
-  return Style(
-    name: style.name,
-    theme: ThemeReader()
-        .read(_rgbaForTransparent(raw)! as Map<String, dynamic>),
-    providers: style.providers,
-    sprites: style.sprites,
-  );
+@visibleForTesting
+Future<Uint8List> cachedTileBytes(
+    Directory dir, String url, Map<String, String> headers,
+    {Future<Uint8List> Function(String url, Map<String, String> headers)? fetch}) async {
+  final file = File('${dir.path}/${sha1.convert(utf8.encode(url))}');
+  final stat = await file.stat();
+  final cached = stat.type == FileSystemEntityType.file;
+  if (cached && DateTime.now().difference(stat.modified) < tileCacheTtl) {
+    return file.readAsBytes();
+  }
+  try {
+    final bytes = await (fetch ?? _fetchTile)(url, headers);
+    await file.writeAsBytes(bytes);
+    return bytes;
+  } catch (_) {
+    if (cached) return file.readAsBytes();
+    rethrow;
+  }
 }
 
-Widget mapTileLayer(MapStyle style, {ColorFilter? tint}) {
-  if (style.isVector) return _VectorTiles(style: style, tint: tint);
-  final layer = TileLayer(
+Future<Uint8List> _fetchTile(String url, Map<String, String> headers) async {
+  final r = await _tileDio.get<List<int>>(url, options: Options(headers: headers));
+  return Uint8List.fromList(r.data!);
+}
+
+class _CachedTileProvider extends TileProvider {
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) =>
+      _CachedTileImage(getTileUrl(coordinates, options), headers);
+}
+
+@immutable
+class _CachedTileImage extends ImageProvider<_CachedTileImage> {
+  const _CachedTileImage(this.url, this.headers);
+
+  final String url;
+  final Map<String, String> headers;
+
+  @override
+  Future<_CachedTileImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(_CachedTileImage key, ImageDecoderCallback decode) =>
+      MultiFrameImageStreamCompleter(
+        codec: _load(key, decode),
+        scale: 1,
+        debugLabel: url,
+      );
+
+  Future<ui.Codec> _load(_CachedTileImage key, ImageDecoderCallback decode) async {
+    try {
+      final dir = await (_tileDir ??= _openTileDir());
+      final bytes = await cachedTileBytes(dir, url, headers);
+      return await decode(await ui.ImmutableBuffer.fromUint8List(bytes));
+    } catch (_) {
+      scheduleMicrotask(() => PaintingBinding.instance.imageCache.evict(key));
+      rethrow;
+    }
+  }
+
+  @override
+  bool operator ==(Object other) => other is _CachedTileImage && other.url == url;
+
+  @override
+  int get hashCode => url.hashCode;
+}
+
+Widget mapTileLayer(MapStyle style) {
+  if (style.isVector) return _VectorTiles(style: style);
+  return TileLayer(
     urlTemplate: style.url,
     userAgentPackageName: 'tech.colonelpanic.ouispy',
+    tileProvider: _CachedTileProvider(),
     maxZoom: 19,
-    tileBuilder: tint == null
-        ? null
-        : (context, tileWidget, tile) =>
-            ColorFiltered(colorFilter: tint, child: tileWidget),
+    maxNativeZoom: style.maxNativeZoom,
   );
-  return layer;
 }
 
+final Map<String, Future<Style>> _styleCache = {};
+
 class _VectorTiles extends StatelessWidget {
-  const _VectorTiles({required this.style, this.tint});
+  const _VectorTiles({required this.style});
 
   final MapStyle style;
-  final ColorFilter? tint;
 
   @override
   Widget build(BuildContext context) {
     final future = _styleCache.putIfAbsent(
       style.url,
-      () => _readStyle(style.url),
+      () => StyleReader(uri: style.url).read(),
     );
     return FutureBuilder<Style>(
       future: future,
       builder: (context, snapshot) {
         final loaded = snapshot.data;
         if (loaded == null) return const SizedBox.shrink();
-        final Widget layer = VectorTileLayer(
+        return VectorTileLayer(
           theme: loaded.theme,
           sprites: loaded.sprites,
           tileProviders: loaded.providers,
           layerMode: VectorTileLayerMode.raster,
           maximumZoom: 19,
         );
-        if (tint == null) return layer;
-        return ColorFiltered(colorFilter: tint!, child: layer);
       },
     );
   }
