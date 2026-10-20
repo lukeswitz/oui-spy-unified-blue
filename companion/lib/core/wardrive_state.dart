@@ -470,7 +470,6 @@ class WardriveController extends ChangeNotifier {
   Timer? _statsTimer;
   bool _inExclusion = false;
   bool get inExclusion => _inExclusion;
-  Set<Engine> _pausedByExclusion = {};
 
   bool get isRunning => state == WardriveState.running;
   bool get isActive => state != WardriveState.idle;
@@ -739,6 +738,9 @@ class WardriveController extends ChangeNotifier {
     if (cached != null) {
       currentPosition = cached;
     }
+    _inExclusion = cached != null &&
+        _geofenceFilter.isExcludedNullable(cached.latitude, cached.longitude);
+    if (_inExclusion) DebugLog.log('WARDRIVE: started inside exclusion zone — radios held off');
 
     try {
       await _enableEnginesSequentially(_fleetEngines).timeout(const Duration(seconds: 8));
@@ -1182,12 +1184,12 @@ class WardriveController extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 80));
     }
     for (final engine in engineList) {
-      if (state == WardriveState.idle) return;
+      if (state == WardriveState.idle || _inExclusion) return;
       if (engine == Engine.wardrive) {
         await _ble.sendEngineConfig(engine, _wardriveConfigPayload);
         await Future.delayed(const Duration(milliseconds: 100));
       }
-      if (state == WardriveState.idle) return;
+      if (state == WardriveState.idle || _inExclusion) return;
       await _ble.enableEngine(engine, radio: radioBitmask);
       if (engine.isWifi) {
         await _awaitEngineUp(engine, const Duration(milliseconds: 500));
@@ -1695,14 +1697,12 @@ class WardriveController extends ChangeNotifier {
     _inExclusion = excluded;
     if (excluded) {
       DebugLog.log('WARDRIVE: entered exclusion zone — pausing radios');
-      _pausedByExclusion = Set<Engine>.from(activeEngines);
-      for (final e in _pausedByExclusion) {
+      for (final e in _fleetEngines) {
         _ble.disableEngine(e);
       }
     } else {
       DebugLog.log('WARDRIVE: exited exclusion zone — restoring radios');
-      _enableEnginesSequentially(_pausedByExclusion.toList());
-      _pausedByExclusion = {};
+      _enableEnginesSequentially(_fleetEngines);
     }
     notifyListeners();
   }

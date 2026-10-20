@@ -36,7 +36,6 @@ import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
-import 'package:oui_spy/features/wardrive/wardrive_theme.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/deflock/deflock_api.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
@@ -506,7 +505,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final mapStyle = ref.watch(mapStyleProvider);
-    final wt = ref.watch(wardriveThemeDataProvider);
     final wd = ref.watch(wardriveProvider);
     if (wd.pendingReconnectPrompt && !_reconnectPromptOpen) {
       _reconnectPromptOpen = true;
@@ -569,8 +567,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     }
 
     final gpsPos2 = wd.currentPosition ?? gpsPos;
-    final povActive =
-        gpsPos2 != null && (wt.driverPov || (wd.isActive && _followMode));
+    final povActive = gpsPos2 != null && wd.isActive && _followMode;
     if (povActive) {
       final here = LatLng(gpsPos2.latitude, gpsPos2.longitude);
       final speed = gpsPos2.speed;
@@ -590,14 +587,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          if (!(wt.driverPov || (wd.isActive && _followMode))) return;
+          if (!(wd.isActive && _followMode)) return;
           _applyFollowCamera(here, _povHeading);
         });
       } else if (wasFollowing) {
         // Stopped but had a heading — hold last heading, recenter.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          if (!(wt.driverPov || (wd.isActive && _followMode))) return;
+          if (!(wd.isActive && _followMode)) return;
           _applyFollowCamera(here, _povHeading);
         });
       } else if (_followMode) {
@@ -615,9 +612,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     }
 
     ref.watch(notificationServiceProvider.select((n) => n.classAlertedMacs.length));
-    final detectionLayers = _buildDetectionLayers(wd, wt);
-    final tileStyle = wt.mapTileOverride ?? mapStyle;
-    final darkBase = tileStyle.isDark;
+    final detectionLayers = _buildDetectionLayers(wd);
+    final darkBase = mapStyle.isDark;
 
     final mapWidget = FlutterMap(
               mapController: _mapController,
@@ -674,7 +670,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 },
               ),
               children: [
-                mapTileLayer(tileStyle, tint: wt.tileTint),
+                mapTileLayer(mapStyle),
                 ..._territoryLayers(ref.watch(wdgwarsProvider)),
                 ..._alprLayers(ref.watch(deflockProvider)),
                 if (detectionLayers.heat.isNotEmpty)
@@ -684,7 +680,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   PolylineLayer(polylines: [
                     Polyline(
                       points: wd.routePoints,
-                      color: wt.routeColor.withValues(alpha: wt.routeAlpha),
+                      color: Colors.white.withValues(alpha: 0.85),
                       strokeWidth: 2.4,
                       borderColor: darkBase
                           ? Colors.black.withValues(alpha: 0.35)
@@ -713,33 +709,18 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   MarkerLayer(markers: [
                     Marker(
                       point: LatLng(selfPos.latitude, selfPos.longitude),
-                      width: wt.synthwaveSky ? 56 : 16,
-                      height: wt.synthwaveSky ? 56 : 16,
-                      child: _CurrentPosMarker(theme: wt),
+                      width: 16,
+                      height: 16,
+                      child: const _CurrentPosMarker(),
                     ),
                   ]),
               ],
             );
 
-    Widget mapStack = mapWidget;
-    const horizonFrac = 0.34;
-    final isPov = wt.synthwaveSky;
-
-    // Speed-tied effects sample current speed (m/s).
-    final speed = wd.currentPosition?.speed ?? 0.0;
-    final units = ref.watch(unitSystemProvider);
-    final speedDisplay = units == UnitSystem.imperial
-        ? (wd.currentPosition?.speedMph ?? 0.0)
-        : (wd.currentPosition?.speedKmh ?? 0.0);
-    final speedUnit = units == UnitSystem.imperial ? 'MPH' : 'KM/H';
-
     return Scaffold(
-      backgroundColor: wt.synthwaveSky ? Colors.black : t.background,
+      backgroundColor: t.background,
       body: SafeArea(
-        child: LayoutBuilder(builder: (context, c) {
-          final h = c.maxHeight;
-          final w = c.maxWidth;
-          final horizonY = isPov ? h * horizonFrac : 0.0;
+        child: Builder(builder: (context) {
           final pills = [
             for (final m in WardriveController.selectableTargets)
               if (m != WardriveTarget.wigle &&
@@ -749,105 +730,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           ];
 
           return Stack(children: [
-            // Sky on top band.
-            if (wt.synthwaveSky)
-              Positioned(
-                top: 0, left: 0, right: 0, height: horizonY,
-                child: IgnorePointer(child: _SynthwaveSky(theme: wt)),
-              ),
-            // Tilted map fills bottom band.
-            Positioned(
-              top: horizonY, left: 0, right: 0, bottom: 0,
-              child: mapStack,
-            ),
-            if (wt.synthwaveSky)
-              Positioned(
-                top: horizonY - 28, left: 0, right: 0, height: 36,
-                child: IgnorePointer(
-                  child: CustomPaint(
-                    painter: _MountainsPainter(
-                      ridge: wt.accent,
-                      glow: wt.secondary,
-                    ),
-                  ),
-                ),
-              ),
-            if (wt.synthwaveSky)
-              Positioned(
-                top: horizonY, left: 0, right: 0, bottom: 0,
-                child: IgnorePointer(
-                  child: _SynthwaveGrid(
-                    color: wt.accent,
-                    accent: wt.secondary,
-                    speed: speed,
-                  ),
-                ),
-              ),
-            // Palm tree silhouettes streaming past on both sides (perspective).
-            if (wt.synthwaveSky)
-              Positioned(
-                top: horizonY, left: 0, right: 0, bottom: 0,
-                child: IgnorePointer(
-                  child: _PalmStreaker(
-                    silhouette: const Color(0xFF0A0014),
-                    glow: wt.accent,
-                    speed: speed,
-                  ),
-                ),
-              ),
-            // Speed lines stream into the horizon from the vanishing point.
-            if (wt.speedLines && wd.isActive)
-              Positioned(
-                top: 0, left: 0, right: 0, bottom: 0,
-                child: IgnorePointer(
-                  child: _SpeedLines(
-                    color: wt.accent,
-                    speed: speed,
-                    horizonY: horizonY,
-                    width: w,
-                  ),
-                ),
-              ),
-            // CRT scanline filter — subtle aged-screen feel across whole UI.
-            if (wt.synthwaveSky)
-              const Positioned.fill(
-                child: IgnorePointer(child: _CrtScanlines()),
-              ),
-            // Capture flash burst when score increments.
-            if (wt.detectionBanner && wd.isActive)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: _CaptureFlash(
-                    color: wt.tertiary,
-                    score: wd.dedupedDetections.length,
-                  ),
-                ),
-              ),
-            // Big digital speedometer.
-            if (wt.speedoHud && wd.isActive)
-              Positioned(
-                bottom: 96, left: 0, right: 0,
-                child: IgnorePointer(
-                  child: Center(
-                    child: _SpeedoHud(
-                      theme: wt,
-                      speed: speedDisplay,
-                      unit: speedUnit,
-                    ),
-                  ),
-                ),
-              ),
-            // Arcade-style score chip top-right.
-            if (wt.scoreChip && wd.isActive)
-              Positioned(
-                top: _statsHeight + 8, right: 12,
-                child: IgnorePointer(
-                  child: _ScoreChip(
-                    theme: wt,
-                    score: wd.dedupedDetections.length,
-                  ),
-                ),
-              ),
+            Positioned.fill(child: mapWidget),
 
             // Stats bar (top, only when active)
             if (wd.isActive)
@@ -933,7 +816,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                           count: _classGroup.length,
                           onClear: _clearClassGroup,
                         ),
-                      if (wd.isActive && wd.geofenceSuppressed > 0)
+                      if (wd.isActive && (wd.inExclusion || wd.geofenceSuppressed > 0))
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 6),
@@ -944,7 +827,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                                 color: AppTheme.warning.withValues(alpha: 0.7)),
                           ),
                           child: Text(
-                            '${wd.geofenceSuppressed} HIDDEN — INSIDE EXCLUSION ZONE',
+                            wd.inExclusion
+                                ? 'RADIOS OFF — INSIDE EXCLUSION ZONE'
+                                : '${wd.geofenceSuppressed} HIDDEN — INSIDE EXCLUSION ZONE',
                             style: TextStyle(
                               color: AppTheme.warning,
                               fontSize: 10,
@@ -1120,14 +1005,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   ],
                 ),
               ),
-            mapAttribution(tileStyle),
+            mapAttribution(mapStyle),
           ]);
         }),
       ),
     );
   }
 
-  _DetectionLayers _buildDetectionLayers(WardriveController wd, WardriveThemeData wt) {
+  _DetectionLayers _buildDetectionLayers(WardriveController wd) {
     final recentLen = ref.read(appStateProvider).recentDetections.length;
     final focus = _focusedDetection;
     final alerted = ref.read(notificationServiceProvider).classAlertedMacs.length;
@@ -1136,13 +1021,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
         '$_classGroupLabel|${_classGroup.length}';
     if (_cachedLayersKey == key && _cachedLayers != null) return _cachedLayers!;
-    final layers = _computeDetectionLayers(wd, wt);
+    final layers = _computeDetectionLayers(wd);
     _cachedLayers = layers;
     _cachedLayersKey = key;
     return layers;
   }
 
-  _DetectionLayers _computeDetectionLayers(WardriveController wd, WardriveThemeData wt) {
+  _DetectionLayers _computeDetectionLayers(WardriveController wd) {
     final appState = ref.read(appStateProvider);
     final alertedMacs = ref.read(notificationServiceProvider).classAlertedMacs;
     final alertKinds = ref.read(notificationServiceProvider).classAlertKinds;
@@ -1302,12 +1187,12 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final d = clusterable[i];
       final ci = clusterIdxOf[i];
       final densityTint = _percentileBlend(
-          wt.engineColor(d.engine), counts[ci], p50, p90, p99);
+          d.engine.color, counts[ci], p50, p90, p99);
       heat.add(CircleMarker(
         point: LatLng(d.latitude!, d.longitude!),
         radius: heatRadiusM,
         useRadiusInMeter: true,
-        color: densityTint.withValues(alpha: wt.markerSaturation),
+        color: densityTint.withValues(alpha: 0.07),
         borderStrokeWidth: 0,
       ));
     }
@@ -1325,8 +1210,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
       final base = 22.0 + 8.0 * (log(n + 1) / ln10);
       final size = (base * zoomScale).clamp(26.0, 60.0);
-      final domColor = wt.engineColor(dominant);
-      final secColor = secondary != null ? wt.engineColor(secondary) : null;
+      final domColor = dominant.color;
+      final secColor = secondary?.color;
       final heatColor = _percentileBlend(domColor, n, p50, p90, p99);
       clusters.add(Marker(
         point: center,
@@ -1340,7 +1225,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           secondaryEngineColor: secColor,
           size: size,
           count: n,
-          neon: wt.neonClusters,
         ),
       ));
     }
@@ -1473,7 +1357,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
       final classPin = isAlerted(d) && d.engine != Engine.detector && d.engine != Engine.flockBle && d.engine != Engine.flockWifi;
       final alertKind = alertKinds[d.macAddress.toUpperCase()];
-      final pinColor = classPin ? alertKindColor(alertKind) : wt.engineColor(d.engine);
+      final pinColor = classPin ? alertKindColor(alertKind) : d.engine.color;
       final box = (fan.length + pinHead + 5) * 2;
       pins.add(Marker(
         point: LatLng(d.latitude!, d.longitude!),

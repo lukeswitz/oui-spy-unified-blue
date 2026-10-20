@@ -899,14 +899,12 @@ class _ClusterDot extends StatelessWidget {
     required this.secondaryEngineColor,
     required this.size,
     required this.count,
-    this.neon = false,
   });
   final Color fill;
   final Color engineColor;
   final Color? secondaryEngineColor;
   final double size;
   final int count;
-  final bool neon;
 
   @override
   Widget build(BuildContext context) {
@@ -923,7 +921,6 @@ class _ClusterDot extends StatelessWidget {
             fill: fill,
             engineColor: engineColor,
             ringColor: ringColor,
-            neon: neon,
           ),
           child: Padding(
             padding: EdgeInsets.all(size * 0.16 + 4),
@@ -934,23 +931,16 @@ class _ClusterDot extends StatelessWidget {
                       child: Text(
                         label,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: neon ? ringColor : Colors.white,
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontWeight: FontWeight.w800,
                           fontFamily: 'monospace',
                           fontSize: 13,
                           height: 1.0,
                           letterSpacing: -0.3,
-                          shadows: neon
-                              ? [
-                                  Shadow(
-                                    color: ringColor.withValues(alpha: 0.8),
-                                    blurRadius: 8,
-                                  ),
-                                ]
-                              : const [
-                                  Shadow(blurRadius: 3, color: Colors.black87),
-                                ],
+                          shadows: [
+                            Shadow(blurRadius: 3, color: Colors.black87),
+                          ],
                         ),
                       ),
                     ),
@@ -968,94 +958,53 @@ class _ClusterPainter extends CustomPainter {
     required this.fill,
     required this.engineColor,
     required this.ringColor,
-    required this.neon,
   });
   final Color fill;
   final Color engineColor;
   final Color ringColor;
-  final bool neon;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
     final r = math.min(size.width, size.height) / 2 - 8;
-    if (neon) {
-      // Glowing hex ring — synthwave wireframe vibe.
-      final path = ui.Path();
-      for (var i = 0; i < 6; i++) {
-        final a = (pi / 3) * i - pi / 2;
-        final x = c.dx + r * cos(a);
-        final y = c.dy + r * sin(a);
-        if (i == 0) {
-          path.moveTo(x, y);
-        } else {
-          path.lineTo(x, y);
-        }
-      }
-      path.close();
-      // Outer glow.
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = ringColor.withValues(alpha: 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 6
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
-      );
-      // Inner fill.
-      canvas.drawPath(
-        path,
-        Paint()..color = ringColor.withValues(alpha: 0.10),
-      );
-      // Crisp ring.
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = ringColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.8,
-      );
-    } else {
-      canvas.drawCircle(
-        c,
-        r + 7,
-        Paint()
-          ..color = fill.withValues(alpha: 0.22)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-      );
-      // Body.
-      canvas.drawCircle(
-        c,
-        r,
-        Paint()
-          ..color = fill
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0),
-      );
-      // Glow.
-      canvas.drawCircle(
-        c,
-        r,
-        Paint()
-          ..color = fill.withValues(alpha: 0.45)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-      );
-      // Stroke.
-      canvas.drawCircle(
-        c,
-        r,
-        Paint()
-          ..color = ringColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4,
-      );
-    }
+    canvas.drawCircle(
+      c,
+      r + 7,
+      Paint()
+        ..color = fill.withValues(alpha: 0.22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    // Body.
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..color = fill
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0),
+    );
+    // Glow.
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..color = fill.withValues(alpha: 0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    // Stroke.
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..color = ringColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4,
+    );
   }
 
   @override
   bool shouldRepaint(covariant _ClusterPainter old) =>
       old.fill != fill ||
       old.engineColor != engineColor ||
-      old.ringColor != ringColor ||
-      old.neon != neon;
+      old.ringColor != ringColor;
 }
 
