@@ -17,6 +17,7 @@
 #include "radio_coex.h"
 #include "ignore_list.h"
 #include "ble_gatt.h"
+#include "usb_link.h"
 #include "mesh_espnow.h"
 #include "wifi_ota_handler.h"
 #include "engines/flock_ble.h"
@@ -1406,6 +1407,9 @@ void setup() {
 #if defined(OUISPY_DONGLE) && DONGLE_PWR_HOLD >= 0
     pinMode(DONGLE_PWR_HOLD, OUTPUT);
     digitalWrite(DONGLE_PWR_HOLD, HIGH);
+#endif
+#ifdef OUISPY_USB_LINK
+    Serial.setRxBufferSize(USB_LINK_RX_BUFFER);
 #endif
     Serial.begin(115200);
     delay(200);

@@ -13,6 +13,10 @@ import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
+import 'package:oui_spy/core/link/link_characteristic.dart';
+import 'package:oui_spy/core/link/link_net.dart';
+import 'package:oui_spy/core/link/link_session.dart';
+import 'package:oui_spy/core/link/usb_serial.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
@@ -51,27 +55,30 @@ class BleManager {
 
   BluetoothDevice? _device;
   BluetoothDevice? _lastDevice;
-  BluetoothCharacteristic? _engineControl;
-  BluetoothCharacteristic? _detectionEvents;
-  BluetoothCharacteristic? _deviceStatus;
-  BluetoothCharacteristic? _gpsReceive;
-  BluetoothCharacteristic? _hardwareConfig;
-  BluetoothCharacteristic? _alertConfig;
-  BluetoothCharacteristic? _ignoreList;
-  BluetoothCharacteristic? _melody;
-  BluetoothCharacteristic? _nodeRadio;
-  BluetoothCharacteristic? _foxhunterRssi;
-  BluetoothCharacteristic? _unipwnCommand;
-  BluetoothCharacteristic? _foxhunterConfig;
-  BluetoothCharacteristic? _meshConfig;
-  BluetoothCharacteristic? _meshStatus;
-  BluetoothCharacteristic? _dfuControl;
-  BluetoothCharacteristic? _dfuData;
-  BluetoothCharacteristic? _systemControl;
-  BluetoothCharacteristic? _wifiConfig;
-  BluetoothCharacteristic? _pcapStats;
-  BluetoothCharacteristic? _pcapData;
-  BluetoothCharacteristic? _detectorConfig;
+  LinkSession? _usbSession;
+  UsbSerialDevice? _usbDevice;
+  UsbSerialDevice? _lastUsbDevice;
+  LinkCharacteristic? _engineControl;
+  LinkCharacteristic? _detectionEvents;
+  LinkCharacteristic? _deviceStatus;
+  LinkCharacteristic? _gpsReceive;
+  LinkCharacteristic? _hardwareConfig;
+  LinkCharacteristic? _alertConfig;
+  LinkCharacteristic? _ignoreList;
+  LinkCharacteristic? _melody;
+  LinkCharacteristic? _nodeRadio;
+  LinkCharacteristic? _foxhunterRssi;
+  LinkCharacteristic? _unipwnCommand;
+  LinkCharacteristic? _foxhunterConfig;
+  LinkCharacteristic? _meshConfig;
+  LinkCharacteristic? _meshStatus;
+  LinkCharacteristic? _dfuControl;
+  LinkCharacteristic? _dfuData;
+  LinkCharacteristic? _systemControl;
+  LinkCharacteristic? _wifiConfig;
+  LinkCharacteristic? _pcapStats;
+  LinkCharacteristic? _pcapData;
+  LinkCharacteristic? _detectorConfig;
   List<WatchlistEntry> Function()? _watchlistGetter;
 
   void setWatchlistGetter(List<WatchlistEntry> Function() getter) {
@@ -358,7 +365,7 @@ class BleManager {
   }
 
   /// Get a discovered characteristic by UUID (for direct read/write).
-  BluetoothCharacteristic? getCharacteristic(Guid uuid) {
+  LinkCharacteristic? getCharacteristic(Guid uuid) {
     if (uuid == GattUuids.engineControl) return _engineControl;
     if (uuid == GattUuids.detectionEvents) return _detectionEvents;
     if (uuid == GattUuids.deviceStatus) return _deviceStatus;
@@ -380,12 +387,12 @@ class BleManager {
   }
 
   int get mtu => _mtu;
-  BluetoothCharacteristic? get dfuControl => _dfuControl;
-  BluetoothCharacteristic? get dfuData => _dfuData;
-  BluetoothCharacteristic? get systemControl => _systemControl;
-  BluetoothCharacteristic? get wifiConfig => _wifiConfig;
+  LinkCharacteristic? get dfuControl => _dfuControl;
+  LinkCharacteristic? get dfuData => _dfuData;
+  LinkCharacteristic? get systemControl => _systemControl;
+  LinkCharacteristic? get wifiConfig => _wifiConfig;
 
-  BluetoothCharacteristic? _deviceInfoChar;
+  LinkCharacteristic? _deviceInfoChar;
 
   // -- GPS state for stamping detections --
 
@@ -577,6 +584,110 @@ class BleManager {
     }
   }
 
+  bool get isUsbLinked => _usbSession?.isOpen ?? false;
+  UsbSerialDevice? get usbDevice => _usbDevice;
+  UsbSerialDevice? get lastUsbDevice => _lastUsbDevice;
+
+  Future<void> connectUsb(UsbSerialDevice device, {required String sessionId}) => _connectLink(
+        () => UsbSerial.open(device),
+        label: '${device.vidPid} ${device.name}',
+        linkName: device.name,
+        usb: device,
+        sessionId: sessionId,
+      );
+
+  Future<void> connectNetLink(NetLinkTarget target, {required String sessionId}) => _connectLink(
+        target.open,
+        label: target.label,
+        linkName: '',
+        usb: null,
+        sessionId: sessionId,
+      );
+
+  Future<void> _connectLink(
+    Future<LinkTransport> Function() open, {
+    required String label,
+    required String linkName,
+    required UsbSerialDevice? usb,
+    required String sessionId,
+  }) async {
+    if (_connecting) {
+      DebugLog.log('USB: connect in flight — ignoring $label');
+      return;
+    }
+    _connecting = true;
+    try {
+      await _doConnectLink(open,
+          label: label, linkName: linkName, usb: usb, sessionId: sessionId);
+    } catch (e) {
+      await _usbSession?.close();
+      _usbSession = null;
+      _usbDevice = null;
+      _currentState = NodeConnectionState.disconnected;
+      _connectionState.add(NodeConnectionState.disconnected);
+      rethrow;
+    } finally {
+      _connecting = false;
+      _isReconnect = false;
+    }
+  }
+
+  Future<void> _doConnectLink(
+    Future<LinkTransport> Function() open, {
+    required String label,
+    required String linkName,
+    required UsbSerialDevice? usb,
+    required String sessionId,
+  }) async {
+    if (_device != null || _usbSession != null) {
+      DebugLog.log('USB: dropping current link before USB connect');
+      await disconnectQuiet();
+    }
+    for (final sub in _subscriptions) {
+      await sub.cancel();
+    }
+    _subscriptions.clear();
+    _reconnectTimer?.cancel();
+
+    _sessionId = sessionId;
+    _userInitiatedDisconnect = false;
+    _currentState = NodeConnectionState.connecting;
+    _connectionState.add(NodeConnectionState.connecting);
+    DebugLog.log('USB: opening $label');
+    final session = LinkSession(await open());
+    _usbSession = session;
+    _usbDevice = usb;
+    if (usb != null) _lastUsbDevice = usb;
+
+    _currentState = NodeConnectionState.negotiating;
+    _connectionState.add(NodeConnectionState.negotiating);
+    await session.open();
+    _mtu = 247;
+    DebugLog.log('USB: link up, ${session.ids.length} characteristics, max payload ${session.maxPayload}');
+
+    session.done.then((_) {
+      if (!identical(_usbSession, session)) return;
+      DebugLog.log('USB: link closed (crcErrors=${session.crcErrors})');
+      _usbSession = null;
+      _usbDevice = null;
+      for (final sub in _subscriptions) {
+        sub.cancel();
+      }
+      _subscriptions.clear();
+      if (_importing) _abortImport();
+      _currentState = NodeConnectionState.disconnected;
+      _connectionState.add(NodeConnectionState.disconnected);
+    });
+
+    _currentState = NodeConnectionState.syncing;
+    _connectionState.add(NodeConnectionState.syncing);
+    _clearCharacteristics();
+    for (final id in session.ids) {
+      _assignCharacteristic(UsbLinkCharacteristic(session, linkGuidFor(id, GattUuids.service)));
+    }
+    await _finishConnect(linkName: linkName, dropLink: session.close);
+  }
+
   Future<void> _doConnect(BluetoothDevice device, {required String sessionId}) async {
     // Clean up previous subscriptions to prevent reconnect storm
     for (final sub in _subscriptions) {
@@ -670,35 +781,72 @@ class BleManager {
     DebugLog.log('BLE: OUI-SPY service found');
 
     // Map characteristics
+    _clearCharacteristics();
     for (final c in ouiService.characteristics) {
-      if (c.uuid == GattUuids.engineControl) _engineControl = c;
-      if (c.uuid == GattUuids.detectionEvents) _detectionEvents = c;
-      if (c.uuid == GattUuids.deviceStatus) _deviceStatus = c;
-      if (c.uuid == GattUuids.gpsReceive) _gpsReceive = c;
-      if (c.uuid == GattUuids.hardwareConfig) _hardwareConfig = c;
-      if (c.uuid == GattUuids.alertConfig) _alertConfig = c;
-      if (c.uuid == GattUuids.ignoreList) _ignoreList = c;
-      if (c.uuid == GattUuids.melody) _melody = c;
-      if (c.uuid == GattUuids.nodeRadio) _nodeRadio = c;
-      if (c.uuid == GattUuids.foxhunterRssi) _foxhunterRssi = c;
-      if (c.uuid == GattUuids.unipwnCommand) _unipwnCommand = c;
-      if (c.uuid == GattUuids.foxhunterConfig) _foxhunterConfig = c;
-      if (c.uuid == GattUuids.meshConfig) _meshConfig = c;
-      if (c.uuid == GattUuids.meshStatus) _meshStatus = c;
-      if (c.uuid == GattUuids.dfuControl) _dfuControl = c;
-      if (c.uuid == GattUuids.dfuData) _dfuData = c;
-      if (c.uuid == GattUuids.systemControl) _systemControl = c;
-      if (c.uuid == GattUuids.wifiConfig) _wifiConfig = c;
-      if (c.uuid == GattUuids.pcapStats) _pcapStats = c;
-      if (c.uuid == GattUuids.pcapData) _pcapData = c;
-      if (c.uuid == GattUuids.detectorConfig) _detectorConfig = c;
+      _assignCharacteristic(BleLinkCharacteristic(c));
     }
 
+    await _finishConnect(linkName: device.platformName, dropLink: device.disconnect);
+  }
+
+  void _clearCharacteristics() {
+    _engineControl = null;
+    _detectionEvents = null;
+    _deviceStatus = null;
+    _gpsReceive = null;
+    _hardwareConfig = null;
+    _alertConfig = null;
+    _ignoreList = null;
+    _melody = null;
+    _nodeRadio = null;
+    _foxhunterRssi = null;
+    _unipwnCommand = null;
+    _foxhunterConfig = null;
+    _meshConfig = null;
+    _meshStatus = null;
+    _dfuControl = null;
+    _dfuData = null;
+    _systemControl = null;
+    _wifiConfig = null;
+    _pcapStats = null;
+    _pcapData = null;
+    _detectorConfig = null;
+    _deviceInfoChar = null;
+  }
+
+  void _assignCharacteristic(LinkCharacteristic c) {
+    if (c.uuid == GattUuids.engineControl) _engineControl = c;
+    if (c.uuid == GattUuids.detectionEvents) _detectionEvents = c;
+    if (c.uuid == GattUuids.deviceStatus) _deviceStatus = c;
+    if (c.uuid == GattUuids.gpsReceive) _gpsReceive = c;
+    if (c.uuid == GattUuids.hardwareConfig) _hardwareConfig = c;
+    if (c.uuid == GattUuids.alertConfig) _alertConfig = c;
+    if (c.uuid == GattUuids.ignoreList) _ignoreList = c;
+    if (c.uuid == GattUuids.melody) _melody = c;
+    if (c.uuid == GattUuids.nodeRadio) _nodeRadio = c;
+    if (c.uuid == GattUuids.foxhunterRssi) _foxhunterRssi = c;
+    if (c.uuid == GattUuids.unipwnCommand) _unipwnCommand = c;
+    if (c.uuid == GattUuids.foxhunterConfig) _foxhunterConfig = c;
+    if (c.uuid == GattUuids.meshConfig) _meshConfig = c;
+    if (c.uuid == GattUuids.meshStatus) _meshStatus = c;
+    if (c.uuid == GattUuids.dfuControl) _dfuControl = c;
+    if (c.uuid == GattUuids.dfuData) _dfuData = c;
+    if (c.uuid == GattUuids.systemControl) _systemControl = c;
+    if (c.uuid == GattUuids.wifiConfig) _wifiConfig = c;
+    if (c.uuid == GattUuids.pcapStats) _pcapStats = c;
+    if (c.uuid == GattUuids.pcapData) _pcapData = c;
+    if (c.uuid == GattUuids.detectorConfig) _detectorConfig = c;
+    if (c.uuid == GattUuids.deviceInfo) _deviceInfoChar ??= c;
+  }
+
+  Future<void> _finishConnect({
+    required String linkName,
+    required Future<void> Function() dropLink,
+  }) async {
     // Read device info to get node ID
-    _deviceInfoChar = ouiService.characteristics.firstWhere(
-      (c) => c.uuid == GattUuids.deviceInfo,
-    );
-    final infoData = await _deviceInfoChar!.read();
+    final info = _deviceInfoChar;
+    if (info == null) throw Exception('OUI-SPY device info characteristic not found');
+    final infoData = await info.read();
     final parts = _parseDeviceInfo(infoData);
     _nodeId = parts.length > 1 ? parts[1] : '';
     _board = parts.length > 2 ? parts[2] : '';
@@ -711,7 +859,7 @@ class BleManager {
         await sub.cancel();
       }
       _subscriptions.clear();
-      await device.disconnect();
+      await dropLink();
       _currentState = NodeConnectionState.reconnecting;
       _connectionState.add(NodeConnectionState.reconnecting);
       throw Exception('reconnect: different board');
@@ -737,7 +885,7 @@ class BleManager {
       );
       final isMgr = _role == 'mgr' ||
           (_role.isEmpty &&
-              device.platformName.toUpperCase().contains('OUI-SPY-MGR'));
+              linkName.toUpperCase().contains('OUI-SPY-MGR'));
       if (!isMgr && !_offlineScanEnabled && !wardriveSessionActive && !_isReconnect) {
         await _engineControl!.write(BleProtocol.encodeDisableAll());
         DebugLog.log('BLE: sent DISABLE_ALL on fresh connect (node)');
@@ -1251,7 +1399,7 @@ class BleManager {
   }
 
   Future<void> resyncOnResume() async {
-    if (_currentState != NodeConnectionState.ready || _device == null) {
+    if (_currentState != NodeConnectionState.ready || (_device == null && !isUsbLinked)) {
       if (_device != null &&
           !_userInitiatedDisconnect &&
           _currentState != NodeConnectionState.connecting &&
@@ -1451,7 +1599,15 @@ class BleManager {
       DebugLog.log('BLE: device.disconnect failed: ${e.description}');
     }
     _device = null;
+    await _closeUsb();
     _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
+  }
+
+  Future<void> _closeUsb() async {
+    final session = _usbSession;
+    _usbSession = null;
+    _usbDevice = null;
+    await session?.close();
   }
 
   Future<void> disconnectQuiet() async {
@@ -1473,6 +1629,7 @@ class BleManager {
       DebugLog.log('BLE: quiet disconnect failed: ${e.description}');
     }
     _device = null;
+    await _closeUsb();
     _currentState = NodeConnectionState.disconnected;
     _connectionState.add(NodeConnectionState.disconnected);
   }

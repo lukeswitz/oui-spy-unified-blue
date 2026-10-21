@@ -6,6 +6,7 @@
 #include "../opsec_mac.h"
 #include "../det_spool.h"
 #include "../ble_gatt.h"
+#include "../usb_link.h"
 #include "../mesh_espnow.h"
 #include "../wifi_ota_handler.h"
 #include "../ignore_list.h"
@@ -111,6 +112,9 @@ static void heartbeatTask(void*) {
 }
 
 void setup() {
+#ifdef OUISPY_USB_LINK
+    Serial.setRxBufferSize(USB_LINK_RX_BUFFER);
+#endif
     Serial.begin(115200);
     delay(300);
     Serial.println();

@@ -11,6 +11,7 @@
 #include "ota_handler.h"
 #include "wifi_ota_handler.h"
 #include "opsec_mac.h"
+#include "usb_link.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <NimBLEDevice.h>
@@ -44,7 +45,16 @@ static NimBLECharacteristic* chrPcapStats = nullptr;
 static NimBLECharacteristic* chrPcapData = nullptr;
 
 static bool phoneConnected = false;
+static volatile bool usbPhoneUp = false;
 static SemaphoreHandle_t chrDetMutex = nullptr;
+
+static void notifyChr(NimBLECharacteristic* chr, const uint8_t* data, size_t len) {
+    chr->setValue(data, len);
+    chr->notify();
+#ifdef OUISPY_USB_LINK
+    usbLinkNotify(chr, data, len);
+#endif
+}
 static volatile bool pcapDownloadRunning = false;
 static volatile uint32_t mgrPhoneGoneMs = 0;
 static volatile bool mgrTornDown = false;
@@ -887,16 +897,46 @@ void bleGattNodeGraceTick(void) {
 void bleGattNodeGraceTick(void) {}
 #endif
 
+static void phoneLinkUp(void) {
+    phoneConnected = true;
+#ifdef OUISPY_ROLE_MANAGER
+    mgrPhoneGoneMs = 0;
+    mgrTornDown = false;
+    g_meshManagerActive = true;
+#else
+    nodePhoneGoneMs = 0;
+#endif
+}
+
+static void phoneLinkGone(void) {
+    phoneConnected = false;
+    hwAlertsSuppressed = false;
+#ifdef OUISPY_ROLE_MANAGER
+    mgrPhoneGoneMs = millis();
+    if (offlineScanEnabled) {
+        mgrDropWigleForOffline();
+        Serial.println("[BLE] Phone disconnected (manager) — offline scan, wigle dropped fleet-wide, targeted engines kept");
+    } else {
+        Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
+    }
+#else
+    nodePhoneDisconnected();
+#endif
+}
+
+void bleGattUsbLinkChanged(bool up) {
+    usbPhoneUp = up;
+    if (up) {
+        phoneLinkUp();
+        return;
+    }
+    if (pServer != nullptr && pServer->getConnectedCount() > 0) return;
+    phoneLinkGone();
+}
+
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server) override {
-        phoneConnected = true;
-#ifdef OUISPY_ROLE_MANAGER
-        mgrPhoneGoneMs = 0;
-        mgrTornDown = false;
-        g_meshManagerActive = true;
-#else
-        nodePhoneGoneMs = 0;
-#endif
+        phoneLinkUp();
         NimBLEScan* scan = NimBLEDevice::getScan();
         if (scan && scan->isScanning()) {
             scan->stop();
@@ -920,19 +960,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 #if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
         Serial.printf("[BLET] disconnected t=%ums\n", (unsigned)millis());
 #endif
-        phoneConnected = false;
-        hwAlertsSuppressed = false;
-#ifdef OUISPY_ROLE_MANAGER
-        mgrPhoneGoneMs = millis();
-        if (offlineScanEnabled) {
-            mgrDropWigleForOffline();
-            Serial.println("[BLE] Phone disconnected (manager) — offline scan, wigle dropped fleet-wide, targeted engines kept");
-        } else {
-            Serial.println("[BLE] Phone disconnected (manager) — teardown deferred (grace)");
-        }
-#else
-        nodePhoneDisconnected();
-#endif
+        if (!usbPhoneUp) phoneLinkGone();
         NimBLEDevice::startAdvertising();
 #if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
         Serial.printf("[BLET] advertising restarted t=%ums\n", (unsigned)millis());
@@ -1580,8 +1608,7 @@ static volatile bool g_spoolFlushPending = false;
 static void fleetOtaNotify(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) {
     if (!chrSystemControl) return;
     uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, phase, pct, done, seen, 0 };
-    chrSystemControl->setValue(b, sizeof(b));
-    chrSystemControl->notify();
+    notifyChr(chrSystemControl, b, sizeof(b));
 }
 
 static void fleetProgressCb(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) {
@@ -1641,8 +1668,7 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 Serial.printf("[SYS] OTA confirm: %s\n",
                               err == ESP_OK ? "OK" : esp_err_to_name(err));
                 uint8_t ack = (err == ESP_OK) ? 0x00 : 0x01;
-                chr->setValue(&ack, 1);
-                chr->notify();
+                notifyChr(chr, &ack, 1);
                 break;
             }
 
@@ -1691,7 +1717,7 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 if (!wifiOtaLoadCreds(ssid, sizeof(ssid), pass, sizeof(pass))) {
                     Serial.println("[SYS] Fleet WiFi OTA: no manager WiFi creds saved");
                     uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 0x80, 0, 0, 0, 0 };
-                    chr->setValue(b, sizeof(b)); chr->notify();
+                    notifyChr(chr, b, sizeof(b));
                     return;
                 }
                 size_t sl = strlen(ssid), pl = strlen(pass), ul = url.length();
@@ -1700,7 +1726,7 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 if (1 + sl + 1 + pl + 1 + ul > MESH_WIFIOTA_MAX) {
                     Serial.println("[SYS] Fleet WiFi OTA: creds+url too large for mesh packet");
                     uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 0x81, 0, 0, 0, 0 };
-                    chr->setValue(b, sizeof(b)); chr->notify();
+                    notifyChr(chr, b, sizeof(b));
                     return;
                 }
                 size_t off = 0;
@@ -1715,7 +1741,7 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                               ssid, (unsigned)off);
                 xTaskCreatePinnedToCore(fleetWifiOtaPushTask, "fleet_wifi", 3072, NULL, 1, NULL, 1);
                 uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 2, 100, 0, 0, 0 };
-                chr->setValue(b, sizeof(b)); chr->notify();
+                notifyChr(chr, b, sizeof(b));
 #endif
                 break;
             }
@@ -1821,8 +1847,7 @@ class WifiConfigCallbacks : public NimBLECharacteristicCallbacks {
 
 static void dfuNotifyTrampoline(const uint8_t* data, size_t len) {
     if (chrDfuControl == nullptr) return;
-    chrDfuControl->setValue((uint8_t*)data, len);
-    chrDfuControl->notify();
+    notifyChr(chrDfuControl, data, len);
 }
 
 static volatile bool     pcapIndInFlight = false;
@@ -1904,8 +1929,14 @@ static void flushPcapCoalesced(void) {
         portEXIT_CRITICAL(&pcapCoalesceMux);
         return;
     }
-    if (pcapSubscribedCount() == 0) return;
-    if (pcapIndInFlight) {
+#ifdef OUISPY_USB_LINK
+    const bool usbPcap = usbLinkSubscribed(chrPcapData);
+#else
+    const bool usbPcap = false;
+#endif
+    const bool blePcap = pcapSubscribedCount() != 0;
+    if (!blePcap && !usbPcap) return;
+    if (blePcap && pcapIndInFlight) {
         if (millis() - pcapIndSentMs > PCAP_IND_WATCHDOG_MS) pcapIndInFlight = false;
         else return;
     }
@@ -1925,10 +1956,15 @@ static void flushPcapCoalesced(void) {
     pcapCoalesceLen = rem;
     portEXIT_CRITICAL(&pcapCoalesceMux);
 
-    pcapIndInFlight = true;
-    pcapIndSentMs = millis();
-    chrPcapData->setValue(tmp, chunk);
-    chrPcapData->notify(false);   // is_notification=false -> INDICATION (ACK-gated, one in flight)
+#ifdef OUISPY_USB_LINK
+    if (usbPcap) usbLinkSendBlocking(chrPcapData, tmp, chunk, 200);
+#endif
+    if (blePcap) {
+        pcapIndInFlight = true;
+        pcapIndSentMs = millis();
+        chrPcapData->setValue(tmp, chunk);
+        chrPcapData->notify(false);   // is_notification=false -> INDICATION (ACK-gated, one in flight)
+    }
     mgrPcapBytesToPhone += chunk;
     pcapLastFlushMs = millis();
 }
@@ -2073,8 +2109,7 @@ void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
             }
 #else
             if (phoneConnected && chrPcapData) {
-                chrPcapData->setValue((uint8_t*)(payload + 1), (uint16_t)(len - 1));
-                chrPcapData->notify();
+                notifyChr(chrPcapData, payload + 1, (uint16_t)(len - 1));
             }
 #endif
             break;
@@ -2109,8 +2144,7 @@ void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
             break;
         case RAW_NOTIFY_FOXHUNTER_RSSI:
             if (chrFoxhunterRssi && len >= 1) {
-                chrFoxhunterRssi->setValue((uint8_t*)(payload + 1), (uint16_t)(len - 1));
-                chrFoxhunterRssi->notify();
+                notifyChr(chrFoxhunterRssi, payload + 1, (uint16_t)(len - 1));
             }
             break;
         default:
@@ -2150,6 +2184,12 @@ void bleGattStreamPcapBytes(const uint8_t* buf, size_t len) {
     if (!phoneConnected || chrPcapData == nullptr) return;
 #ifndef OUISPY_NIMBLE2_API
     if (chrPcapData->getSubscribedCount() == 0) return;
+#endif
+#ifdef OUISPY_USB_LINK
+    if (usbLinkSubscribed(chrPcapData)) {
+        usbLinkSendBlocking(chrPcapData, buf, len, 500);
+        if (pcapSubscribedCount() == 0) return;
+    }
 #endif
     size_t chunk = 180;
     if (pServer != nullptr) {
@@ -2223,8 +2263,7 @@ static DeviceInfoCallbacks deviceInfoCb;
 
 static void wifiOtaNotifyTrampoline(const uint8_t* data, size_t len) {
     if (chrSystemControl == nullptr) return;
-    chrSystemControl->setValue((uint8_t*)data, len);
-    chrSystemControl->notify();
+    notifyChr(chrSystemControl, data, len);
 }
 
 void bleGattInit(void) {
@@ -2429,6 +2468,32 @@ void bleGattInit(void) {
     );
     chrPcapData->setCallbacks(&pcapDataCallbacks);
 
+#ifdef OUISPY_USB_LINK
+    usbLinkRegister(chrDeviceInfo, &deviceInfoCb);
+    usbLinkRegister(chrEngineControl, &engineControlCb);
+    usbLinkRegister(chrDetectionEvents, nullptr);
+    usbLinkRegister(chrDeviceStatus, nullptr);
+    usbLinkRegister(chrGpsReceive, &gpsReceiveCb);
+    usbLinkRegister(chrHardwareConfig, &hwConfigCb);
+    usbLinkRegister(chrAlertConfig, &alertConfigCb);
+    usbLinkRegister(chrIgnoreList, &ignoreListCb);
+    usbLinkRegister(svc->getCharacteristic(CHR_MELODY), &melodyCb);
+    usbLinkRegister(chrNodeRadio, &nodeRadioCb);
+    usbLinkRegister(chrFoxhunterConfig, &foxhunterConfigCb);
+    usbLinkRegister(chrDetectorConfig, &detectorConfigCb);
+    usbLinkRegister(chrFoxhunterRssi, nullptr);
+    usbLinkRegister(chrUnipwnCommand, &unipwnCommandCb);
+    usbLinkRegister(chrMeshConfig, &meshConfigCb);
+    usbLinkRegister(chrMeshStatus, nullptr);
+    usbLinkRegister(chrDfuControl, nullptr);
+    usbLinkRegister(chrDfuData, &dfuDataCb);
+    usbLinkRegister(chrSystemControl, &systemControlCb);
+    usbLinkRegister(chrWifiConfig, &wifiConfigCb);
+    usbLinkRegister(chrPcapControl, &pcapControlCb);
+    usbLinkRegister(chrPcapStats, nullptr);
+    usbLinkRegister(chrPcapData, nullptr);
+#endif
+
     otaInit();
     otaSetNotifyCallback(dfuNotifyTrampoline);
     wifiOtaSetNotifyCallback(wifiOtaNotifyTrampoline);
@@ -2449,6 +2514,9 @@ void bleGattInit(void) {
         Serial.println("[BLE] WARNING: advertising failed to start");
     }
     Serial.println("[BLE] GATT server started, advertising as OUI-SPY");
+#ifdef OUISPY_USB_LINK
+    usbLinkInit();
+#endif
 }
 
 static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
@@ -2538,8 +2606,7 @@ static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
 static void bleGattNotifyRaw(const uint8_t* data, size_t len) {
     if (chrDetectionEvents == nullptr) return;
     if (chrDetMutex) xSemaphoreTake(chrDetMutex, portMAX_DELAY);
-    chrDetectionEvents->setValue((uint8_t*)data, len);
-    chrDetectionEvents->notify();
+    notifyChr(chrDetectionEvents, data, len);
     if (chrDetMutex) xSemaphoreGive(chrDetMutex);
 }
 
@@ -2614,8 +2681,7 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
     uint8_t buf[200];
     size_t len = packDetection(evt, buf);
     if (chrDetMutex) xSemaphoreTake(chrDetMutex, portMAX_DELAY);
-    chrDetectionEvents->setValue(buf, len);
-    chrDetectionEvents->notify();
+    notifyChr(chrDetectionEvents, buf, len);
     if (chrDetMutex) xSemaphoreGive(chrDetMutex);
 }
 
@@ -2631,8 +2697,7 @@ void bleGattNotifyFoxhunterRssi(int8_t rssi, uint16_t intervalMs) {
         return;
     }
     if (chrFoxhunterRssi == nullptr) return;
-    chrFoxhunterRssi->setValue(buf, 3);
-    chrFoxhunterRssi->notify();
+    notifyChr(chrFoxhunterRssi, buf, 3);
 }
 
 void bleGattNotifyEngineState(void) {
@@ -2652,8 +2717,7 @@ void bleGattNotifyEngineState(void) {
         buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
     }
 #endif
-    chrEngineControl->setValue(buf, 2 + ENGINE_COUNT);
-    chrEngineControl->notify();
+    notifyChr(chrEngineControl, buf, 2 + ENGINE_COUNT);
 }
 
 bool bleGattIsConnected(void) {
@@ -2700,8 +2764,7 @@ void bleGattNotifyMeshStatus(void) {
     lastLen = off;
     if (force) lastForceMs = now;
 
-    chrMeshStatus->setValue(buf, (uint16_t)off);
-    chrMeshStatus->notify();
+    notifyChr(chrMeshStatus, buf, (uint16_t)off);
 }
 
 void bleGattNotifyPcapStats(void) {
@@ -2810,6 +2873,5 @@ void bleGattNotifyPcapStats(void) {
     lastSt = st;
     if (force) lastPcapForceMs = now;
 
-    chrPcapStats->setValue((uint8_t*)&st, sizeof(st));
-    chrPcapStats->notify();
+    notifyChr(chrPcapStats, (const uint8_t*)&st, sizeof(st));
 }

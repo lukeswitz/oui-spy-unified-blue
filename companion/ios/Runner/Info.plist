@@ -30,6 +30,8 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>OUI-APEX uses Bluetooth to communicate with your detection hardware.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OUI-APEX talks to an OUI-SPY board plugged into this device's USB port over its USB network link.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>OUI-APEX uses Bluetooth to communicate with your detection hardware.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

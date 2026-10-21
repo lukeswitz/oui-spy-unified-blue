@@ -18,6 +18,8 @@ void bleGattNotifyEngineState(void);
 // Check if a phone is connected
 bool bleGattIsConnected(void);
 
+void bleGattUsbLinkChanged(bool up);
+
 bool bleGattOfflineScanEnabled(void);
 void offlineScanEnabledSetFromPref(bool v);
 

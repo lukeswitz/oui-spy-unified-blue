@@ -12,6 +12,8 @@ import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/melody_state.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/link/usb_autoconnect.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
@@ -68,6 +70,8 @@ void main() async {
   container.read(wardriveProvider);
   container.read(deviceRegistryProvider);
   container.read(melodyProvider);
+  container.read(usbAutoConnectProvider);
+  container.read(wifiAdapterControllerProvider).refresh();
 
   runApp(UncontrolledProviderScope(
     container: container,
@@ -76,6 +80,7 @@ void main() async {
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _forceCleanBleState().then((_) async {
+      if (await container.read(usbAutoConnectProvider).connectFirstAttached()) return;
       final prefs = await SharedPreferences.getInstance();
       final autoConnect = prefs.getBool('autoConnectEnabled') ?? false;
       final offlineScan = prefs.getBool('offlineScanEnabled') ?? false;
