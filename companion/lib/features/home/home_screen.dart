@@ -71,7 +71,7 @@ class _DisconnectedView extends ConsumerWidget {
             _PulsingRadar(active: isConnecting || isReconnecting),
             const SizedBox(height: 28),
             Text(
-              'OUI-SPY',
+              'OUI-APEX',
               style: TextStyle(
                 color: t.textPrimary,
                 fontSize: 28,

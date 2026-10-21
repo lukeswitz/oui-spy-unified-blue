@@ -29,7 +29,7 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
 
     <application
-        android:label="OUI-SPY"
+        android:label="OUI-APEX"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -126,7 +126,7 @@ class ExportScreen extends ConsumerWidget {
     final valid = await AppDatabase.validateBackup(file.path);
     if (!valid) {
       messenger.showSnackBar(const SnackBar(
-          content: Text('Not a valid OUI-SPY database backup')));
+          content: Text('Not a valid OUI-APEX database backup')));
       return;
     }
     if (!context.mounted) return;

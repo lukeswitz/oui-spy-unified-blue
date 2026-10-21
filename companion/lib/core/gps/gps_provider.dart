@@ -171,7 +171,7 @@ class GpsProvider {
         distanceFilter: 1,
         intervalDuration: const Duration(seconds: 1),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'OUI-SPY Wardriving',
+          notificationTitle: 'OUI-APEX Wardriving',
           notificationText: 'Tracking location for detections',
           notificationChannelName: 'Wardrive Location',
           enableWakeLock: true,

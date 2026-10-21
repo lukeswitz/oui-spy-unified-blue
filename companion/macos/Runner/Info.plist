@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>OUI-SPY</string>
+	<string>OUI-APEX</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -29,14 +29,14 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>OUI-SPY uses Bluetooth to communicate with your detection hardware.</string>
+	<string>OUI-APEX uses Bluetooth to communicate with your detection hardware.</string>
 	<key>NSLocationUsageDescription</key>
-	<string>OUI-SPY needs your location to tag detections with GPS coordinates.</string>
+	<string>OUI-APEX needs your location to tag detections with GPS coordinates.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>OUI-SPY needs your location to tag detections with GPS coordinates.</string>
+	<string>OUI-APEX needs your location to tag detections with GPS coordinates.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>OUI-SPY needs background location access for continuous wardriving sessions and geofence alerts.</string>
+	<string>OUI-APEX needs background location access for continuous wardriving sessions and geofence alerts.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>OUI-SPY needs background location access for continuous wardriving sessions and geofence alerts.</string>
+	<string>OUI-APEX needs background location access for continuous wardriving sessions and geofence alerts.</string>
 </dict>
 </plist>

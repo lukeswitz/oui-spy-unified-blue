@@ -149,7 +149,7 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
       });
     }
     return MaterialApp.router(
-      title: 'OUI-SPY',
+      title: 'OUI-APEX',
       theme: AppTheme.themeFor(style, fixed ?? Brightness.light),
       darkTheme: AppTheme.themeFor(style, fixed ?? Brightness.dark),
       themeMode: fixed == null ? themeMode : (fixed == Brightness.dark ? ThemeMode.dark : ThemeMode.light),
