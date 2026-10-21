@@ -131,6 +131,16 @@ Widget mapTileLayer(MapStyle style) {
 
 final Map<String, Future<Style>> _styleCache = {};
 
+@visibleForTesting
+Style identifiedStyle(Style s, MapStyle m) => Style(
+      name: s.name,
+      theme: s.theme.copyWith(id: 'oui-apex-${m.name}'),
+      providers: s.providers,
+      sprites: s.sprites,
+      center: s.center,
+      zoom: s.zoom,
+    );
+
 class _VectorTiles extends StatelessWidget {
   const _VectorTiles({required this.style});
 
@@ -140,7 +150,7 @@ class _VectorTiles extends StatelessWidget {
   Widget build(BuildContext context) {
     final future = _styleCache.putIfAbsent(
       style.url,
-      () => StyleReader(uri: style.url).read(),
+      () async => identifiedStyle(await StyleReader(uri: style.url).read(), style),
     );
     return FutureBuilder<Style>(
       future: future,

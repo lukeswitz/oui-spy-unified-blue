@@ -61,6 +61,7 @@ dev_dependencies:
   drift_dev: ^2.22.0
   freezed: ^2.5.0
   json_serializable: ^6.9.0
+  vector_tile_renderer: ^5.2.1
 
 flutter:
   uses-material-design: true

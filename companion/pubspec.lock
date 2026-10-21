@@ -1454,7 +1454,7 @@ packages:
     source: hosted
     version: "2.0.1"
   vector_tile_renderer:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: vector_tile_renderer
       sha256: "89746f1108eccbc0b6f33fbbef3fcf394cda3733fc0d5064ea03d53a459b56d3"
