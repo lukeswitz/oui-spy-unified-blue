@@ -17,6 +17,10 @@ internal object Mt7921Regs {
     const val FW_STATE_MASK = 0x7
     const val FW_N9_RDY = 0x3
 
+    const val SWDEF_MODE = 0x41f23c
+    const val UDMA_TX_QSEL = 0x74000008
+    val FW_DL_EN = 1 shl 3
+
     const val CBTOP_WF_SUBSYS_RST = 0x70002600
     const val WF_WHOLE_PATH = 0x1
     const val SSUSB_EP_RST_OPT = 0x74011890
@@ -84,7 +88,13 @@ internal object Mt7921Regs {
     const val MCU_CE_SET_RX_FILTER = 0x0a
     const val MCU_CE_GET_NIC_CAPAB = 0x8a
     const val MCU_EXT_CHANNEL_SWITCH = 0x08
+    const val MCU_EXT_EFUSE_BUFFER_MODE = 0x21
+    const val MCU_UNI_SNIFFER = 0x24
     val FILTER_MONITOR = (1 shl 31) or (1 shl 6) or (1 shl 5) or (1 shl 2)
+    val FIF_BIT_CLR = 1 shl 1
+    val MONITOR_DROP_CLEAR = (1 shl 0) or (1 shl 3) or (1 shl 4) or (1 shl 5) or
+        (1 shl 6) or (1 shl 7) or (1 shl 8) or (1 shl 9) or (1 shl 10) or (1 shl 11) or
+        (1 shl 13) or (1 shl 16) or (1 shl 17) or (1 shl 18) or (1 shl 19) or (1 shl 21)
     const val TX_TYPE_CMD = 2
     const val HDR_FORMAT_CMD = 1
     const val TX_MCU_PORT_RX_Q0 = 0x20

@@ -117,14 +117,14 @@ class WifiAdapterController {
     final aps = e.aps;
     if (aps != null && aps.isNotEmpty) {
       if (_current != WifiAdapterState.running) _set(WifiAdapterState.running);
-      _apCount += aps.length;
       for (final ap in aps) {
         _seenBssids.add(ap.bssid);
       }
+      _apCount = _seenBssids.length;
       DebugLog.log('WIFIADAPTER: batch ${aps.length} fresh, ${_seenBssids.length} unique aps');
       for (final ap in aps) {
-        _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, 0,
-            nodeId: BleManager.usbWifiNodeId);
+        _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, ap.authMode,
+            nodeId: BleManager.usbWifiNodeId, client: ap.client);
       }
     }
   }

@@ -26,9 +26,12 @@ internal class Mt7612uAdapter(
         val rssi: Int,
         val channel: Int,
         val frequency: Int,
+        val client: Boolean = false,
+        val authMode: Int = 0,
     )
 
     @Volatile private var stop = false
+    private val captureClients = true
     private val io = UsbIo(conn)
     private lateinit var epRx: UsbEndpoint
     private lateinit var epCmdOut: UsbEndpoint
@@ -384,9 +387,7 @@ internal class Mt7612uAdapter(
         var rxBytes = 0L
         var rxBufs = 0L
         var lastRxAt = hopAt
-        var sweeping = true
-        var swept = 0
-        var sweepAt = hopAt
+        var exploreAt = hopAt
         var phoneCh = emptySet<Int>()
         var phoneChAt = 0L
         try {
@@ -421,25 +422,26 @@ internal class Mt7612uAdapter(
                     val rs0 = io.regRead(Mt76Regs.RX_STAT_0)
                     log("MT7612U rx: bufs=$rxBufs bytes=$rxBytes tracked=${table.map.size} ch=${Mt76Regs.CHANNELS[hopIdx]} CH_BUSY=$busy STAT0(crc=${rs0 and 0xffff} phy=${(rs0 ushr 16) and 0xffff})")
                     diagAt = now
-                    if (busy > 50000 && now - lastRxAt > 4000) {
+                    if (now - lastRxAt > 4000 && (busy > 50000 || rxBufs == 0L)) {
                         reKickRx()
                         lastRxAt = now
                     }
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
                 if (now - hopAt > DWELL_MS) {
-                    if (now - sweepAt > 15000) { sweeping = true; swept = 0; sweepAt = now }
                     if (now - phoneChAt > 5000) { phoneCh = phoneChannels(); phoneChAt = now }
-                    val camp = if (sweeping) emptySet() else table.map.values.mapTo(HashSet(phoneCh)) { it.channel }
+                    val active = table.map.values.mapTo(HashSet(phoneCh)) { it.channel }
+                    val explore = now - exploreAt > EXPLORE_MS
                     var nx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
-                    if (camp.isNotEmpty()) {
+                    if (active.isNotEmpty() && !explore) {
                         var s = 0
-                        while (s < Mt76Regs.CHANNELS.size && Mt76Regs.CHANNELS[nx] !in camp) {
+                        while (s < Mt76Regs.CHANNELS.size && Mt76Regs.CHANNELS[nx] !in active) {
                             nx = (nx + 1) % Mt76Regs.CHANNELS.size; s++
                         }
+                    } else if (explore) {
+                        exploreAt = now
                     }
                     hopIdx = nx
-                    if (sweeping && ++swept >= Mt76Regs.CHANNELS.size) sweeping = false
                     runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                     drainCmdResp()
                     hopAt = now
@@ -495,9 +497,9 @@ internal class Mt7612uAdapter(
         repeat(6) { if (conn.bulkTransfer(ep, tmp, tmp.size, 1) <= 0) return }
     }
 
-    // -- 802.11 parse: beacons and probe responses only --
+    // -- 802.11 parse: APs (beacon/probe-resp/data) + client stations --
 
-    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long)
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean)
     private class SightingTable {
         val map = LinkedHashMap<String, Entry>()
     }
@@ -519,43 +521,46 @@ internal class Mt7612uAdapter(
         val end = minOf(n, rxwi + rxwiLen + mpduLen + pad)
         if (d + 24 > end) return
         val crc = rxinfo and (1 shl 8) != 0
+        val good = !crc
         val fc = u8(d)
-        fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(off + it)) }
+        val flags = u8(d + 1)
         val type = (fc shr 2) and 3
         val sub = (fc shr 4) and 0xf
-        val bssid: String
-        var ssid: String? = null
-        when (type) {
-            0 -> {
-                if (sub != 8 && sub != 5) return
-                bssid = macAt(d + 16)
-                ssid = readSsid(b, d + 36 + pad, end)
-                if (crc && ssid.isNullOrEmpty()) return
-            }
-            2 -> {
-                if (crc) return
-                val flags = u8(d + 1)
-                val toDs = flags and 1 != 0
-                val fromDs = flags and 2 != 0
-                val off = when {
-                    toDs && !fromDs -> d + 4
-                    !toDs && fromDs -> d + 10
-                    !toDs && !fromDs -> d + 16
-                    else -> return
-                }
-                if (u8(off) and 1 != 0) return
-                bssid = macAt(off)
-            }
-            else -> return
-        }
-        if (bssid == "ff:ff:ff:ff:ff:ff" || bssid == "00:00:00:00:00:00") return
         val rssi = (if (ch <= 14) rssiRaw + rssiOff2g - lna2g else rssiRaw + rssiOff5g - lna5g)
             .coerceIn(-120, -20)
-        val e = table.map.getOrPut(bssid) { Entry(null, rssi, ch, 0) }
-        if (!ssid.isNullOrEmpty()) e.ssid = ssid
-        if (rssi > e.rssi) e.rssi = rssi
-        e.channel = ch
-        e.lastSeen = System.currentTimeMillis()
+        fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(off + it)) }
+        fun group(off: Int) = u8(off) and 1 != 0
+        fun touch(mac: String, isAp: Boolean, ssid: String?) {
+            if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
+            if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
+            val e = table.map.getOrPut(mac) { Entry(null, rssi, ch, 0, isAp) }
+            e.isAp = e.isAp || isAp
+            if (!ssid.isNullOrEmpty()) e.ssid = ssid
+            if (rssi > e.rssi) e.rssi = rssi
+            e.channel = ch
+            e.lastSeen = System.currentTimeMillis()
+        }
+        when (type) {
+            0 -> when (sub) {
+                8, 5 -> {
+                    val ssid = readSsid(b, d + 36 + pad, end)
+                    if (good || !ssid.isNullOrEmpty()) touch(macAt(d + 16), true, ssid)
+                }
+                4, 0, 1, 2, 3, 10, 11, 12 -> if (good && captureClients) touch(macAt(d + 10), false, null)
+            }
+            2 -> {
+                if (!good) return
+                val toDs = flags and 1 != 0
+                val fromDs = flags and 2 != 0
+                when {
+                    toDs && !fromDs -> { if (!group(d + 4)) touch(macAt(d + 4), true, null); if (captureClients) touch(macAt(d + 10), false, null) }
+                    !toDs && fromDs -> { if (!group(d + 10)) touch(macAt(d + 10), true, null); if (captureClients) touch(macAt(d + 4), false, null) }
+                    !toDs && !fromDs -> { if (!group(d + 16)) touch(macAt(d + 16), true, null); if (captureClients) touch(macAt(d + 10), false, null) }
+                    else -> if (captureClients) touch(macAt(d + 10), false, null)
+                }
+            }
+            1 -> if (good && captureClients && (sub == 11 || sub == 10)) touch(macAt(d + 10), false, null)
+        }
     }
 
     private fun readSsid(b: ByteArray, from: Int, end: Int): String? {
@@ -579,7 +584,7 @@ internal class Mt7612uAdapter(
         val fresh = 8000L
         val batch = table.map.entries
             .filter { now - it.value.lastSeen < fresh }
-            .map { (mac, e) -> ApSighting(mac, e.ssid, e.rssi, e.channel, Mt76Regs.freqOf(e.channel)) }
+            .map { (mac, e) -> ApSighting(mac, e.ssid, e.rssi, e.channel, Mt76Regs.freqOf(e.channel), client = !e.isAp) }
         table.map.entries.removeAll { now - it.value.lastSeen > 60_000L }
         if (batch.isNotEmpty()) onBatch(batch)
     }
@@ -641,5 +646,6 @@ internal class Mt7612uAdapter(
 
     companion object {
         const val DWELL_MS = 125L
+        const val EXPLORE_MS = 2000L
     }
 }
