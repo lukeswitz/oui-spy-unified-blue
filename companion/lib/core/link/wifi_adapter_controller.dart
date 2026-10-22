@@ -15,6 +15,7 @@ class WifiAdapterController {
   final _state = StreamController<WifiAdapterState>.broadcast();
   final _devices = StreamController<List<WifiAdapterDevice>>.broadcast();
   StreamSubscription<WifiAdapterEvent>? _sub;
+  StreamSubscription<WifiAdapterAttach>? _attachSub;
   List<WifiAdapterDevice> _list = const [];
   WifiAdapterState _current = WifiAdapterState.absent;
   String _status = '';
@@ -27,6 +28,38 @@ class WifiAdapterController {
   int get apCount => _apCount;
   Stream<WifiAdapterState> get stateStream => _state.stream;
   Stream<List<WifiAdapterDevice>> get deviceStream => _devices.stream;
+
+  bool _autoStarting = false;
+
+  void init() {
+    _attachSub ??= WifiAdapter.attachEvents.listen(_onAttach);
+    _autoStart();
+  }
+
+  Future<void> _autoStart() async {
+    if (_autoStarting) return;
+    if (_current == WifiAdapterState.running || _current == WifiAdapterState.starting) return;
+    _autoStarting = true;
+    try {
+      final ds = await refresh();
+      if (ds.isEmpty) return;
+      if (_current == WifiAdapterState.running || _current == WifiAdapterState.starting) return;
+      await start(ds.first);
+    } finally {
+      _autoStarting = false;
+    }
+  }
+
+  Future<void> _onAttach(WifiAdapterAttach e) async {
+    if (e.attached) {
+      await _autoStart();
+    } else {
+      await refresh();
+      final gone = _list.isEmpty;
+      final active = _current == WifiAdapterState.running || _current == WifiAdapterState.starting;
+      if (gone && active) await stop();
+    }
+  }
 
   Future<List<WifiAdapterDevice>> refresh() async {
     try {
@@ -103,6 +136,7 @@ class WifiAdapterController {
 
   void dispose() {
     _sub?.cancel();
+    _attachSub?.cancel();
     _state.close();
     _devices.close();
   }
@@ -110,6 +144,7 @@ class WifiAdapterController {
 
 final wifiAdapterControllerProvider = Provider<WifiAdapterController>((ref) {
   final c = WifiAdapterController(ref.read(bleManagerProvider));
+  c.init();
   ref.onDispose(c.dispose);
   return c;
 });

@@ -47,11 +47,19 @@ class WifiAdapterEvent {
   final List<WifiAdapterAp>? aps;
 }
 
+class WifiAdapterAttach {
+  const WifiAdapterAttach({required this.attached, required this.device});
+
+  final bool attached;
+  final WifiAdapterDevice device;
+}
+
 class WifiAdapter {
   const WifiAdapter._();
 
   static const _methods = MethodChannel('ouispy/wifiadapter');
   static const _events = EventChannel('ouispy/wifiadapter/sightings');
+  static const _attach = EventChannel('ouispy/wifiadapter/events');
 
   static bool get supported => Platform.isAndroid;
 
@@ -78,6 +86,16 @@ class WifiAdapter {
             aps: aps == null
                 ? null
                 : [for (final a in aps) WifiAdapterAp.fromMap(a! as Map<Object?, Object?>)],
+          );
+        });
+
+  static Stream<WifiAdapterAttach> get attachEvents => !supported
+      ? const Stream.empty()
+      : _attach.receiveBroadcastStream().map((e) {
+          final m = e as Map<Object?, Object?>;
+          return WifiAdapterAttach(
+            attached: m['attached']! as bool,
+            device: WifiAdapterDevice.fromMap(m['device']! as Map<Object?, Object?>),
           );
         });
 }

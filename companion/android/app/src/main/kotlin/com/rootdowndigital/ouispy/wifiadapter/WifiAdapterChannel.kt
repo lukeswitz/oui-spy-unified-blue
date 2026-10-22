@@ -44,19 +44,27 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
     private val permissionAction = "${context.packageName}.WIFI_ADAPTER_PERMISSION"
     private var sink: EventChannel.EventSink? = null
+    private var eventSink: EventChannel.EventSink? = null
     private var worker: Thread? = null
     @Volatile private var stopFn: (() -> Unit)? = null
     private var pending: MethodChannel.Result? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
-            if (intent.action != permissionAction) return
             val device = deviceExtra(intent)
-            val result = pending
-            pending = null
-            if (result == null) return
-            val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-            if (granted && device != null) startAdapter(device, result) else result.success(false)
+            when (intent.action) {
+                permissionAction -> {
+                    val result = pending
+                    pending = null
+                    if (result == null) return
+                    val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                    if (granted && device != null) startAdapter(device, result) else result.success(false)
+                }
+                UsbManager.ACTION_USB_DEVICE_ATTACHED ->
+                    if (device != null && isWifiMonitor(device)) emitAttach(true, device)
+                UsbManager.ACTION_USB_DEVICE_DETACHED ->
+                    if (device != null && isWifiMonitor(device)) emitAttach(false, device)
+            }
         }
     }
 
@@ -73,12 +81,33 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 }
             },
         )
-        val filter = IntentFilter(permissionAction)
+        EventChannel(messenger, "ouispy/wifiadapter/events").setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    eventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    eventSink = null
+                }
+            },
+        )
+        val filter = IntentFilter().apply {
+            addAction(permissionAction)
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             context.registerReceiver(receiver, filter)
         }
+    }
+
+    fun onAttachIntent(intent: Intent?) {
+        if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        val device = deviceExtra(intent) ?: return
+        if (isWifiMonitor(device)) emitAttach(true, device)
     }
 
     fun dispose() {
@@ -132,6 +161,11 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
 
     private fun candidates(): List<UsbDevice> = usb.deviceList.values.filter { kindOf(it) != null }
+
+    private fun isWifiMonitor(d: UsbDevice): Boolean {
+        val k = kindOf(d)
+        return k != null && k != Kind.SERIAL
+    }
 
     private fun describe(d: UsbDevice): Map<String, Any> = mapOf(
         "id" to d.deviceName,
@@ -261,6 +295,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
 
     private fun emitStatus(msg: String) {
         sink?.success(mapOf("status" to msg))
+    }
+
+    private fun emitAttach(attached: Boolean, device: UsbDevice) {
+        main.post { eventSink?.success(mapOf("attached" to attached, "device" to describe(device))) }
     }
 
     private fun emitBatch(batch: List<Mt7612uAdapter.ApSighting>) {

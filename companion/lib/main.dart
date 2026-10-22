@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -72,23 +71,7 @@ void main() async {
   container.read(deviceRegistryProvider);
   container.read(melodyProvider);
   container.read(usbAutoConnectProvider);
-  if (kDebugMode) {
-    final wc = container.read(wifiAdapterControllerProvider);
-    Timer.periodic(const Duration(seconds: 2), (t) async {
-      if (t.tick > 15 || wc.state == WifiAdapterState.running ||
-          wc.state == WifiAdapterState.starting) {
-        t.cancel();
-        return;
-      }
-      final ds = await wc.refresh();
-      if (ds.isNotEmpty) {
-        t.cancel();
-        await wc.start(ds.first);
-      }
-    });
-  } else {
-    container.read(wifiAdapterControllerProvider).refresh();
-  }
+  container.read(wifiAdapterControllerProvider);
 
   runApp(UncontrolledProviderScope(
     container: container,
