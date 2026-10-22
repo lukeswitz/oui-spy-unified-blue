@@ -56,6 +56,9 @@ internal class UsbIo(private val conn: UsbDeviceConnection) {
         return false
     }
 
+    fun clearHalt(epAddr: Int): Int =
+        conn.controlTransfer(0x02, 0x01, 0x00, epAddr, null, 0, TIMEOUT)
+
     private fun ctrlOut(req: Int, addr: Int, data: ByteArray) =
         conn.controlTransfer(Mt76Regs.DIR_OUT, req, hi(addr), lo(addr), data, data.size, TIMEOUT)
 

@@ -1,12 +1,15 @@
 package com.rootdowndigital.ouispy.wifiadapter
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -22,7 +25,23 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     private enum class Kind { MT7612U, RTL8812AU, RTL8814AU, RTL8821AU, AR9271, SERIAL }
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val main = Handler(Looper.getMainLooper())
+
+    private fun phoneWifiChannels(): Set<Int> {
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return emptySet()
+        }
+        return wifi.scanResults.mapNotNullTo(HashSet()) { r ->
+            val f = r.frequency
+            when {
+                f == 2484 -> 14
+                f in 2412..2472 -> (f - 2412) / 5 + 1
+                f in 5000..5900 -> (f - 5000) / 5
+                else -> null
+            }
+        }
+    }
     private val permissionAction = "${context.packageName}.WIFI_ADAPTER_PERMISSION"
     private var sink: EventChannel.EventSink? = null
     private var worker: Thread? = null
@@ -141,7 +160,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 when (kind) {
                     Kind.MT7612U -> {
                         val fw = FirmwareStore.load(context)
-                        val a = Mt7612uAdapter(conn, intf, fw, log)
+                        val a = Mt7612uAdapter(conn, intf, fw, log, ::phoneWifiChannels)
                         stopFn = a::abort
                         a.run(onBatch)
                     }

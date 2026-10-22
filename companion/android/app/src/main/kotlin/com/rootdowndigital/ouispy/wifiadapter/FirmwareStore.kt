@@ -6,7 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-// Downloads MT7612U MCU firmware from linux-firmware once, verifies SHA-256, caches it.
+// Cache+hash-pinned firmware fetch from linux-firmware; MT7612U MCU ROM patch + firmware, AR9271, etc.
 internal object FirmwareStore {
 
     class Blobs(val romPatch: ByteArray, val firmware: ByteArray)
@@ -20,7 +20,6 @@ internal object FirmwareStore {
     private fun ensure(ctx: Context, name: String, wantSha256: String): ByteArray =
         fetch(ctx, name, Mt76Regs.FW_BASE_URL + name, wantSha256)
 
-    // Generic cache+hash-pinned fetch, used by AR9271 and any other single-blob chip.
     fun fetch(ctx: Context, name: String, url: String, wantSha256: String): ByteArray {
         val dir = File(ctx.cacheDir, "wifi_fw").apply { mkdirs() }
         val f = File(dir, name)

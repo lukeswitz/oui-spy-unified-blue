@@ -414,6 +414,7 @@ class BleManager {
   }
 
   static const phoneNodeId = 'PHONE';
+  static const usbWifiNodeId = 'USBWIFI';
 
   void addPhoneFoxRssi(int rssi, int intervalMs) =>
       _foxhunterRssiStream.add((rssi: rssi, intervalMs: intervalMs));
@@ -443,12 +444,13 @@ class BleManager {
     ));
   }
 
-  void addPhoneWifiDetection(String bssid, String ssid, int rssi, int channel, int authMode) {
+  void addPhoneWifiDetection(String bssid, String ssid, int rssi, int channel, int authMode,
+      {String nodeId = phoneNodeId}) {
     final now = DateTime.now();
     _detections.add(Detection(
       id: '${bssid}_${now.millisecondsSinceEpoch}',
       sessionId: _sessionId,
-      nodeId: phoneNodeId,
+      nodeId: nodeId,
       macAddress: bssid,
       engine: Engine.wardrive,
       method: 'wifi_ap',
@@ -457,7 +459,7 @@ class BleManager {
       deviceTimestampMs: 0,
       appTimestamp: now,
       ssid: ssid,
-      sourceNodeId: phoneNodeId,
+      sourceNodeId: nodeId,
       latitude: _lastLat,
       longitude: _lastLon,
       accuracy: _lastAccuracy,

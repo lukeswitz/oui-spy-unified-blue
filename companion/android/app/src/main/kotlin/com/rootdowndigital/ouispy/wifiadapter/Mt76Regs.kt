@@ -40,6 +40,7 @@ internal object Mt76Regs {
     const val TXOP_CTRL_CFG = 0x1340
     const val CH_IDLE = 0x1130
     const val CH_BUSY = 0x1134
+    const val RX_STAT_0 = 0x1700
     const val CH_TIME_CFG = 0x110c
 
     // WLAN_FUN_CTRL bits
@@ -84,7 +85,7 @@ internal object Mt76Regs {
     const val ILM_OFFSET = 0x80000
     const val DLM_OFFSET = 0x110000
     const val ROM_PATCH_OFFSET = 0x90000
-    const val FW_URB_MAX_PAYLOAD = 0x3900
+    const val FW_URB_MAX_PAYLOAD = 0x800
     const val ROM_PATCH_MAX_PAYLOAD = 2048
     const val FW_HDR_LEN = 32
     const val PATCH_HDR_LEN = 30

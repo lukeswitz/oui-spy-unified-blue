@@ -19,6 +19,7 @@ class WifiAdapterController {
   WifiAdapterState _current = WifiAdapterState.absent;
   String _status = '';
   int _apCount = 0;
+  final Set<String> _seenBssids = {};
 
   List<WifiAdapterDevice> get devices => _list;
   WifiAdapterState get state => _current;
@@ -85,7 +86,12 @@ class WifiAdapterController {
       if (_current != WifiAdapterState.running) _set(WifiAdapterState.running);
       _apCount += aps.length;
       for (final ap in aps) {
-        _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, 0);
+        _seenBssids.add(ap.bssid);
+      }
+      DebugLog.log('WIFIADAPTER: batch ${aps.length} fresh, ${_seenBssids.length} unique aps');
+      for (final ap in aps) {
+        _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, 0,
+            nodeId: BleManager.usbWifiNodeId);
       }
     }
   }

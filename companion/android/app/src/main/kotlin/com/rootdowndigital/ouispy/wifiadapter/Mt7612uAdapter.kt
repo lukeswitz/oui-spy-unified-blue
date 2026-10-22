@@ -18,6 +18,7 @@ internal class Mt7612uAdapter(
     private val intf: UsbInterface,
     private val fw: FirmwareStore.Blobs,
     private val log: (String) -> Unit,
+    private val phoneChannels: () -> Set<Int> = { emptySet() },
 ) {
     data class ApSighting(
         val bssid: String,
@@ -33,6 +34,7 @@ internal class Mt7612uAdapter(
     private lateinit var epCmdOut: UsbEndpoint
     private var epCmdResp: UsbEndpoint? = null
     private var seq = 0
+    private var mcuLogged = 0
     private var mcuGain = 0
     private var rssiOff2g = 0
     private var rssiOff5g = 0
@@ -45,14 +47,19 @@ internal class Mt7612uAdapter(
         conn.claimInterface(intf, true)
         if (!findEndpoints()) throw IllegalStateException("MT7612U: bulk endpoints not found")
 
-        uploadRomPatch()
-        uploadFirmware()
-        log("MT7612U: firmware running")
-
+        io.clearHalt(epCmdOut.address)
+        io.clearHalt(epRx.address)
         resetWlan()
         powerOn()
         if (!waitForMac()) {
             throw IllegalStateException("MT7612U: MAC not ready after power-on")
+        }
+        uploadRomPatch()
+        uploadFirmware()
+        log("MT7612U: firmware running")
+        io.pollReg(Mt76Regs.WPDMA_GLO_CFG, Mt76Regs.WPDMA_TX_BUSY or Mt76Regs.WPDMA_RX_BUSY, 0, 100)
+        if (!waitForMac()) {
+            throw IllegalStateException("MT7612U: MAC not ready after firmware load")
         }
         initDma()
         mcuCmd(Mt76Regs.CMD_FUN_SET_OP, le32words(Mt76Regs.Q_SELECT, 1), false)
@@ -65,7 +72,7 @@ internal class Mt7612uAdapter(
         io.regWrite(Mt76Regs.TXOP_CTRL_CFG, 0x583f)
         loadCr(eeprom, Mt76Regs.CHANNELS[0])
         setRxPath()
-        tuneChannel(Mt76Regs.CHANNELS[0])
+        tuneChannel(Mt76Regs.CHANNELS[0], scan = false)
         io.regWrite(Mt76Regs.RX_FILTR_CFG, Mt76Regs.FILTR_CRC_ERR or Mt76Regs.FILTR_PHY_ERR)
         macStart()
         log("MT7612U: receiver live")
@@ -86,10 +93,9 @@ internal class Mt7612uAdapter(
         epRx = rx
         epCmdResp = bulkIn.getOrNull(1)
         epCmdOut = cmd
+        log("MT7612U: eps IN=[${bulkIn.joinToString { "0x%02x".format(it.address) }}] OUT=[${bulkOut.joinToString { "0x%02x".format(it.address) }}] maxIn=${rx.maxPacketSize}")
         return true
     }
-
-    // -- Firmware upload (FCE DMA) --
 
     private fun uploadRomPatch() {
         val patch = fw.romPatch
@@ -104,6 +110,10 @@ internal class Mt7612uAdapter(
         io.devMode(Mt76Regs.TYPE_CLASS_OUT, 0x12,
             byteArrayOf(0x6f, 0xfc.toByte(), 0x05, 0x01, 0x07, 0x01, 0x00, 0x04))
         sleep(20)
+        val e3 = (io.regRead(Mt76Regs.ASIC_VERSION) and 0xffff) >= Mt76Regs.REV_E3
+        val reg = if (e3) Mt76Regs.MCU_CLOCK_CTL else Mt76Regs.MCU_COM_REG0
+        val mask = if (e3) 0x1 else 0x2
+        if (!io.pollReg(reg, mask, mask, 100)) log("MT7612U: ROM patch poll failed (reg=0x${reg.toString(16)})")
     }
 
     private fun uploadFirmware() {
@@ -122,9 +132,7 @@ internal class Mt7612uAdapter(
         val dlmOffset = if (e3) Mt76Regs.DLM_OFFSET + 0x800 else Mt76Regs.DLM_OFFSET
         fceSend(f, Mt76Regs.FW_HDR_LEN + ilmLen, dlmLen, Mt76Regs.FW_URB_MAX_PAYLOAD, dlmOffset)
         io.devMode(Mt76Regs.DIR_OUT, 0x12, null)
-        if (!io.pollReg(Mt76Regs.MCU_COM_REG0, 0x1, 0x1, 100)) {
-            throw IllegalStateException("MT7612U: firmware failed to start")
-        }
+        if (!io.pollReg(Mt76Regs.MCU_COM_REG0, 0x1, 0x1, 100)) log("MT7612U: firmware failed to start")
         io.regSet(Mt76Regs.MCU_COM_REG0, 0x2)
         io.regWrite(Mt76Regs.FCE_PSE_CTRL, 0x1)
     }
@@ -146,14 +154,22 @@ internal class Mt7612uAdapter(
             val buf = ByteArray(4 + rounded + 4)
             putLe32(buf, 0, (Mt76Regs.CPU_TX_PORT shl 27) or Mt76Regs.MCU_MSG_TYPE_CMD or (len and 0xffff))
             System.arraycopy(src, srcOff + pos, buf, 4, len)
-            io.singleWriteFce(Mt76Regs.FCE_DMA_ADDR, dstAddr + pos)
-            io.singleWriteFce(Mt76Regs.FCE_DMA_LEN, rounded shl 16)
-            val n = conn.bulkTransfer(epCmdOut, buf, buf.size, 1000)
-            if (n < 0) throw IllegalStateException("MT7612U: firmware chunk failed at $pos")
+            var n = -1
+            var tries = 0
+            while (tries < 4) {
+                io.singleWriteFce(Mt76Regs.FCE_DMA_ADDR, dstAddr + pos)
+                io.singleWriteFce(Mt76Regs.FCE_DMA_LEN, rounded shl 16)
+                n = conn.bulkTransfer(epCmdOut, buf, buf.size, 1000)
+                if (n == buf.size) break
+                io.clearHalt(epCmdOut.address)
+                tries++
+                sleep(15)
+            }
+            if (n != buf.size) throw IllegalStateException("MT7612U: firmware chunk failed at $pos (n=$n tries=$tries)")
             io.regWrite(Mt76Regs.TX_CPU_FROM_FCE_CPU_DESC_IDX,
                 io.regRead(Mt76Regs.TX_CPU_FROM_FCE_CPU_DESC_IDX) + 1)
             pos += len
-            sleep(5)
+            sleep(10)
         }
     }
 
@@ -237,36 +253,38 @@ internal class Mt7612uAdapter(
 
     private val calAt = HashMap<Int, Long>()
 
-    private fun tuneChannel(ch: Int) {
+    private fun tuneChannel(ch: Int, scan: Boolean = true) {
         val is5 = ch > 14
         if (!is5) { io.regSet(Mt76Regs.TX_BAND_CFG, 1 shl 2); io.regClear(Mt76Regs.TX_BAND_CFG, 1 shl 1) }
         else { io.regClear(Mt76Regs.TX_BAND_CFG, 1 shl 2); io.regSet(Mt76Regs.TX_BAND_CFG, 1 shl 1) }
         io.regRmw(Mt76Regs.BBP_CORE1, 0x18, 0)
         io.regRmw(Mt76Regs.BBP_AGC0, 0x7000, 1 shl 12)
-        switchChannel(ch)
-        mcuCmd(Mt76Regs.CMD_INIT_GAIN_OP, le32words(ch or (1 shl 31), mcuGain), true)
-        io.regSet(Mt76Regs.BBP_RXO13, 1 shl 10)
-        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_RXDCOC, ch), true)
-        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_RC, 0), true)
-        io.regWrite(Mt76Regs.BBP_AGC61, 0xff64a4e2.toInt())
-        io.regWrite(Mt76Regs.BBP_AGC7, 0x08081010)
-        io.regWrite(Mt76Regs.BBP_AGC11, 0x00000404)
-        io.regWrite(Mt76Regs.BBP_AGC2, 0x00007070)
-        io.regWrite(Mt76Regs.TXOP_CTRL_CFG, 0x04101b3f)
-        io.regSet(Mt76Regs.BBP_TXO4, 1 shl 25)
-        io.regSet(Mt76Regs.BBP_RXO13, 1 shl 8)
+        switchChannel(ch, scan)
         val now = System.currentTimeMillis()
-        if (now - (calAt[ch] ?: 0L) > 30_000L) {
-            val b = if (is5) 1 else 0
-            if (is5) mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_LC, 0), true)
-            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TX_LOFT, b), true)
-            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TXIQ, b), true)
-            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_RXIQC_FI, b), true)
-            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TEMP, 0), true)
-            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TX_SHAPING, 0), true)
-            edccaInit()
+        val wait = !scan
+        if (!scan || now - (calAt[ch] ?: 0L) > 30_000L) {
+            mcuCmd(Mt76Regs.CMD_INIT_GAIN_OP, le32words(ch or (1 shl 31), mcuGain), wait)
+            io.regSet(Mt76Regs.BBP_RXO13, 1 shl 10)
+            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_RXDCOC, ch), wait)
+            mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_RC, 0), wait)
+            io.regWrite(Mt76Regs.BBP_AGC61, 0xff64a4e2.toInt())
+            io.regWrite(Mt76Regs.BBP_AGC7, 0x08081010)
+            io.regWrite(Mt76Regs.BBP_AGC11, 0x00000404)
+            io.regWrite(Mt76Regs.BBP_AGC2, 0x00007070)
+            io.regWrite(Mt76Regs.TXOP_CTRL_CFG, 0x04101b3f)
+            io.regSet(Mt76Regs.BBP_TXO4, 1 shl 25)
+            io.regSet(Mt76Regs.BBP_RXO13, 1 shl 8)
             calAt[ch] = now
         }
+        if (scan) return
+        val b = if (is5) 1 else 0
+        if (is5) mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_LC, 0), true)
+        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TX_LOFT, b), true)
+        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TXIQ, b), true)
+        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_RXIQC_FI, b), true)
+        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TEMP, 0), true)
+        mcuCmd(Mt76Regs.CMD_CALIBRATION_OP, le32words(Mt76Regs.MCU_CAL_TX_SHAPING, 0), true)
+        edccaInit()
     }
 
     // Enables the RX antenna/LNA path (TX_PIN_CFG) after calibration; mt76 mt76x02_edcca_init + tx_enable.
@@ -291,11 +309,18 @@ internal class Mt7612uAdapter(
         return false
     }
 
-    private fun switchChannel(ch: Int) {
-        val m = byteArrayOf(ch.toByte(), 1, 0, 0, 0x03, 0x00, 0x00, 0x00)
-        mcuCmd(Mt76Regs.CMD_SWITCH_CHANNEL_OP, m, true); sleep(6)
-        m[6] = 0xe0.toByte()
-        mcuCmd(Mt76Regs.CMD_SWITCH_CHANNEL_OP, m, true)
+    private fun switchChannel(ch: Int, scan: Boolean) {
+        // mt76x2_mcu_set_channel (mt76x2/mcu.c, BSD): two CMD_SWITCH_CHANNEL_OP sends, idx/scan/bw/chainmask, 2nd with ext_chan 0xe0.
+        // Single-threaded RX loop: on scan hops skip the MCU response wait so the RX drain is not starved.
+        val waitResp = !scan
+        val msg = ByteArray(8)
+        msg[0] = ch.toByte()
+        msg[1] = if (scan) 1 else 0
+        msg[4] = 0x03
+        mcuCmd(Mt76Regs.CMD_SWITCH_CHANNEL_OP, msg, waitResp)
+        sleep(6)
+        msg[6] = 0xe0.toByte()
+        mcuCmd(Mt76Regs.CMD_SWITCH_CHANNEL_OP, msg, waitResp)
     }
 
     private fun loadCr(ee: ByteArray, ch: Int) {
@@ -307,7 +332,7 @@ internal class Mt7612uAdapter(
         mcuCmd(Mt76Regs.CMD_LOAD_CR, m, true)
     }
 
-    private fun mcuCmd(cmd: Int, payload: ByteArray, waitResp: Boolean) {
+    private fun mcuCmd(cmd: Int, payload: ByteArray, waitResp: Boolean): Int {
         seq = (seq + 1) and 0xf; if (seq == 0) seq = 1
         val rounded = (payload.size + 3) and 3.inv()
         val txinfo = (rounded and 0xffff) or (Mt76Regs.CPU_TX_PORT shl 27) or (seq shl 16) or
@@ -315,15 +340,17 @@ internal class Mt7612uAdapter(
         val buf = ByteArray(4 + rounded + 4)
         putLe32(buf, 0, txinfo); System.arraycopy(payload, 0, buf, 4, payload.size)
         conn.bulkTransfer(epCmdOut, buf, buf.size, 1000)
-        if (waitResp) {
-            val rep = epCmdResp
-            if (rep != null) {
-                val rb = ByteArray(512)
-                conn.bulkTransfer(rep, rb, rb.size, 300)
-            } else {
-                sleep(10)
-            }
+        if (!waitResp) return -1
+        val rep = epCmdResp
+        if (rep == null) { sleep(10); return -1 }
+        val rb = ByteArray(512)
+        val n = conn.bulkTransfer(rep, rb, rb.size, 300)
+        if (mcuLogged < 6) {
+            mcuLogged++
+            val evt = if (n >= 4) (le32(rb, 0) ushr 20) and 0xf else -1
+            log("MT7612U MCU cmd=$cmd resp=${n}B evt=$evt fce=0x${(if (n >= 4) le32(rb, 0) else 0).toString(16)}")
         }
+        return n
     }
 
     // -- RX --
@@ -353,6 +380,15 @@ internal class Mt7612uAdapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
+        var diagAt = hopAt
+        var rxBytes = 0L
+        var rxBufs = 0L
+        var lastRxAt = hopAt
+        var sweeping = true
+        var swept = 0
+        var sweepAt = hopAt
+        var phoneCh = emptySet<Int>()
+        var phoneChAt = 0L
         try {
             while (!stop) {
                 val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
@@ -363,18 +399,47 @@ internal class Mt7612uAdapter(
                         val b = buffers[idx]
                         val nbytes = b.position()
                         if (nbytes in 1..bufSz) {
+                            rxBytes += nbytes
+                            rxBufs++
+                            lastRxAt = now
                             b.rewind(); b.get(scratch, 0, nbytes)
                             runCatching { parseRx(scratch, nbytes, Mt76Regs.CHANNELS[hopIdx], table) }
                         }
                         b.clear()
                         if (!runCatching { req.queue(b) }.getOrDefault(false)) {
                             runCatching { req.close() }
+                            val nr = UsbRequest()
+                            if (runCatching { nr.initialize(conn, epRx) }.getOrDefault(false)) {
+                                nr.clientData = idx; b.clear()
+                                if (runCatching { nr.queue(b) }.getOrDefault(false)) reqs[idx] = nr
+                            }
                         }
+                    }
+                }
+                if (now - diagAt > 3000) {
+                    val busy = io.regRead(Mt76Regs.CH_BUSY)
+                    val rs0 = io.regRead(Mt76Regs.RX_STAT_0)
+                    log("MT7612U rx: bufs=$rxBufs bytes=$rxBytes tracked=${table.map.size} ch=${Mt76Regs.CHANNELS[hopIdx]} CH_BUSY=$busy STAT0(crc=${rs0 and 0xffff} phy=${(rs0 ushr 16) and 0xffff})")
+                    diagAt = now
+                    if (busy > 50000 && now - lastRxAt > 4000) {
+                        reKickRx()
+                        lastRxAt = now
                     }
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
                 if (now - hopAt > DWELL_MS) {
-                    hopIdx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
+                    if (now - sweepAt > 15000) { sweeping = true; swept = 0; sweepAt = now }
+                    if (now - phoneChAt > 5000) { phoneCh = phoneChannels(); phoneChAt = now }
+                    val camp = if (sweeping) emptySet() else table.map.values.mapTo(HashSet(phoneCh)) { it.channel }
+                    var nx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
+                    if (camp.isNotEmpty()) {
+                        var s = 0
+                        while (s < Mt76Regs.CHANNELS.size && Mt76Regs.CHANNELS[nx] !in camp) {
+                            nx = (nx + 1) % Mt76Regs.CHANNELS.size; s++
+                        }
+                    }
+                    hopIdx = nx
+                    if (sweeping && ++swept >= Mt76Regs.CHANNELS.size) sweeping = false
                     runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                     drainCmdResp()
                     hopAt = now
@@ -392,10 +457,18 @@ internal class Mt7612uAdapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
+        var diagAt = hopAt
+        var rxBytes = 0L
+        var rxBufs = 0L
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
             val now = System.currentTimeMillis()
-            if (n > 0) runCatching { parseRx(buf, n, Mt76Regs.CHANNELS[hopIdx], table) }
+            if (n > 0) { rxBytes += n; rxBufs++; runCatching { parseRx(buf, n, Mt76Regs.CHANNELS[hopIdx], table) } }
+            if (now - diagAt > 3000) {
+                val rs0 = io.regRead(Mt76Regs.RX_STAT_0)
+                log("MT7612U rxsync: bufs=$rxBufs bytes=$rxBytes tracked=${table.map.size} ch=${Mt76Regs.CHANNELS[hopIdx]} STAT0(crc=${rs0 and 0xffff} phy=${(rs0 ushr 16) and 0xffff})")
+                diagAt = now
+            }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
             if (now - hopAt > DWELL_MS) {
                 hopIdx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
@@ -405,6 +478,15 @@ internal class Mt7612uAdapter(
             }
         }
         emit(table, onBatch)
+    }
+
+    // RX stalled with RF energy present: re-arm RX DMA + MAC RX (mt76 reKick, as Wardrive Go does).
+    private fun reKickRx() {
+        io.regClear(Mt76Regs.MAC_SYS_CTRL, Mt76Regs.SYS_CTRL_ENABLE_RX)
+        val v = io.cfgRead(Mt76Regs.USB_U3DMA_CFG)
+        io.cfgWrite(Mt76Regs.USB_U3DMA_CFG, v and Mt76Regs.DMA_RX_BULK_EN.inv())
+        io.cfgWrite(Mt76Regs.USB_U3DMA_CFG, v or Mt76Regs.DMA_RX_BULK_EN)
+        io.regSet(Mt76Regs.MAC_SYS_CTRL, Mt76Regs.SYS_CTRL_ENABLE_RX)
     }
 
     private fun drainCmdResp() {
@@ -438,15 +520,37 @@ internal class Mt7612uAdapter(
         if (d + 24 > end) return
         val crc = rxinfo and (1 shl 8) != 0
         val fc = u8(d)
-        if ((fc shr 2) and 3 != 0) return
+        fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(off + it)) }
+        val type = (fc shr 2) and 3
         val sub = (fc shr 4) and 0xf
-        if (sub != 8 && sub != 5) return
-        val bssid = (0 until 6).joinToString(":") { "%02x".format(u8(d + 16 + it)) }
+        val bssid: String
+        var ssid: String? = null
+        when (type) {
+            0 -> {
+                if (sub != 8 && sub != 5) return
+                bssid = macAt(d + 16)
+                ssid = readSsid(b, d + 36 + pad, end)
+                if (crc && ssid.isNullOrEmpty()) return
+            }
+            2 -> {
+                if (crc) return
+                val flags = u8(d + 1)
+                val toDs = flags and 1 != 0
+                val fromDs = flags and 2 != 0
+                val off = when {
+                    toDs && !fromDs -> d + 4
+                    !toDs && fromDs -> d + 10
+                    !toDs && !fromDs -> d + 16
+                    else -> return
+                }
+                if (u8(off) and 1 != 0) return
+                bssid = macAt(off)
+            }
+            else -> return
+        }
         if (bssid == "ff:ff:ff:ff:ff:ff" || bssid == "00:00:00:00:00:00") return
-        val ssid = readSsid(b, d + 36 + pad, end)
         val rssi = (if (ch <= 14) rssiRaw + rssiOff2g - lna2g else rssiRaw + rssiOff5g - lna5g)
             .coerceIn(-120, -20)
-        if (crc && ssid.isNullOrEmpty()) return
         val e = table.map.getOrPut(bssid) { Entry(null, rssi, ch, 0) }
         if (!ssid.isNullOrEmpty()) e.ssid = ssid
         if (rssi > e.rssi) e.rssi = rssi

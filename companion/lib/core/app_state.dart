@@ -234,6 +234,7 @@ class AppState extends ChangeNotifier {
 
   String labelForNode(String id) {
     if (id == BleManager.phoneNodeId) return 'PHONE';
+    if (id == BleManager.usbWifiNodeId) return 'USB WIFI';
     final canon = canonicalNodeId(id);
     final stored = _nodeLabels[canon];
     if (stored != null && stored.isNotEmpty) return stored;
