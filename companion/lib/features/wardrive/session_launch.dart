@@ -28,14 +28,11 @@ bool targetEngineRunning(AppState app, WardriveTarget m) {
 class _SessionSourcesChip extends ConsumerWidget {
   const _SessionSourcesChip();
 
-  static Color get _wifiColor => AppTheme.themed(const Color(0xFF6B8AFF));
-  static Color get _bleColor => AppTheme.themed(const Color(0xFF9B6BFF));
-
   static List<Widget> _source(IconData icon, int mask, Color color) => [
         Icon(icon, size: 13, color: color),
         const SizedBox(width: 3),
-        if (mask & 0x01 != 0) Icon(Icons.wifi, size: 11, color: _wifiColor),
-        if (mask & 0x02 != 0) Icon(Icons.bluetooth, size: 11, color: _bleColor),
+        if (mask & 0x01 != 0) Icon(Icons.wifi, size: 11, color: color),
+        if (mask & 0x02 != 0) Icon(Icons.bluetooth, size: 11, color: color),
       ];
 
   @override
@@ -49,23 +46,22 @@ class _SessionSourcesChip extends ConsumerWidget {
       final self = AppState.canonicalNodeId(app.nodeId);
       final n = app.liveKnownNodes.where((id) => id != self && !app.isManagerNode(id)).length;
       parts.add([
-        Icon(Icons.hub, size: 13, color: AppTheme.success),
+        Icon(Icons.hub_outlined, size: 13, color: t.textSecondary),
         const SizedBox(width: 3),
-        Text('$n', style: TextStyle(color: AppTheme.success, fontSize: 11, fontWeight: FontWeight.w700)),
+        Text('$n', style: TextStyle(color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
       ]);
     } else if (app.isConnected) {
-      parts.add(_source(Icons.memory, wd.radioBitmask, AppTheme.accent));
+      parts.add(_source(Icons.memory, wd.radioBitmask, t.textSecondary));
     }
     if (phone.scanning) {
-      parts.add(_source(Icons.smartphone, PhoneBleSource.canScanWifi ? phone.radioMask : 0x02, AppTheme.detector));
+      parts.add(_source(Icons.smartphone, PhoneBleSource.canScanWifi ? phone.radioMask : 0x02, t.textSecondary));
     }
     if (parts.isEmpty) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: t.background,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: t.border, width: 0.5),
+        color: t.surfaceLight,
+        borderRadius: BorderRadius.circular(AppRadius.chip),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -84,8 +80,8 @@ class _SessionSourcesChip extends ConsumerWidget {
   }
 }
 
-class SessionBar extends ConsumerWidget {
-  const SessionBar({super.key});
+class SessionTargets extends ConsumerWidget {
+  const SessionTargets({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,172 +93,191 @@ class SessionBar extends ConsumerWidget {
         if (targetEngineRunning(app, x)) x,
     };
     final busy = wd.radioTransition != null;
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: wd.isActive ? Engine.wardrive.color : t.border, width: wd.isActive ? 1 : 0.5),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              for (final m in WardriveController.selectableTargets)
-                Expanded(
-                  child: Builder(builder: (context) {
-                    final sel = live.contains(m) || (live.isEmpty && wd.isTargetSelected(m));
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () => wd.onChipTap(m, live),
-                      child: Container(
-                        margin: const EdgeInsets.all(2),
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                          color: sel ? m.color.withValues(alpha: 0.15) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: sel ? m.color.withValues(alpha: 0.5) : t.border, width: 0.5),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(m.icon, size: 16, color: sel ? m.color : t.textDim),
-                            FittedBox(
-                              child: Text(
-                                m.label,
-                                style: TextStyle(color: sel ? m.color : t.textDim, fontSize: 9, fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-            ],
-          ),
-          if (!wd.isActive)
-            Row(
+
+    Widget chip(WardriveTarget m) {
+      final sel = live.contains(m) || (live.isEmpty && wd.isTargetSelected(m));
+      final fg = sel ? t.background : t.textPrimary;
+      final iconColor = sel ? t.background : t.textSecondary;
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.chip),
+          onTap: () => wd.onChipTap(m, live),
+          child: Container(
+            key: ValueKey('target-chip-${m.name}'),
+            height: 60,
+            decoration: BoxDecoration(
+              color: sel ? t.textPrimary : t.surfaceLight,
+              borderRadius: BorderRadius.circular(AppRadius.chip),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                for (final r in WardriveRadio.values)
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => setWardriveRadio(ref, switch (r) {
-                        WardriveRadio.wifi => 0x01,
-                        WardriveRadio.ble => 0x02,
-                        WardriveRadio.both => 0x03,
-                      }),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              switch (r) {
-                                WardriveRadio.wifi => Icons.wifi,
-                                WardriveRadio.ble => Icons.bluetooth,
-                                WardriveRadio.both => Icons.sensors,
-                              },
-                              size: 12,
-                              color: r == wd.radio ? Engine.wardrive.color : t.textDim,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              r.label,
-                              style: TextStyle(
-                                color: r == wd.radio ? Engine.wardrive.color : t.textDim,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                Icon(m.icon, size: 18, color: iconColor),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    m.label,
+                    style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.6),
                   ),
+                ),
               ],
             ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      flex: wd.isActive && !busy ? 0 : 1,
-                      child: Text(
-                        busy
-                            ? '${wd.radioTransition!.toUpperCase()}…'
-                            : switch (wd.state) {
-                                WardriveState.idle => 'SESSION IDLE',
-                                WardriveState.running => 'RUNNING',
-                                WardriveState.paused => 'PAUSED',
-                              },
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: wd.isActive ? Engine.wardrive.color : t.textDim,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
-                        ),
+          ),
+        ),
+      );
+    }
+
+    Widget segment(WardriveRadio r) {
+      final sel = r == wd.radio;
+      return Expanded(
+        child: Material(
+          color: sel ? t.textPrimary : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.chip),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => setWardriveRadio(ref, switch (r) {
+              WardriveRadio.wifi => 0x01,
+              WardriveRadio.ble => 0x02,
+              WardriveRadio.both => 0x03,
+            }),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  switch (r) {
+                    WardriveRadio.wifi => Icons.wifi,
+                    WardriveRadio.ble => Icons.bluetooth,
+                    WardriveRadio.both => Icons.sensors,
+                  },
+                  size: 14,
+                  color: sel ? t.background : t.textSecondary,
+                ),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      r.label,
+                      style: TextStyle(
+                        color: sel ? t.background : t.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4,
                       ),
                     ),
-                    if (wd.isActive && !busy) ...[
-                      const SizedBox(width: 8),
-                      const Flexible(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: _SessionSourcesChip(),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (!wd.isActive)
-                FilledButton.icon(
-                  key: const ValueKey('session-start'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Engine.wardrive.color,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1),
                   ),
-                  onPressed: busy ? null : () => startWardriveSession(context, ref),
-                  icon: const Icon(Icons.play_arrow, size: 18),
-                  label: const Text('START'),
-                )
-              else ...[
-                IconButton(
-                  tooltip: wd.state == WardriveState.paused ? 'Resume' : 'Pause',
-                  onPressed: busy
-                      ? null
-                      : () => wd.state == WardriveState.paused ? wd.resumeSession() : wd.pauseSession(),
-                  icon: Icon(wd.state == WardriveState.paused ? Icons.play_arrow : Icons.pause),
-                ),
-                FilledButton.icon(
-                  key: const ValueKey('session-stop'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.error,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1),
-                  ),
-                  onPressed: wd.radioTransition == 'stopping' ? null : wd.stopSession,
-                  icon: const Icon(Icons.stop),
-                  label: const Text('STOP'),
                 ),
               ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final targets = WardriveController.selectableTargets;
+    final radios = WardriveRadio.values;
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (wd.isActive) ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: _SessionSourcesChip(),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Opacity(
+            opacity: busy ? 0.5 : 1,
+            child: Row(
+              children: [
+                for (var i = 0; i < targets.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  chip(targets[i]),
+                ],
+              ],
+            ),
+          ),
+          if (!wd.isActive) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const ValueKey('radio-control'),
+              height: 40,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: t.surfaceLight,
+                borderRadius: BorderRadius.circular(AppRadius.control),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [for (final r in radios) segment(r)],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class SessionStartButton extends ConsumerWidget {
+  const SessionStartButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final wd = ref.watch(wardriveProvider);
+    final busy = wd.radioTransition != null;
+    final busyText = '${wd.radioTransition?.toUpperCase()}…';
+    final shape = ElevatedButton.styleFrom(
+      minimumSize: const Size(0, 46),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+    );
+    if (!wd.isActive) {
+      final startFg = AppTheme.contrast(AppTheme.wardrive, Colors.black) >= 4.5 ? Colors.black : Colors.white;
+      return SizedBox(
+        width: double.infinity,
+        height: 46,
+        child: ElevatedButton(
+          key: const ValueKey('session-start'),
+          style: shape.copyWith(
+            backgroundColor: WidgetStatePropertyAll(AppTheme.wardrive),
+            foregroundColor: WidgetStatePropertyAll(startFg),
+          ),
+          onPressed: busy ? null : () => startWardriveSession(context, ref),
+          child: Row(
+            children: [
+              Text(busy ? busyText : 'START'),
+              const Spacer(),
+              Icon(Icons.arrow_forward, size: 18, color: startFg),
             ],
           ),
-        ],
+        ),
+      );
+    }
+    final fg = AppTheme.contrast(AppTheme.error, Colors.black) >= 4.5 ? Colors.black : Colors.white;
+    return SizedBox(
+      width: double.infinity,
+      height: 46,
+      child: ElevatedButton(
+        key: const ValueKey('session-stop'),
+        style: shape.copyWith(
+          backgroundColor: WidgetStatePropertyAll(AppTheme.error),
+          foregroundColor: WidgetStatePropertyAll(fg),
+        ),
+        onPressed: wd.radioTransition == 'stopping' ? null : wd.stopSession,
+        child: Row(
+          children: [
+            Text(busy ? busyText : 'STOP'),
+            const Spacer(),
+            Icon(Icons.stop, size: 18, color: fg),
+          ],
+        ),
       ),
     );
   }
@@ -427,7 +442,6 @@ Future<void> _settingsDialog(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: t.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text(
         title,
         style: TextStyle(
@@ -515,9 +529,9 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
     for (final n in widget.nodes) n: widget.initial[n] ?? 0x03,
   };
 
-  static Color get _wifiColor => AppTheme.themed(const Color(0xFF6B8AFF));
-  static Color get _bleColor => AppTheme.themed(const Color(0xFF9B6BFF));
-  static Color get _bothColor => AppTheme.themed(const Color(0xFF5AE6D6));
+  static Color get _wifiColor => AppTheme.detector;
+  static Color get _bleColor => AppTheme.flockBle;
+  static Color get _bothColor => AppTheme.skySpy;
 
   static Color _radioColor(int mask) => switch (mask & 0x03) {
     0x01 => _wifiColor,
@@ -536,7 +550,6 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
     final t = AppTheme.of(context);
     return AlertDialog(
       backgroundColor: t.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: Row(
         children: [
           Icon(
@@ -579,7 +592,6 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                 decoration: BoxDecoration(
                   color: t.background,
-                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: selColor.withValues(alpha: 0.35)),
                 ),
                 child: Column(
@@ -594,12 +606,6 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                           decoration: BoxDecoration(
                             color: selColor,
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: selColor.withValues(alpha: 0.6),
-                                blurRadius: 6,
-                              ),
-                            ],
                           ),
                         ),
                         Expanded(

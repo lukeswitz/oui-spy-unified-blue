@@ -134,7 +134,7 @@ Observation observationFromDetection(Detection d) {
 class EspDetectionSource extends ObservationSource {
   EspDetectionSource(Stream<Detection> detections)
       : observations = detections
-            .where((d) => d.nodeId != BleManager.phoneNodeId && d.nodeId != BleManager.usbWifiNodeId)
+            .where((d) => d.nodeId != BleManager.phoneNodeId)
             .map(observationFromDetection);
 
   @override

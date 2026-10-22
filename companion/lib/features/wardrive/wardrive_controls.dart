@@ -14,15 +14,14 @@ class _IdleControls extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 24),
-          child: SessionBar(),
+          child: SessionStartButton(),
         ),
         const SizedBox(height: 6),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 24),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            color: th.surface.withValues(alpha: 0.94),
             border: Border.all(color: th.border, width: 0.5),
           ),
           child: Row(
@@ -49,7 +48,7 @@ class _IdleControls extends StatelessWidget {
               ),
               Text('${wd.markerDistanceM.round()}m', style: TextStyle(
                 color: AppTheme.accent, fontSize: 10,
-                fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
               )),
             ],
           ),
@@ -69,7 +68,6 @@ class _IdleControls extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: th.surface,
-                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: th.border),
                 ),
                 child: Row(
@@ -98,7 +96,6 @@ class _IdleControls extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 decoration: BoxDecoration(
                   color: th.surface,
-                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: th.border),
                 ),
                 child: Icon(Icons.fence, size: 14, color: AppTheme.warning),
@@ -107,58 +104,6 @@ class _IdleControls extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.label, required this.color, required this.onTap});
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label, style: TextStyle(
-          color: t.background, fontSize: 13,
-          fontWeight: FontWeight.w700, letterSpacing: 1.5,
-        )),
-      ),
-    );
-  }
-}
-
-class _OutlinePill extends StatelessWidget {
-  const _OutlinePill({required this.label, required this.color, required this.onTap});
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-        ),
-        child: Text(label, style: TextStyle(
-          color: color, fontSize: 13,
-          fontWeight: FontWeight.w700, letterSpacing: 1.5,
-        )),
-      ),
     );
   }
 }
@@ -182,7 +127,6 @@ class _IconBtn extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
         child: Container(
           width: 44,
           height: 44,
@@ -190,20 +134,12 @@ class _IconBtn extends StatelessWidget {
             color: active
                 ? AppTheme.accent.withValues(alpha: 0.18)
                 : t.surface.withValues(alpha: 0.92),
-            shape: BoxShape.circle,
             border: Border.all(
               color: active
                   ? AppTheme.accent.withValues(alpha: 0.7)
                   : t.border,
               width: 1.2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: Icon(
             icon,
@@ -232,24 +168,15 @@ class _CompassResetBtn extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
           child: Container(
             width: 44,
             height: 44,
             decoration: BoxDecoration(
               color: t.surface.withValues(alpha: 0.95),
-              shape: BoxShape.circle,
               border: Border.all(
                 color: AppTheme.accent.withValues(alpha: 0.55),
                 width: 1.2,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
             ),
             child: Transform.rotate(
               angle: -rotation * pi / 180.0,
@@ -286,8 +213,8 @@ class _CompassNeedlePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
-    final red = Paint()..color = const Color(0xFFE54848);
-    final gray = Paint()..color = const Color(0xFF888888);
+    final red = Paint()..color = AppTheme.error;
+    final gray = Paint()..color = AppTheme.textDim;
     final pathN = ui.Path()
       ..moveTo(c.dx, c.dy - 10)
       ..lineTo(c.dx - 4, c.dy)
@@ -367,7 +294,6 @@ class _LayerLoadingPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: t.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),
       child: Row(
@@ -435,7 +361,6 @@ class _MapStyleButton extends StatelessWidget {
       offset: const Offset(0, 40),
       color: t.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
         side: BorderSide(color: t.border),
       ),
       itemBuilder: (_) => [
@@ -549,7 +474,6 @@ class _MapStyleButton extends StatelessWidget {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: t.surface.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(6),
           border: Border.all(color: t.border),
         ),
         child: Icon(Icons.layers, size: 16, color: t.textSecondary),
@@ -580,12 +504,10 @@ class _FocusedDetectionChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onShowAll,
-        borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: t.surface.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: detection.engine.color.withValues(alpha: 0.6)),
           ),
           child: Row(
@@ -643,12 +565,10 @@ class _ClassGroupChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onClear,
-        borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: t.surface.withValues(alpha: 0.92),
-            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppTheme.warning.withValues(alpha: 0.6)),
           ),
           child: Row(
@@ -697,8 +617,7 @@ class _DetectionList extends StatelessWidget {
     return Container(
       constraints: const BoxConstraints(maxHeight: 100),
       decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        color: t.surface.withValues(alpha: 0.94),
         border: Border.all(color: t.border),
       ),
       child: ListView(
@@ -751,8 +670,7 @@ class _FeedToggle extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          color: t.surface.withValues(alpha: 0.94),
           border: Border.all(color: t.border),
         ),
         child: Row(
@@ -824,13 +742,13 @@ class _DetListRow extends ConsumerWidget {
         children: [
           Container(width: 2, height: 14,
             decoration: BoxDecoration(
-              color: d.engine.color, borderRadius: BorderRadius.circular(1)),
+              color: d.engine.color),
           ),
           const SizedBox(width: 5),
           Text(d.macAddress.toUpperCase(),
             style: TextStyle(
               color: t.textPrimary, fontSize: 9,
-              fontFamily: 'monospace', fontWeight: FontWeight.w500,
+              fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,
             ),
           ),
           if (label.isNotEmpty) ...[
@@ -852,13 +770,13 @@ class _DetListRow extends ConsumerWidget {
               child: Text('\u00d7${d.count}',
                 style: TextStyle(
                   color: t.textDim, fontSize: 8,
-                  fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                  fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           Text('${d.rssi}', style: TextStyle(
             color: rssiColor, fontSize: 9,
-            fontFamily: 'monospace', fontWeight: FontWeight.w600,
+            fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
           )),
         ],
       ),
@@ -931,10 +849,10 @@ class _ClusterDot extends StatelessWidget {
                       child: Text(
                         label,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
-                          fontFamily: 'monospace',
+                          fontFamily: AppTheme.mono,
                           fontSize: 13,
                           height: 1.0,
                           letterSpacing: -0.3,
