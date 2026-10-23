@@ -336,6 +336,7 @@ class _SpectrumPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.black);
     final gp = Paint()
       ..color = grid.withValues(alpha: 0.4)
       ..strokeWidth = 1;
@@ -354,14 +355,14 @@ class _SpectrumPainter extends CustomPainter {
       final y = size.height * norm;
       if (i == 0) {
         path.moveTo(x, y);
-        fill.moveTo(x, 0);
+        fill.moveTo(x, size.height);
         fill.lineTo(x, y);
       } else {
         path.lineTo(x, y);
         fill.lineTo(x, y);
       }
     }
-    fill.lineTo(size.width, 0);
+    fill.lineTo(size.width, size.height);
     fill.close();
     canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.18));
     canvas.drawPath(path, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 1.5);

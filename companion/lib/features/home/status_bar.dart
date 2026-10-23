@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -62,84 +63,113 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: t.surface,
-        border: Border(
-          bottom: BorderSide(color: t.border, width: 0.5),
-        ),
-      ),
-      child: Row(
+    final conn = state.connectionState;
+    final lost = conn == NodeConnectionState.reconnecting || conn == NodeConnectionState.disconnected;
+    final phoneOn = ref.watch(phoneBleSourceProvider).active;
+    final wifiRunning = (ref.watch(wifiAdapterStateProvider).valueOrNull ??
+            ref.watch(wifiAdapterControllerProvider).state) ==
+        WifiAdapterState.running;
+    final softScan = !state.isConnected && (phoneOn || wifiRunning);
+    final scanLabel = phoneOn && wifiRunning
+        ? 'Phone + USB scan'
+        : wifiRunning
+            ? 'USB scan'
+            : 'Phone scan';
+    final statusColor = softScan
+        ? AppTheme.accent
+        : lost
+            ? AppTheme.error
+            : conn == NodeConnectionState.ready
+                ? AppTheme.accent
+                : t.textSecondary;
+    final sep = Text(' · ', style: TextStyle(color: t.textSecondary, fontSize: 13));
+    final uptime = state.isConnected && state.sessionStartTime != null
+        ? _formatUptime(state.sessionUptime)
+        : null;
+    final nameColor = state.isConnected ? t.textPrimary : t.textDim;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Connection chip
-          _ConnectionChip(state: state.connectionState),
-          const SizedBox(width: 10),
-          // Uptime
-          if (state.isConnected && state.sessionStartTime != null) ...[
-            _InfoChip(
-              icon: Icons.timer_outlined,
-              label: _formatUptime(state.sessionUptime),
-              color: t.textSecondary,
-            ),
-            const SizedBox(width: 10),
-          ],
-          // GPS
-          _InfoChip(
-            icon: _hwGps.inUse ? Icons.memory : Icons.smartphone,
-            label: _gpsLabel,
-            color: _gpsColor,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  !state.isConnected && !phoneOn && !wifiRunning
+                      ? ''
+                      : state.nodeId.isNotEmpty
+                          ? state.nodeId
+                          : 'OUI-APEX',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: nameColor, fontSize: 28, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                tooltip: state.isConnected ? 'Switch device' : 'Connect a device',
+                icon: Icon(state.isConnected ? Icons.swap_horiz : Icons.devices_outlined),
+                color: nameColor,
+                onPressed: state.isConnected
+                    ? () async {
+                        await ref.read(bleManagerProvider).disconnect();
+                        if (context.mounted) context.push('/onboarding');
+                      }
+                    : () => context.push('/onboarding'),
+              ),
+              const _PhoneScanChip(),
+              const _UsbScanChip(),
+            ],
           ),
-          const Spacer(),
-          const _PhoneScanChip(),
-          const SizedBox(width: 10),
-          // Device name + node count — tap to switch device
-          Flexible(
-            child: InkWell(
-            onTap: state.isConnected
-                ? () async {
-                    await ref.read(bleManagerProvider).disconnect();
-                    if (context.mounted) context.push('/onboarding');
-                  }
-                : () => context.push('/onboarding'),
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                    state.nodeId.isNotEmpty ? state.nodeId : 'OUI-SPY',
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 2,
-                      fontFamily: 'monospace',
-                      color: state.isConnected
-                          ? AppTheme.accent
-                          : t.textDim,
-                    ),
-                  ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    state.isConnected ? Icons.swap_horiz : Icons.devices,
-                    size: 12,
-                    color: state.isConnected
-                        ? AppTheme.accent
-                        : t.textDim,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  softScan ? scanLabel : _connectionWord(conn),
+                  style: TextStyle(color: statusColor, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                if (uptime != null) ...[
+                  sep,
+                  Text(
+                    uptime,
+                    style: TextStyle(fontFamily: AppTheme.mono, fontSize: 13, color: t.textSecondary),
                   ),
                 ],
-              ),
+                sep,
+                Flexible(
+                  child: Text(
+                    _gpsLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: t.textSecondary, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
-          ),
           ),
         ],
       ),
     );
+  }
+
+  static String _connectionWord(NodeConnectionState s) {
+    return switch (s) {
+      NodeConnectionState.ready => 'Live',
+      NodeConnectionState.connecting => 'Linking',
+      NodeConnectionState.negotiating => 'MTU',
+      NodeConnectionState.syncing => 'Sync',
+      NodeConnectionState.reconnecting => 'Lost',
+      NodeConnectionState.scanning => 'Scan',
+      _ => 'Offline',
+    };
   }
 
   String _formatUptime(Duration d) {
@@ -150,110 +180,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     return '${m}min${s.toString().padLeft(2, '0')}s';
   }
 
-  Color get _gpsColor {
-    if (_hwGps.inUse) return AppTheme.gpsGood;
-    if (_hwGps.fallback) return AppTheme.warning;
-    final quality = _gpsPosition?.quality ?? GpsQuality.none;
-    return switch (quality) {
-      GpsQuality.good => AppTheme.gpsGood,
-      GpsQuality.fair => AppTheme.gpsFair,
-      GpsQuality.poor => AppTheme.gpsPoor,
-      GpsQuality.none => AppTheme.gpsNone,
-    };
-  }
-
   String get _gpsLabel {
     if (_hwGps.inUse) return 'HW ${_hwGps.satellites}sv';
     final pos = _gpsPosition;
     if (pos == null) return _hwGps.fallback ? 'PH --' : '--';
     final acc = '${pos.accuracy.toStringAsFixed(0)}m';
     return _hwGps.fallback ? 'PH $acc' : acc;
-  }
-}
-
-
-class _ConnectionChip extends StatelessWidget {
-  const _ConnectionChip({required this.state});
-  final NodeConnectionState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _color;
-    final isConnecting = state == NodeConnectionState.connecting ||
-        state == NodeConnectionState.negotiating ||
-        state == NodeConnectionState.syncing;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isConnecting)
-            SizedBox(
-              width: 6,
-              height: 6,
-              child: CircularProgressIndicator(
-                color: color,
-                strokeWidth: 1.5,
-              ),
-            )
-          else
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.4),
-                    blurRadius: 4,
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(width: 6),
-          Text(
-            _label,
-            style: TextStyle(
-              color: color,
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color get _color {
-    return switch (state) {
-      NodeConnectionState.ready => AppTheme.success,
-      NodeConnectionState.connecting ||
-      NodeConnectionState.negotiating ||
-      NodeConnectionState.syncing =>
-        AppTheme.warning,
-      NodeConnectionState.reconnecting => AppTheme.error,
-      _ => AppTheme.textDim,
-    };
-  }
-
-  String get _label {
-    return switch (state) {
-      NodeConnectionState.ready => 'LIVE',
-      NodeConnectionState.connecting => 'LINKING',
-      NodeConnectionState.negotiating => 'MTU',
-      NodeConnectionState.syncing => 'SYNC',
-      NodeConnectionState.reconnecting => 'LOST',
-      NodeConnectionState.scanning => 'SCAN',
-      _ => 'OFFLINE',
-    };
   }
 }
 
@@ -271,46 +203,33 @@ class _PhoneScanChip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final src = ref.watch(phoneBleSourceProvider);
     final t = AppTheme.of(context);
-    final color = src.active ? AppTheme.detector : t.textDim;
-    final showLabel = !src.active && !ref.watch(appStateProvider).isConnected;
-    return Tooltip(
-      message: 'Scan with this device',
-      child: InkWell(
-        onTap: () => showCommandSheet<void>(
-          context: context,
-          builder: (_) => const _PhoneScanSheet(),
-        ),
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: src.active ? 0.2 : 0.04),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withValues(alpha: src.active ? 0.6 : 0.35), width: 0.5),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                src.radioListening ? Icons.wifi_tethering : _phoneIcon,
-                size: 16,
-                color: color,
-              ),
-              if (showLabel) ...[
-                const SizedBox(width: 5),
-                Text(
-                  'ONBOARD SCAN',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
-                    color: color,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+    return IconButton(
+      tooltip: 'Scan with this device',
+      icon: Icon(src.radioListening ? Icons.wifi_tethering : _phoneIcon),
+      color: src.active ? AppTheme.detector : t.textDim,
+      onPressed: () => showCommandSheet<void>(
+        context: context,
+        builder: (_) => const _PhoneScanSheet(),
+      ),
+    );
+  }
+}
+
+class _UsbScanChip extends ConsumerWidget {
+  const _UsbScanChip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final st = ref.watch(wifiAdapterStateProvider).valueOrNull ??
+        ref.watch(wifiAdapterControllerProvider).state;
+    if (st == WifiAdapterState.absent) return const SizedBox.shrink();
+    final running = st == WifiAdapterState.running || st == WifiAdapterState.starting;
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, right: 6),
+      child: Tooltip(
+        message: running ? 'USB adapter scanning' : 'USB adapter connected',
+        child: Icon(Icons.usb, size: 22, color: running ? AppTheme.detector : t.textSecondary),
       ),
     );
   }
@@ -377,37 +296,6 @@ class _PhoneScanSheetState extends ConsumerState<_PhoneScanSheet> {
             ),
         ],
       ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 11, color: color),
-        const SizedBox(width: 3),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            fontFamily: 'monospace',
-          ),
-        ),
-      ],
     );
   }
 }

@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/core/link/sdr.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
@@ -13,10 +15,14 @@ import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
+import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/features/home/engine_card.dart';
-import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/home/status_bar.dart';
+import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/d/d_header.dart';
+import 'package:oui_spy/widgets/d/d_spec_row.dart';
+import 'package:oui_spy/widgets/d/d_stats_strip.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -33,7 +39,15 @@ class HomeScreen extends ConsumerWidget {
           children: [
             const StatusBar(),
             Expanded(
-              child: state.isConnected || ref.watch(phoneBleSourceProvider).active
+              child: state.isConnected ||
+                      ref.watch(phoneBleSourceProvider).active ||
+                      (ref.watch(sdrPresentProvider).valueOrNull ?? false) ||
+                      const {
+                        WifiAdapterState.present,
+                        WifiAdapterState.starting,
+                        WifiAdapterState.running,
+                      }.contains(ref.watch(wifiAdapterStateProvider).valueOrNull ??
+                          ref.watch(wifiAdapterControllerProvider).state)
                   ? _ConnectedView(state: state)
                   : _DisconnectedView(state: state),
             ),
@@ -58,24 +72,26 @@ class _DisconnectedView extends ConsumerWidget {
     final isReconnecting =
         state.connectionState == NodeConnectionState.reconnecting;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalPad = (screenWidth * 0.08).clamp(24.0, 64.0);
+    final hPad = (MediaQuery.sizeOf(context).width * 0.08).clamp(24.0, 64.0);
 
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPad, vertical: 32),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 40),
             _PulsingRadar(active: isConnecting || isReconnecting),
             const SizedBox(height: 28),
             Text(
               'OUI-APEX',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: t.textPrimary,
                 fontSize: 28,
-                fontWeight: FontWeight.w200,
+                fontWeight: FontWeight.w400,
                 letterSpacing: 8,
               ),
             ),
@@ -86,12 +102,8 @@ class _DisconnectedView extends ConsumerWidget {
                   : isReconnecting
                       ? 'Searching for your OUI-SPY…'
                       : 'Multi-engine RF intelligence',
-              style: TextStyle(
-                color: t.textDim,
-                fontSize: 12,
-                letterSpacing: 1,
-              ),
               textAlign: TextAlign.center,
+              style: TextStyle(color: t.textDim, fontSize: 12, letterSpacing: 1),
             ),
             const SizedBox(height: 40),
             if (isConnecting) ...[
@@ -101,58 +113,36 @@ class _DisconnectedView extends ConsumerWidget {
                 width: double.infinity,
                 height: 44,
                 child: OutlinedButton.icon(
-                  onPressed: () =>
-                      ref.read(bleManagerProvider).disconnect(),
-                  icon: const Icon(Icons.close, size: 14),
-                  label: const Text(
-                    'CANCEL',
-                    style: TextStyle(letterSpacing: 2, fontSize: 12),
-                  ),
+                  onPressed: () => ref.read(bleManagerProvider).disconnect(),
+                  icon: const Icon(Icons.close, size: 16),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.error,
-                    side: BorderSide(
-                      color: AppTheme.error.withValues(alpha: 0.4),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    side: BorderSide(color: AppTheme.error),
                   ),
+                  label: const Text('CANCEL'),
                 ),
               ),
             ] else if (!isReconnecting)
               SizedBox(
                 width: double.infinity,
-                height: 48,
+                height: 52,
                 child: OutlinedButton.icon(
                   onPressed: () => context.push('/onboarding'),
                   icon: const Icon(Icons.bluetooth, size: 16),
-                  label: const Text(
-                    'CONNECT',
-                    style: TextStyle(letterSpacing: 2, fontSize: 13),
-                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.accent,
                     side: BorderSide(color: AppTheme.accent),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
                   ),
+                  label: const Text('CONNECT', style: TextStyle(letterSpacing: 2, fontSize: 13)),
                 ),
               ),
             if (isReconnecting) ...[
-              const SizedBox(height: 20),
               Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: AppTheme.accent.withValues(alpha: 0.25),
-                  ),
+                  color: t.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                 ),
                 child: Row(
                   children: [
@@ -161,19 +151,11 @@ class _DisconnectedView extends ConsumerWidget {
                       height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.accent,
+                        color: t.textPrimary,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      'RECONNECTING…',
-                      style: TextStyle(
-                        color: AppTheme.accent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    const DEyebrow('RECONNECTING…'),
                   ],
                 ),
               ),
@@ -182,35 +164,22 @@ class _DisconnectedView extends ConsumerWidget {
                 width: double.infinity,
                 height: 44,
                 child: OutlinedButton.icon(
-                  onPressed: () =>
-                      ref.read(bleManagerProvider).disconnect(),
-                  icon: const Icon(Icons.close, size: 14),
-                  label: const Text(
-                    'STOP RECONNECT',
-                    style: TextStyle(letterSpacing: 2, fontSize: 12),
-                  ),
+                  onPressed: () => ref.read(bleManagerProvider).disconnect(),
+                  icon: const Icon(Icons.close, size: 16),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.error,
-                    side: BorderSide(
-                      color: AppTheme.error.withValues(alpha: 0.4),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    side: BorderSide(color: AppTheme.error),
                   ),
+                  label: const Text('STOP RECONNECT'),
                 ),
               ),
             ],
             const SizedBox(height: 48),
-            ...Engine.values.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _EnginePreviewRow(engine: e),
-              ),
-            ),
+            for (final e in Engine.values) _EnginePreviewRow(engine: e),
             const SizedBox(height: 8),
             const _WardriveAccountsStrip(),
           ],
+          ),
         ),
       ),
     );
@@ -311,26 +280,20 @@ class _ConnectingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final t = AppTheme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          width: 24,
-          height: 24,
+          width: 18,
+          height: 18,
           child: CircularProgressIndicator(
-            color: AppTheme.accent.withValues(alpha: 0.6),
+            color: t.textPrimary,
             strokeWidth: 1.5,
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          'LINKING',
-          style: TextStyle(
-            color: AppTheme.accent.withValues(alpha: 0.5),
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 3,
-          ),
-        ),
+        const SizedBox(width: 10),
+        const DEyebrow('LINKING'),
       ],
     );
   }
@@ -343,41 +306,38 @@ class _EnginePreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Row(
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: BoxDecoration(
-            color: engine.color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(7),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: engine.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.chip),
+            ),
+            child: Icon(engine.icon, size: 14, color: engine.color),
           ),
-          child: Icon(engine.icon, size: 14, color: engine.color),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                engine.label,
-                style: TextStyle(
-                  color: engine.color.withValues(alpha: 0.8),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  engine.label,
+                  style: TextStyle(color: engine.color, fontSize: 13, fontWeight: FontWeight.w600),
                 ),
-              ),
-              Text(
-                engine.description,
-                style: TextStyle(
-                  color: t.textDim,
-                  fontSize: 9,
+                Text(
+                  engine.description,
+                  maxLines: 2,
+                  style: TextStyle(color: t.textDim, fontSize: 11),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -389,84 +349,107 @@ class _ConnectedView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final wd = ref.watch(wardriveProvider);
-    
-    final pad = 12.0;
-
     final ble = ref.read(bleManagerProvider);
+    final recent = state.recentDetections.take(5).toList();
+    final sessionEngines = <Engine>{
+      if (wd.isRunning)
+        for (final t in wd.selectedTargets) ...t.engines(wd.radio),
+    };
+    final activeCount = Engine.values
+        .where((e) => state.isEngineActive(e) || sessionEngines.contains(e))
+        .length;
+    final selfId = AppState.canonicalNodeId(state.nodeId);
+    final nodeCount = state.liveKnownNodes
+        .where((id) => id != selfId && !state.isManagerNode(id))
+        .length;
+    final stats = <(String, String)>[
+      ('${state.totalDetections}', 'Unique'),
+      ('$activeCount/${Engine.values.length}', 'Engines'),
+      ('${state.totalRate}', 'Per min'),
+      if (state.isManagerConnected) (state.meshEnabled ? '$nodeCount' : 'OFF', 'Nodes'),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SpoolImportBanner(stream: ble.awayImport, pad: pad),
+        _SpoolImportBanner(stream: ble.awayImport),
         Expanded(
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(pad),
+            padding: const EdgeInsets.only(top: 4, bottom: 24),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-          _SummaryStrip(state: state),
-          SizedBox(height: pad),
-
-          _SectionLabel(label: 'SESSION', color: Engine.wardrive.color),
-          const SizedBox(height: 6),
-          const SessionBar(),
-
-          SizedBox(height: pad),
-
-          _SectionLabel(label: 'SAFETY', color: AppTheme.flockBle),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: _mediumCardHeight(context),
-            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: _sizedCard(Engine.flockWifi, CardSize.medium, state, wd),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DStatsStrip(
+                        items: stats,
+                        onTap: (i) {
+                          if (stats[i].$2 != 'Nodes') return;
+                          ref.read(configSectionRequestProvider.notifier).state = 'NODE';
+                          context.go('/config');
+                        },
+                      ),
+                      DSectionHeader(
+                        label: 'Scan',
+                        trailing: Text(
+                          wd.radioTransition != null
+                              ? '${wd.radioTransition![0].toUpperCase()}${wd.radioTransition!.substring(1)}…'
+                              : switch (wd.state) {
+                                  WardriveState.idle => 'Idle',
+                                  WardriveState.running => 'Running',
+                                  WardriveState.paused => 'Paused',
+                                },
+                          style: TextStyle(
+                            color: wd.state == WardriveState.running && wd.radioTransition == null
+                                ? AppTheme.accent
+                                : AppTheme.of(context).textSecondary,
+                          ),
+                        ),
+                      ),
+                      _panel(context, 'scan', const [
+                        _UsbScanSources(),
+                        SessionTargets(),
+                        SizedBox(height: 12),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 14),
+                          child: SessionStartButton(),
+                        ),
+                      ]),
+                      const DSectionHeader(label: 'Safety'),
+                      _engineGroup(context, 'safety', [Engine.flockWifi, Engine.flockBle], state, wd),
+                      const DSectionHeader(label: 'Tracking'),
+                      _engineGroup(context, 'tracking', [Engine.detector, Engine.skySpy], state, wd),
+                      const DSectionHeader(label: 'Specialty'),
+                      _engineGroup(context, 'specialty', [Engine.foxhunter, Engine.uniPwn, Engine.pcap], state, wd),
+                      if (recent.isNotEmpty) ...[
+                        DSectionHeader(
+                          label: 'Recent activity',
+                          trailing: TextButton(
+                            onPressed: () {
+                              ref.read(detectionsViewProvider.notifier).state =
+                                  DetectionsView.live;
+                              context.go('/detections');
+                            },
+                            child: const Text('All'),
+                          ),
+                        ),
+                        _panel(context, 'recent', [
+                          for (final d in recent)
+                            DetectionRow(
+                              key: ValueKey(d.id),
+                              detection: d,
+                              divider: false,
+                              horizontal: 14,
+                            ),
+                        ], indent: 14),
+                      ],
+                      const _WardriveAccountsStrip(),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _sizedCard(Engine.flockBle, CardSize.medium, state, wd),
-                ),
-              ],
-            ),
-          ),
-
-          SizedBox(height: pad),
-
-          _SectionLabel(label: 'TRACKING', color: AppTheme.detector),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: _mediumCardHeight(context),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _sizedCard(Engine.detector, CardSize.medium, state, wd),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _sizedCard(Engine.skySpy, CardSize.medium, state, wd),
-                ),
-              ],
-            ),
-          ),
-
-          SizedBox(height: pad),
-
-          _SectionLabel(label: 'SPECIALTY', color: AppTheme.foxhunter),
-          const SizedBox(height: 6),
-          _sizedCard(Engine.foxhunter, CardSize.compact, state, wd),
-          const SizedBox(height: 6),
-          _sizedCard(Engine.uniPwn, CardSize.compact, state, wd),
-          const SizedBox(height: 6),
-          _sizedCard(Engine.pcap, CardSize.compact, state, wd),
-
-          SizedBox(height: pad),
-
-          if (state.recentDetections.isNotEmpty)
-            _RecentActivity(state: state),
-
-          const _WardriveAccountsStrip(),
               ],
             ),
           ),
@@ -475,16 +458,38 @@ class _ConnectedView extends ConsumerWidget {
     );
   }
 
-  /// Determine if engine appears active — accounts for wardrive flock mode.
-  double _mediumCardHeight(BuildContext context) =>
-      (MediaQuery.of(context).size.height * 0.15).clamp(112.0, 190.0);
+  Widget _panel(BuildContext context, String id, List<Widget> rows, {double indent = 62}) {
+    final t = AppTheme.of(context);
+    return Container(
+      key: ValueKey('group-$id'),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, thickness: 1, indent: indent, color: t.border),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _engineGroup(BuildContext context, String id, List<Engine> engines, AppState state, WardriveController wd) {
+    return _panel(context, id, [for (final e in engines) _engineCard(e, state, wd)]);
+  }
 
   bool _isEngineOn(Engine engine, AppState state, WardriveController wd) {
     if (wd.isActive && (engine == Engine.wardrive || wd.ownsEngine(engine))) return true;
     return state.isEngineActive(engine);
   }
 
-  Widget _sizedCard(Engine e, CardSize size, AppState state, WardriveController wd) {
+  Widget _engineCard(Engine e, AppState state, WardriveController wd) {
     return EngineCard(
       engine: e,
       detectionCount: state.countForEngine(e),
@@ -492,325 +497,14 @@ class _ConnectedView extends ConsumerWidget {
       engineState: state.getEngineState(e),
       lastDetection: state.lastDetectionTime[e],
       rate: state.detectionRate(e),
-      size: size,
       nodeCount: 0,
     );
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.label, required this.color});
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return Row(
-      children: [
-        Container(
-          width: 3,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: t.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SummaryStrip extends ConsumerWidget {
-  const _SummaryStrip({required this.state});
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
-    
-    final activeCount =
-        Engine.values.where((e) => state.isEngineActive(e)).length;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: t.border, width: 0.5),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _StatItem(
-            value: '${state.totalDetections}',
-            label: 'UNIQUE',
-            color: AppTheme.accent,
-          )),
-          _divider(t),
-          Expanded(child: _StatItem(
-            value: '$activeCount/${Engine.values.length}',
-            label: 'ENGINES',
-            color: activeCount > 0 ? AppTheme.success : t.textDim,
-          )),
-          _divider(t),
-          Expanded(child: _StatItem(
-            value: '${state.totalRate}',
-            label: '/MIN',
-            color: state.totalRate > 0 ? AppTheme.warning : t.textDim,
-          )),
-          if (state.isManagerConnected) ...[
-            _divider(t),
-            Expanded(child: Builder(builder: (_) {
-              final selfId = AppState.canonicalNodeId(state.nodeId);
-              final nodeCount = state.liveKnownNodes
-                  .where((id) => id != selfId && !state.isManagerNode(id))
-                  .length;
-              return InkWell(
-                onTap: () {
-                  ref.read(configSectionRequestProvider.notifier).state = 'NODE';
-                  context.go('/config');
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: _StatItem(
-                    icon: Icons.hub,
-                    value: state.meshEnabled ? '$nodeCount' : 'OFF',
-                    label: 'NODES',
-                    color: state.meshEnabled
-                        ? (nodeCount > 0
-                            ? AppTheme.success
-                            : AppTheme.warning)
-                        : t.textDim,
-                  ),
-                ),
-              );
-            })),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _divider(ResolvedTheme t) {
-    return Container(
-      width: 0.5,
-      height: 28,
-      margin: const EdgeInsets.symmetric(horizontal: 14),
-      color: t.border,
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  const _StatItem({
-    required this.value,
-    required this.label,
-    required this.color,
-    this.icon,
-  });
-  final String value;
-  final String label;
-  final Color color;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontSize: 22,
-                fontWeight: FontWeight.w500,
-                fontFamily: 'monospace',
-                height: 1,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          style: TextStyle(
-            color: t.textSecondary,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.5,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RecentActivity extends StatelessWidget {
-  const _RecentActivity({required this.state});
-  final AppState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    final recent = state.recentDetections.take(5).toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.success.withValues(alpha: 0.6),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'RECENT',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: t.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: t.border, width: 0.5),
-          ),
-          child: Column(
-            children: recent.asMap().entries.map((entry) {
-              final det = entry.value;
-              final isLast = entry.key == recent.length - 1;
-              final engineColor = det.engine.color;
-              final age = DateTime.now().difference(det.appTimestamp);
-              final ageStr = age.inSeconds < 60
-                  ? '${age.inSeconds}s'
-                  : '${age.inMinutes}m';
-
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  border: isLast
-                      ? null
-                      : Border(
-                          bottom: BorderSide(
-                            color: t.border,
-                            width: 0.5,
-                          ),
-                        ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: engineColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      det.macAddress.toUpperCase(),
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        det.deviceName.isNotEmpty
-                            ? det.deviceName
-                            : det.ssid.isNotEmpty
-                                ? det.ssid
-                                : '<hidden>',
-                        style: TextStyle(
-                          color: t.textSecondary,
-                          fontSize: 12,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      '${det.rssi}',
-                      style: TextStyle(
-                        color: _rssiColor(det.rssi),
-                        fontSize: 12,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      ageStr,
-                      style: TextStyle(
-                        color: t.textSecondary,
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Color _rssiColor(int rssi) {
-    if (rssi > -50) return AppTheme.success;
-    if (rssi > -70) return AppTheme.warning;
-    return AppTheme.textDim;
-  }
-}
-
 class _SpoolImportBanner extends StatefulWidget {
-  const _SpoolImportBanner({required this.stream, required this.pad});
+  const _SpoolImportBanner({required this.stream});
   final Stream<SpoolImportProgress> stream;
-  final double pad;
 
   @override
   State<_SpoolImportBanner> createState() => _SpoolImportBannerState();
@@ -872,7 +566,7 @@ class _SpoolImportBannerState extends State<_SpoolImportBanner> {
       icon = Icons.check_circle_outline;
     }
     return Padding(
-      padding: EdgeInsets.fromLTRB(widget.pad, widget.pad, widget.pad, 0),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
       child: GestureDetector(
         onTap: () {
           ProviderScope.containerOf(context, listen: false).read(detectionsViewProvider.notifier).state =
@@ -924,8 +618,7 @@ class _SpoolBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -955,19 +648,25 @@ class _WardriveAccountsStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final wigle = ref.watch(wigleProvider);
     final wdg = ref.watch(wdgwarsProvider);
     if (!wigle.isLoggedIn && !wdg.isLoggedIn) return const SizedBox.shrink();
 
+    void open() {
+      ProviderScope.containerOf(context, listen: false).read(configSectionRequestProvider.notifier).state = 'DATA';
+      context.go('/config');
+    }
+
+    final t = AppTheme.of(context);
     final rows = <Widget>[];
     if (wigle.isLoggedIn) {
       final s = wigle.stats;
-      rows.add(_AccountMiniRow(
-        icon: Icons.language,
-        color: AppTheme.wigle,
-        name: 'WiGLE',
-        detail: wigle.rateLimited
+      rows.add(DSpecRow(
+        label: 'WiGLE',
+        mono: true,
+        divider: false,
+        onTap: open,
+        value: wigle.rateLimited
             ? WigleApi.rateLimitMessage
             : s == null
             ? 'Loading…'
@@ -976,75 +675,43 @@ class _WardriveAccountsStrip extends ConsumerWidget {
     }
     if (wdg.isLoggedIn) {
       final s = wdg.stats;
-      rows.add(_AccountMiniRow(
-        icon: Icons.sports_esports,
-        color: AppTheme.wdgwars,
-        name: 'WDGWars',
-        detail: s == null
+      rows.add(DSpecRow(
+        label: 'WDGWars',
+        mono: true,
+        divider: false,
+        onTap: open,
+        value: s == null
             ? 'Loading…'
             : '${_fmt(s.total)} devices${s.gang.isNotEmpty ? ' · ${s.gang}' : ''}',
       ));
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          ProviderScope.containerOf(context, listen: false).read(configSectionRequestProvider.notifier).state = 'DATA';
-          context.go('/config');
-        },
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DSectionHeader(
+          label: 'Wardrive accounts',
+          trailing: TextButton(onPressed: open, child: const Text('Full stats')),
+        ),
+        Container(
+          key: const ValueKey('group-accounts'),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: t.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: t.border, width: 0.5),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 3,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: AppTheme.wdgwars.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'WARDRIVE ACCOUNTS',
-                    style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'FULL STATS',
-                    style: TextStyle(
-                      color: AppTheme.wdgwars.withValues(alpha: 0.9),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, size: 16,
-                      color: AppTheme.wdgwars.withValues(alpha: 0.9)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ...rows,
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0) Divider(height: 1, thickness: 1, indent: 14, color: t.border),
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: rows[i]),
+              ],
             ],
           ),
         ),
-      ),
+      ],
     );
   }
 
@@ -1055,52 +722,101 @@ class _WardriveAccountsStrip extends ConsumerWidget {
   }
 }
 
-class _AccountMiniRow extends StatelessWidget {
-  const _AccountMiniRow({
+class _UsbScanSources extends ConsumerWidget {
+  const _UsbScanSources();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final wifiState = ref.watch(wifiAdapterStateProvider).valueOrNull ??
+        ref.watch(wifiAdapterControllerProvider).state;
+    final ctl = ref.read(wifiAdapterControllerProvider);
+    final sdrState = ref.watch(sdrStateProvider).valueOrNull ?? SdrState.idle;
+    final sdrActive = sdrState == SdrState.running || sdrState == SdrState.starting;
+    final sdrPresent = ref.watch(sdrPresentProvider).valueOrNull ?? false;
+    final selected = ref.watch(usbAdapterScanProvider);
+    final wifiRunning =
+        wifiState == WifiAdapterState.running || wifiState == WifiAdapterState.starting;
+
+    final tiles = <Widget>[
+      for (final d in ctl.devices)
+        _SourceTile(
+          icon: Icons.wifi,
+          title: d.name.isNotEmpty ? d.name : 'USB Wi-Fi',
+          subtitle: wifiRunning ? 'Scanning' : 'USB ${d.vidPid}',
+          on: selected,
+          trailing: Switch(
+            value: selected,
+            onChanged: (v) => ref.read(usbAdapterScanProvider.notifier).state = v,
+          ),
+        ),
+      if (sdrPresent || sdrActive)
+        _SourceTile(
+          icon: Icons.sensors,
+          title: 'RTL-SDR',
+          subtitle: sdrActive ? 'Scanning' : 'Connected · open to scan',
+          on: sdrActive,
+          trailing: TextButton(
+            onPressed: () => context.push('/sdr'),
+            child: const Text('OPEN', style: TextStyle(fontSize: 11, letterSpacing: 1)),
+          ),
+        ),
+    ];
+    if (tiles.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(mainAxisSize: MainAxisSize.min, children: tiles),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  const _SourceTile({
     required this.icon,
-    required this.color,
-    required this.name,
-    required this.detail,
+    required this.title,
+    required this.subtitle,
+    required this.on,
+    required this.trailing,
   });
   final IconData icon;
-  final Color color;
-  final String name;
-  final String detail;
+  final String title;
+  final String subtitle;
+  final bool on;
+  final Widget trailing;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+    final iconColor = on ? AppTheme.accent : t.textSecondary;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+      padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+      decoration: BoxDecoration(
+        color: t.surface,
+        border: Border.all(color: t.border, width: 0.5),
+      ),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 64,
-            child: Text(
-              name,
-              style: TextStyle(
-                color: t.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              detail,
-              style: TextStyle(
-                color: t.textDim,
-                fontSize: 11,
-                fontFamily: 'monospace',
-              ),
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: t.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(subtitle,
+                    style: TextStyle(color: t.textDim, fontSize: 10, fontFamily: AppTheme.mono)),
+              ],
             ),
           ),
+          trailing,
         ],
       ),
     );
   }
 }
+

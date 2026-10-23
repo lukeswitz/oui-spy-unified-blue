@@ -59,6 +59,39 @@ Manager boards: XIAO ESP32-S3 (`mgr-xiao_s3`), ESP32-S3 DevKitC (`mgr-s3_devkitc
 
 The original M5StickC and the PLUS2 are built without mesh to fit their RAM. They connect straight to the phone or run standalone. On boards with no buzzer the app hides the buzzer settings.
 
+## USB radios on Android
+
+Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX drives it directly, with no root, kernel driver, or custom ROM. The app talks to the adapter through Android's USB API in user space, so it works on a stock phone. The phone's own Wi-Fi and Bluetooth keep running while the adapter scans.
+
+Plug the adapter in. Android asks which app should handle it; choose OUI-APEX. The adapter appears on the Home screen with its own START control and waits there — it does not scan until you start it.
+
+### Wi-Fi adapters
+
+An adapter scans in monitor mode and only receives; the app never transmits through it. On first use the app downloads the chipset's firmware from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/), checks it against a pinned SHA-256, and caches it on the phone.
+
+| Chipset | Scans |
+|---|---|
+| MediaTek MT7921AU | Wi-Fi (2.4 + 5 GHz) and Bluetooth LE |
+| MediaTek MT7612U | Wi-Fi (2.4 GHz) |
+| Realtek RTL8812AU / RTL8814AU / RTL8821AU | Wi-Fi |
+| Atheros AR9271 | Wi-Fi (2.4 GHz) |
+| Ralink RT3070 | Wi-Fi (2.4 GHz) |
+
+The MT7921AU, sold as the Alfa AWUS036AXM, is the one to get. It covers both bands, and it is the only adapter here that also scans Bluetooth LE: pick BLE or WiFi+BLE on the radio control and it runs the Bluetooth radio next to the Wi-Fi capture. The adapter's hits are tagged `USB WIFI`, and its Bluetooth hits `USB-BLE`, so you can tell them apart from the phone's own radios.
+
+### RTL-SDR
+
+An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the phone into a software-defined radio receiver. Open it from the SDR screen and pick a mode.
+
+| Mode | Frequency | What it receives |
+|---|---|---|
+| Spectrum | You set it, 100.1 MHz by default | A live waterfall of signal strength across the band |
+| ADS-B | 1090 MHz | Aircraft broadcasting their position and identity |
+| TPMS | 433.92 MHz | Tire-pressure sensors in passing vehicles |
+| 433 | 433.92 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters, key fobs, and other sensors |
+
+TPMS and 433 hits are decoded on the SDR screen and grouped by category: tire sensors, meters, security devices, key fobs, and environmental and weather sensors.
+
 ## Engines
 
 | Engine | Finds |
@@ -92,6 +125,7 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
 - **Classification**: OUI vendor categories, Bluetooth SIG company and service IDs, AntiHunter tables, Fieldwatch signatures. Each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …), a confidence dot, and its decoded advertisement (Apple Continuity type, manufacturer data, service UUIDs). Class alerts are on by default.
 - **Phone scan**: phone icon in the status bar, off at launch. Android scans Bluetooth and Wi-Fi, with or without a board; iPhone and Mac scan Bluetooth only. Hits show as node PHONE. iOS hides MACs, so iPhone hits skip WiGLE CSV.
+- **USB radios**: on Android, an external USB Wi-Fi adapter or an RTL-SDR plugs into the phone and scans in user space, no root needed. See [USB radios on Android](#usb-radios-on-android).
 - **Notifications**: title is the matched target (watchlist name, signature, probed SSID); body is RSSI, channel, name, MAC.
 - **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.

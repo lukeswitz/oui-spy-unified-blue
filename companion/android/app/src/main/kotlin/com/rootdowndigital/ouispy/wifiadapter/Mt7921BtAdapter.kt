@@ -16,6 +16,9 @@ internal class Mt7921BtAdapter(
     @Volatile private var stop = false
     private val ifaceNum = intf.id
     private var epEvt: UsbEndpoint? = null
+    private val seenMacs = HashSet<String>()
+    private val lastRssi = HashMap<String, Int>()
+    private var advCount = 0
 
     fun abort() { stop = true }
 
@@ -55,22 +58,27 @@ internal class Mt7921BtAdapter(
     }
 
     private fun leScan(evt: UsbEndpoint) {
-        hciCommand(0x200b, byteArrayOf(0, 0x10, 0, 0x10, 0, 0, 0))
-        readEvent(evt, 1000)
-        hciCommand(0x200c, byteArrayOf(1, 0))
-        readEvent(evt, 1000)
-        log("MT7921-BT: LE scan enabled")
+        val dst = hciCmdStatus(evt, 0x200c, byteArrayOf(0, 0))
+        val pst = hciCmdStatus(evt, 0x200b, byteArrayOf(0, 0x10, 0, 0x10, 0, 0, 0))
+        val est = hciCmdStatus(evt, 0x200c, byteArrayOf(1, 0))
+        log("MT7921-BT: LE scan disable=0x%02x params=0x%02x enable=0x%02x".format(dst, pst, est))
 
         val acc = ArrayList<Byte>(512)
         val buf = ByteArray(260)
+        var lastLog = System.currentTimeMillis()
         while (!stop) {
             val n = conn.bulkTransfer(evt, buf, buf.size, 500)
             if (n <= 0) continue
             for (i in 0 until n) acc.add(buf[i])
             drainEvents(acc)
+            val now = System.currentTimeMillis()
+            if (now - lastLog >= 3000) {
+                log("MT7921-BT: LE ${seenMacs.size} unique devices, $advCount adverts")
+                lastLog = now
+            }
         }
         hciCommand(0x200c, byteArrayOf(0, 0))
-        log("MT7921-BT: LE scan stopped")
+        log("MT7921-BT: LE scan stopped, ${seenMacs.size} unique devices")
     }
 
     private fun drainEvents(acc: ArrayList<Byte>): Int {
@@ -103,7 +111,13 @@ internal class Mt7921BtAdapter(
             val data = ev.copyOfRange(p, p + dlen); p += dlen
             val rssi = ev[p++].toInt()
             val mac = (5 downTo 0).joinToString(":") { "%02X".format(addr[it].toInt() and 0xff) }
-            onAdv(mac, parseName(data), rssi, data)
+            seenMacs.add(mac)
+            advCount++
+            val prev = lastRssi[mac]
+            if (prev == null || kotlin.math.abs(rssi - prev) >= 8) {
+                lastRssi[mac] = rssi
+                onAdv(mac, parseName(data), rssi, data)
+            }
             done++
         }
         return done
@@ -244,6 +258,16 @@ internal class Mt7921BtAdapter(
         conn.controlTransfer(
             Mt7921Regs.BT_HCI_CMD_TYPE, Mt7921Regs.BT_HCI_CMD_REQ, 0x00, ifaceNum, pkt, pkt.size, 1000,
         )
+    }
+
+    private fun hciCmdStatus(evt: UsbEndpoint, opcode: Int, params: ByteArray): Int {
+        hciCommand(opcode, params)
+        val deadline = System.currentTimeMillis() + 1000
+        while (System.currentTimeMillis() < deadline && !stop) {
+            val ev = readEvent(evt, 300) ?: continue
+            if (ev.size >= 7 && (ev[0].toInt() and 0xff) == 0x0e) return ev[6].toInt() and 0xff
+        }
+        return -1
     }
 
     private fun readEvent(ep: UsbEndpoint, timeoutMs: Int): ByteArray? {

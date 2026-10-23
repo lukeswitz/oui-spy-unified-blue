@@ -115,7 +115,7 @@ class WifiAdapterController {
     if (ble != null && ble.isNotEmpty) {
       if (_current != WifiAdapterState.running) _set(WifiAdapterState.running);
       for (final r in ble) {
-        _ble.addPhoneDetection(r.mac, r.name, r.rssi, r.adv);
+        _ble.addPhoneDetection(r.mac, r.name, r.rssi, r.adv, nodeId: BleManager.usbBleNodeId);
       }
     }
   }

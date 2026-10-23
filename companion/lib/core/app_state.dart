@@ -70,14 +70,14 @@ class AppState extends ChangeNotifier {
   // Per-engine last detection time
   final Map<Engine, DateTime> lastDetectionTime = {};
 
-  // Per-engine detection rate (events in last 60s)
-  final Map<Engine, List<DateTime>> _recentDetectionTimes = {};
+  // Per-engine detection rate (unique devices seen in last 60s)
+  final Map<Engine, Map<String, DateTime>> _recentSeen = {};
   int detectionRate(Engine engine) {
-    final times = _recentDetectionTimes[engine];
-    if (times == null || times.isEmpty) return 0;
+    final seen = _recentSeen[engine];
+    if (seen == null || seen.isEmpty) return 0;
     final cutoff = DateTime.now().subtract(const Duration(seconds: 60));
-    times.removeWhere((t) => t.isBefore(cutoff));
-    return times.length;
+    seen.removeWhere((_, t) => t.isBefore(cutoff));
+    return seen.length;
   }
 
   int get totalRate {
@@ -235,6 +235,7 @@ class AppState extends ChangeNotifier {
   String labelForNode(String id) {
     if (id == BleManager.phoneNodeId) return 'PHONE';
     if (id == BleManager.usbWifiNodeId) return 'USB WIFI';
+    if (id == BleManager.usbBleNodeId) return 'USB-BLE';
     final canon = canonicalNodeId(id);
     final stored = _nodeLabels[canon];
     if (stored != null && stored.isNotEmpty) return stored;
@@ -516,8 +517,7 @@ class AppState extends ChangeNotifier {
       final isNewMac = !(_uniqueMacsPerEngine[det.engine]?.contains(det.macAddress) ?? false);
       (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
-      final rt = (_recentDetectionTimes[det.engine] ??= [])..add(DateTime.now());
-      if (rt.length > 2000) rt.removeRange(0, rt.length - 2000);
+      (_recentSeen[det.engine] ??= {})[det.macAddress] = DateTime.now();
       _upsertDetection(det);
       _recordDroneTrack(det);
 

@@ -13,6 +13,7 @@ import 'package:oui_spy/features/home/home_screen.dart';
 import 'package:oui_spy/features/onboarding/scan_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_library_screen.dart';
+import 'package:oui_spy/features/sdr/sdr_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -20,6 +21,7 @@ import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/core/link/sdr.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -89,6 +91,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/pcap/library',
         builder: (context, state) => const PcapLibraryScreen(),
       ),
+      GoRoute(
+        path: '/sdr',
+        builder: (context, state) => const SdrScreen(),
+      ),
     ],
   );
 });
@@ -141,8 +147,11 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
           ThemeMode.dark => Brightness.dark,
           ThemeMode.system => WidgetsBinding.instance.platformDispatcher.platformBrightness,
         };
-    final accentChanged = AppTheme.accent != style.accent;
-    if (accentChanged) AppTheme.accent = style.accent;
+    final accentChanged = AppTheme.accent != style.accent || AppTheme.mono != style.monoFamily;
+    if (accentChanged) {
+      AppTheme.accent = style.accent;
+      AppTheme.mono = style.monoFamily;
+    }
     if (AppTheme.applyBrightness(effective) | accentChanged) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) (context as Element).visitChildren(_rebuildAll);
@@ -172,6 +181,7 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ble = ref.watch(bleManagerProvider);
+    final p = AppTheme.of(context);
     return StreamBuilder(
       stream: ble.pcapStats,
       initialData: ble.latestPcapStats,
@@ -187,17 +197,15 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
                 child: SafeArea(
                   top: false,
                   child: Material(
-                    color: const Color(0xFF1E2A28),
-                    elevation: 6,
-                    borderRadius: BorderRadius.circular(10),
+                    color: p.fill,
+                    shape: Border.all(color: p.fillBorder),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
                       onTap: () => ref.read(routerProvider).push('/engine/pcap'),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         child: Row(
                           children: [
-                            const Icon(Icons.fiber_manual_record, color: Color(0xFF4AFFCC), size: 12),
+                            Icon(Icons.fiber_manual_record, color: p.mark, size: 12),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
@@ -213,15 +221,15 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
                                   }
                                   return 'PCAP ${s.mode == 1 ? "BLE" : "WiFi"} — ${s.uptimeMs ~/ 1000}s, ${_humanBytes(s.bytesWritten)}';
                                 }(),
-                                style: const TextStyle(
-                                  color: Color(0xFF4AFFCC),
+                                style: TextStyle(
+                                  color: p.onFill,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 1.2,
                                 ),
                               ),
                             ),
-                            const Icon(Icons.open_in_new, color: Colors.white70, size: 14),
+                            Icon(Icons.open_in_new, color: p.onFillDim, size: 14),
                           ],
                         ),
                       ),
@@ -292,40 +300,63 @@ class _AppShellState extends ConsumerState<AppShell> {
     ref.listen(notificationServiceProvider.select((n) => n.noisyPrompt), (prev, p) {
       if (p != null && prev == null) _askMuteNoisy(p);
     });
+    ref.listen(sdrPresentProvider, (prev, next) {
+      final was = prev?.valueOrNull ?? false;
+      final now = next.valueOrNull ?? false;
+      if (now && !was && GoRouterState.of(context).uri.path != '/sdr') {
+        context.push('/sdr');
+      }
+    });
     final location = GoRouterState.of(context).uri.path;
     final index = _routes.indexOf(location);
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: AppTheme.of(context).border, width: 0.5)),
-        ),
-        child: BottomNavigationBar(
+      bottomNavigationBar: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: AppTheme.of(context).rule)),
+            ),
+            child: BottomNavigationBar(
         currentIndex: index < 0 ? 0 : index,
         onTap: _onNavTap,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
             label: 'Home',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt_outlined),
-            activeIcon: Icon(Icons.list_alt),
             label: 'Detections',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.map_outlined),
-            activeIcon: Icon(Icons.map),
             label: 'Map',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
             label: 'Settings',
           ),
         ],
-      )),
+            ),
+          ),
+          if (index >= 0)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: FractionallySizedBox(
+                alignment: Alignment(-1 + 2 * index / (_routes.length - 1), 0),
+                widthFactor: 1 / _routes.length,
+                child: Container(
+                  key: const ValueKey('nav-active-bar'),
+                  height: 2,
+                  color: AppTheme.of(context).textPrimary,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

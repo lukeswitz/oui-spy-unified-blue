@@ -16,6 +16,8 @@ import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
+import 'package:oui_spy/widgets/d/d_header.dart';
+import 'package:oui_spy/widgets/d/d_spec_row.dart';
 
 enum DeviceSort { recent, rssi, confidence, kind, name, vendor, channel, firstSeen }
 
@@ -494,9 +496,6 @@ class DeviceRow extends ConsumerWidget {
     final ble = o.kind == RadioKind.ble;
     final kinds = {for (final s in device.signatures) s.kind}.toList();
     final accent = kinds.isEmpty ? t.textDim : classColor(kinds.first);
-    final lowerTitle = title.toLowerCase();
-    final name = o.name.isNotEmpty && !lowerTitle.contains(o.name.toLowerCase()) ? o.name : null;
-    final vend = vendor != null && !lowerTitle.contains(vendor.toLowerCase()) ? vendor : null;
     final text = Theme.of(context).textTheme;
     final iconSize = barIconSize(context) * 0.75;
     Widget flag(String tip, IconData i, Color c) => Padding(
@@ -506,9 +505,7 @@ class DeviceRow extends ConsumerWidget {
     Widget tag(String label, Color c, {IconData? icon}) => Container(
           padding: EdgeInsets.symmetric(horizontal: gap * 0.7, vertical: gap * 0.25),
           decoration: BoxDecoration(
-            color: c.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(gap * 0.8),
-            border: Border.all(color: c.withValues(alpha: 0.5), width: 0.8),
+            border: Border.all(color: c),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -531,11 +528,9 @@ class DeviceRow extends ConsumerWidget {
     final auth = o.authMode;
     final authMeta = auth == null ? null : wifiAuthMeta(auth);
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: gap * 1.5, vertical: gap * 0.4),
+      padding: EdgeInsets.zero,
       child: Material(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(gap * 1.6),
-        clipBehavior: Clip.antiAlias,
+        color: Colors.transparent,
         child: InkWell(
           onTap: () => showCommandSheet<void>(
             context: context,
@@ -543,15 +538,23 @@ class DeviceRow extends ConsumerWidget {
           ),
           child: Container(
             decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: accent, width: gap * 0.6)),
+              border: Border(bottom: BorderSide(color: t.border)),
             ),
-            padding: EdgeInsets.fromLTRB(gap * 1.4, gap * 1.1, gap * 1.4, gap * 1.1),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Padding(
+                      padding: EdgeInsets.only(top: gap * 0.5, right: gap * 0.8),
+                      child: Icon(
+                        device.obs.kind == RadioKind.ble ? Icons.bluetooth : Icons.wifi,
+                        size: 15,
+                        color: accent,
+                      ),
+                    ),
                     Padding(
                       padding: EdgeInsets.only(top: gap * 0.6),
                       child: Icon(Icons.circle, size: gap * 0.8, color: confidenceColor(guess.confidence)),
@@ -575,7 +578,7 @@ class DeviceRow extends ConsumerWidget {
                           text: '${o.rssi}',
                           style: text.titleMedium?.copyWith(
                             color: rssiColor(o.rssi),
-                            fontFamily: 'monospace',
+                            fontFamily: AppTheme.mono,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -584,88 +587,56 @@ class DeviceRow extends ConsumerWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: gap * 0.5),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          if (kinds.isNotEmpty)
-                            Flexible(child: tag(kinds.first.label.toUpperCase(), classColor(kinds.first))),
-                          if (authMeta != null) ...[
-                            flag(authMeta.$1, auth == 0 ? Icons.lock_open : Icons.lock, authMeta.$2),
-                            SizedBox(width: gap * 0.3),
-                            Text(authMeta.$1, style: barLabelStyle(context, authMeta.$2)),
-                          ],
-                          if (o.hiddenSsid) flag('Hidden network', Icons.visibility_off, AppTheme.warning),
-                          if (o.randomized) flag('Random MAC', Icons.shuffle, t.textDim),
-                          if (withYou) flag('With you', Icons.directions_walk, AppTheme.error),
-                        ],
-                      ),
-                    ),
-                    if (!ble && o.channel > 0) ...[
-                      SizedBox(width: gap),
-                      Text(
-                        'CH ${o.channel}',
-                        style: text.labelMedium?.copyWith(
-                          color: o.channel > 14 ? AppTheme.wardrive : AppTheme.detector,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                if (o.mac.isNotEmpty || name != null || vend != null)
-                  Padding(
-                    padding: EdgeInsets.only(top: gap * 0.5),
-                    child: Row(
-                      children: [
-                        if (!ble && name != null) ...[
-                          Flexible(
-                            child: Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: text.bodyMedium?.copyWith(color: t.textPrimary, fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          SizedBox(width: gap * 1.2),
-                        ],
-                        if (o.mac.isNotEmpty)
-                          Text(
-                            o.mac,
-                            maxLines: 1,
-                            softWrap: false,
-                            style: text.bodySmall?.copyWith(color: t.textDim, fontFamily: 'monospace'),
-                          ),
-                        if (ble && (name != null || vend != null))
-                          Expanded(
-                            child: Text(
-                              [if (o.mac.isNotEmpty) '', ?name, ?vend].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: text.bodySmall?.copyWith(color: t.textSecondary),
-                            ),
-                          ),
+                SizedBox(height: gap * 0.6),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (kinds.isNotEmpty) ...[
+                        tag(kinds.first.label.toUpperCase(), classColor(kinds.first)),
+                        SizedBox(width: gap * 0.7),
                       ],
-                    ),
+                      if (authMeta != null) ...[
+                        Icon(auth == 0 ? Icons.lock_open : Icons.lock, size: iconSize, color: authMeta.$2),
+                        SizedBox(width: gap * 0.3),
+                        Text(authMeta.$1, style: barLabelStyle(context, authMeta.$2)),
+                        SizedBox(width: gap * 0.7),
+                      ],
+                      if (o.hiddenSsid) ...[
+                        Icon(Icons.visibility_off, size: iconSize, color: AppTheme.warning),
+                        SizedBox(width: gap * 0.7),
+                      ],
+                      if (o.randomized) ...[
+                        Icon(Icons.shuffle, size: iconSize, color: t.textDim),
+                        SizedBox(width: gap * 0.7),
+                      ],
+                      if (withYou) ...[
+                        Icon(Icons.directions_walk, size: iconSize, color: AppTheme.error),
+                        SizedBox(width: gap * 0.7),
+                      ],
+                      if (!ble && o.channel > 0) ...[
+                        Text(
+                          'CH ${o.channel}',
+                          style: text.labelMedium?.copyWith(
+                            color: o.channel > 14 ? AppTheme.wardrive : AppTheme.detector,
+                            fontFamily: AppTheme.mono,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(width: gap * 0.7),
+                      ],
+                      if (o.mac.isNotEmpty)
+                        Text(
+                          o.mac,
+                          style: text.bodySmall?.copyWith(color: t.textDim, fontFamily: AppTheme.mono),
+                        ),
+                      for (final f in live) ...[
+                        SizedBox(width: gap * 0.7),
+                        tag(f.display.toUpperCase(), f.emphasis ? AppTheme.error : AppTheme.accent),
+                      ],
+                    ],
                   ),
-                if (live.isNotEmpty)
-                  Padding(
-                    padding: EdgeInsets.only(top: gap * 0.5),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final f in live) ...[
-                            tag(f.display.toUpperCase(), f.emphasis ? AppTheme.error : AppTheme.accent),
-                            SizedBox(width: gap * 0.5),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
+                ),
               ],
             ),
           ),
@@ -703,14 +674,10 @@ class DeviceDetailSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
-    final gap = barGap(context);
     final o = device.obs;
     final g = device.guess;
     final connected = ref.read(appStateProvider).isConnected;
     final canFoxhunt = o.mac.isNotEmpty;
-    final body = Theme.of(
-      context,
-    ).textTheme.bodySmall?.copyWith(color: t.textSecondary);
     final fields = [
       for (final m in o.mfgRecords) ...AdvPayloadDecoder.decodeManufacturer(m),
       for (final s in o.serviceData) ...AdvPayloadDecoder.decodeService(s),
@@ -719,136 +686,161 @@ class DeviceDetailSheet extends ConsumerWidget {
       for (final s in device.signatures)
         if (s.decode case final d?) ...FleetDecode.decode(d, o),
     ];
-    Widget kv(String k, String v) => Padding(
-      padding: EdgeInsets.only(bottom: gap * 0.75),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: MediaQuery.sizeOf(context).width * 0.32,
-            child: Text(
-              k,
-              style: barLabelStyle(context, t.textDim, bold: false),
-            ),
-          ),
-          SizedBox(width: gap),
-          Expanded(child: SelectableText(v, style: body)),
-        ],
-      ),
+    final classLabel = device.signatures.isNotEmpty
+        ? device.signatures.first.kind.label.toUpperCase()
+        : 'DEVICE';
+    Widget kv(String k, String v, {bool mono = false}) => DSpecRow(label: k, value: v, mono: mono);
+    Widget section(String label, List<Widget> rows) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 2),
+          child: DEyebrow(label),
+        ),
+        ...rows,
+      ],
     );
-    return CommandSheet(
-      title: 'DEVICE',
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            g.headline,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: confidenceColor(g.confidence),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          SizedBox(height: gap * 0.5),
-          Text(g.because, style: body),
-          SizedBox(height: gap),
-          CommandSheetTile(
-            icon: Icons.map,
-            label: 'SHOW ON MAP',
-            subtitle: o.gpsTrail.isEmpty
-                ? 'No GPS fix for this device yet'
-                : null,
-            color: AppTheme.gpsGood,
-            onTap: o.gpsTrail.isEmpty ? null : () => _showOnMap(context, ref),
-          ),
-          if (canFoxhunt)
-            CommandSheetTile(
-              icon: Icons.gps_fixed,
-              label: 'FOXHUNT',
-              subtitle: connected ? null : 'Node disconnected',
-              color: AppTheme.foxhunter,
-              onTap: connected ? () => _foxhunt(context, ref) : null,
-            ),
-          SizedBox(height: gap),
-          CommandSheetGroup(
-            label: 'IDENTITY',
+          Container(
+            color: t.fill,
+            padding: const EdgeInsets.fromLTRB(20, 14, 8, 18),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (o.mac.isNotEmpty) kv('Address', o.mac),
-                if (o.mac.isEmpty) kv('Phone ID', o.key.substring(4)),
-                if (vendor != null) kv('Vendor', vendor!),
-                if (o.name.isNotEmpty) kv('Name', o.name),
-                kv('Address type', DeviceExplain.addressExplain(o)),
-                kv(
-                  'Signal',
-                  '${DeviceExplain.rssiExplain(o.rssi)} (${o.rssiMin} to ${o.rssiMax})',
+                Row(
+                  children: [
+                    Container(
+                      color: t.mark,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      child: Text(
+                        classLabel,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: t.fill),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: DEyebrow(g.because, color: t.onFillDim)),
+                    IconButton(
+                      tooltip: 'Close',
+                      icon: Icon(Icons.close, color: t.onFill),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
-                kv('Heard by', device.sources.join(', ')),
-                if (o.mac.isNotEmpty && !o.randomized)
-                  FutureBuilder<List<int>>(
-                    future: ref
-                        .read(databaseProvider)
-                        .sightingTimesForMac(o.mac),
-                    builder: (context, snap) {
-                      final ts = snap.data;
-                      if (ts == null) return const SizedBox.shrink();
-                      final now = DateTime.now().millisecondsSinceEpoch;
-                      const p = PresenceParams();
-                      final s = PresenceStats.fromSightings(ts, now, p);
-                      if (s == null) {
-                        return kv('Presence', 'Not in saved history yet');
-                      }
-                      return kv(
-                        'Presence',
-                        '${classifyPresence(s, now, p).label} · ${s.visitsInWindow} visit'
-                            '${s.visitsInWindow == 1 ? '' : 's'} in 7 days · ${ts.length} sightings saved',
-                      );
-                    },
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Text(
+                    g.headline,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          color: t.onFill,
+                          fontSize: 24,
+                        ),
                   ),
+                ),
+                if (o.mac.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Text(
+                      o.mac,
+                      style: TextStyle(color: t.onFillDim, fontSize: 12, fontFamily: AppTheme.mono),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          if (device.signatures.isNotEmpty)
-            CommandSheetGroup(
-              label: 'SIGNATURES',
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final s in device.signatures)
-                    kv(
-                      s.kind.label,
-                      [
-                        s.name,
-                        if (s.attentionNote.isNotEmpty) s.attentionNote,
-                      ].join('\n'),
+                  section('IDENTITY', [
+                    if (o.mac.isNotEmpty) kv('Address', o.mac, mono: true),
+                    if (o.mac.isEmpty) kv('Phone ID', o.key.substring(4), mono: true),
+                    if (vendor != null) kv('Vendor', vendor!),
+                    if (o.name.isNotEmpty) kv('Name', o.name),
+                    kv('Address type', DeviceExplain.addressExplain(o)),
+                    kv('Signal', '${DeviceExplain.rssiExplain(o.rssi)} (${o.rssiMin} to ${o.rssiMax})'),
+                    kv('Heard by', device.sources.join(', ')),
+                    if (o.mac.isNotEmpty && !o.randomized)
+                      FutureBuilder<List<int>>(
+                        future: ref.read(databaseProvider).sightingTimesForMac(o.mac),
+                        builder: (context, snap) {
+                          final ts = snap.data;
+                          if (ts == null) return const SizedBox.shrink();
+                          final now = DateTime.now().millisecondsSinceEpoch;
+                          const p = PresenceParams();
+                          final s = PresenceStats.fromSightings(ts, now, p);
+                          if (s == null) return kv('Presence', 'Not in saved history yet');
+                          return kv(
+                            'Presence',
+                            '${classifyPresence(s, now, p).label} · ${s.visitsInWindow} visit'
+                                '${s.visitsInWindow == 1 ? '' : 's'} in 7 days · ${ts.length} sightings saved',
+                          );
+                        },
+                      ),
+                  ]),
+                  if (device.signatures.isNotEmpty)
+                    section('SIGNATURES', [
+                      for (final s in device.signatures)
+                        kv(s.kind.label,
+                            [s.name, if (s.attentionNote.isNotEmpty) s.attentionNote].join('\n')),
+                    ]),
+                  if (decoded.isNotEmpty)
+                    section('DECODED', [
+                      for (final f in decoded)
+                        kv(f.label, f.note.isEmpty ? f.display : '${f.display}\n${f.note}'),
+                    ]),
+                  if (fields.isNotEmpty)
+                    section('ADVERTISEMENT', [for (final f in fields) kv(f.label, f.value)]),
+                  if (o.serviceUuids.isNotEmpty)
+                    section('SERVICES', [
+                      for (final u in o.serviceUuids) kv(u, DeviceExplain.uuidGloss(u) ?? '', mono: true),
+                    ]),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (canFoxhunt) ...[
+                  ElevatedButton(
+                    onPressed: connected ? () => _foxhunt(context, ref) : null,
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(connected ? 'Foxhunt this device' : 'Node disconnected')),
+                        Icon(Icons.gps_fixed, size: 18, color: t.buttonMark),
+                      ],
                     ),
+                  ),
+                  const SizedBox(height: 10),
                 ],
-              ),
+                OutlinedButton(
+                  onPressed: o.gpsTrail.isEmpty ? null : () => _showOnMap(context, ref),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(o.gpsTrail.isEmpty ? 'No GPS fix for this device' : 'Show on map')),
+                      const Icon(Icons.map, size: 18),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          if (decoded.isNotEmpty)
-            CommandSheetGroup(
-              label: 'DECODED',
-              child: Column(
-                children: [
-                  for (final f in decoded) kv(f.label, f.note.isEmpty ? f.display : '${f.display}\n${f.note}'),
-                ],
-              ),
-            ),
-          if (fields.isNotEmpty)
-            CommandSheetGroup(
-              label: 'ADVERTISEMENT',
-              child: Column(
-                children: [for (final f in fields) kv(f.label, f.value)],
-              ),
-            ),
-          if (o.serviceUuids.isNotEmpty)
-            CommandSheetGroup(
-              label: 'SERVICES',
-              child: Column(
-                children: [
-                  for (final u in o.serviceUuids)
-                    kv(u, DeviceExplain.uuidGloss(u) ?? ''),
-                ],
-              ),
-            ),
+          ),
         ],
       ),
     );

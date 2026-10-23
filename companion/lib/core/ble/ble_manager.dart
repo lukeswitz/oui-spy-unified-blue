@@ -415,18 +415,20 @@ class BleManager {
 
   static const phoneNodeId = 'PHONE';
   static const usbWifiNodeId = 'USBWIFI';
+  static const usbBleNodeId = 'USBBLE';
 
   void addPhoneFoxRssi(int rssi, int intervalMs) =>
       _foxhunterRssiStream.add((rssi: rssi, intervalMs: intervalMs));
 
-  void addPhoneDetection(String mac, String name, int rssi, List<int> adv) {
+  void addPhoneDetection(String mac, String name, int rssi, List<int> adv,
+      {String nodeId = phoneNodeId}) {
     final now = DateTime.now();
     final ext = WardriveExtension(deviceName: name);
     if (adv.isNotEmpty) wardriveAdvRaw[ext] = adv;
     _detections.add(Detection(
       id: '${mac}_${now.millisecondsSinceEpoch}',
       sessionId: _sessionId,
-      nodeId: phoneNodeId,
+      nodeId: nodeId,
       macAddress: mac,
       engine: Engine.wardrive,
       method: 'ble_adv',
@@ -435,7 +437,7 @@ class BleManager {
       deviceTimestampMs: 0,
       appTimestamp: now,
       deviceName: name,
-      sourceNodeId: phoneNodeId,
+      sourceNodeId: nodeId,
       latitude: _lastLat,
       longitude: _lastLon,
       accuracy: _lastAccuracy,
@@ -445,7 +447,7 @@ class BleManager {
   }
 
   void addPhoneWifiDetection(String bssid, String ssid, int rssi, int channel, int authMode,
-      {String nodeId = phoneNodeId}) {
+      {String nodeId = phoneNodeId, bool client = false}) {
     final now = DateTime.now();
     _detections.add(Detection(
       id: '${bssid}_${now.millisecondsSinceEpoch}',
@@ -453,7 +455,7 @@ class BleManager {
       nodeId: nodeId,
       macAddress: bssid,
       engine: Engine.wardrive,
-      method: 'wifi_ap',
+      method: client ? 'wifi_client' : 'wifi_ap',
       rssi: rssi,
       channel: channel,
       deviceTimestampMs: 0,
