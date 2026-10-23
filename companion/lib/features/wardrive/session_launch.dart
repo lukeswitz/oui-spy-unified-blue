@@ -9,6 +9,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -81,7 +82,8 @@ class _SessionSourcesChip extends ConsumerWidget {
 }
 
 class SessionTargets extends ConsumerWidget {
-  const SessionTargets({super.key});
+  const SessionTargets({super.key, this.wigleLabel});
+  final String? wigleLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -117,7 +119,7 @@ class SessionTargets extends ConsumerWidget {
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    m.label,
+                    m == WardriveTarget.wigle && wigleLabel != null ? wigleLabel! : m.label,
                     style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.6),
                   ),
                 ),
@@ -270,7 +272,7 @@ class SessionStartButton extends ConsumerWidget {
           backgroundColor: WidgetStatePropertyAll(AppTheme.error),
           foregroundColor: WidgetStatePropertyAll(fg),
         ),
-        onPressed: wd.radioTransition == 'stopping' ? null : wd.stopSession,
+        onPressed: wd.radioTransition == 'stopping' ? null : () => stopWardriveSession(ref),
         child: Row(
           children: [
             Text(busy ? busyText : 'STOP'),
@@ -307,7 +309,23 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
     return false;
   }
   await ref.read(wardriveProvider).startSession();
+  final usb = ref.read(wifiAdapterControllerProvider);
+  if (ref.read(usbAdapterScanProvider) &&
+      usb.devices.isNotEmpty &&
+      usb.state != WifiAdapterState.running &&
+      usb.state != WifiAdapterState.starting) {
+    await usb.start(usb.devices.first);
+  }
   return true;
+}
+
+Future<void> stopWardriveSession(WidgetRef ref) async {
+  await ref.read(wardriveProvider).stopSession();
+  final usb = ref.read(wifiAdapterControllerProvider);
+  if (usb.state == WifiAdapterState.running ||
+      usb.state == WifiAdapterState.starting) {
+    await usb.stop();
+  }
 }
 
 Future<bool>? _priming;

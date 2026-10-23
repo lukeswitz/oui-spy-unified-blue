@@ -37,7 +37,7 @@ enum WardriveState { idle, running, paused }
 enum WardriveTarget {
   flock('FLOCK', 'Flock Safety cameras', Icons.videocam),
   drone('DRONE', 'FAA Remote ID drones', Icons.flight),
-  wigle('WIGLE', 'All networks (WiGLE)', Icons.wifi_find),
+  wigle('SCAN', 'All Wi-Fi and BLE devices', Icons.wifi_find),
   detector('DETECT', 'Watchlist devices', Icons.radar),
   wigleFlock('WIGLE+FLOCK', 'All networks + Flock', Icons.hub);
 

@@ -29,30 +29,14 @@ class WifiAdapterController {
   Stream<WifiAdapterState> get stateStream => _state.stream;
   Stream<List<WifiAdapterDevice>> get deviceStream => _devices.stream;
 
-  bool _autoStarting = false;
-
   void init() {
     _attachSub ??= WifiAdapter.attachEvents.listen(_onAttach);
-    _autoStart();
-  }
-
-  Future<void> _autoStart() async {
-    if (_autoStarting) return;
-    if (_current == WifiAdapterState.running || _current == WifiAdapterState.starting) return;
-    _autoStarting = true;
-    try {
-      final ds = await refresh();
-      if (ds.isEmpty) return;
-      if (_current == WifiAdapterState.running || _current == WifiAdapterState.starting) return;
-      await start(ds.first);
-    } finally {
-      _autoStarting = false;
-    }
+    refresh();
   }
 
   Future<void> _onAttach(WifiAdapterAttach e) async {
     if (e.attached) {
-      await _autoStart();
+      await refresh();
     } else {
       await refresh();
       final gone = _list.isEmpty;
@@ -148,3 +132,9 @@ final wifiAdapterControllerProvider = Provider<WifiAdapterController>((ref) {
   ref.onDispose(c.dispose);
   return c;
 });
+
+final wifiAdapterStateProvider = StreamProvider<WifiAdapterState>((ref) {
+  return ref.watch(wifiAdapterControllerProvider).stateStream;
+});
+
+final usbAdapterScanProvider = StateProvider<bool>((ref) => true);
