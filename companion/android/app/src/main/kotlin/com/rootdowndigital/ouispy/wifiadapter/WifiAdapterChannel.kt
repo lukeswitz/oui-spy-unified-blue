@@ -52,6 +52,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     @Volatile private var stopFn: (() -> Unit)? = null
     private var pending: MethodChannel.Result? = null
     private var pendingSdr: (() -> Unit)? = null
+    private var startRadioMask = 0x01
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -145,6 +146,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
             "list" -> result.success(candidates().filter { kindOf(it) != Kind.RTLSDR }.map { describe(it) })
             "start" -> {
                 val id = call.argument<String>("id")
+                startRadioMask = call.argument<Int>("radioMask") ?: 0x01
                 val device = candidates().firstOrNull { it.deviceName == id }
                 if (device == null) {
                     result.success(false)
@@ -191,6 +193,18 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
 
     private fun key(d: UsbDevice): Int = (d.vendorId shl 16) or d.productId
+
+    private fun findBtInterface(device: UsbDevice): UsbInterface? {
+        for (i in 0 until device.interfaceCount) {
+            val f = device.getInterface(i)
+            if (f.interfaceClass != 0xE0) continue
+            for (e in 0 until f.endpointCount) {
+                val ep = f.getEndpoint(e)
+                if (ep.type == UsbConstants.USB_ENDPOINT_XFER_INT && ep.direction == UsbConstants.USB_DIR_IN) return f
+            }
+        }
+        return null
+    }
 
     private fun pickInterface(device: UsbDevice, kind: Kind): UsbInterface {
         if (kind == Kind.MT7921) {
@@ -275,8 +289,27 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                             Mt7921Regs.FW_BASE_URL + Mt7921Regs.RAM_FILE, Mt7921Regs.RAM_SHA256,
                         )
                         val a = Mt7921Adapter(conn, intf, patch, ram, log)
-                        stopFn = a::abort
-                        a.run(onBatch)
+                        var bt: Mt7921BtAdapter? = null
+                        stopFn = { a.abort(); bt?.abort() }
+                        val btIntf = findBtInterface(device)
+                        a.run(onBatch, scanWifi = (startRadioMask and 0x01) != 0, onReady = {
+                            if (btIntf != null && (startRadioMask and 0x02) != 0) {
+                                Thread {
+                                    runCatching {
+                                        val btFw = FirmwareStore.fetch(
+                                            context, Mt7921Regs.BT_FW_FILE,
+                                            Mt7921Regs.FW_BASE_URL + Mt7921Regs.BT_FW_FILE, Mt7921Regs.BT_FW_SHA256,
+                                        )
+                                        val onAdv: (String, String, Int, ByteArray) -> Unit = { mac, name, rssi, adv ->
+                                            main.post { emitBle(mac, name, rssi, adv) }
+                                        }
+                                        val b = Mt7921BtAdapter(conn, btIntf, btFw, log, onAdv)
+                                        bt = b
+                                        b.run()
+                                    }.onFailure { log("MT7921-BT: ${it.message}") }
+                                }.start()
+                            }
+                        })
                     }
                     Kind.RTL8812AU -> {
                         val fw = Rtl8812auAdapter.loadFirmware(context)
@@ -387,6 +420,16 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
 
     private fun emitStatus(msg: String) {
         sink?.success(mapOf("status" to msg))
+    }
+
+    private fun emitBle(mac: String, name: String, rssi: Int, adv: ByteArray) {
+        sink?.success(
+            mapOf(
+                "ble" to listOf(
+                    mapOf("mac" to mac, "name" to name, "rssi" to rssi, "adv" to adv),
+                ),
+            ),
+        )
     }
 
     private fun emitAttach(attached: Boolean, device: UsbDevice) {

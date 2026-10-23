@@ -44,11 +44,28 @@ class WifiAdapterAp {
       );
 }
 
+class WifiAdapterBleReport {
+  const WifiAdapterBleReport({required this.mac, required this.name, required this.rssi, required this.adv});
+
+  final String mac;
+  final String name;
+  final int rssi;
+  final List<int> adv;
+
+  static WifiAdapterBleReport fromMap(Map<Object?, Object?> m) => WifiAdapterBleReport(
+        mac: m['mac']! as String,
+        name: (m['name'] as String?) ?? '',
+        rssi: m['rssi']! as int,
+        adv: (m['adv'] as List<Object?>?)?.map((e) => e! as int).toList() ?? const [],
+      );
+}
+
 class WifiAdapterEvent {
-  const WifiAdapterEvent({this.status, this.aps});
+  const WifiAdapterEvent({this.status, this.aps, this.bleReports});
 
   final String? status;
   final List<WifiAdapterAp>? aps;
+  final List<WifiAdapterBleReport>? bleReports;
 }
 
 class WifiAdapterAttach {
@@ -73,8 +90,8 @@ class WifiAdapter {
     return [for (final m in raw) WifiAdapterDevice.fromMap(m! as Map<Object?, Object?>)];
   }
 
-  static Future<bool> start(WifiAdapterDevice device) async =>
-      await _methods.invokeMethod<bool>('start', {'id': device.id}) ?? false;
+  static Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async =>
+      await _methods.invokeMethod<bool>('start', {'id': device.id, 'radioMask': radioMask}) ?? false;
 
   static Future<void> stop() async {
     if (supported) await _methods.invokeMethod<void>('stop');
@@ -85,11 +102,15 @@ class WifiAdapter {
       : _events.receiveBroadcastStream().map((e) {
           final m = e as Map<Object?, Object?>;
           final aps = m['aps'] as List<Object?>?;
+          final ble = m['ble'] as List<Object?>?;
           return WifiAdapterEvent(
             status: m['status'] as String?,
             aps: aps == null
                 ? null
                 : [for (final a in aps) WifiAdapterAp.fromMap(a! as Map<Object?, Object?>)],
+            bleReports: ble == null
+                ? null
+                : [for (final b in ble) WifiAdapterBleReport.fromMap(b! as Map<Object?, Object?>)],
           );
         });
 

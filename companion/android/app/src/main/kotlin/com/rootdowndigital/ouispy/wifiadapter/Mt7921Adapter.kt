@@ -36,7 +36,7 @@ internal class Mt7921Adapter(
 
     fun abort() { stop = true }
 
-    fun run(onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit) {
+    fun run(onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit, onReady: () -> Unit = {}, scanWifi: Boolean = true) {
         conn.claimInterface(intf, true)
         if (!findEndpoints()) throw IllegalStateException("MT7921: bulk endpoints not found")
         clearHalt(epCmdOut.address)
@@ -52,7 +52,13 @@ internal class Mt7921Adapter(
             dmaInit()
             loadFirmware()
             log("MT7921: firmware downloaded")
-            monitorRx(onBatch)
+            onReady()
+            if (scanWifi) {
+                monitorRx(onBatch)
+            } else {
+                log("MT7921: wifi scan off (ble-only)")
+                while (!stop) sleep(1000)
+            }
         } else {
             log("MT7921: loaded — replug to re-scan")
             while (!stop) sleep(1000)

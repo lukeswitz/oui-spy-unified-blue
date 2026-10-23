@@ -115,4 +115,36 @@ internal object Mt7921Regs {
     const val PATCH_SHA256 = "a276c06c2b772adb50b86639d33c82824ff4c21d617feb78caea74c040b873f6"
     const val RAM_FILE = "WIFI_RAM_CODE_MT7961_1.bin"
     const val RAM_SHA256 = "b94217a951518a9c14095765f367bc5dd7698f2dc033941d6f18fc2ebd6a2ab9"
+
+    const val BT_FW_FILE = "BT_RAM_CODE_MT7961_1_2_hdr.bin"
+    const val BT_FW_SHA256 = "7a440a0f7404c73a2f03d8cc0475ac9f7fdc931b494dce37705e7d578153dbae"
+
+    const val BT_REG_READ_TYPE = 0xC0
+    const val BT_REG_READ_REQ = 0x63
+    const val BT_UHW_WRITE_TYPE = 0x5E
+    const val BT_UHW_WRITE_REQ = 0x02
+    const val BT_HCI_CMD_TYPE = 0x20
+    const val BT_HCI_CMD_REQ = 0x00
+    const val BT_WMT_EVT_TYPE = 0xC0
+    const val BT_WMT_EVT_REQ = 0x01
+    const val BT_WMT_EVT_VALUE = 48
+
+    const val WMT_OPCODE = 0xfc6f
+    const val HCI_EV_WMT = 0xe4
+    const val WMT_PATCH_DWNLD = 0x1
+    const val WMT_FUNC_CTRL = 0x6
+    const val WMT_PATCH_UNDONE = 1
+    const val WMT_PATCH_PROGRESS = 2
+    const val WMT_PATCH_DONE = 3
+
+    const val BT_DEV_ID_REG = 0x70010200
+    const val BT_EP_RST_OPT_REG = 0x74011890
+    const val BT_EP_RST_IN_OUT = 0x00010001
+
+    const val FW_ROM_PATCH_HEADER_SIZE = 32
+    const val FW_ROM_PATCH_GD_SIZE = 64
+    const val FW_ROM_PATCH_SEC_MAP_SIZE = 64
+    const val SEC_MAP_COMMON_SIZE = 12
+    const val SEC_MAP_NEED_SEND_SIZE = 52
+    const val WMT_DL_CHUNK = 250
 }

@@ -58,7 +58,7 @@ class WifiAdapterController {
     return _list;
   }
 
-  Future<bool> start(WifiAdapterDevice device) async {
+  Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async {
     _set(WifiAdapterState.starting);
     _sub?.cancel();
     _sub = WifiAdapter.events.listen(_onEvent, onError: (Object e) {
@@ -66,7 +66,7 @@ class WifiAdapterController {
       _set(WifiAdapterState.error);
     });
     try {
-      final ok = await WifiAdapter.start(device);
+      final ok = await WifiAdapter.start(device, radioMask: radioMask);
       if (!ok) {
         _set(WifiAdapterState.error);
         await _sub?.cancel();
@@ -109,6 +109,13 @@ class WifiAdapterController {
       for (final ap in aps) {
         _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, ap.authMode,
             nodeId: BleManager.usbWifiNodeId, client: ap.client);
+      }
+    }
+    final ble = e.bleReports;
+    if (ble != null && ble.isNotEmpty) {
+      if (_current != WifiAdapterState.running) _set(WifiAdapterState.running);
+      for (final r in ble) {
+        _ble.addPhoneDetection(r.mac, r.name, r.rssi, r.adv);
       }
     }
   }

@@ -314,7 +314,12 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
       usb.devices.isNotEmpty &&
       usb.state != WifiAdapterState.running &&
       usb.state != WifiAdapterState.starting) {
-    await usb.start(usb.devices.first);
+    final mask = switch (ref.read(wardriveProvider).radio) {
+      WardriveRadio.wifi => 0x01,
+      WardriveRadio.ble => 0x02,
+      WardriveRadio.both => 0x03,
+    };
+    await usb.start(usb.devices.first, radioMask: mask);
   }
   return true;
 }
