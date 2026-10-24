@@ -390,8 +390,6 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                   icon: const Icon(Icons.ios_share),
                   label: const Text('SHARE LAST PCAP'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accent,
-                    foregroundColor: Colors.black,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
@@ -431,7 +429,6 @@ class _StateCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,22 +441,22 @@ class _StateCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(stats.stateLabel,
-                  style: TextStyle(color: stateColor, fontFamily: 'monospace',
+                  style: TextStyle(color: stateColor, fontFamily: AppTheme.mono,
                       fontWeight: FontWeight.bold, letterSpacing: 2)),
               const SizedBox(width: 12),
               Text(stats.modeLabel,
-                  style: TextStyle(color: t.textDim, fontFamily: 'monospace',
+                  style: TextStyle(color: t.textDim, fontFamily: AppTheme.mono,
                       fontSize: 11, letterSpacing: 2)),
               const Spacer(),
               if (stats.modeEnum == PcapMode.wifi)
                 Text('CH ${stats.currentChannel}',
-                    style: TextStyle(color: t.textDim, fontFamily: 'monospace')),
+                    style: TextStyle(color: t.textDim, fontFamily: AppTheme.mono)),
             ],
           ),
           const SizedBox(height: 6),
           Text(
             'uptime ${uptimeS}s  •  Sent ${_humanBytes(stats.bytesWritten)}  •  Received ${_humanBytes(localBytes)}  •  dropped ${stats.droppedFrames}',
-            style: TextStyle(color: t.textDim, fontSize: 12, fontFamily: 'monospace'),
+            style: TextStyle(color: t.textDim, fontSize: 12, fontFamily: AppTheme.mono),
           ),
           if (stats.isAutoTriggered) ...[
             const SizedBox(height: 6),
@@ -468,7 +465,6 @@ class _StateCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.warning.withValues(alpha: 0.10),
                 border: Border.all(color: AppTheme.warning.withValues(alpha: 0.35)),
-                borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
                 children: [
@@ -478,7 +474,7 @@ class _StateCard extends StatelessWidget {
                     'AUTO',
                     style: TextStyle(
                       color: AppTheme.warning, fontSize: 10,
-                      fontFamily: 'monospace', fontWeight: FontWeight.w700,
+                      fontFamily: AppTheme.mono, fontWeight: FontWeight.w700,
                       letterSpacing: 1,
                     ),
                   ),
@@ -487,7 +483,7 @@ class _StateCard extends StatelessWidget {
                     stats.autoTriggerEngineName.toUpperCase(),
                     style: TextStyle(
                       color: t.textPrimary, fontSize: 11,
-                      fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                      fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -496,7 +492,7 @@ class _StateCard extends StatelessWidget {
                       stats.autoTriggerMacStr,
                       style: TextStyle(
                         color: AppTheme.accent, fontSize: 11,
-                        fontFamily: 'monospace',
+                        fontFamily: AppTheme.mono,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -507,7 +503,7 @@ class _StateCard extends StatelessWidget {
                       '${(stats.autoRemainingMs / 1000).ceil()}s',
                       style: TextStyle(
                         color: t.textDim, fontSize: 11,
-                        fontFamily: 'monospace',
+                        fontFamily: AppTheme.mono,
                       ),
                     ),
                   ],
@@ -535,7 +531,6 @@ class _ModeSelector extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [
@@ -555,13 +550,12 @@ class _ModeSelector extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppTheme.accent.withValues(alpha: 0.18) : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
         ),
         alignment: Alignment.center,
         child: Text(label,
             style: TextStyle(
               color: selected ? AppTheme.accent : (enabled ? t.textPrimary : t.textDim),
-              fontFamily: 'monospace',
+              fontFamily: AppTheme.mono,
               letterSpacing: 2,
               fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               fontSize: 12,
@@ -590,7 +584,6 @@ class _WifiConfigCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -692,7 +685,6 @@ Widget _gridBox(BuildContext context, List<(_StatTile, _StatTile)> rows) {
     decoration: BoxDecoration(
       color: t.surface,
       border: Border.all(color: t.border),
-      borderRadius: BorderRadius.circular(10),
     ),
     child: Column(
       children: [
@@ -720,7 +712,7 @@ class _StatTile extends StatelessWidget {
           Text(label, style: TextStyle(color: t.textDim, fontSize: 10, letterSpacing: 2)),
           const SizedBox(height: 2),
           Text(_fmt(value),
-              style: TextStyle(color: color, fontFamily: 'monospace',
+              style: TextStyle(color: color, fontFamily: AppTheme.mono,
                   fontSize: 18, fontWeight: FontWeight.bold)),
         ],
       ),
@@ -872,7 +864,6 @@ class _SavedPcapsSectionState extends State<_SavedPcapsSection> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: t.surface,
-                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: t.border),
                 ),
                 child: Text('No captures yet.', style: TextStyle(color: t.textDim)),
@@ -881,7 +872,6 @@ class _SavedPcapsSectionState extends State<_SavedPcapsSection> {
             return Container(
               decoration: BoxDecoration(
                 color: t.surface,
-                borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: t.border),
               ),
               child: Column(
@@ -928,7 +918,7 @@ class _PcapRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name,
-                        style: TextStyle(color: t.textPrimary, fontSize: 12, fontFamily: 'monospace')),
+                        style: TextStyle(color: t.textPrimary, fontSize: 12, fontFamily: AppTheme.mono)),
                     Text(_humanBytes(sz),
                         style: TextStyle(color: t.textDim, fontSize: 10)),
                   ],
@@ -978,7 +968,6 @@ class _AutoPcapCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1025,7 +1014,7 @@ class _AutoPcapCard extends StatelessWidget {
                   width: 44,
                   child: Text('${durationSec}s',
                       textAlign: TextAlign.right,
-                      style: TextStyle(color: t.textPrimary, fontFamily: 'monospace')),
+                      style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono)),
                 ),
               ],
             ),
@@ -1047,7 +1036,7 @@ class _AutoPcapCard extends StatelessWidget {
                   child: Text(
                     cooldownSec == 0 ? 'off' : '${cooldownSec}s',
                     textAlign: TextAlign.right,
-                    style: TextStyle(color: t.textPrimary, fontFamily: 'monospace'),
+                    style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono),
                   ),
                 ),
               ],
@@ -1063,7 +1052,7 @@ class _AutoPcapCard extends StatelessWidget {
                       'cooldown active — ${(cooldownRemainingMs / 1000).ceil()}s remaining',
                       style: TextStyle(
                         color: AppTheme.warning, fontSize: 10,
-                        fontFamily: 'monospace',
+                        fontFamily: AppTheme.mono,
                       ),
                     ),
                   ],
@@ -1095,7 +1084,6 @@ class _NodePicker extends ConsumerWidget {
     final box = BoxDecoration(
       color: t.surface,
       border: Border.all(color: t.border),
-      borderRadius: BorderRadius.circular(10),
     );
 
     if (!mgr) {

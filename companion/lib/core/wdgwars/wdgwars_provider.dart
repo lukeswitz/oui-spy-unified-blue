@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/wdgwars/wdgwars_adsb.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_api.dart';
 
 /// Manages WDGWars credentials, API calls, and per-session upload state.
@@ -147,6 +148,37 @@ class WdgwarsProvider extends ChangeNotifier {
     } catch (e) {
       DebugLog.log('WDGWARS: stats refresh failed: $e');
     }
+  }
+
+  /// Upload captured ADS-B aircraft to WDGWars (separate aircraft endpoint).
+  Future<WdgwarsAdsbResult?> uploadAircraft(List<AdsbRecord> records) async {
+    if (_apiKey.isEmpty) {
+      _error = 'Not linked to WDGWars';
+      notifyListeners();
+      return null;
+    }
+    final valid = records.where((r) => r.isValid).toList();
+    if (valid.isEmpty) {
+      _error = 'No aircraft with a position fix';
+      notifyListeners();
+      return null;
+    }
+    _error = null;
+    try {
+      final res = await WdgwarsAdsbUploader(apiKey: _apiKey).upload(valid);
+      DebugLog.log('WDGWARS: aircraft uploaded ${res.sent} sent, '
+          '${res.imported} new, ${res.alreadySeen} seen');
+      refreshStats();
+      return res;
+    } on WdgwarsApiException catch (e) {
+      _error = e.message;
+      DebugLog.log('WDGWARS: aircraft upload failed: ${e.message}');
+    } catch (e) {
+      _error = e.toString();
+      DebugLog.log('WDGWARS: aircraft upload error: $e');
+    }
+    notifyListeners();
+    return null;
   }
 
   /// Upload a session CSV to WDGWars.

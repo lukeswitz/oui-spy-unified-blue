@@ -30,7 +30,7 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
       return ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: const [
-          ConfigSectionHeader(label: 'WARDRIVE ACCOUNTS'),
+          ConfigSectionHeader(label: 'Wardrive accounts'),
           SizedBox(height: 10),
           _WigleSection(),
           SizedBox(height: 18),
@@ -44,7 +44,7 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
       children: [
         Row(
           children: [
-            const Expanded(child: ConfigSectionHeader(label: 'YOUR CAPTURE DATABASE')),
+            const Expanded(child: ConfigSectionHeader(label: 'Your capture database')),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _reload,
@@ -83,7 +83,6 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: t.surface,
-                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: t.border),
                 ),
                 child: Row(
@@ -164,7 +163,7 @@ class _CollectionStatsView extends ConsumerWidget {
             _MiniStatTile(icon: Icons.wifi, label: 'WIFI',
                 value: _fmt(stats.wifiUnique), color: AppTheme.wardrive),
             _MiniStatTile(icon: Icons.bluetooth, label: 'BLE',
-                value: _fmt(stats.bleUnique), color: AppTheme.themed(const Color(0xFF4A9EFF))),
+                value: _fmt(stats.bleUnique), color: AppTheme.detector),
             _MiniStatTile(icon: Icons.router, label: 'SSIDS',
                 value: _fmt(stats.ssidCount), color: AppTheme.skySpy),
             _MiniStatTile(icon: Icons.route, label: 'SESSIONS',
@@ -370,7 +369,6 @@ class _MiniStatTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: t.surface,
-        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: t.border),
       ),
       child: Column(
@@ -389,7 +387,7 @@ class _MiniStatTile extends StatelessWidget {
           const SizedBox(height: 4),
           Text(value, style: TextStyle(
             color: t.textPrimary, fontSize: 18,
-            fontWeight: FontWeight.w700, fontFamily: 'monospace', height: 1,
+            fontWeight: FontWeight.w700, fontFamily: AppTheme.mono, height: 1,
           )),
         ],
       ),
@@ -415,30 +413,21 @@ class _BarRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final f = max == 0 ? 0.0 : (value / max).clamp(0.02, 1.0);
-    final bar = ClipRRect(
-      borderRadius: BorderRadius.circular(3),
-      child: Stack(
-        children: [
-          Container(height: 14, color: t.surface),
-          FractionallySizedBox(
-            widthFactor: f,
-            child: Container(
-              height: 14,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-          ),
-        ],
-      ),
+    final bar = Stack(
+      children: [
+        Container(height: 14, color: t.surface),
+        FractionallySizedBox(
+          widthFactor: f,
+          child: Container(height: 14, color: color.withValues(alpha: 0.85)),
+        ),
+      ],
     );
     final valueText = Text(
       _CollectionStatsView._fmt(value),
       textAlign: TextAlign.right,
       style: TextStyle(
         color: t.textPrimary, fontSize: 11,
-        fontFamily: 'monospace', fontWeight: FontWeight.w600,
+        fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
       ),
     );
 
@@ -504,10 +493,10 @@ class _ChannelChart extends StatelessWidget {
     final entries = counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     final maxV = entries.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     final countStyle = TextStyle(
-      color: t.textDim, fontSize: 8, fontFamily: 'monospace',
+      color: t.textDim, fontSize: 8, fontFamily: AppTheme.mono,
     );
     final chStyle = TextStyle(
-      color: t.textSecondary, fontSize: 8, fontFamily: 'monospace',
+      color: t.textSecondary, fontSize: 8, fontFamily: AppTheme.mono,
     );
 
     return Column(
@@ -541,11 +530,7 @@ class _ChannelChart extends StatelessWidget {
                       const SizedBox(height: 2),
                       Container(
                         height: 40 * f,
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.85),
-                          borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(2)),
-                        ),
+                        color: color.withValues(alpha: 0.85),
                       ),
                       const SizedBox(height: 3),
                       if (angled)

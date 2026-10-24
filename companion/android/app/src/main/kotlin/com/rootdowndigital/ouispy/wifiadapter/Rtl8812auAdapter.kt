@@ -452,7 +452,7 @@ internal class Rtl8812auAdapter(
         set8(Rg.REG_SYS_CLKR, Rg.BIT_WAKEPAD_EN)
         w16(Rg.REG_GPIO_MUXCFG, r16(Rg.REG_GPIO_MUXCFG) and Rg.BIT_EN_SIC.inv())
         w16(Rg.REG_CR, 0x2ff)
-        // unverified: efuse is read here, before the firmware download, after rtw_mac_power_on-equivalent steps
+        // unverified: efuse is read right after MAC power-on, before queue/DMA init, with no MCU running
         applyEfuse(logicalEfuse(dumpPhysicalEfuse()))
         pwrSeqOff()
 
@@ -474,10 +474,7 @@ internal class Rtl8812auAdapter(
         initLlt(boundary)
         set32(Rg.REG_TXDMA_OFFSET_CHK, Rg.BIT_DROP_DATA_EN)
 
-        downloadFirmware()
-        w8(Rg.REG_HMETFR, 0xf)
-        log("RTL8812AU: firmware running")
-
+        // unverified: no MCU firmware is downloaded; derived from the register-only RTL8814AU/RTL8821AU bring-up, never run on an RTL8812AU
         loadTable(Rg.MAC_TBL) { a, d -> w8(a, d) }
         initQueues(acqPages, boundary)
         w16(Rg.REG_TRXFF_BNDY + 2, Rg.RXFF_SIZE - Rg.REPORT_BUF - 1)
@@ -809,6 +806,8 @@ internal class Rtl8812auAdapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
+        var exploreAt = hopAt
+        var lastRxAt = hopAt
         try {
             while (!stop) {
                 val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
@@ -819,18 +818,31 @@ internal class Rtl8812auAdapter(
                         val b = buffers[idx]
                         val nbytes = b.position()
                         if (nbytes in 1..bufSz) {
+                            lastRxAt = now
                             b.rewind(); b.get(scratch, 0, nbytes)
                             parseRx(scratch, nbytes, Rg.CHANNELS[hopIdx], table)
                         }
                         b.clear()
                         if (!runCatching { req.queue(b) }.getOrDefault(false)) {
                             runCatching { req.close() }
+                            val nr = UsbRequest()
+                            if (runCatching { nr.initialize(conn, epRx) }.getOrDefault(false)) {
+                                nr.clientData = idx; b.clear()
+                                if (runCatching { nr.queue(b) }.getOrDefault(false)) reqs[idx] = nr
+                            }
                         }
                     }
                 }
+                if (now - lastRxAt > RX_STALL_MS) {
+                    log("RTL8812AU: no rx buffers for ${RX_STALL_MS}ms, re-arming rx")
+                    reKickRx()
+                    lastRxAt = now
+                }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
                 if (now - hopAt > DWELL_MS) {
-                    hopIdx = (hopIdx + 1) % Rg.CHANNELS.size
+                    val explore = now - exploreAt > EXPLORE_MS
+                    if (explore) exploreAt = now
+                    hopIdx = nextHop(hopIdx, table, explore)
                     setChannel(Rg.CHANNELS[hopIdx])
                     hopAt = now
                 }
@@ -847,13 +859,22 @@ internal class Rtl8812auAdapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
+        var exploreAt = hopAt
+        var lastRxAt = hopAt
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
             val now = System.currentTimeMillis()
-            if (n > 0) parseRx(buf, n, Rg.CHANNELS[hopIdx], table)
+            if (n > 0) { lastRxAt = now; parseRx(buf, n, Rg.CHANNELS[hopIdx], table) }
+            if (now - lastRxAt > RX_STALL_MS) {
+                log("RTL8812AU: no rx buffers for ${RX_STALL_MS}ms, re-arming rx")
+                reKickRx()
+                lastRxAt = now
+            }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
             if (now - hopAt > DWELL_MS) {
-                hopIdx = (hopIdx + 1) % Rg.CHANNELS.size
+                val explore = now - exploreAt > EXPLORE_MS
+                if (explore) exploreAt = now
+                hopIdx = nextHop(hopIdx, table, explore)
                 setChannel(Rg.CHANNELS[hopIdx])
                 hopAt = now
             }
@@ -861,9 +882,29 @@ internal class Rtl8812auAdapter(
         emit(table, onBatch)
     }
 
-    // -- 802.11 parse: beacons and probe responses only --
+    private fun nextHop(cur: Int, table: SightingTable, explore: Boolean): Int {
+        val chs = Rg.CHANNELS
+        var nx = (cur + 1) % chs.size
+        if (explore || table.map.isEmpty()) return nx
+        val active = table.map.values.mapTo(HashSet()) { it.channel }
+        var s = 0
+        while (s < chs.size && chs[nx] !in active) {
+            nx = (nx + 1) % chs.size
+            s++
+        }
+        return nx
+    }
 
-    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long)
+    // unverified: RX DMA and MAC RX are toggled through REG_CR bits only, no register is read to prove the stall
+    private fun reKickRx() {
+        val bits = Rg.BIT_MACRXEN or Rg.BIT_HCI_RXDMA_EN or Rg.BIT_RXDMA_EN
+        clr8(Rg.REG_CR, bits)
+        set8(Rg.REG_CR, bits)
+    }
+
+    // -- 802.11 parse: APs (beacon/probe-resp/data) + client stations --
+
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0)
     private class SightingTable {
         val map = LinkedHashMap<String, Entry>()
     }
@@ -902,7 +943,7 @@ internal class Rtl8812auAdapter(
                 val hdr = phyOff + drvInfo * 8
                 val total = hdr + pktLen - off
                 if (off + total > n) break
-                if (!isC2h && !crcErr && pktLen > 4) {
+                if (!isC2h && pktLen > 4) {
                     // Deliver even without PHY status (rtw88 rx.c parses phy only when present); fall back to -100.
                     val rssi = if (!physt) {
                         -100
@@ -915,7 +956,7 @@ internal class Rtl8812auAdapter(
                         val pb = if (rfPathNum == 1) pa else ((pw0 ushr 8) and 0x7f) - 110
                         maxOf(pa, pb, -120)
                     }
-                    handleFrame(b, hdr, pktLen, rssi.coerceIn(-120, -10), hopCh, table)
+                    handleFrame(b, hdr, pktLen, rssi.coerceIn(-120, -10), hopCh, !crcErr, table)
                 }
                 off += (total + 7) and 7.inv()
             }
@@ -924,21 +965,50 @@ internal class Rtl8812auAdapter(
         }
     }
 
-    private fun handleFrame(b: ByteArray, hdr: Int, frameLen: Int, rssi: Int, hopCh: Int, table: SightingTable) {
-        if (frameLen < 36 + 4) return
+    private fun handleFrame(b: ByteArray, hdr: Int, frameLen: Int, rssi: Int, hopCh: Int, good: Boolean, table: SightingTable) {
         val fc = b[hdr].toInt() and 0xff
-        if (((fc shr 2) and 3) != 0) return
+        val type = (fc shr 2) and 3
+        if (frameLen < (if (type == 1) 16 else 24) + 4) return
         val sub = (fc shr 4) and 0xf
-        if (sub != 8 && sub != 5) return
-        val bssid = (0 until 6).joinToString(":") { "%02x".format(b[hdr + 16 + it].toInt() and 0xff) }
-        if (bssid == "ff:ff:ff:ff:ff:ff" || bssid == "00:00:00:00:00:00") return
-        val ie = parseIes(b, hdr + 36, hdr + frameLen - 4)
-        val ch = if (Rg.CHANNELS.contains(ie.channel)) ie.channel else hopCh
-        val e = table.map.getOrPut(bssid) { Entry(null, rssi, ch, 0) }
-        if (!ie.ssid.isNullOrEmpty()) e.ssid = ie.ssid
-        if (rssi > e.rssi) e.rssi = rssi
-        e.channel = ch
-        e.lastSeen = System.currentTimeMillis()
+        val flags = b[hdr + 1].toInt() and 0xff
+        fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(b[hdr + off + it].toInt() and 0xff) }
+        fun group(off: Int) = (b[hdr + off].toInt() and 1) != 0
+        fun touch(mac: String, isAp: Boolean, ssid: String?, ch: Int, auth: Int = 0) {
+            if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
+            if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
+            val e = table.map.getOrPut(mac) { Entry(null, rssi, ch, 0, isAp) }
+            e.isAp = e.isAp || isAp
+            if (!ssid.isNullOrEmpty()) e.ssid = ssid
+            if (rssi > e.rssi) e.rssi = rssi
+            if (auth > e.auth) e.auth = auth
+            e.channel = ch
+            e.lastSeen = System.currentTimeMillis()
+        }
+        when (type) {
+            0 -> when (sub) {
+                8, 5 -> {
+                    if (frameLen < 36 + 4) return
+                    val ie = parseIes(b, hdr + 36, hdr + frameLen - 4)
+                    val ch = if (Rg.CHANNELS.contains(ie.channel)) ie.channel else hopCh
+                    val cap = le16(b, hdr + 34)
+                    val auth = wifiAuthMode(b, hdr + 36, hdr + frameLen - 4, cap and 0x10 != 0)
+                    if (good || !ie.ssid.isNullOrEmpty()) touch(macAt(16), true, ie.ssid, ch, auth)
+                }
+                4, 0, 1, 2, 3, 10, 11, 12 -> if (good) touch(macAt(10), false, null, hopCh)
+            }
+            2 -> {
+                if (!good) return
+                val toDs = flags and 1 != 0
+                val fromDs = flags and 2 != 0
+                when {
+                    toDs && !fromDs -> { if (!group(4)) touch(macAt(4), true, null, hopCh); touch(macAt(10), false, null, hopCh) }
+                    !toDs && fromDs -> { if (!group(10)) touch(macAt(10), true, null, hopCh); touch(macAt(4), false, null, hopCh) }
+                    !toDs && !fromDs -> { if (!group(16)) touch(macAt(16), true, null, hopCh); touch(macAt(10), false, null, hopCh) }
+                    else -> touch(macAt(10), false, null, hopCh)
+                }
+            }
+            1 -> if (good && (sub == 11 || sub == 10)) touch(macAt(10), false, null, hopCh)
+        }
     }
 
     private fun parseIes(b: ByteArray, from: Int, end: Int): IeInfo {
@@ -971,13 +1041,15 @@ internal class Rtl8812auAdapter(
         val fresh = 8000L
         val batch = table.map.entries
             .filter { now - it.value.lastSeen < fresh }
-            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Rg.freqOf(e.channel)) }
+            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Rg.freqOf(e.channel), client = !e.isAp, authMode = e.auth) }
         table.map.entries.removeAll { now - it.value.lastSeen > 60_000L }
         if (batch.isNotEmpty()) onBatch(batch)
     }
 
     companion object {
         const val DWELL_MS = 150L
+        const val EXPLORE_MS = 2000L
+        const val RX_STALL_MS = 4000L
 
         fun loadFirmware(ctx: Context): ByteArray {
             val dir = File(ctx.cacheDir, "wifi_fw").apply { mkdirs() }

@@ -239,25 +239,17 @@ class _OtaProgressStepperState extends State<OtaProgressStepper>
           ),
           const SizedBox(height: 10),
           if (hasBar)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: m.fraction,
-                minHeight: 5,
-                backgroundColor: t.border,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(AppTheme.accent),
-              ),
+            LinearProgressIndicator(
+              value: m.fraction,
+              minHeight: 5,
+              backgroundColor: t.border,
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accent),
             )
           else if (m.activeIndex >= 0 && !m.complete)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                minHeight: 5,
-                backgroundColor: t.border,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(AppTheme.accent),
-              ),
+            LinearProgressIndicator(
+              minHeight: 5,
+              backgroundColor: t.border,
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accent),
             ),
           if (m.detail.isNotEmpty)
             Padding(
@@ -339,24 +331,8 @@ class _OtaProgressStepperState extends State<OtaProgressStepper>
       mainAxisSize: MainAxisSize.min,
       children: [
         active
-            ? AnimatedBuilder(
-                animation: _pulse,
-                builder: (context, child) {
-                  final glow = 0.25 + 0.45 * _pulse.value;
-                  return Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.accent.withValues(alpha: glow),
-                          blurRadius: 4 + 8 * _pulse.value,
-                          spreadRadius: 1 + 2 * _pulse.value,
-                        ),
-                      ],
-                    ),
-                    child: child,
-                  );
-                },
+            ? FadeTransition(
+                opacity: Tween<double>(begin: 0.55, end: 1).animate(_pulse),
                 child: circle,
               )
             : circle,

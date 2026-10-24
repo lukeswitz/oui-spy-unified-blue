@@ -8,7 +8,11 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/link/link_net.dart';
+import 'package:oui_spy/core/link/usb_autoconnect.dart';
+import 'package:oui_spy/core/link/usb_serial.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -27,6 +31,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   String? _error;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<NodeConnectionState>? _connSub;
+  StreamSubscription<List<UsbSerialDevice>>? _usbSub;
+  StreamSubscription<NetLinkTarget?>? _netSub;
+  List<UsbSerialDevice> _usb = const [];
+  NetLinkTarget? _net;
   String? _rememberedMgrId;
 
   Future<void> _loadRememberedManager() async {
@@ -48,6 +56,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       return;
     }
     _loadRememberedManager();
+    final usb = ref.read(usbAutoConnectProvider);
+    _usb = usb.attached;
+    _usbSub = usb.devices.listen((d) {
+      if (mounted) setState(() => _usb = d);
+    });
+    _net = usb.netTarget;
+    _netSub = usb.netTargets.listen((n) {
+      if (mounted) setState(() => _net = n);
+    });
+    usb.refresh();
     _connSub = ble.connectionState.listen((state) {
       if (state == NodeConnectionState.ready && mounted) {
         context.go('/home');
@@ -61,6 +79,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   @override
   void dispose() {
     _connSub?.cancel();
+    _usbSub?.cancel();
+    _netSub?.cancel();
     _scanSub?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
@@ -191,6 +211,103 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
   }
 
+  Future<void> _connectUsb(UsbSerialDevice device) => _connectLink(device.id, device.vidPid,
+      () => ref.read(usbAutoConnectProvider).connect(device, replaceBle: true));
+
+  Future<void> _connectNet(NetLinkTarget target) => _connectLink(target.label, target.label,
+      () => ref.read(usbAutoConnectProvider).connectNet(target, replaceBle: true));
+
+  Future<void> _connectLink(String id, String what, Future<bool> Function() connect) async {
+    if (_connecting) return;
+    setState(() {
+      _connecting = true;
+      _connectingId = id;
+    });
+    try {
+      await FlutterBluePlus.stopScan();
+    } on Exception catch (e) {
+      DebugLog.log('SCAN: stopScan: $e');
+    }
+    _scanSub?.cancel();
+    final ok = await connect();
+    if (!mounted) return;
+    setState(() {
+      _connecting = false;
+      _connectingId = null;
+      _scanning = false;
+    });
+    if (ok) {
+      context.go('/home');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('USB connection to $what failed. Check the board runs OUI-SPY firmware with USB support.'),
+        backgroundColor: AppTheme.error,
+      ));
+    }
+  }
+
+  Widget _usbTile(UsbSerialDevice d, ResolvedTheme t) => _linkTile(t,
+      id: d.id,
+      title: d.name.isNotEmpty ? d.name : 'USB serial device',
+      subtitle: 'USB  ${d.vidPid}',
+      onTap: () => _connectUsb(d));
+
+  Widget _netTile(NetLinkTarget n, ResolvedTheme t) => _linkTile(t,
+      id: n.label,
+      title: 'OUI-SPY over USB',
+      subtitle: 'USB ETHERNET  ${n.label}',
+      onTap: () => _connectNet(n));
+
+  Widget _linkTile(ResolvedTheme t,
+      {required String id,
+      required String title,
+      required String subtitle,
+      required VoidCallback onTap}) {
+    final busy = _connecting && _connectingId == id;
+    return GestureDetector(
+      onTap: _connecting ? null : onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: t.surface,
+          border: Border.all(color: busy ? AppTheme.accent : t.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: t.surfaceLight,
+              ),
+              child: busy
+                  ? Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
+                  : Icon(Icons.usb, color: AppTheme.accent, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: AppTheme.mono),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    busy ? 'CONNECTING OVER USB...' : subtitle,
+                    style: TextStyle(color: busy ? AppTheme.accent : t.textDim, fontSize: 10, fontFamily: AppTheme.mono),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showPermDialog(BlePermResult result) {
     final t = AppTheme.of(context);
     final bool servicesOff = result == BlePermResult.locationServicesOff;
@@ -216,7 +333,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: t.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(title,
             style: TextStyle(
                 color: t.textPrimary,
@@ -286,10 +402,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppTheme.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.error),
                 ),
-                child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: 'monospace')),
+                child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: AppTheme.mono)),
+              ),
+            ),
+
+          if (_usb.isNotEmpty || _net != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('USB', style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
+                  const SizedBox(height: 8),
+                  for (final d in _usb) _usbTile(d, t),
+                  if (_net != null) _netTile(_net!, t),
+                ],
               ),
             ),
 
@@ -297,34 +426,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             const Spacer(),
             _ScanRadar(active: _scanning),
             const SizedBox(height: 24),
-            Text(
-              'OUI-APEX',
-              style: TextStyle(
-                color: t.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
-                fontFamily: 'monospace',
-              ),
-            ),
+            const DPageTitle('OUI-APEX'),
             const SizedBox(height: 8),
-            Text(
-              _scanning ? 'Searching for nodes...' : 'Scan for nearby nodes to connect',
-              style: TextStyle(color: t.textDim, fontSize: 13),
-            ),
+            DEyebrow(_scanning ? 'Searching for nodes...' : 'Scan for nearby nodes to connect'),
             const SizedBox(height: 28),
-            OutlinedButton(
+            ElevatedButton(
               onPressed: _scanning ? null : _startScan,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.accent,
-                side: BorderSide(color: AppTheme.accent),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 10),
-              ),
-              child: Text(
-                _scanning ? 'SCANNING...' : 'Scan for devices',
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5),
-              ),
+              child: Text(_scanning ? 'SCANNING...' : 'Scan for devices'),
             ),
             const Spacer(flex: 2),
           ] else ...[
@@ -334,13 +442,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 children: [
                   Text(
                     '${sorted.length} FOUND',
-                    style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: 'monospace'),
+                    style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono),
                   ),
                   const Spacer(),
                   if (!_scanning)
                     GestureDetector(
                       onTap: _startScan,
-                      child: Text('RESCAN', style: TextStyle(color: AppTheme.accent, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: 'monospace')),
+                      child: Text('RESCAN', style: TextStyle(color: AppTheme.accent, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
                     ),
                   if (_scanning)
                     SizedBox(width: 12, height: 12, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 1.5)),
@@ -370,13 +478,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isThisConnecting
-                            ? AppTheme.accent.withValues(alpha: 0.12)
-                            : t.surface,
-                        borderRadius: BorderRadius.circular(10),
+                        color: t.surface,
                         border: Border.all(
                           color: isThisConnecting
-                              ? AppTheme.accent.withValues(alpha: 0.5)
+                              ? AppTheme.accent
                               : isOtherConnecting
                                   ? t.border.withValues(alpha: 0.3)
                                   : t.border,
@@ -388,8 +493,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                             width: 36,
                             height: 36,
                             decoration: BoxDecoration(
-                              color: AppTheme.accent.withValues(alpha: isOtherConnecting ? 0.04 : 0.08),
-                              borderRadius: BorderRadius.circular(6),
+                              color: t.surfaceLight,
                             ),
                             child: isThisConnecting
                                 ? Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
@@ -405,7 +509,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                   color: isOtherConnecting ? t.textDim : t.textPrimary,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  fontFamily: 'monospace',
+                                  fontFamily: AppTheme.mono,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -416,8 +520,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                       margin: const EdgeInsets.only(right: 6),
                                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.accent.withValues(alpha: 0.08),
-                                        borderRadius: BorderRadius.circular(3),
+                                        border: Border.all(color: AppTheme.accent),
                                       ),
                                       child: Text('MGR', style: TextStyle(color: AppTheme.accent, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
                                     ),
@@ -426,7 +529,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                     style: TextStyle(
                                       color: isThisConnecting ? AppTheme.accent : t.textDim,
                                       fontSize: 10,
-                                      fontFamily: 'monospace',
+                                      fontFamily: AppTheme.mono,
                                     ),
                                   ),
                                 ],
@@ -483,7 +586,7 @@ class _ScanRadarState extends State<_ScanRadar> with SingleTickerProviderStateMi
                 height: 96,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.15 + v * 0.15), width: 1.5),
+                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.15 + v * 0.15)),
                 ),
               ),
               Container(
@@ -491,17 +594,13 @@ class _ScanRadarState extends State<_ScanRadar> with SingleTickerProviderStateMi
                 height: 64,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.1 + v * 0.1), width: 1),
+                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.1 + v * 0.1)),
                 ),
               ),
               Container(
                 width: 8,
                 height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppTheme.accent,
-                  boxShadow: [BoxShadow(color: AppTheme.accent.withValues(alpha: 0.4), blurRadius: 12)],
-                ),
+                color: AppTheme.accent,
               ),
             ],
           ),
@@ -528,10 +627,7 @@ class _SignalBars extends StatelessWidget {
           width: 3,
           height: h,
           margin: const EdgeInsets.only(left: 2),
-          decoration: BoxDecoration(
-            color: i < bars ? color : t.border,
-            borderRadius: BorderRadius.circular(1),
-          ),
+          color: i < bars ? color : t.border,
         );
       }),
     );

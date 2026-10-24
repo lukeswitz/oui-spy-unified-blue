@@ -121,7 +121,6 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                             color: selected
                                 ? AppTheme.uniPwn.withValues(alpha: 0.1)
                                 : t.surface,
-                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: selected
                                   ? AppTheme.uniPwn
@@ -149,13 +148,13 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                               Text(
                                 r.macAddress.length >= 8 ? r.macAddress.substring(0, 8) : r.macAddress,
                                 style: TextStyle(
-                                  color: t.textDim, fontSize: 10, fontFamily: 'monospace',
+                                  color: t.textDim, fontSize: 10, fontFamily: AppTheme.mono,
                                 ),
                               ),
                               Text(
                                 '${r.rssi} dBm',
                                 style: TextStyle(
-                                  color: t.textDim, fontSize: 10, fontFamily: 'monospace',
+                                  color: t.textDim, fontSize: 10, fontFamily: AppTheme.mono,
                                 ),
                               ),
                             ],
@@ -184,7 +183,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                         style: TextStyle(
                           color: AppTheme.uniPwn,
                           fontSize: 12,
-                          fontFamily: 'monospace',
+                          fontFamily: AppTheme.mono,
                           letterSpacing: 1,
                         ),
                       ),
@@ -224,7 +223,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                               controller: _customCmdController,
                               style: TextStyle(
                                 color: t.textPrimary,
-                                fontFamily: 'monospace',
+                                fontFamily: AppTheme.mono,
                                 fontSize: 13,
                               ),
                               decoration: const InputDecoration(
@@ -273,7 +272,6 @@ class _UnipwnNodePicker extends ConsumerWidget {
         decoration: BoxDecoration(
           color: t.surface,
           border: Border.all(color: t.border),
-          borderRadius: BorderRadius.circular(10),
         ),
         child: Text('No mesh nodes seen yet.',
             style: TextStyle(color: t.textDim, fontSize: 12)),
@@ -284,7 +282,6 @@ class _UnipwnNodePicker extends ConsumerWidget {
       decoration: BoxDecoration(
         color: t.surface,
         border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [

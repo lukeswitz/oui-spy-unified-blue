@@ -93,6 +93,9 @@ class WifiAdapter {
   static Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async =>
       await _methods.invokeMethod<bool>('start', {'id': device.id, 'radioMask': radioMask}) ?? false;
 
+  static Future<bool> requestPermission() async =>
+      supported ? (await _methods.invokeMethod<bool>('requestPermission') ?? false) : false;
+
   static Future<void> stop() async {
     if (supported) await _methods.invokeMethod<void>('stop');
   }

@@ -22,6 +22,7 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/core/link/sdr.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -305,6 +306,19 @@ class _AppShellState extends ConsumerState<AppShell> {
       final now = next.valueOrNull ?? false;
       if (now && !was && GoRouterState.of(context).uri.path != '/sdr') {
         context.push('/sdr');
+      }
+    });
+    ref.listen(wifiAdapterStateProvider, (prev, next) {
+      if (next.valueOrNull == WifiAdapterState.error &&
+          prev?.valueOrNull != WifiAdapterState.error) {
+        final t = AppTheme.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('USB adapter needs access — unplug and replug it, then start again.'),
+            backgroundColor: t.surface,
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     });
     final location = GoRouterState.of(context).uri.path;

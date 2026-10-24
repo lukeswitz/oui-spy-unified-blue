@@ -195,9 +195,7 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 15,
-                backgroundColor: mapStyle.isDark
-                    ? const Color(0xFF0A0A0A)
-                    : const Color(0xFFE8E8EE),
+                backgroundColor: mapStyle.isDark ? Colors.black : Colors.white,
                 onTap: _mode != _DrawMode.none ? _onMapTap : null,
               ),
               children: [
@@ -237,7 +235,7 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
                       Text('${_geofences.where((g) => g.enabled).length} active',
                         style: TextStyle(
                           color: AppTheme.warning, fontSize: 10,
-                          fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                          fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
                         ),
                       ),
                   ],
@@ -445,7 +443,6 @@ class _DrawingToolbar extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
       ),
       child: Column(
@@ -487,15 +484,15 @@ class _DrawingToolbar extends StatelessWidget {
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.zero,
                   borderSide: BorderSide(color: t.border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.zero,
                   borderSide: BorderSide(color: t.border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.zero,
                   borderSide: BorderSide(color: AppTheme.accent),
                 ),
               ),
@@ -531,7 +528,7 @@ class _DrawingToolbar extends StatelessWidget {
                     textAlign: TextAlign.right,
                     style: TextStyle(
                       color: AppTheme.accent, fontSize: 10,
-                      fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                      fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -574,7 +571,6 @@ class _SmallBtn extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: color.withValues(alpha: onTap != null ? 0.15 : 0.05),
-          borderRadius: BorderRadius.circular(6),
           border: Border.all(color: color.withValues(alpha: onTap != null ? 0.5 : 0.15)),
         ),
         child: Text(label, style: TextStyle(
@@ -612,7 +608,6 @@ class _BottomPanel extends StatelessWidget {
       constraints: const BoxConstraints(maxHeight: 320),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.95),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         border: Border(top: BorderSide(color: t.border)),
       ),
       child: Column(
@@ -681,7 +676,6 @@ class _DrawBtn extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.accent.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
         ),
         child: Row(
@@ -732,7 +726,6 @@ class _GeofenceRow extends StatelessWidget {
           color: enabled
               ? AppTheme.warning.withValues(alpha: 0.06)
               : t.surface,
-          borderRadius: BorderRadius.circular(6),
           border: Border.all(
             color: enabled
                 ? AppTheme.warning.withValues(alpha: 0.25)
@@ -771,7 +764,6 @@ class _GeofenceRow extends StatelessWidget {
                   color: enabled
                       ? AppTheme.success.withValues(alpha: 0.14)
                       : AppTheme.error.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: (enabled ? AppTheme.success : AppTheme.error)
                         .withValues(alpha: 0.5),
@@ -798,7 +790,6 @@ class _GeofenceRow extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: AppTheme.error.withValues(alpha: 0.35),
                   ),

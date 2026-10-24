@@ -31,7 +31,9 @@ class WifiAdapterController {
 
   void init() {
     _attachSub ??= WifiAdapter.attachEvents.listen(_onAttach);
-    refresh();
+    refresh().then((list) {
+      if (list.isNotEmpty) WifiAdapter.requestPermission();
+    });
   }
 
   Future<void> _onAttach(WifiAdapterAttach e) async {
@@ -94,9 +96,6 @@ class WifiAdapterController {
       _status = e.status!;
       DebugLog.log('WIFIADAPTER: ${e.status}');
       if (_status.contains('receiver live')) _set(WifiAdapterState.running);
-      if (_status.contains('MT7612U:') && !_status.contains('live') && !_status.contains('running')) {
-        _set(WifiAdapterState.error);
-      }
     }
     final aps = e.aps;
     if (aps != null && aps.isNotEmpty) {

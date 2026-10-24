@@ -52,7 +52,6 @@ class _FlockPanelState extends State<FlockPanel> {
               color: count > 0
                   ? accent.withValues(alpha: 0.2)
                   : t.surface.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: count > 0
                     ? accent.withValues(alpha: 0.5)
@@ -70,7 +69,7 @@ class _FlockPanelState extends State<FlockPanel> {
                   style: TextStyle(
                     color: count > 0 ? accent : t.textDim,
                     fontSize: 11, fontWeight: FontWeight.w700,
-                    fontFamily: 'monospace',
+                    fontFamily: AppTheme.mono,
                   ),
                 ),
                 if (count > 0) ...[
@@ -90,7 +89,6 @@ class _FlockPanelState extends State<FlockPanel> {
             constraints: const BoxConstraints(maxHeight: 140, maxWidth: 240),
             decoration: BoxDecoration(
               color: t.background.withValues(alpha: 0.95),
-              borderRadius: BorderRadius.circular(6),
               border: Border.all(color: accent.withValues(alpha: 0.3)),
             ),
             child: ListView.builder(
@@ -132,7 +130,7 @@ class _Row extends StatelessWidget {
         children: [
           Container(
             width: 2, height: 16,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(1)),
+            decoration: BoxDecoration(color: color),
           ),
           const SizedBox(width: 5),
           Expanded(
@@ -141,7 +139,7 @@ class _Row extends StatelessWidget {
                 d.macAddress.toUpperCase(),
                 style: TextStyle(
                   color: t.textPrimary, fontSize: 9,
-                  fontFamily: 'monospace', fontWeight: FontWeight.w500,
+                  fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(width: 4),
@@ -149,7 +147,6 @@ class _Row extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
                 ),
                 child: Text(
                   isBle ? 'B' : 'W',
@@ -162,7 +159,6 @@ class _Row extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                   decoration: BoxDecoration(
                     color: AppTheme.warning.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(2),
                   ),
                   child: Text('R',
                     style: TextStyle(color: AppTheme.warning, fontSize: 7, fontWeight: FontWeight.w700)),
@@ -177,7 +173,6 @@ class _Row extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                     decoration: BoxDecoration(
                       color: cc.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(2),
                     ),
                     child: Text(_flockConfShort(fc),
                       style: TextStyle(color: cc, fontSize: 7, fontWeight: FontWeight.w700)),
@@ -188,7 +183,7 @@ class _Row extends StatelessWidget {
           ),
           Text('${d.rssi}', style: TextStyle(
             color: rssiColor, fontSize: 9,
-            fontFamily: 'monospace', fontWeight: FontWeight.w600,
+            fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
           )),
         ],
       ),

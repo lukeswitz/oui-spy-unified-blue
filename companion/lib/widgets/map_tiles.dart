@@ -175,16 +175,16 @@ Widget mapAttribution(MapStyle style) {
     child: IgnorePointer(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        color: const Color(0x66000000),
+        color: AppTheme.background.withValues(alpha: 0.4),
         child: Text(
           style.attribution,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textDirection: TextDirection.ltr,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 8,
             height: 1.2,
-            color: Color(0xFFB0B5C8),
+            color: AppTheme.textSecondary,
             decoration: TextDecoration.none,
           ),
         ),

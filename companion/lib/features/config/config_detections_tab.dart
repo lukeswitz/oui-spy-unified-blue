@@ -91,6 +91,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
   _RadioSel _radioFilter = _RadioSel.all;
   String? _methodFilter; // null = all, else a raw detectionMethod string
   FlockConfidence? _confFilter; // null = all, else flock rows at that level
+  String? _classFilter; // null = all, else an alert class
   bool _showMap = false;
   bool _searchOpen = false;
   final _searchCtrl = TextEditingController();
@@ -214,6 +215,10 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           list.where((d) => _detFlockConfidence(d) == _confFilter).toList();
     }
 
+    if (_classFilter != null) {
+      list = list.where((d) => _detClasses(d).contains(_classFilter)).toList();
+    }
+
     final q = _search.trim().toLowerCase();
     if (q.isNotEmpty) {
       list = list.where((d) {
@@ -288,9 +293,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       context: context,
       backgroundColor: t.surface,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -396,7 +398,27 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     if (_radioFilter != _RadioSel.all) n++;
     if (_methodFilter != null) n++;
     if (_confFilter != null) n++;
+    if (_classFilter != null) n++;
     return n;
+  }
+
+  Set<String> _detClasses(Map<String, dynamic> d) {
+    final out = <String>{};
+    if (d['alertClass'] case final String c when c.isNotEmpty) out.add(c);
+    for (final (_, cls)
+        in (d['mergedClasses'] as List<(String, String)>?) ?? const <(String, String)>[]) {
+      out.add(cls);
+    }
+    return out;
+  }
+
+  int _classCount(String c) =>
+      _detections.where((d) => _detClasses(d).contains(c)).length;
+
+  List<String> _classesPresent() {
+    final s = <String>{for (final d in _detections) ..._detClasses(d)};
+    return s.toList()
+      ..sort((a, b) => alertKindLabel(a).compareTo(alertKindLabel(b)));
   }
 
   int _confCount(FlockConfidence c) =>
@@ -419,6 +441,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         _radioFilter = _RadioSel.all;
         _methodFilter = null;
         _confFilter = null;
+        _classFilter = null;
       });
 
   void _toggleSearch() => setState(() {
@@ -531,6 +554,32 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                     ],
                   ),
                 ),
+                if (_classesPresent().isNotEmpty)
+                  CommandSheetGroup(
+                    label: 'CLASS',
+                    child: Wrap(
+                      spacing: barGap(ctx),
+                      runSpacing: barGap(ctx),
+                      children: [
+                        CommandChip(
+                          label: 'ALL',
+                          selected: _classFilter == null,
+                          color: AppTheme.accent,
+                          onTap: () =>
+                              apply(() => setState(() => _classFilter = null)),
+                        ),
+                        for (final c in _classesPresent())
+                          CommandChip(
+                            label: alertKindLabel(c).toUpperCase(),
+                            count: _classCount(c),
+                            selected: _classFilter == c,
+                            color: alertKindColor(c),
+                            onTap: () => apply(() => setState(() =>
+                                _classFilter = _classFilter == c ? null : c)),
+                          ),
+                      ],
+                    ),
+                  ),
                 CommandSheetGroup(
                   label: 'RADIO',
                   child: Wrap(
@@ -768,7 +817,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
             onPressed: _toggleSearch,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(gap),
+            borderRadius: BorderRadius.zero,
             borderSide: BorderSide(color: t.border),
           ),
         ),
@@ -873,8 +922,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       itemCount: items.length,
       itemBuilder: (_, i) => _DetectionRow(
         data: items[i],
-        engineColor: _colorOf(items[i]),
-        engineLabel: _labelOf(items[i]),
         onShowMap: () => _showOnMap(items[i]),
         onDelete: _load,
       ),
@@ -975,9 +1022,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       options: MapOptions(
         initialCenter: center,
         initialZoom: geoItems.length == 1 ? 16 : 13,
-        backgroundColor: mapStyle.isDark
-            ? const Color(0xFF0A0A0A)
-            : const Color(0xFFE8E8EE),
+        backgroundColor: mapStyle.isDark ? Colors.black : Colors.white,
       ),
       children: [
         mapTileLayer(mapStyle),
@@ -1004,9 +1049,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     showModalBottomSheet(
       context: context,
       backgroundColor: t.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1026,7 +1068,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 Expanded(
                   child: Text(mac, style: TextStyle(
                     color: t.textPrimary, fontSize: 14,
-                    fontFamily: 'monospace', fontWeight: FontWeight.w600,
+                    fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
                   )),
                 ),
               ],
@@ -1051,7 +1093,6 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: t.surfaceLight,
-                borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: t.border, width: 0.5),
               ),
               child: Column(
@@ -1125,7 +1166,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           ),
           Expanded(
             child: Text(value, style: TextStyle(
-              color: t.textPrimary, fontSize: 10, fontFamily: 'monospace',
+              color: t.textPrimary, fontSize: 10, fontFamily: AppTheme.mono,
             )),
           ),
         ],
@@ -1193,19 +1234,15 @@ class _DetDropdown extends StatelessWidget {
     final t = AppTheme.of(context);
     final gap = barGap(context);
     final iconSize = barIconSize(context);
-    final radius = BorderRadius.circular(gap);
     return Material(
       color: active ? AppTheme.accent.withValues(alpha: 0.12) : t.surfaceLight,
-      borderRadius: radius,
       child: InkWell(
         onTap: onTap,
-        borderRadius: radius,
         child: Container(
           constraints:
               const BoxConstraints(minHeight: kMinInteractiveDimension),
           padding: EdgeInsets.symmetric(horizontal: gap * 1.5, vertical: gap),
           decoration: BoxDecoration(
-            borderRadius: radius,
             border: Border.all(
               color: active ? AppTheme.accent : t.border,
               width: active ? 1.4 : 1.0,
@@ -1236,24 +1273,13 @@ class _DetDropdown extends StatelessWidget {
 }
 
 
-String _droneTransportShort(String method) => switch (method) {
-      'odid_ble' => 'BLE',
-      'odid_nan' => 'NAN',
-      'odid_beacon' => 'BEACON',
-      _ => method.toUpperCase(),
-    };
-
 class _DetectionRow extends ConsumerWidget {
   const _DetectionRow({
     required this.data,
-    required this.engineColor,
-    required this.engineLabel,
     required this.onShowMap,
     required this.onDelete,
   });
   final Map<String, dynamic> data;
-  final Color engineColor;
-  final String engineLabel;
   final VoidCallback onShowMap;
   final VoidCallback onDelete;
 
@@ -1292,253 +1318,9 @@ class _DetectionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
-    final mac = (data['macAddress'] as String).toUpperCase();
-    final rssi = data['rssi'] as int;
-    final channel = data['channel'] as int? ?? 0;
-    final method = data['detectionMethod'] as String? ?? '';
-    final ts = DateTime.fromMillisecondsSinceEpoch(data['appTimestamp'] as int);
-    final timeStr = AppTime.dateTimeShort(ts);
-    final hasGps = data['latitude'] != null && data['longitude'] != null;
-    final deviceName = data['deviceName'] as String? ?? '';
-    final vendor = ref.read(ouiLookupProvider).lookup(mac);
-    final rssiNorm = ((rssi + 100) / 70).clamp(0.0, 1.0);
-    final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
-
-    return Listener(
-      onPointerDown: (event) {
-        if (event.kind == PointerDeviceKind.mouse &&
-            event.buttons == kSecondaryMouseButton) {
-          _showDetailSheet(context, ref);
-        }
-      },
-      child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _showDetailSheet(context, ref),
-      onLongPress: () {
-        HapticFeedback.mediumImpact();
-        _showDetailSheet(context, ref);
-      },
-      child: Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: t.border),
-      ),
-      child: Column(
-        children: [
-          // ── Top section: MAC + engine + RSSI ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Engine accent dot
-                Container(
-                  width: 8, height: 8,
-                  margin: const EdgeInsets.only(top: 4, right: 10),
-                  decoration: BoxDecoration(
-                    color: engineColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(
-                      color: engineColor.withValues(alpha: 0.4),
-                      blurRadius: 6,
-                    )],
-                  ),
-                ),
-                // MAC
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(mac, style: TextStyle(
-                        color: t.textPrimary, fontSize: 15,
-                        fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      )),
-                      if ((data['uavId'] as String?)?.isNotEmpty ?? false)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text('UAS-ID ${data['uavId']}', style: TextStyle(
-                            color: engineColor, fontSize: 12,
-                            fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                          ), overflow: TextOverflow.ellipsis),
-                        ),
-                      if (data['engine'] == 'skySpy' &&
-                          (((data['memberMacs'] as List?)?.length ?? 1) > 1 ||
-                              ((data['transports'] as List?)?.length ?? 0) > 1))
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            '${(data['memberMacs'] as List).length} MACs · '
-                            '${(data['transports'] as List).map((m) => _droneTransportShort(m as String)).join(' · ')}',
-                            style: TextStyle(
-                              color: t.textDim, fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      if (vendor != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(vendor, style: TextStyle(
-                            color: engineColor.withValues(alpha: 0.8), fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ), overflow: TextOverflow.ellipsis),
-                        ),
-                      if (deviceName.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(deviceName, style: TextStyle(
-                            color: t.textSecondary, fontSize: 12,
-                          ), overflow: TextOverflow.ellipsis),
-                        ),
-                      if (data['classTitle'] case final String ct when ct != deviceName)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(ct, style: TextStyle(
-                            color: alertKindColor((data['mergedClasses'] as List<(String, String)>).first.$2),
-                            fontSize: 12, fontWeight: FontWeight.w600,
-                          ), overflow: TextOverflow.ellipsis),
-                        ),
-                    ],
-                  ),
-                ),
-                if ((data['authMode'] as int? ?? 0) > 0) ...[
-                  _ConfigAuthPill(authMode: data['authMode'] as int),
-                  const SizedBox(width: 10),
-                ],
-                // RSSI
-                Text('$rssi', style: TextStyle(
-                  color: rssiColor, fontSize: 20,
-                  fontFamily: 'monospace', fontWeight: FontWeight.w800,
-                )),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          // ── Middle: metadata row ──
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        // Radio icon — how it was detected
-                        Tooltip(
-                          message: engineLabel,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: engineColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Icon(
-                              _detRadioRank(data) == 0
-                                  ? Icons.bluetooth
-                                  : Icons.wifi,
-                              size: 13,
-                              color: engineColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Engine badge
-                        if (data['engine'] != 'flockBle' &&
-                            data['engine'] != 'flockWifi') ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: engineColor.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(engineLabel, style: TextStyle(
-                              color: engineColor, fontSize: 10,
-                              fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                            )),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        // Method
-                        if (method.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: t.textDim.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(_detMethodLabel(method),
-                              softWrap: false,
-                              style: TextStyle(
-                                color: t.textSecondary, fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              )),
-                          ),
-                        if (_detFlockConfidence(data) != null) ...[
-                          const SizedBox(width: 8),
-                          Builder(builder: (_) {
-                            final fc = _detFlockConfidence(data)!;
-                            final cc = _confColor(fc);
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: cc.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(fc.label(method),
-                                softWrap: false,
-                                style: TextStyle(
-                                  color: cc, fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                )),
-                            );
-                          }),
-                        ],
-                        if (channel > 0) ...[
-                          const SizedBox(width: 8),
-                          Icon(Icons.cell_tower, size: 14, color: t.textDim),
-                          const SizedBox(width: 3),
-                          Text('$channel', style: TextStyle(
-                            color: t.textSecondary, fontSize: 12,
-                            fontFamily: 'monospace', fontWeight: FontWeight.w600,
-                          )),
-                        ],
-                        if (!hasGps) ...[
-                          const SizedBox(width: 8),
-                          Icon(Icons.location_off, size: 12, color: AppTheme.gpsNone),
-                          const SizedBox(width: 3),
-                          Text('NO GPS', style: TextStyle(
-                            color: AppTheme.gpsNone, fontSize: 10,
-                            fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                          )),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Timestamp
-                Icon(Icons.access_time, size: 10, color: t.textDim),
-                const SizedBox(width: 3),
-                Text(timeStr,
-                  softWrap: false,
-                  style: TextStyle(
-                    color: t.textDim, fontSize: 9,
-                    fontFamily: 'monospace',
-                  )),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-    ),
+    return DetectionRow(
+      detection: detectionFromDbRow(data),
+      onActivate: _showDetailSheet,
     );
   }
 

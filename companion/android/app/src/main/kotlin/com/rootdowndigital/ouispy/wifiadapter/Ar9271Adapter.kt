@@ -20,7 +20,7 @@ internal class Ar9271Adapter(
 ) {
     private class Aborted : RuntimeException()
     private class HtcFrame(val epid: Int, val off: Int, val len: Int)
-    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long)
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0)
 
     @Volatile private var stop = false
     private var closing = false
@@ -53,6 +53,7 @@ internal class Ar9271Adapter(
     private var rxPartial: ByteArray? = null
     private var rxPartialLen = 0
     private val table = LinkedHashMap<String, Entry>()
+    private var exploreAt = 0L
 
     fun abort() { stop = true }
 
@@ -963,6 +964,8 @@ internal class Ar9271Adapter(
         var channel = Ar9271Regs.CHANNELS[0]
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
+        var lastRxAt = hopAt
+        exploreAt = hopAt
         try {
             while (!stop) {
                 val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
@@ -973,6 +976,7 @@ internal class Ar9271Adapter(
                         val b = buffers[idx]
                         val nbytes = b.position()
                         if (nbytes in 1..bufSz) {
+                            lastRxAt = now
                             b.rewind(); b.get(scratch, 0, nbytes)
                             rxChunk(scratch, nbytes, channel)
                         }
@@ -980,9 +984,10 @@ internal class Ar9271Adapter(
                         if (!requeue(req, b)) req.close()
                     }
                 }
+                if (now - lastRxAt > STALL_MS) { reKickRx(); lastRxAt = now }
                 if (now - emitAt > 2000) { emit(onBatch); emitAt = now }
                 if (now - hopAt > DWELL_MS) {
-                    hopIdx = (hopIdx + 1) % Ar9271Regs.CHANNELS.size
+                    hopIdx = nextHop(hopIdx, now)
                     channel = Ar9271Regs.CHANNELS[hopIdx]
                     setChannel(channel, true)
                     hopAt = System.currentTimeMillis()
@@ -992,6 +997,30 @@ internal class Ar9271Adapter(
             releaseRequests(reqs)
         }
         emit(onBatch)
+    }
+
+    private fun nextHop(cur: Int, now: Long): Int {
+        val chs = Ar9271Regs.CHANNELS
+        val active = table.values.mapTo(HashSet()) { it.channel }
+        val explore = now - exploreAt > EXPLORE_MS
+        var nx = (cur + 1) % chs.size
+        if (active.isNotEmpty() && !explore) {
+            var s = 0
+            while (s < chs.size && chs[nx] !in active) {
+                nx = (nx + 1) % chs.size
+                s++
+            }
+        } else if (explore) {
+            exploreAt = now
+        }
+        return nx
+    }
+
+    private fun reKickRx() {
+        // unverified: stop/start recv + CR_RXE re-arm is the ath9k_htc analogue of the MT7612U RX toggle, not hardware-confirmed as the stall fix
+        wmi(Ar9271Regs.WMI_STOP_RECV)
+        wmi(Ar9271Regs.WMI_START_RECV)
+        hostRxInit()
     }
 
     private fun requeue(req: UsbRequest, b: ByteBuffer): Boolean =
@@ -1014,13 +1043,16 @@ internal class Ar9271Adapter(
         var channel = Ar9271Regs.CHANNELS[0]
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
+        var lastRxAt = hopAt
+        exploreAt = hopAt
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, 100)
             val now = System.currentTimeMillis()
-            if (n > 0) rxChunk(buf, n, channel)
+            if (n > 0) { lastRxAt = now; rxChunk(buf, n, channel) }
+            if (now - lastRxAt > STALL_MS) { reKickRx(); lastRxAt = now }
             if (now - emitAt > 2000) { emit(onBatch); emitAt = now }
             if (now - hopAt > DWELL_MS) {
-                hopIdx = (hopIdx + 1) % Ar9271Regs.CHANNELS.size
+                hopIdx = nextHop(hopIdx, now)
                 channel = Ar9271Regs.CHANNELS[hopIdx]
                 setChannel(channel, true)
                 hopAt = System.currentTimeMillis()
@@ -1077,7 +1109,7 @@ internal class Ar9271Adapter(
         if (epid == 0 || epid == wmiEp) return
         val trailer = if ((u8(b, off + 1) and Ar9271Regs.HTC_FLAG_TRAILER) != 0) u8(b, off + 4) else 0
         val plen = n - Ar9271Regs.HTC_HDR_LEN - trailer
-        if (plen < Ar9271Regs.RX_STATUS_LEN + 24) return
+        if (plen < Ar9271Regs.RX_STATUS_LEN + 20) return
         rxFrame(b, off + Ar9271Regs.HTC_HDR_LEN, plen, ch)
     }
 
@@ -1090,31 +1122,62 @@ internal class Ar9271Adapter(
         if (rssiRaw == Ar9271Regs.RSSI_BAD) return
         val d = off + Ar9271Regs.RX_STATUS_LEN
         val end = off + n - FCS_LEN
-        if (end < d + 36) return
+        if (end < d + 16) return
         val fc = u8(b, d)
-        if (((fc shr 2) and 3) != 0) return
+        val flags = u8(b, d + 1)
+        val type = (fc shr 2) and 3
         val sub = (fc shr 4) and 0xf
-        if (sub != 8 && sub != 5) return
-        val bssid = (0 until 6).joinToString(":") { "%02x".format(u8(b, d + 16 + it)) }
-        if (bssid == "ff:ff:ff:ff:ff:ff" || bssid == "00:00:00:00:00:00") return
-        var ssid: String? = null
-        var dsCh = 0
-        var i = d + 36
-        while (i + 2 <= end) {
-            val tag = u8(b, i)
-            val tl = u8(b, i + 1)
-            if (i + 2 + tl > end) break
-            if (tag == 0) ssid = decodeSsid(b, i + 2, tl)
-            if (tag == 3 && tl == 1) dsCh = u8(b, i + 2)
-            i += 2 + tl
-        }
-        val channel = if (dsCh in 1..13) dsCh else ch
         val rssi = (Ar9271Regs.NOISE_FLOOR + rssiRaw).coerceIn(-120, -20) // unverified: signal = default noise floor + rs_rssi
-        val e = table.getOrPut(bssid) { Entry(null, rssi, channel, 0) }
-        if (!ssid.isNullOrEmpty()) e.ssid = ssid
-        if (rssi > e.rssi) e.rssi = rssi
-        e.channel = channel
-        e.lastSeen = System.currentTimeMillis()
+        fun macAt(o: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(b, d + o + it)) }
+        fun group(o: Int) = u8(b, d + o) and 1 != 0
+        fun touch(mac: String, isAp: Boolean, ssid: String?, channel: Int, auth: Int = 0) {
+            if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
+            if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
+            val e = table.getOrPut(mac) { Entry(null, rssi, channel, 0, isAp) }
+            e.isAp = e.isAp || isAp
+            if (!ssid.isNullOrEmpty()) e.ssid = ssid
+            if (rssi > e.rssi) e.rssi = rssi
+            if (auth > e.auth) e.auth = auth
+            e.channel = channel
+            e.lastSeen = System.currentTimeMillis()
+        }
+        when (type) {
+            0 -> {
+                if (end < d + 24) return
+                when (sub) {
+                    8, 5 -> {
+                        if (end < d + 36) return
+                        var ssid: String? = null
+                        var dsCh = 0
+                        var i = d + 36
+                        while (i + 2 <= end) {
+                            val tag = u8(b, i)
+                            val tl = u8(b, i + 1)
+                            if (i + 2 + tl > end) break
+                            if (tag == 0) ssid = decodeSsid(b, i + 2, tl)
+                            if (tag == 3 && tl == 1) dsCh = u8(b, i + 2)
+                            i += 2 + tl
+                        }
+                        val cap = u8(b, d + 34) or (u8(b, d + 35) shl 8)
+                        val auth = wifiAuthMode(b, d + 36, end, cap and 0x10 != 0)
+                        touch(macAt(16), true, ssid, if (dsCh in 1..13) dsCh else ch, auth)
+                    }
+                    4, 0, 1, 2, 3, 10, 11, 12 -> touch(macAt(10), false, null, ch)
+                }
+            }
+            2 -> {
+                if (end < d + 24) return
+                val toDs = flags and 1 != 0
+                val fromDs = flags and 2 != 0
+                when {
+                    toDs && !fromDs -> { if (!group(4)) touch(macAt(4), true, null, ch); touch(macAt(10), false, null, ch) }
+                    !toDs && fromDs -> { if (!group(10)) touch(macAt(10), true, null, ch); touch(macAt(4), false, null, ch) }
+                    !toDs && !fromDs -> { if (!group(16)) touch(macAt(16), true, null, ch); touch(macAt(10), false, null, ch) }
+                    else -> touch(macAt(10), false, null, ch)
+                }
+            }
+            1 -> if (sub == 11 || sub == 10) touch(macAt(10), false, null, ch)
+        }
     }
 
     private fun decodeSsid(b: ByteArray, from: Int, len: Int): String? {
@@ -1128,7 +1191,7 @@ internal class Ar9271Adapter(
         val fresh = 8000L
         val batch = table.entries
             .filter { now - it.value.lastSeen < fresh }
-            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Ar9271Regs.freqOf(e.channel)) }
+            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Ar9271Regs.freqOf(e.channel), client = !e.isAp, authMode = e.auth) }
         table.entries.removeAll { now - it.value.lastSeen > 60_000L }
         if (batch.isNotEmpty()) onBatch(batch)
     }
@@ -1155,6 +1218,8 @@ internal class Ar9271Adapter(
 
     companion object {
         const val DWELL_MS = 150L
+        const val EXPLORE_MS = 2000L
+        private const val STALL_MS = 4000L
         private const val RESET_POWER_ON = 0
         private const val RESET_WARM = 1
         private const val RESET_COLD = 2

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/link/sdr.dart';
+import 'package:oui_spy/core/wdgwars/wdgwars_adsb.dart';
+import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -15,6 +18,8 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   late final SdrController _c = ref.read(sdrControllerProvider);
   final _freq = TextEditingController(text: '100.1');
   SdrMode _mode = SdrMode.spectrum;
+  final Set<int> _bands = {433};
+  static const _bandHz = {315: 315000000, 433: 433920000, 915: 915000000};
   String? _deviceId;
   String _deviceName = '';
   bool _busy = false;
@@ -54,8 +59,17 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
         SdrMode.spectrum => 2048000,
       };
 
+  bool get _isIsm => _mode == SdrMode.tpms || _mode == SdrMode.rtl433;
+
+  List<int> _bandsHz() =>
+      [for (final b in const [315, 433, 915]) if (_bands.contains(b)) _bandHz[b]!];
+
   int _freqHz() {
     if (_mode == SdrMode.adsb) return 1090000000;
+    if (_isIsm) {
+      final b = _bandsHz();
+      return b.isEmpty ? 433920000 : b.first;
+    }
     final mhz = double.tryParse(_freq.text) ?? 100.1;
     return (mhz * 1e6).round();
   }
@@ -70,7 +84,8 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
       }
     }
     setState(() => _busy = true);
-    await _c.start(_deviceId!, _mode, _freqHz(), _rateFor(_mode));
+    await _c.start(_deviceId!, _mode, _freqHz(), _rateFor(_mode),
+        freqsHz: _isIsm ? _bandsHz() : const []);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -82,6 +97,39 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
 
   void _snack(String s) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s)));
+
+  Future<void> _uploadAdsb() async {
+    final wdg = ref.read(wdgwarsProvider);
+    if (!wdg.isLoggedIn) {
+      _snack('Link WDGWars in Settings first');
+      return;
+    }
+    final recs = [
+      for (final a in _c.adsbAircraft)
+        if (a.hasFix)
+          AdsbRecord(
+            icao: a.icao,
+            callsign: a.callsign,
+            lat: a.lat!,
+            lon: a.lon!,
+            altFt: a.altFt,
+            speedKt: a.velocityKt,
+            heading: a.heading,
+            firstSeen: a.firstSeen,
+          ),
+    ];
+    if (recs.isEmpty) {
+      _snack('No aircraft with a position fix yet');
+      return;
+    }
+    setState(() => _busy = true);
+    final res = await wdg.uploadAircraft(recs);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    _snack(res != null
+        ? 'WDGWars: ${res.imported} new, ${res.alreadySeen} seen (${res.sent} sent)'
+        : wdg.error ?? 'Upload failed');
+  }
 
   void _setMode(SdrMode m) {
     setState(() {
@@ -139,7 +187,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                 ButtonSegment(value: SdrMode.spectrum, label: Text('Spectrum')),
                 ButtonSegment(value: SdrMode.adsb, label: Text('ADS-B')),
                 ButtonSegment(value: SdrMode.tpms, label: Text('TPMS')),
-                ButtonSegment(value: SdrMode.rtl433, label: Text('433')),
+                ButtonSegment(value: SdrMode.rtl433, label: Text('SCAN')),
               ],
               selected: {_mode},
               onSelectionChanged: running ? null : (s) => _setMode(s.first),
@@ -148,18 +196,31 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _freq,
-                    enabled: !running && _mode != SdrMode.adsb,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: _mode == SdrMode.adsb ? 'Frequency (fixed 1090 MHz)' : 'Frequency (MHz)',
-                      isDense: true,
-                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: t.border)),
-                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: t.textSecondary)),
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
+                  child: _isIsm
+                      ? _BandSelector(
+                          bands: _bands,
+                          enabled: !running,
+                          t: t,
+                          onToggle: (mhz) => setState(() {
+                            if (_bands.contains(mhz)) {
+                              if (_bands.length > 1) _bands.remove(mhz);
+                            } else {
+                              _bands.add(mhz);
+                            }
+                          }),
+                        )
+                      : TextField(
+                          controller: _freq,
+                          enabled: !running && _mode != SdrMode.adsb,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: _mode == SdrMode.adsb ? 'Frequency (fixed 1090 MHz)' : 'Frequency (MHz)',
+                            isDense: true,
+                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: t.border)),
+                            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: t.textSecondary)),
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 10),
                 FilledButton(
@@ -169,6 +230,44 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                 ),
               ],
             ),
+            if (_isIsm)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  _bands.length > 1
+                      ? 'Hopping ${_bandsHz().length} bands (~2s each) — one dongle, one band at a time'
+                      : 'Single band — add more to hop and catch 315/433/915 devices',
+                  style: TextStyle(color: t.textDim, fontSize: 11),
+                ),
+              ),
+            if (_isIsm && running)
+              StreamBuilder<SdrFrame>(
+                stream: _c.frameStream,
+                builder: (context, _) => _c.scanStatus.isEmpty
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(_c.scanStatus,
+                            style: TextStyle(
+                                color: AppTheme.accent,
+                                fontSize: 11,
+                                fontFamily: AppTheme.mono)),
+                      ),
+              ),
+            if (_mode == SdrMode.adsb) ...[
+              const SizedBox(height: 8),
+              StreamBuilder<SdrFrame>(
+                stream: _c.frameStream,
+                builder: (context, _) {
+                  final n = _c.adsbAircraft.where((a) => a.hasFix).length;
+                  return OutlinedButton.icon(
+                    onPressed: _busy || n == 0 ? null : _uploadAdsb,
+                    icon: const Icon(Icons.flight_takeoff, size: 18),
+                    label: Text('Upload $n aircraft to WDGWars'),
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 12),
             if (showChips)
               StreamBuilder<SdrFrame>(
@@ -233,6 +332,49 @@ Color _catColor(Sdr433Category c) => AppTheme.themed(switch (c) {
       Sdr433Category.weather => AppTheme.skySpy,
       Sdr433Category.unknown => AppTheme.textDim,
     });
+
+class _BandSelector extends StatelessWidget {
+  const _BandSelector(
+      {required this.bands, required this.enabled, required this.t, required this.onToggle});
+
+  final Set<int> bands;
+  final bool enabled;
+  final ResolvedTheme t;
+  final void Function(int) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget chip(int mhz, bool last) {
+      final on = bands.contains(mhz);
+      return Expanded(
+        child: Padding(
+          padding: EdgeInsets.only(right: last ? 0 : 6),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: enabled ? () => onToggle(mhz) : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: on ? t.fill : Colors.transparent,
+                border: Border.all(color: on ? AppTheme.accent : t.border),
+              ),
+              child: Text('$mhz',
+                  style: TextStyle(
+                    color: on ? t.textPrimary : t.textDim,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: AppTheme.mono,
+                  )),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(children: [chip(315, false), chip(433, false), chip(915, true)]);
+  }
+}
 
 class _CategoryBar extends StatelessWidget {
   const _CategoryBar({required this.detections, required this.selected, required this.t, required this.onSelect});
@@ -388,13 +530,180 @@ class _DetectionList extends StatelessWidget {
       return true;
     }).toList();
     if (items.isEmpty) {
-      return Center(child: Text('No signals yet', style: TextStyle(color: t.textDim, fontSize: 12)));
+      final ismCount = detections.where((d) => d.kind == 'ism').length;
+      final msg = (ismCount > 0 && !showRaw)
+          ? 'No decoded devices yet — $ismCount raw burst${ismCount == 1 ? '' : 's'} heard.\nTurn on RAW (top right) to see them.'
+          : 'No signals yet';
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(msg,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: t.textDim, fontSize: 12)),
+        ),
+      );
     }
     return ListView.builder(
       itemCount: items.length,
       itemBuilder: (context, i) => _DetectionCard(d: items[i], t: t),
     );
   }
+}
+
+void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
+  final cat = _categoryOf(d);
+  final accent = cat != null ? _catColor(cat) : t.textDim;
+  final f = d.fields;
+  final hz = d.frequency;
+  final isIsm = d.kind == 'tpms' || d.kind == 'rtl433';
+  final vehicle = isIsm ? identifyVehicle(f['model'] as String?) : null;
+  final desc = switch (d.kind) {
+    'adsb' => 'Aircraft broadcasting ADS-B position',
+    'ism' => 'Raw 433 MHz burst (not decoded to a known device)',
+    'rf' => 'RF signal peak',
+    _ => cat != null ? describeModel(f['model'] as String?, cat) : 'RF signal',
+  };
+  final title = switch (d.kind) {
+    'adsb' => ((f['callsign'] as String?)?.trim().isNotEmpty ?? false)
+        ? (f['callsign'] as String).trim()
+        : '${f['icao'] ?? 'ADS-B'}',
+    'tpms' || 'rtl433' => '${f['model'] ?? d.kind}',
+    'ism' => '${f['modulation'] ?? 'burst'}',
+    _ => hz != null ? '${(hz / 1e6).toStringAsFixed(3)} MHz' : 'RF',
+  };
+
+  final rows = <(String, String)>[];
+  for (final e in f.entries) {
+    if (const {'kind'}.contains(e.key)) continue;
+    final v = e.value;
+    if (v == null) continue;
+    final s = v is double ? _trimDouble(v) : '$v';
+    if (s.isEmpty) continue;
+    rows.add((sdrFieldLabel(e.key), s));
+  }
+  if (d.kind == 'tpms') {
+    final kpa = (f['pressureKpa'] as num?)?.toDouble();
+    if (kpa != null) {
+      rows.add(('Pressure (psi)', (kpa * 0.1450377).toStringAsFixed(1)));
+      rows.add(('Pressure (bar)', (kpa * 0.01).toStringAsFixed(2)));
+    }
+    final c = (f['tempC'] as num?)?.toDouble();
+    if (c != null) rows.add(('Temperature (°F)', (c * 9 / 5 + 32).toStringAsFixed(1)));
+  }
+  if (hz != null) {
+    rows.add(('Frequency', '${(hz / 1e6).toStringAsFixed(3)} MHz'));
+  }
+
+  void copy(String label, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('$label copied', style: TextStyle(color: t.textPrimary)),
+      backgroundColor: t.surfaceLight,
+      duration: const Duration(seconds: 1),
+    ));
+  }
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: t.surface,
+    isScrollControlled: true,
+    builder: (ctx) => ConstrainedBox(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: t.fill,
+            padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+            child: Row(
+              children: [
+                _Badge(label: cat?.label ?? d.kind, color: accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(title,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 18,
+                        fontFamily: AppTheme.mono,
+                        fontWeight: FontWeight.w700,
+                      )),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, color: t.textSecondary),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(desc,
+                      style: TextStyle(color: t.textSecondary, fontSize: 13)),
+                  if (vehicle != null) ...[
+                    const SizedBox(height: 6),
+                    Text(vehicle.text,
+                        style: TextStyle(
+                            color: accent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                  const SizedBox(height: 12),
+                  for (final r in rows)
+                    GestureDetector(
+                      onTap: () => copy(r.$1, r.$2),
+                      onLongPress: () => copy(r.$1, r.$2),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 140,
+                              child: Text(r.$1,
+                                  style: TextStyle(
+                                      color: t.textDim, fontSize: 12)),
+                            ),
+                            Expanded(
+                              child: Text(r.$2,
+                                  style: TextStyle(
+                                    color: t.textPrimary,
+                                    fontSize: 12,
+                                    fontFamily: AppTheme.mono,
+                                  )),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 12),
+                    child: Text('tap any row to copy',
+                        style: TextStyle(
+                            color: t.textDim,
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+String _trimDouble(double v) {
+  if (v == v.roundToDouble()) return v.toInt().toString();
+  return v.toStringAsFixed(v.abs() < 1 ? 5 : 3);
 }
 
 class _DetectionCard extends StatelessWidget {
@@ -458,6 +767,8 @@ class _DetectionCard extends StatelessWidget {
         badge = 'RAW';
         title = '${f['modulation'] ?? 'burst'}';
         specs.add('${f['bitCount']} bits');
+        final rssi = d.rssi;
+        if (rssi != null) specs.add('$rssi dB');
         final bits = f['bits'] as String?;
         if (bits != null) specs.add(bits.length > 24 ? '${bits.substring(0, 24)}…' : bits);
         break;
@@ -467,12 +778,19 @@ class _DetectionCard extends StatelessWidget {
         title = '${(hz / 1e6).toStringAsFixed(3)} MHz';
         specs.add('${d.rssi ?? 0} dB');
     }
+    final rssi = d.rssi;
+    if (d.kind != 'ism' && d.kind != 'rf' && rssi != null) specs.add('$rssi dB');
+    final count = f['count'] as int?;
+    if (count != null && count > 1) specs.add('×$count');
 
     final isRaw = d.kind == 'ism';
     final titleColor = isRaw ? t.textSecondary : accent;
     final hz = d.frequency;
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showSdrDetail(context, d, t),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
       decoration: BoxDecoration(
@@ -524,6 +842,7 @@ class _DetectionCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }

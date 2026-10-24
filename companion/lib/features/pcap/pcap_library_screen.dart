@@ -228,8 +228,8 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                         leading: Icon(
                           isBle ? Icons.bluetooth : Icons.wifi,
                           color: isBle
-                              ? AppTheme.themed(const Color(0xFFB44AFF))
-                              : AppTheme.themed(const Color(0xFF4AB4FF)),
+                              ? AppTheme.flockBle
+                              : AppTheme.detector,
                         ),
                         title: Row(
                           children: [
@@ -239,7 +239,7 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                                 style: TextStyle(
                                   color: t.textPrimary,
                                   fontSize: 12,
-                                  fontFamily: 'monospace',
+                                  fontFamily: AppTheme.mono,
                                 ),
                               ),
                             ),
@@ -253,7 +253,6 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                                   color: AppTheme.success.withValues(
                                     alpha: 0.2,
                                   ),
-                                  borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   'LIVE',

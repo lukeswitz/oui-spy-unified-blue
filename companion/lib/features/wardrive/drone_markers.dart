@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/theme/app_theme.dart';
 
 class FanGeometry {
   const FanGeometry(this.angle, this.length);
@@ -94,7 +95,6 @@ class _LeaderPainter extends CustomPainter {
 
 const String kDroneSvgAsset = 'assets/icons/drone.svg';
 const String kPilotSvgAsset = 'assets/icons/pilot.svg';
-const Color kDroneFreshRing = Color(0xFF7CFF4F);
 
 LatLng? droneRidPoint(Detection d) {
   final o = d.odid;
@@ -157,7 +157,7 @@ class DronePin extends StatelessWidget {
                   height: size + 12,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: kDroneFreshRing, width: 2.2),
+                    border: Border.all(color: AppTheme.success, width: 2.2),
                   ),
                 ),
               Container(
@@ -170,18 +170,6 @@ class DronePin extends StatelessWidget {
                     color: Colors.black.withValues(alpha: 0.8),
                     width: 1.6,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: fresh ? 0.85 : 0.5),
-                      blurRadius: fresh ? 16 : 9,
-                      spreadRadius: fresh ? 2 : 1,
-                    ),
-                    const BoxShadow(
-                      color: Color(0x77000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
                 ),
                 alignment: Alignment.center,
                 child: SvgPicture.asset(
@@ -224,16 +212,9 @@ class DroneRangePin extends StatelessWidget {
               shape: BoxShape.circle,
               color: color.withValues(alpha: 0.95),
               border: Border.all(
-                color: fresh ? kDroneFreshRing : Colors.white,
+                color: fresh ? AppTheme.success : Colors.white,
                 width: 2.4,
               ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0xCC000000),
-                  blurRadius: 5,
-                  spreadRadius: 0.5,
-                ),
-              ],
             ),
             alignment: Alignment.center,
             child: SvgPicture.asset(
@@ -247,8 +228,7 @@ class DroneRangePin extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0xE6000000),
-              borderRadius: BorderRadius.circular(4),
+              color: AppTheme.of(context).background.withValues(alpha: 0.9),
               border: Border.all(color: color, width: 1),
             ),
             child: Text(
@@ -295,18 +275,6 @@ class PilotPin extends StatelessWidget {
                 color: Colors.black.withValues(alpha: 0.8),
                 width: 1.4,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.45),
-                  blurRadius: 7,
-                  spreadRadius: 0.5,
-                ),
-                const BoxShadow(
-                  color: Color(0x66000000),
-                  blurRadius: 3,
-                  offset: Offset(0, 1.5),
-                ),
-              ],
             ),
             alignment: Alignment.center,
             child: isTakeoff

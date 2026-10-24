@@ -73,7 +73,6 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: AppTheme.accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
               border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
             ),
             child: Row(
@@ -834,14 +833,10 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    minHeight: 5,
-                    backgroundColor: t.border,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                        AppTheme.accent),
-                  ),
+                LinearProgressIndicator(
+                  minHeight: 5,
+                  backgroundColor: t.border,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accent),
                 ),
                 const SizedBox(height: 6),
                 Text(f.detail,

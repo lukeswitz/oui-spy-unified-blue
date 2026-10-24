@@ -78,7 +78,6 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: (isActive ? AppTheme.foxhunter : t.textDim).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(4),
               border: Border.all(
                 color: (isActive ? AppTheme.foxhunter : t.textDim).withValues(alpha: 0.3),
               ),
@@ -119,7 +118,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                 Expanded(
                   child: TextField(
                     controller: _macController,
-                    style: TextStyle(color: t.textPrimary, fontFamily: 'monospace', fontSize: 14),
+                    style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono, fontSize: 14),
                     decoration: const InputDecoration(
                       hintText: 'AA:BB:CC:DD:EE:FF',
                       labelText: 'Target MAC',
@@ -159,7 +158,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                     'Tracking: ${target.toUpperCase()}',
                     style: TextStyle(
                       color: isActive ? AppTheme.foxhunter : t.textDim,
-                      fontSize: 11, fontFamily: 'monospace',
+                      fontSize: 11, fontFamily: AppTheme.mono,
                     ),
                   ),
                   if (channel > 0) ...[
@@ -167,7 +166,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                     Text('ch$channel',
                       style: TextStyle(
                         color: AppTheme.foxhunter.withValues(alpha: 0.6),
-                        fontSize: 10, fontFamily: 'monospace',
+                        fontSize: 10, fontFamily: AppTheme.mono,
                       ),
                     ),
                   ],
@@ -184,7 +183,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('$rssi', style: TextStyle(
-                        color: color, fontSize: 48, fontWeight: FontWeight.w300, fontFamily: 'monospace',
+                        color: color, fontSize: 48, fontWeight: FontWeight.w300, fontFamily: AppTheme.mono,
                       )),
                       Text(targetLost ? 'LOST' : 'dBm', style: TextStyle(
                         color: color.withValues(alpha: 0.6), fontSize: 14,
@@ -198,7 +197,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             Text(targetLost ? 'TARGET LOST — scanning...' : 'Beep interval: ${intervalMs}ms',
                 style: TextStyle(
                   color: targetLost ? AppTheme.error.withValues(alpha: 0.7) : t.textDim,
-                  fontSize: 11, fontFamily: 'monospace',
+                  fontSize: 11, fontFamily: AppTheme.mono,
                 )),
             const Spacer(),
           ],
@@ -229,7 +228,6 @@ class _NodeTargetPicker extends ConsumerWidget {
         decoration: BoxDecoration(
           color: t.surface,
           border: Border.all(color: t.border),
-          borderRadius: BorderRadius.circular(10),
         ),
         child: Text('No mesh nodes seen yet.',
             style: TextStyle(color: t.textDim, fontSize: 12)),
@@ -240,7 +238,6 @@ class _NodeTargetPicker extends ConsumerWidget {
       decoration: BoxDecoration(
         color: t.surface,
         border: Border.all(color: t.border),
-        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [

@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/classify/class_style.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -24,24 +26,21 @@ class DetectionRow extends ConsumerWidget {
     required this.detection,
     this.divider = true,
     this.horizontal = 20,
+    this.onActivate,
   });
   final Detection detection;
   final bool divider;
   final double horizontal;
+  final void Function(BuildContext, WidgetRef)? onActivate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
-    final fg = t.textPrimary;
     final dim = t.textDim;
-    final sec = t.textSecondary;
     final engine = detection.engine;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
-    final nodeLabel = detection.sourceNodeId.isEmpty
-        ? ''
-        : ref.watch(appStateProvider).labelForNode(detection.sourceNodeId);
 
     return Listener(
       onPointerDown: (event) {
@@ -67,75 +66,107 @@ class DetectionRow extends ConsumerWidget {
           final headlineIsMac = headline == detection.macAddress.toUpperCase();
           return LayoutBuilder(builder: (_, box) {
           final gap = (box.maxWidth * 0.04).clamp(12.0, 32.0);
+          final clsStr = detectionAlertClass[detection];
+          final sig = clsStr == null ? null : SignatureClass.parse(clsStr);
+          final clsColor = clsStr == null ? engine.color : alertKindColor(clsStr);
+          final clsLabel =
+              (clsStr == null ? engine.label : alertKindLabel(clsStr)).toUpperCase();
+          final icon = sig != null
+              ? classIcon(sig)
+              : (detection.isWifiDetection ? Icons.wifi : Icons.bluetooth);
+          final isWifi = detection.isWifiDetection;
+          final authMode = detection.wardrive?.authMode ?? 0;
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Padding(
-                padding: const EdgeInsets.only(top: 2, right: 10),
-                child: Icon(
-                  detection.isWifiDetection ? Icons.wifi : Icons.bluetooth,
-                  size: 15,
-                  color: engine.color,
-                ),
+                padding: const EdgeInsets.only(right: 11),
+                child: Icon(icon, size: 24, color: clsColor),
               ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        if (detection.isWifiDetection &&
-                            (detection.wardrive?.authMode ?? 0) > 0) ...[
-                          _AuthPill(authMode: detection.wardrive!.authMode),
-                          const SizedBox(width: 6),
-                        ],
-                        Flexible(
-                          child: Text.rich(
-                            TextSpan(children: [
-                              TextSpan(
-                                text: headline,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: fg,
-                                      fontFamily: headlineIsMac ? AppTheme.mono : null,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                              ),
-                              if (manufacturer != null && manufacturer.isNotEmpty)
-                                TextSpan(
-                                  text: '  $manufacturer',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(color: dim),
-                                ),
-                            ]),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                    Text(
+                      headline,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: t.textPrimary,
+                            fontFamily: headlineIsMac ? AppTheme.mono : null,
+                            fontWeight: FontWeight.w700,
                           ),
-                        ),
-                      ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      child: _DetailLine(
-                        detection: detection,
-                        engine: engine,
-                        manufacturer: manufacturer,
-                        showMac: !headlineIsMac,
-                        sec: sec,
-                        dim: dim,
+                      child: Row(
+                        children: [
+                          if (engine == Engine.skySpy) ...[
+                            Icon(Icons.flight, size: 14, color: clsColor),
+                            const SizedBox(width: 6),
+                          ],
+                          if (OuiLookupService.isLawEnforcement(detection.macAddress)) ...[
+                            Icon(Icons.local_police, size: 14, color: AppTheme.warning),
+                            const SizedBox(width: 6),
+                          ],
+                          if (headlineIsMac && clsStr != null) ...[
+                            Text(
+                              clsLabel,
+                              style: TextStyle(
+                                color: clsColor,
+                                fontFamily: AppTheme.mono,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                          ],
+                          if (detection.odid?.uavId?.isNotEmpty ?? false) ...[
+                            Text('UAS ${detection.odid!.uavId}',
+                                style: TextStyle(
+                                    color: clsColor,
+                                    fontFamily: AppTheme.mono,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 9),
+                          ],
+                          if (isWifi && authMode > 0) ...[
+                            Icon(authMode == 0 ? Icons.lock_open : Icons.lock,
+                                size: 12, color: AppTheme.success),
+                            const SizedBox(width: 3),
+                            Text(_authShort(authMode),
+                                style: TextStyle(
+                                    color: AppTheme.success,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 9),
+                          ],
+                          if (isWifi && detection.channel > 0) ...[
+                            Text('CH ${detection.channel}',
+                                style: TextStyle(
+                                    color: AppTheme.accent,
+                                    fontFamily: AppTheme.mono,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 9),
+                          ],
+                          if (!headlineIsMac) ...[
+                            Text(detection.macAddress.toUpperCase(),
+                                style: TextStyle(
+                                    color: dim,
+                                    fontFamily: AppTheme.mono,
+                                    fontSize: 11.5)),
+                            const SizedBox(width: 9),
+                          ],
+                          if (manufacturer != null && manufacturer.isNotEmpty)
+                            Text(manufacturer,
+                                style: TextStyle(color: dim, fontSize: 11.5)),
+                        ],
                       ),
                     ),
-                    if (detection.flock != null) ...[
-                      const SizedBox(height: 4),
-                      _FlockConfidenceLine(
-                        confidence: detection.flock!.confidence(detection.method),
-                        method: detection.method,
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -144,26 +175,24 @@ class DetectionRow extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _RssiBlock(rssi: detection.rssi),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (nodeLabel.isNotEmpty || detection.sourceNodeId.isNotEmpty) ...[
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 96),
-                          child: Text(
-                            nodeLabel.isNotEmpty ? nodeLabel : detection.sourceNodeId,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: AppTheme.accent, fontSize: 12),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Text(timeStr, style: TextStyle(color: dim, fontSize: 12)),
-                    ],
+                  Text.rich(
+                    TextSpan(children: [
+                      TextSpan(
+                        text: '${detection.rssi}',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: _rssiColor(detection.rssi),
+                              fontFamily: AppTheme.mono,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                            ),
+                      ),
+                      TextSpan(text: ' dBm', style: TextStyle(color: dim, fontSize: 10)),
+                    ]),
                   ),
+                  const SizedBox(height: 2),
+                  Text(timeStr,
+                      style: TextStyle(
+                          color: dim, fontSize: 10.5, fontFamily: AppTheme.mono)),
                 ],
               ),
             ],
@@ -175,8 +204,13 @@ class DetectionRow extends ConsumerWidget {
     );
   }
 
-  void _showActions(BuildContext context, WidgetRef ref) =>
-      showDetectionDetails(context, ref, detection);
+  void _showActions(BuildContext context, WidgetRef ref) {
+    if (onActivate != null) {
+      onActivate!(context, ref);
+      return;
+    }
+    showDetectionDetails(context, ref, detection);
+  }
 
   String _formatTimeDiff(Duration diff) {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s';
@@ -736,6 +770,15 @@ Color _rssiColor(int rssi) {
   final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
   return Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
 }
+
+String _authShort(int mode) => switch (mode) {
+      0 => 'OPEN',
+      1 => 'WEP',
+      2 => 'WPA',
+      5 => 'WPA2-E',
+      6 => 'WPA3',
+      _ => 'WPA2',
+    };
 
 String _headline(Detection d, String? manufacturer) {
   if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;

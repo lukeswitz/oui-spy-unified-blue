@@ -13,7 +13,7 @@ enum Engine {
   uniPwn(
       'UniPwn', 'Unitree robot exploitation', Color(0xFFE63535), 0x20),
   wardrive(
-      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFE67435), 0x40),
+      'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8A3D), 0x40),
   pcap(
       'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF13A884), 0x80);
 

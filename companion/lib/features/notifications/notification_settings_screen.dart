@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -32,7 +33,6 @@ class NotificationSettingsBody extends ConsumerWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppTheme.warning.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppTheme.warning.withValues(alpha: 0.3)),
             ),
             child: Row(
@@ -56,7 +56,7 @@ class NotificationSettingsBody extends ConsumerWidget {
           ),
 
         if (notif.mutedAlerts.isNotEmpty) ...[
-          const ConfigSectionHeader(label: 'MUTED · LOGGED, NO NOTIFICATION'),
+          const ConfigSectionHeader(label: 'Muted · logged, no notification'),
           for (final k in {for (final k in notif.mutedAlerts) NotificationService.muteLabel(k): k}.entries)
             ConfigToggleRow(
               icon: Icons.notifications_off_outlined,
@@ -70,18 +70,18 @@ class NotificationSettingsBody extends ConsumerWidget {
             ),
           const SizedBox(height: 16),
         ],
-        const ConfigSectionHeader(label: 'FOXHUNT'),
+        ConfigSectionHeader(label: 'Foxhunt'),
         ConfigToggleRow(
           icon: Icons.gps_fixed,
           label: 'Foxhunt Proximity',
           subtitle: 'Alert when target signal crosses thresholds',
-          color: AppTheme.themed(const Color(0xFF4AFF8A)),
+          color: Engine.foxhunter.color,
           value: notif.foxhuntEnabled,
           onChanged: notif.setFoxhuntEnabled,
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'WARDRIVE'),
+        ConfigSectionHeader(label: 'Wardrive'),
         ConfigToggleRow(
           icon: Icons.emoji_events,
           label: 'Milestone Alerts',
@@ -92,7 +92,7 @@ class NotificationSettingsBody extends ConsumerWidget {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'BEHAVIOR'),
+        ConfigSectionHeader(label: 'Behavior'),
         ConfigSliderRow(
           icon: Icons.timer,
           label: 'Cooldown per device',
@@ -115,7 +115,7 @@ class NotificationSettingsBody extends ConsumerWidget {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'OUTPUT'),
+        ConfigSectionHeader(label: 'Output'),
         ConfigToggleRow(
           icon: Icons.volume_up,
           label: 'Sound',

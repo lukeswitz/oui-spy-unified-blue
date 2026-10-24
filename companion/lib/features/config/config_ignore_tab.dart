@@ -31,7 +31,7 @@ class _IgnoreListTab extends ConsumerWidget {
                 '${entries.where((e) => e.enabled).length} active',
                 style: TextStyle(
                   color: t.textDim, fontSize: 10,
-                  fontFamily: 'monospace',
+                  fontFamily: AppTheme.mono,
                 ),
               ),
               const SizedBox(width: 8),
@@ -41,7 +41,6 @@ class _IgnoreListTab extends ConsumerWidget {
                   width: 32, height: 32,
                   decoration: BoxDecoration(
                     color: AppTheme.accent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
                   ),
                   child: Icon(Icons.add, size: 18, color: AppTheme.accent),
@@ -140,7 +139,6 @@ class _IgnoreListTab extends ConsumerWidget {
                               color: isSelected
                                   ? AppTheme.accent.withValues(alpha: 0.15)
                                   : Colors.transparent,
-                              borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                 color: isSelected
                                     ? AppTheme.accent.withValues(alpha: 0.5)
@@ -168,7 +166,7 @@ class _IgnoreListTab extends ConsumerWidget {
                       color: t.textPrimary,
                       fontFamily: selectedType == IgnoreType.ssid
                           ? null
-                          : 'monospace',
+                          : AppTheme.mono,
                       fontSize: 14,
                     ),
                     textCapitalization: selectedType == IgnoreType.ssid
@@ -213,7 +211,6 @@ class _IgnoreListTab extends ConsumerWidget {
                               color: isSelected
                                   ? AppTheme.accent.withValues(alpha: 0.15)
                                   : Colors.transparent,
-                              borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                 color: isSelected
                                     ? AppTheme.accent.withValues(alpha: 0.5)
@@ -279,7 +276,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
 
     final Color scopeColor = switch (entry.scope) {
       IgnoreScope.wifi => AppTheme.wardrive,
-      IgnoreScope.ble => AppTheme.themed(const Color(0xFF4A9EFF)),
+      IgnoreScope.ble => AppTheme.detector,
       IgnoreScope.both => AppTheme.accent,
     };
 
@@ -292,7 +289,6 @@ class _IgnoreEntryTile extends ConsumerWidget {
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
           color: AppTheme.error.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
       ),
@@ -302,7 +298,6 @@ class _IgnoreEntryTile extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: t.surface,
-          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isEnabled ? t.border : t.border.withValues(alpha: 0.4),
           ),
@@ -314,7 +309,6 @@ class _IgnoreEntryTile extends ConsumerWidget {
               width: 32, height: 32,
               decoration: BoxDecoration(
                 color: (isEnabled ? AppTheme.accent : t.textDim).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 typeIcon,
@@ -337,7 +331,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
                       fontSize: 13,
                       fontFamily: entry.type == IgnoreType.ssid
                           ? null
-                          : 'monospace',
+                          : AppTheme.mono,
                       fontWeight: FontWeight.w600,
                       letterSpacing: entry.type == IgnoreType.ssid
                           ? 0
@@ -353,7 +347,6 @@ class _IgnoreEntryTile extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: (isEnabled ? AppTheme.accent : t.textDim)
                               .withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(3),
                         ),
                         child: Text(
                           entry.type.label,
@@ -371,7 +364,6 @@ class _IgnoreEntryTile extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: (isEnabled ? scopeColor : t.textDim)
                               .withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(3),
                         ),
                         child: Text(
                           entry.scope.label,

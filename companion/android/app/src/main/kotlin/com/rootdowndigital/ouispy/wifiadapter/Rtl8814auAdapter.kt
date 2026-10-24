@@ -4,12 +4,15 @@ import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
+import android.hardware.usb.UsbRequest
 import com.rootdowndigital.ouispy.wifiadapter.Rtl88Regs as R
 import com.rootdowndigital.ouispy.wifiadapter.UsbIo.Companion.le16
 import com.rootdowndigital.ouispy.wifiadapter.UsbIo.Companion.le32
 import com.rootdowndigital.ouispy.wifiadapter.UsbIo.Companion.putLe32
 import com.rootdowndigital.ouispy.wifiadapter.UsbIo.Companion.sleep
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.util.concurrent.TimeoutException
 
 // Passive RTL8814AU monitor receiver (Alfa AWUS1900) ported from Linux rtw88 (SPDX GPL-2.0 OR BSD-3-Clause): receive only, never transmits.
 internal class Rtl8814auAdapter(
@@ -44,7 +47,7 @@ internal class Rtl8814auAdapter(
         try {
             bringUp()
             log("RTL8814AU: receiver live")
-            RtlRx(conn, epRx, ::phyPower, ::setChannel, { stop }).run(Mt76Regs.CHANNELS, onBatch)
+            rxLoop(onBatch)
         } finally {
             if (accessed) powerDown()
         }
@@ -90,9 +93,7 @@ internal class Rtl8814auAdapter(
         cut = (io.r32(R.SYS_CFG1) ushr 12) and 0xf
         log("RTL8814AU: chip cut $cut")
         macPowerOn()
-        downloadFirmware()
-        log("RTL8814AU: firmware running")
-        // unverified: efuse is read right after firmware start, rtw88 powers the MAC off between these steps
+        // unverified: efuse is read straight after MAC power-on with no firmware running, rtw88 reads it with the MAC powered via its own on/off cycle
         parseEfuse(RtlEfuse.dump(io, Rtl8814auRegs.PHY_EFUSE_SIZE, Rtl8814auRegs.LOG_EFUSE_SIZE))
         val tbl = RtlPhyTables(fw.tables)
         val drv = PhyDrv(if (cut == 0) 15 else cut, rfe, false)
@@ -715,6 +716,220 @@ internal class Rtl8814auAdapter(
         io.m32(R.NBI_SETTING, 1 shl 13, 1)
     }
 
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0)
+
+    private val table = LinkedHashMap<String, Entry>()
+    private var hopIdx = 0
+    private var hopAt = 0L
+    private var emitAt = 0L
+    private var exploreAt = 0L
+    private var lastRxAt = 0L
+    private var rxBufs = 0L
+
+    private fun rxLoop(onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit) {
+        val buffers = Array(NBUF) { ByteBuffer.allocateDirect(BUF_SZ) }
+        val reqs = ArrayList<UsbRequest>(NBUF)
+        var ok = true
+        for (i in 0 until NBUF) {
+            val r = UsbRequest()
+            if (!r.initialize(conn, epRx)) { ok = false; break }
+            r.clientData = i
+            buffers[i].clear()
+            if (!r.queue(buffers[i])) { ok = false; break }
+            reqs.add(r)
+        }
+        val start = System.currentTimeMillis()
+        hopAt = start; emitAt = start; exploreAt = start; lastRxAt = start
+        if (!ok) {
+            reqs.forEach { runCatching { it.cancel() }; runCatching { it.close() } }
+            rxLoopSync(onBatch)
+            return
+        }
+        val scratch = ByteArray(BUF_SZ)
+        try {
+            while (!stop) {
+                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val now = System.currentTimeMillis()
+                if (req != null) {
+                    val idx = req.clientData as? Int ?: -1
+                    if (idx in 0 until NBUF) {
+                        val b = buffers[idx]
+                        val n = b.position()
+                        if (n in 1..BUF_SZ) {
+                            rxBufs++
+                            lastRxAt = now
+                            b.rewind(); b.get(scratch, 0, n)
+                            runCatching { parseRx(scratch, n, Mt76Regs.CHANNELS[hopIdx]) }
+                        }
+                        b.clear()
+                        if (!runCatching { req.queue(b) }.getOrDefault(false)) {
+                            runCatching { req.close() }
+                            val nr = UsbRequest()
+                            if (runCatching { nr.initialize(conn, epRx) }.getOrDefault(false)) {
+                                nr.clientData = idx; b.clear()
+                                if (runCatching { nr.queue(b) }.getOrDefault(false)) reqs[idx] = nr
+                            }
+                        }
+                    }
+                }
+                rxTick(now, onBatch)
+            }
+        } finally {
+            reqs.forEach { runCatching { it.cancel() }; runCatching { it.close() } }
+        }
+        emit(onBatch)
+    }
+
+    private fun rxLoopSync(onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit) {
+        val buf = ByteArray(BUF_SZ)
+        while (!stop) {
+            val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
+            val now = System.currentTimeMillis()
+            if (n > 0) {
+                rxBufs++
+                lastRxAt = now
+                runCatching { parseRx(buf, n, Mt76Regs.CHANNELS[hopIdx]) }
+            }
+            rxTick(now, onBatch)
+        }
+        emit(onBatch)
+    }
+
+    private fun rxTick(now: Long, onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit) {
+        if (now - lastRxAt > REKICK_MS) {
+            runCatching { reKickRx() }
+            lastRxAt = now
+        }
+        if (now - emitAt > EMIT_MS) { emit(onBatch); emitAt = now }
+        if (now - hopAt > DWELL_MS) {
+            val chs = Mt76Regs.CHANNELS
+            val active = table.values.mapTo(HashSet()) { it.channel }
+            val explore = now - exploreAt > Mt7612uAdapter.EXPLORE_MS
+            var nx = (hopIdx + 1) % chs.size
+            if (active.isNotEmpty() && !explore) {
+                var s = 0
+                while (s < chs.size && chs[nx] !in active) { nx = (nx + 1) % chs.size; s++ }
+            } else if (explore) {
+                exploreAt = now
+            }
+            hopIdx = nx
+            runCatching { setChannel(chs[hopIdx]) }
+            hopAt = now
+        }
+    }
+
+    // unverified: RX re-arm toggles CR RXDMA_EN + MACRXEN (bit positions from Rtl8812auRegs) after a silent window, no reference app does this on RTL
+    private fun reKickRx() {
+        val cr = io.r16(R.CR)
+        io.w16(R.CR, cr and (CR_RXDMA_EN or CR_MACRXEN).inv())
+        io.w16(R.CR, cr or CR_RXDMA_EN or CR_MACRXEN)
+    }
+
+    private fun parseRx(b: ByteArray, n: Int, hopCh: Int) {
+        val desc = R.RX_DESC_SIZE
+        var p = 0
+        while (p + desc <= n) {
+            val w0 = le32(b, p)
+            val w2 = le32(b, p + 8)
+            val w3 = le32(b, p + 12)
+            val pktLen = w0 and 0x3fff
+            val drvRaw = (w0 ushr 16) and 0xf
+            val shift = (w0 ushr 24) and 3
+            val rate = w3 and 0x7f
+            val c2h = ((w2 ushr 28) and 1) != 0
+            if (rate >= RATE_MAX || (drvRaw != 0 && drvRaw != R.PHY_STATUS_SIZE) || pktLen > MAX_MPDU) return
+            val total = desc + drvRaw * 8 + shift + pktLen
+            if (p + total > n || (!c2h && pktLen <= FCS_LEN)) return
+            val bad = (w0 and ((1 shl 14) or (1 shl 15))) != 0
+            if (!c2h && !bad) {
+                val drv = drvRaw * 8
+                val physt = ((w0 ushr 26) and 1) != 0 && drv >= PHY_STATUS_BYTES
+                val rssi = if (physt) phyPower(b, p + desc, rate).coerceIn(-120, -20) else -100
+                frame(b, p + desc + drv + shift, pktLen - FCS_LEN, rssi, hopCh)
+            }
+            p += (total + 7) and 7.inv()
+        }
+    }
+
+    private fun frame(b: ByteArray, d: Int, len: Int, rssi: Int, ch: Int) {
+        if (len < 10) return
+        val end = d + len
+        fun u8(i: Int) = b[i].toInt() and 0xff
+        fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(off + it)) }
+        fun group(off: Int) = u8(off) and 1 != 0
+        val fc = u8(d)
+        val type = (fc shr 2) and 3
+        val sub = (fc shr 4) and 0xf
+        val toDs = len > 1 && u8(d + 1) and 1 != 0
+        val fromDs = len > 1 && u8(d + 1) and 2 != 0
+        fun touch(mac: String, isAp: Boolean, ssid: String?, chan: Int, auth: Int = 0) {
+            if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
+            if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
+            val e = table.getOrPut(mac) { Entry(null, rssi, chan, 0, isAp) }
+            e.isAp = e.isAp || isAp
+            if (!ssid.isNullOrEmpty()) e.ssid = ssid
+            if (rssi > e.rssi) e.rssi = rssi
+            if (auth > e.auth) e.auth = auth
+            e.channel = chan
+            e.lastSeen = System.currentTimeMillis()
+        }
+        when (type) {
+            0 -> when (sub) {
+                8, 5 -> if (len >= 36) {
+                    val ds = beaconChannel(b, d + 36, end)
+                    val cap = u8(d + 34) or (u8(d + 35) shl 8)
+                    val auth = wifiAuthMode(b, d + 36, end, cap and 0x10 != 0)
+                    touch(macAt(d + 16), true, readSsid(b, d + 36, end), if (ds in 1..196) ds else ch, auth)
+                }
+                4, 0, 1, 2, 3, 10, 11, 12 -> if (len >= 16) touch(macAt(d + 10), false, null, ch)
+            }
+            2 -> if (len >= 24) when {
+                toDs && !fromDs -> { if (!group(d + 4)) touch(macAt(d + 4), true, null, ch); touch(macAt(d + 10), false, null, ch) }
+                !toDs && fromDs -> { if (!group(d + 10)) touch(macAt(d + 10), true, null, ch); touch(macAt(d + 4), false, null, ch) }
+                !toDs && !fromDs -> { if (!group(d + 16)) touch(macAt(d + 16), true, null, ch); touch(macAt(d + 10), false, null, ch) }
+                else -> touch(macAt(d + 10), false, null, ch)
+            }
+            1 -> if (len >= 16 && (sub == 11 || sub == 10)) touch(macAt(d + 10), false, null, ch)
+        }
+    }
+
+    private fun readSsid(b: ByteArray, from: Int, end: Int): String? {
+        var i = from
+        while (i + 2 <= end) {
+            val tag = b[i].toInt() and 0xff
+            val tl = b[i + 1].toInt() and 0xff
+            if (i + 2 + tl > end) break
+            if (tag == 0) {
+                if (tl == 0) return ""
+                val s = String(b, i + 2, tl, Charsets.UTF_8)
+                return if (s.length <= 32 && s.none { it.code == 0xFFFD || it.isISOControl() }) s else null
+            }
+            i += 2 + tl
+        }
+        return null
+    }
+
+    private fun beaconChannel(b: ByteArray, from: Int, end: Int): Int {
+        var i = from
+        while (i + 2 <= end) {
+            val tag = b[i].toInt() and 0xff
+            val tl = b[i + 1].toInt() and 0xff
+            if (i + 2 + tl > end) break
+            if ((tag == 3 || tag == 61) && tl >= 1) return b[i + 2].toInt() and 0xff
+            i += 2 + tl
+        }
+        return 0
+    }
+
+    private fun emit(onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit) {
+        val now = System.currentTimeMillis()
+        val batch = table.entries
+            .filter { now - it.value.lastSeen < FRESH_MS }
+            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Mt76Regs.freqOf(e.channel), client = !e.isAp, authMode = e.auth) }
+        table.entries.removeAll { now - it.value.lastSeen > EXPIRE_MS }
+        if (batch.isNotEmpty()) onBatch(batch)
+    }
+
     private fun phyPower(b: ByteArray, o: Int, rate: Int): Int {
         val w0 = le32(b, o)
         val w1 = le32(b, o + 4)
@@ -745,6 +960,19 @@ internal class Rtl8814auAdapter(
         private const val RX_PSEL_RST = (1 shl 28) or (1 shl 29)
         private const val RFE_SELSW0_D = 0x0ff00000
         private const val RATE_11M = 3
+        private const val DWELL_MS = RtlRx.DWELL_MS
+        private const val EMIT_MS = 2000L
+        private const val FRESH_MS = 8000L
+        private const val EXPIRE_MS = 60_000L
+        private const val REKICK_MS = 4000L
+        private const val NBUF = 8
+        private const val BUF_SZ = 16384
+        private const val RATE_MAX = 0x54
+        private const val MAX_MPDU = 11454
+        private const val FCS_LEN = 4
+        private const val PHY_STATUS_BYTES = 28
+        private const val CR_RXDMA_EN = 1 shl 3
+        private const val CR_MACRXEN = 1 shl 7
         private const val DIG_MAX_COVERAGE = 0x1c
         private const val TX_QSEL_BEACON = 16
         private const val BIT_DIS_TSF_UDT = 1 shl 4

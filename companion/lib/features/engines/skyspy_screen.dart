@@ -100,7 +100,6 @@ class _DroneRow extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.surface,
-        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.skySpy.withValues(alpha: 0.3)),
       ),
       child: Column(
@@ -112,10 +111,10 @@ class _DroneRow extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(child: Text(
                 group.uavId,
-                style: TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'monospace'),
+                style: TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: AppTheme.mono),
               )),
               Text('${detection.rssi} dBm',
-                  style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: 'monospace')),
+                  style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: AppTheme.mono)),
               const SizedBox(width: 8),
               Text('${timeDiff.inSeconds}s ago',
                   style: TextStyle(color: t.textDim, fontSize: 10)),
@@ -158,11 +157,10 @@ class _DroneRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppTheme.skySpy.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
                     '${group.macs[i].toUpperCase()} · ${_transport(group.methods[i])}',
-                    style: TextStyle(color: t.textDim, fontSize: 9, fontFamily: 'monospace'),
+                    style: TextStyle(color: t.textDim, fontSize: 9, fontFamily: AppTheme.mono),
                   ),
                 ),
             ],
@@ -185,7 +183,7 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.only(right: 12),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Text('$label ', style: TextStyle(color: t.textDim, fontSize: 9, letterSpacing: 0.5)),
-        Text(value, style: TextStyle(color: t.textPrimary, fontSize: 11, fontFamily: 'monospace')),
+        Text(value, style: TextStyle(color: t.textPrimary, fontSize: 11, fontFamily: AppTheme.mono)),
       ]),
     );
   }

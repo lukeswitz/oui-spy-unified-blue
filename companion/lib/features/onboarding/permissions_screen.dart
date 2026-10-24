@@ -11,6 +11,7 @@ import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/d/d_header.dart';
 
 const kPermissionsOnboardedKey = 'permissions_onboarded';
 
@@ -93,6 +94,7 @@ class PermissionsOnboardingApp extends ConsumerWidget {
           ThemeMode.system => WidgetsBinding.instance.platformDispatcher.platformBrightness,
         };
     AppTheme.accent = style.accent;
+    AppTheme.mono = style.monoFamily;
     AppTheme.applyBrightness(brightness);
     return MaterialApp(
       title: 'OUI-APEX',
@@ -160,12 +162,9 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
                   for (var i = 0; i < _steps.length; i++)
                     Expanded(
                       child: Container(
-                        height: 4,
+                        height: 2,
                         margin: EdgeInsets.only(right: i == _steps.length - 1 ? 0 : 6),
-                        decoration: BoxDecoration(
-                          color: i <= _index ? AppTheme.accent : t.border,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                        color: i <= _index ? AppTheme.accent : t.border,
                       ),
                     ),
                 ],
@@ -173,10 +172,7 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
               const Spacer(),
               Icon(step.icon, size: 64, color: AppTheme.accent),
               const SizedBox(height: 20),
-              Text(
-                step.title,
-                style: TextStyle(color: t.textPrimary, fontSize: 26, fontWeight: FontWeight.w600),
-              ),
+              DPageTitle(step.title),
               const SizedBox(height: 12),
               Text(
                 step.body,

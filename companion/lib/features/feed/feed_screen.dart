@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/classify/class_style.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/db/app_database.dart' show databaseProvider;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/debug_log.dart';
@@ -35,6 +38,55 @@ enum FeedMetric {
   final String label;
 }
 
+class _FeedHeader extends StatelessWidget {
+  const _FeedHeader({
+    required this.count,
+    required this.chips,
+    required this.showHub,
+    required this.actions,
+  });
+  final String count;
+  final List<Widget> chips;
+  final bool showHub;
+  final List<CommandBarAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+      child: Row(
+        children: [
+          Text(
+            count,
+            style: TextStyle(fontFamily: AppTheme.mono, fontSize: 12, color: t.textSecondary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(spacing: 8, children: chips),
+            ),
+          ),
+          if (showHub)
+            Tooltip(
+              message: 'Mesh nodes',
+              child: Icon(Icons.hub_outlined, size: 18, color: AppTheme.accent),
+            ),
+          for (final a in actions)
+            IconButton(
+              tooltip: a.label,
+              onPressed: a.onTap,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(a.icon, size: 20),
+              color: a.active ? AppTheme.accent : t.textSecondary,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key, this.onShowHistory});
 
@@ -46,6 +98,7 @@ class FeedScreen extends ConsumerStatefulWidget {
 
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   Set<Engine> _activeFilters = Engine.values.toSet();
+  SignatureClass? _activeClass;
   RadioFilter? _activeRadio;
   String _searchQuery = '';
   String? _selectedNode;
@@ -119,7 +172,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     var n = 0;
     if (!_allEnginesActive) n++;
     if (_selectedNode != null) n++;
+    if (_activeClass != null) n++;
     return n;
+  }
+
+  Map<String, SignatureClass> _classByMac() {
+    final reg = ref.read(deviceRegistryProvider);
+    return {
+      for (final dev in reg.devices)
+        if (dev.primaryClass != null && dev.obs.mac.isNotEmpty)
+          dev.obs.mac.toLowerCase(): dev.primaryClass!,
+    };
+  }
+
+  List<SignatureClass> _classesPresent() {
+    final s = <SignatureClass>{
+      for (final dev in ref.read(deviceRegistryProvider).devices)
+        if (dev.primaryClass != null) dev.primaryClass!,
+    };
+    return s.toList()..sort((a, b) => a.label.compareTo(b.label));
   }
 
   String _engineFilterLabel() {
@@ -187,9 +258,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 
   List<Detection> _filter(List<Detection> detections) {
+    final classByMac = _activeClass == null ? null : _classByMac();
     return detections.where((d) {
       if (!_activeFilters.contains(d.engine)) return false;
       if (!_radioMatches(d)) return false;
+      if (classByMac != null &&
+          classByMac[d.macAddress.toLowerCase()] != _activeClass) return false;
       if (_selectedNode != null) {
         if (_selectedNode == '' && d.sourceNodeId.isNotEmpty) return false;
         if (_selectedNode!.isNotEmpty && d.sourceNodeId != _selectedNode) return false;
@@ -271,19 +345,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     return Column(
           children: [
-            CommandHeader(
-              title: 'FEED',
+            _FeedHeader(
               count: _activeFilterCount > 0 || hasQuery
                   ? '${filtered.length}/${searchScope.length}'
                   : '${state.totalDetections}',
               chips: _filterChips(t, state.labelForNode),
-              indicators: [
-                if (state.isManagerConnected && sourceNodes.isNotEmpty)
-                  Icon(Icons.hub, size: barIconSize(context) * 0.8, color: AppTheme.warning),
-              ],
+              showHub: state.isManagerConnected && sourceNodes.isNotEmpty,
               actions: [
                 CommandBarAction(
-                  icon: Icons.filter_alt,
+                  icon: Icons.filter_alt_outlined,
                   label: 'Filter',
                   active: _activeFilterCount > 0,
                   onTap: () => _openFilterSheet(sourceNodes, state.labelForNode),
@@ -354,7 +424,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       if (_selectedNode != null)
         CommandActiveChip(
           label: _nodeLabel(labelForNode),
-          color: AppTheme.warning,
+          color: AppTheme.accent,
           onClear: () => setState(() => _selectedNode = null),
         ),
       if (_searchQuery.trim().isNotEmpty)
@@ -393,7 +463,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 : TextButton(
                     onPressed: () => apply(() {
                       _resetEngineFilters();
-                      setState(() => _selectedNode = null);
+                      setState(() {
+                        _selectedNode = null;
+                        _activeClass = null;
+                      });
                     }),
                     child: Text('RESET',
                         style: barLabelStyle(ctx, AppTheme.accent)),
@@ -515,6 +588,31 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     ],
                   ),
                 ),
+                if (_classesPresent().isNotEmpty)
+                  CommandSheetGroup(
+                    label: 'CLASS',
+                    child: Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: [
+                        CommandChip(
+                          label: 'ALL',
+                          selected: _activeClass == null,
+                          color: AppTheme.accent,
+                          onTap: () =>
+                              apply(() => setState(() => _activeClass = null)),
+                        ),
+                        for (final c in _classesPresent())
+                          CommandChip(
+                            label: c.label.toUpperCase(),
+                            color: classColor(c),
+                            selected: _activeClass == c,
+                            onTap: () => apply(() => setState(() =>
+                                _activeClass = _activeClass == c ? null : c)),
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           );

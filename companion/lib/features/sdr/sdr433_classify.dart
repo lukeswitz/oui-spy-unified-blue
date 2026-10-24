@@ -10,6 +10,16 @@ extension Sdr433CategoryLabel on Sdr433Category {
         Sdr433Category.weather => 'Weather',
         Sdr433Category.unknown => 'Unknown',
       };
+
+  String get description => switch (this) {
+        Sdr433Category.tpms => 'Tire-pressure sensor from a vehicle wheel',
+        Sdr433Category.meter => 'Utility meter (power, water, or gas)',
+        Sdr433Category.security => 'Alarm or security sensor (door, motion, smoke)',
+        Sdr433Category.fob => 'Remote control or key fob (gate, garage, car)',
+        Sdr433Category.environmental => 'Environmental sensor (soil, leak, air quality)',
+        Sdr433Category.weather => 'Weather-station sensor (temperature, wind, rain)',
+        Sdr433Category.unknown => 'Unrecognized 433 MHz device',
+      };
 }
 
 const _tpmsModels = [
@@ -46,6 +56,7 @@ const _fobModels = [
   'hcs361', 'secplus', 'megacode', 'nice-flor', 'cardin', 'ht680', 'quinetic',
   'proflame2', 'somfy', 'abo1502t', '5wy72xx', 'akhan', 'alps-fwb', 'astrostart',
   'audiovox', 'compustar', 'continental-kr5', 'nidec', 'mic6sc2', 'frdpc2002',
+  'dickert', 'marantec', 'hormann', 'novoferm', 'came-topligo',
 ];
 const _fobFields = [
   'button_id', 'button_code', 'button_str', 'rbutton', 'rolling', 'fixed', 'remote_id',
@@ -140,4 +151,108 @@ VehicleHint? identifyVehicle(String? model) {
     if (m.contains(key)) return rec;
   }
   return null;
+}
+
+const _modelDesc = <(String, String)>[
+  ('dickert', 'Dickert gate/garage-door remote (MAHS, KeeLoq rolling code)'),
+  ('marantec', 'Marantec garage-door remote'),
+  ('hormann', 'Hörmann BiSecur gate/garage remote'),
+  ('novoferm', 'Novoferm gate/garage remote'),
+  ('came-top', 'CAME TOP gate remote'),
+  ('came', 'CAME gate remote'),
+  ('nice-flor', 'Nice FloR-S gate remote (rolling code)'),
+  ('nice', 'Nice gate remote'),
+  ('somfy', 'Somfy blinds/awning/gate remote (RTS)'),
+  ('secplus-v2', 'Chamberlain/LiftMaster Security+ 2.0 garage remote'),
+  ('secplus', 'Chamberlain/LiftMaster Security+ garage remote'),
+  ('keeloq', 'KeeLoq rolling-code remote (gate, garage, or car)'),
+  ('hcs2', 'Microchip HCS KeeLoq remote'),
+  ('hcs3', 'Microchip HCS KeeLoq remote'),
+  ('cardin', 'Cardin gate remote'),
+  ('megacode', 'Linear MegaCode gate/garage remote'),
+  ('ht680', 'HT6P20-family fixed-code remote'),
+  ('proflame', 'Proflame fireplace remote'),
+  ('quinetic', 'Quinetic kinetic wireless switch'),
+  ('x10', 'X10 home-automation signal'),
+  ('interlogix', 'Interlogix/GE door/window or motion sensor'),
+  ('honeywell', 'Honeywell alarm door/window sensor'),
+  ('dsc', 'DSC alarm sensor'),
+  ('acurite', 'Acurite weather-station sensor'),
+  ('lacrosse', 'LaCrosse weather sensor'),
+  ('oregon', 'Oregon Scientific weather sensor'),
+  ('ecowitt', 'Ecowitt/Fine Offset weather sensor'),
+  ('scm', 'Utility power/gas meter (Itron ERT SCM)'),
+  ('idm', 'Utility meter (Itron ERT IDM)'),
+  ('neptune', 'Neptune R900 water meter'),
+];
+
+String describeModel(String? model, Sdr433Category cat) {
+  final m = (model ?? '').toLowerCase();
+  for (final (k, v) in _modelDesc) {
+    if (m.contains(k)) return v;
+  }
+  return cat.description;
+}
+
+const _fieldLabels = <String, String>{
+  'id': 'ID',
+  'channel': 'Channel',
+  'model': 'Model',
+  'battery_ok': 'Battery (1 = ok)',
+  'battery': 'Battery',
+  'button': 'Button',
+  'button_code': 'Button code',
+  'button_id': 'Button',
+  'button_str': 'Buttons',
+  'rbutton': 'Button (raw)',
+  'rolling': 'Rolling counter',
+  'counter': 'Rolling counter',
+  'fixed': 'Fixed code',
+  'serial': 'Serial',
+  'dipswitch': 'DIP switch',
+  'remote_id': 'Remote ID',
+  'tristate': 'Tri-state code',
+  'cmd': 'Command',
+  'data': 'Data',
+  'code': 'Code',
+  'temperature c': 'Temperature (°C)',
+  'temperature f': 'Temperature (°F)',
+  'humidity': 'Humidity (%)',
+  'pressure kpa': 'Pressure (kPa)',
+  'pressure psi': 'Pressure (psi)',
+  'pressurekpa': 'Pressure (kPa)',
+  'tempc': 'Temperature (°C)',
+  'wind avg km h': 'Wind avg (km/h)',
+  'wind max km h': 'Wind gust (km/h)',
+  'wind dir deg': 'Wind direction (°)',
+  'rain mm': 'Rain (mm)',
+  'rain in': 'Rain (in)',
+  'moisture': 'Moisture (%)',
+  'uvi': 'UV index',
+  'light lux': 'Light (lux)',
+  'pressure hpa': 'Pressure (hPa)',
+  'flags': 'Flags',
+  'mic': 'Integrity check',
+  'frequency': 'Frequency (Hz)',
+  'rssi': 'RSSI (dB)',
+  'snr': 'SNR (dB)',
+  'noise': 'Noise (dB)',
+  'modulation': 'Modulation',
+  'bits': 'Raw bits',
+  'bitcount': 'Bit length',
+  'icao': 'ICAO address',
+  'callsign': 'Callsign',
+  'lat': 'Latitude',
+  'lon': 'Longitude',
+  'altitude': 'Altitude (ft)',
+  'velocity': 'Ground speed (kt)',
+  'heading': 'Heading (°)',
+};
+
+String sdrFieldLabel(String key) {
+  final k = key.toLowerCase().replaceAll('_', ' ').trim();
+  final hit = _fieldLabels[k] ?? _fieldLabels[key.toLowerCase()];
+  if (hit != null) return hit;
+  if (k.isEmpty) return key;
+  return k[0].toUpperCase() + k.substring(1);
 }

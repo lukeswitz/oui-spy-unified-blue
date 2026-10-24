@@ -63,11 +63,11 @@ The original M5StickC and the PLUS2 are built without mesh to fit their RAM. The
 
 Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX drives it directly, with no root, kernel driver, or custom ROM. The app talks to the adapter through Android's USB API in user space, so it works on a stock phone. The phone's own Wi-Fi and Bluetooth keep running while the adapter scans.
 
-Plug the adapter in. Android asks which app should handle it; choose OUI-APEX. The adapter appears on the Home screen with its own START control and waits there — it does not scan until you start it.
+Plug the adapter in. Android asks which app should handle it; choose OUI-APEX, and tick "Use by default for this USB device" in that prompt. The adapter appears on the Home screen with its own START control and waits there — it does not scan until you start it. With "use by default" set, the app reclaims the adapter on its own after a restart, so you do not have to unplug and replug it.
 
 ### Wi-Fi adapters
 
-An adapter scans in monitor mode and only receives; the app never transmits through it. On first use the app downloads the chipset's firmware from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/), checks it against a pinned SHA-256, and caches it on the phone.
+An adapter scans in monitor mode and only receives; the app never transmits through it. On first use the app downloads the chipset's firmware from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/), checks it against a pinned SHA-256, and caches it on the phone. Each access point it hears is recorded with its channel and security, read from the beacon — open, WEP, WPA, WPA2, or WPA3.
 
 | Chipset | Scans |
 |---|---|

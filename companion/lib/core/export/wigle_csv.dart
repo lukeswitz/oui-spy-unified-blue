@@ -45,6 +45,7 @@ class WigleCsv {
 
     // Data rows
     for (final d in detections) {
+      if (d.method == 'wifi_client') continue;
       if (d.latitude == null || d.longitude == null) continue;
 
       if (ignoreList != null) {

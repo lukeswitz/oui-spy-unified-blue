@@ -8,6 +8,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
+import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -66,16 +67,25 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     final conn = state.connectionState;
     final lost = conn == NodeConnectionState.reconnecting || conn == NodeConnectionState.disconnected;
     final phoneOn = ref.watch(phoneBleSourceProvider).active;
-    final wifiRunning = (ref.watch(wifiAdapterStateProvider).valueOrNull ??
-            ref.watch(wifiAdapterControllerProvider).state) ==
-        WifiAdapterState.running;
+    final wifiState = ref.watch(wifiAdapterStateProvider).valueOrNull ??
+        ref.watch(wifiAdapterControllerProvider).state;
+    final wifiRunning = wifiState == WifiAdapterState.running;
+    final wifiPresent = wifiState != WifiAdapterState.absent;
+    final sdrPresent = ref.watch(sdrPresentProvider).valueOrNull ?? false;
+    final usbPresent = wifiPresent || sdrPresent;
     final softScan = !state.isConnected && (phoneOn || wifiRunning);
+    final usbReady = !state.isConnected && !softScan && usbPresent;
     final scanLabel = phoneOn && wifiRunning
         ? 'Phone + USB scan'
         : wifiRunning
             ? 'USB scan'
             : 'Phone scan';
-    final statusColor = softScan
+    final readyLabel = wifiPresent && sdrPresent
+        ? 'USB + SDR ready'
+        : sdrPresent
+            ? 'RTL-SDR ready'
+            : 'USB adapter ready';
+    final statusColor = softScan || usbReady
         ? AppTheme.accent
         : lost
             ? AppTheme.error
@@ -97,7 +107,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
             children: [
               Expanded(
                 child: Text(
-                  !state.isConnected && !phoneOn && !wifiRunning
+                  !state.isConnected && !phoneOn && !wifiRunning && !usbPresent
                       ? ''
                       : state.nodeId.isNotEmpty
                           ? state.nodeId
@@ -133,7 +143,11 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  softScan ? scanLabel : _connectionWord(conn),
+                  softScan
+                      ? scanLabel
+                      : usbReady
+                          ? readyLabel
+                          : _connectionWord(conn),
                   style: TextStyle(color: statusColor, fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 if (uptime != null) ...[

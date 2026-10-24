@@ -159,7 +159,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           onTap: () => _pushPage(context, 'More device types', const _MoreTypesPage()),
         ),
         const SizedBox(height: 20),
-        const ConfigSectionHeader(label: 'YOUR LISTS'),
+        ConfigSectionHeader(label: 'Your lists'),
         ConfigActionRow(
           icon: Icons.list_alt,
           label: 'Watchlist',
@@ -179,7 +179,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           onTap: () => _pushPage(context, 'Ignore list', const SingleChildScrollView(child: _IgnoreListTab())),
         ),
         const SizedBox(height: 20),
-        const ConfigSectionHeader(label: 'THIS PHONE'),
+        ConfigSectionHeader(label: 'This phone'),
         ConfigToggleRow(
           icon: Icons.bluetooth_searching,
           label: 'Also scan with this phone',

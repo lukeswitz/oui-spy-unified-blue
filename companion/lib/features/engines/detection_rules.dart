@@ -138,7 +138,7 @@ class _WatchlistPanelState extends ConsumerState<WatchlistPanel> {
               const SizedBox(height: 8),
               TextField(
                 controller: idController,
-                style: TextStyle(color: t.textPrimary, fontFamily: 'monospace'),
+                style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono),
                 decoration: InputDecoration(
                   hintText: switch (type) {
                     WatchlistMatchType.oui => 'AA:BB:CC',
@@ -236,7 +236,6 @@ class SignaturesPanel extends ConsumerWidget {
                       message: s.desc,
                       child: InkWell(
                         onTap: () => ref.read(detectorSigMaskProvider.notifier).setBit(s.bit, !on),
-                        borderRadius: BorderRadius.circular(10),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                           child: Column(
@@ -246,7 +245,6 @@ class SignaturesPanel extends ConsumerWidget {
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: on ? AppTheme.detector.withValues(alpha: 0.18) : t.background,
-                                  borderRadius: BorderRadius.circular(10),
                                   border: Border.all(color: on ? AppTheme.detector.withValues(alpha: 0.5) : t.border),
                                 ),
                                 child: Icon(s.icon, size: 20, color: c),
@@ -291,7 +289,6 @@ class _WatchlistChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: AppTheme.detector.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(6),
             border: Border.all(color: AppTheme.detector.withValues(alpha: 0.3)),
           ),
           child: Row(
@@ -301,7 +298,7 @@ class _WatchlistChip extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 entry.identifier.toUpperCase(),
-                style: TextStyle(color: AppTheme.detector, fontSize: 11, fontFamily: 'monospace'),
+                style: TextStyle(color: AppTheme.detector, fontSize: 11, fontFamily: AppTheme.mono),
               ),
               if (entry.description.isNotEmpty) ...[
                 const SizedBox(width: 4),

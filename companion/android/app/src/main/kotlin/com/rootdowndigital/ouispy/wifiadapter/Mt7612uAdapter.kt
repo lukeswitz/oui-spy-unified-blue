@@ -499,7 +499,7 @@ internal class Mt7612uAdapter(
 
     // -- 802.11 parse: APs (beacon/probe-resp/data) + client stations --
 
-    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean)
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0)
     private class SightingTable {
         val map = LinkedHashMap<String, Entry>()
     }
@@ -530,21 +530,25 @@ internal class Mt7612uAdapter(
             .coerceIn(-120, -20)
         fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(off + it)) }
         fun group(off: Int) = u8(off) and 1 != 0
-        fun touch(mac: String, isAp: Boolean, ssid: String?) {
+        fun touch(mac: String, isAp: Boolean, ssid: String?, auth: Int = 0) {
             if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
             if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
             val e = table.map.getOrPut(mac) { Entry(null, rssi, ch, 0, isAp) }
             e.isAp = e.isAp || isAp
             if (!ssid.isNullOrEmpty()) e.ssid = ssid
             if (rssi > e.rssi) e.rssi = rssi
+            if (auth > e.auth) e.auth = auth
             e.channel = ch
             e.lastSeen = System.currentTimeMillis()
         }
         when (type) {
             0 -> when (sub) {
                 8, 5 -> {
-                    val ssid = readSsid(b, d + 36 + pad, end)
-                    if (good || !ssid.isNullOrEmpty()) touch(macAt(d + 16), true, ssid)
+                    val ieStart = d + 36 + pad
+                    val ssid = readSsid(b, ieStart, end)
+                    val cap = if (d + 35 + pad < end) (u8(d + 34 + pad) or (u8(d + 35 + pad) shl 8)) else 0
+                    val auth = authOf(b, ieStart, end, cap and 0x10 != 0)
+                    if (good || !ssid.isNullOrEmpty()) touch(macAt(d + 16), true, ssid, auth)
                 }
                 4, 0, 1, 2, 3, 10, 11, 12 -> if (good && captureClients) touch(macAt(d + 10), false, null)
             }
@@ -579,12 +583,57 @@ internal class Mt7612uAdapter(
         return null
     }
 
+    private fun authOf(b: ByteArray, from: Int, end: Int, privacy: Boolean): Int {
+        fun u(i: Int) = b[i].toInt() and 0xff
+        var rsn = false; var sae = false; var ent = false; var wpa = false
+        var i = from
+        while (i + 2 <= end) {
+            val tag = u(i); val tl = u(i + 1); val p = i + 2
+            if (p + tl > end) break
+            if (tag == 48 && tl >= 8) {
+                rsn = true
+                var o = p + 6
+                if (o + 2 <= p + tl) {
+                    val pw = u(o) or (u(o + 1) shl 8)
+                    o += 2 + 4 * pw
+                    if (o + 2 <= p + tl) {
+                        val akm = u(o) or (u(o + 1) shl 8)
+                        o += 2
+                        var k = 0
+                        while (k < akm && o + 4 <= p + tl) {
+                            if (u(o) == 0x00 && u(o + 1) == 0x0f && u(o + 2) == 0xac) {
+                                when (u(o + 3)) {
+                                    8, 18 -> sae = true
+                                    1, 3, 5, 6, 11, 12, 13 -> ent = true
+                                }
+                            }
+                            o += 4; k++
+                        }
+                    }
+                }
+            } else if (tag == 221 && tl >= 4 &&
+                u(p) == 0x00 && u(p + 1) == 0x50 && u(p + 2) == 0xf2 && u(p + 3) == 0x01) {
+                wpa = true
+            }
+            i += 2 + tl
+        }
+        return when {
+            sae -> 6
+            ent -> 5
+            rsn && wpa -> 4
+            rsn -> 3
+            wpa -> 2
+            privacy -> 1
+            else -> 0
+        }
+    }
+
     private fun emit(table: SightingTable, onBatch: (List<ApSighting>) -> Unit) {
         val now = System.currentTimeMillis()
         val fresh = 8000L
         val batch = table.map.entries
             .filter { now - it.value.lastSeen < fresh }
-            .map { (mac, e) -> ApSighting(mac, e.ssid, e.rssi, e.channel, Mt76Regs.freqOf(e.channel), client = !e.isAp) }
+            .map { (mac, e) -> ApSighting(mac, e.ssid, e.rssi, e.channel, Mt76Regs.freqOf(e.channel), client = !e.isAp, authMode = e.auth) }
         table.map.entries.removeAll { now - it.value.lastSeen > 60_000L }
         if (batch.isNotEmpty()) onBatch(batch)
     }

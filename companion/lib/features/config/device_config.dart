@@ -17,9 +17,10 @@ import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
-import 'package:oui_spy/features/feed/detection_row.dart' show showDetectionDetails;
+import 'package:oui_spy/features/feed/detection_row.dart' show showDetectionDetails, DetectionRow;
 import 'package:oui_spy/core/models/detection.dart' show FlockExtension, FlockConfidence, FlockConfidenceX, FlockExtensionSignals;
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/ota/ota_service.dart';
@@ -53,6 +54,7 @@ import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 
 part 'config_wardrive_settings.dart';
@@ -326,9 +328,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 8, 4, 16),
-              child: Text('Settings',
-                  style: TextStyle(color: t.textPrimary, fontSize: 28, fontWeight: FontWeight.w700)),
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
+              child: const DPageTitle('Settings'),
             ),
             for (var i = 0; i < kConfigSections.length; i++)
               sized(ConfigActionRow(
@@ -416,8 +417,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                 onPressed: _back,
               ),
               Expanded(
-                child: Text(title,
-                    style: TextStyle(color: t.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
+                child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: t.textPrimary)),
               ),
               if (_loading && i == 3)
                 const Padding(
@@ -445,10 +445,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'THEME'),
+        const ConfigSectionHeader(label: 'Theme'),
         for (final s in AppStyle.values)
           ConfigActionRow(
             icon: switch (s) {
+              AppStyle.paperDark => Icons.contrast,
+              AppStyle.paper => Icons.description_outlined,
+              AppStyle.graphite => Icons.layers_outlined,
+              AppStyle.black => Icons.crop_square,
+              AppStyle.slate => Icons.grid_view_outlined,
               AppStyle.standard => Icons.palette,
               AppStyle.cyberpunk => Icons.bolt,
               AppStyle.terminal => Icons.terminal,
@@ -479,7 +484,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'UNITS'),
+        const ConfigSectionHeader(label: 'Units'),
         ConfigToggleRow(
           icon: isImperial ? Icons.straighten : Icons.square_foot,
           label: 'Imperial Units',
@@ -504,7 +509,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'CONNECTION'),
+        const ConfigSectionHeader(label: 'Connection'),
         const _AutoConnectToggle(),
       ],
     );
@@ -533,7 +538,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'WARDRIVE — RSSI'),
+        const ConfigSectionHeader(label: 'Wardrive RSSI'),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(
@@ -545,7 +550,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const _WardriveRssiRow(isBle: true),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'SCAN TIMING'),
+        const ConfigSectionHeader(label: 'Scan timing'),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(
@@ -557,7 +562,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
 
         if (isC5) ...[
           const SizedBox(height: 16),
-          const ConfigSectionHeader(label: 'WIFI BAND'),
+          const ConfigSectionHeader(label: 'WiFi band'),
           Padding(
             padding: const EdgeInsets.only(bottom: 8, left: 2),
             child: Text(
@@ -569,7 +574,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ],
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'CHANNEL RANGE'),
+        ConfigSectionHeader(label: 'Channel range'),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
           child: Text(
@@ -578,6 +583,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ),
         const _ChannelRangeSlider(),
+
+        const SizedBox(height: 16),
+        ConfigSectionHeader(label: 'External WiFi adapter'),
+        const _WifiAdapterSection(),
       ],
     );
   }
@@ -587,7 +596,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'DATA & BACKUP'),
+        const ConfigSectionHeader(label: 'Data & backup'),
         ConfigActionRow(
           icon: Icons.import_export,
           label: 'Export & Database Backup',
@@ -596,7 +605,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           trailing: Icon(Icons.chevron_right, size: 18, color: t.textDim),
         ),
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'OUI DATABASE'),
+        const ConfigSectionHeader(label: 'OUI database'),
         const _OuiDatabaseSection(),
       ],
     );
@@ -626,8 +635,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: t.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: t.border, width: 0.5),
+            border: Border.all(color: t.border),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -711,12 +719,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       icon: icon,
       label: label,
       subtitle: subtitle,
-      color: selected ? AppTheme.themed(const Color(0xFF4AB8FF)) : null,
+      color: selected ? AppTheme.accent : null,
       onTap: () => ref.read(gpsProvider).setSource(source),
       trailing: Icon(
         selected ? Icons.check_circle : Icons.circle_outlined,
         size: 18,
-        color: selected ? AppTheme.themed(const Color(0xFF4AB8FF)) : AppTheme.textDim,
+        color: selected ? AppTheme.accent : AppTheme.textDim,
       ),
     );
   }
@@ -730,12 +738,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        if (hasBuzzer) const ConfigSectionHeader(label: 'AUDIO'),
+        if (hasBuzzer) const ConfigSectionHeader(label: 'Audio'),
         if (hasBuzzer) ConfigToggleRow(
           icon: Icons.volume_up,
           label: 'Buzzer',
           subtitle: 'Audible alerts on detections',
-          color: AppTheme.themed(const Color(0xFFFFB84A)),
+          color: AppTheme.accent,
           value: _buzzerEnabled,
           onChanged: (v) {
             setState(() => _buzzerEnabled = v);
@@ -751,7 +759,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             max: 255,
             divisions: 254,
             value: _buzzerVolume.toDouble(),
-            color: AppTheme.themed(const Color(0xFFFFB84A)),
+            color: AppTheme.accent,
             onChanged: (v) => setState(() => _buzzerVolume = v.round()),
             onChangeEnd: (_) => _writeHardwareConfig(),
           ),
@@ -760,19 +768,19 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             icon: Icons.music_note,
             label: 'Alert sounds',
             subtitle: 'Compose melodies and assign them to detections',
-            color: AppTheme.themed(const Color(0xFFFFB84A)),
+            color: AppTheme.accent,
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => const AlertSoundsScreen(),
             )),
           ),
 
         if (hasBuzzer) const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'LIGHTING'),
+        ConfigSectionHeader(label: 'Lighting'),
         ConfigToggleRow(
           icon: Icons.lightbulb,
           label: 'Status LED',
           subtitle: 'Power and activity indicator',
-          color: AppTheme.themed(const Color(0xFF4AFF8A)),
+          color: AppTheme.accent,
           value: _ledEnabled,
           onChanged: (v) {
             setState(() => _ledEnabled = v);
@@ -787,18 +795,18 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           max: 255,
           divisions: 255,
           value: _neopixelBrightness.toDouble(),
-          color: AppTheme.themed(const Color(0xFFB44AFF)),
+          color: AppTheme.accent,
           onChanged: (v) => setState(() => _neopixelBrightness = v.round()),
           onChangeEnd: (_) => _writeHardwareConfig(),
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'GPS SOURCE'),
+        ConfigSectionHeader(label: 'GPS source'),
         ConfigInfoRow(
           icon: _hwGps.active ? Icons.satellite_alt : Icons.satellite_alt_outlined,
           label: 'On-board GPS module',
           value: _hwGps.active ? 'FIX · ${_hwGps.satellites} sats' : 'NO FIX',
-          color: _hwGps.active ? AppTheme.themed(const Color(0xFF4AFF8A)) : AppTheme.themed(const Color(0xFFFF6B6B)),
+          color: _hwGps.active ? AppTheme.accent : AppTheme.error,
         ),
         ConfigInfoRow(
           icon: Icons.edit_location_alt,
@@ -806,9 +814,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           value: _hwGps.inUse
               ? 'HARDWARE'
               : (_hwGps.fallback ? 'PHONE (FALLBACK)' : 'PHONE'),
-          color: _hwGps.fallback
-              ? AppTheme.themed(const Color(0xFFFFB84A))
-              : AppTheme.themed(const Color(0xFF4AB8FF)),
+          color: _hwGps.fallback ? AppTheme.warning : AppTheme.accent,
         ),
         _gpsSourceRow(
           GpsSource.phone,
@@ -824,12 +830,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'FLOCK DETECTION'),
+        ConfigSectionHeader(label: 'Flock detection'),
         ConfigToggleRow(
           icon: Icons.lan,
           label: 'Extended Repo OUI set',
           subtitle: 'Double the OUIs, expect false postives.',
-          color: AppTheme.themed(const Color(0xFFFF6B6B)),
+          color: AppTheme.error,
           value: _flockExtendedOui,
           onChanged: (v) {
             setState(() => _flockExtendedOui = v);
@@ -840,7 +846,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           icon: Icons.fingerprint,
           label: 'Report OUI-only WiFi hits',
           subtitle: 'Report a WiFi device on a Flock OUI match alone, without a probe or other corroborating signal. More hits, more false positives.',
-          color: AppTheme.themed(const Color(0xFFFF6B6B)),
+          color: AppTheme.error,
           value: _flockAllowOuiOnly,
           onChanged: (v) {
             setState(() => _flockAllowOuiOnly = v);
@@ -849,12 +855,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'OFFLINE SCAN (EXPERIMENTAL)'),
+        ConfigSectionHeader(label: 'Offline scan (experimental)'),
         ConfigToggleRow(
           icon: Icons.cloud_off,
           label: 'Keep scanning while disconnected (EXPERIMENTAL)',
           subtitle: 'EXPERIMENTAL — may be unstable. Node keeps scanning when the app is closed; detections import on reconnect.',
-          color: AppTheme.themed(const Color(0xFF4AB8FF)),
+          color: AppTheme.accent,
           value: _offlineScanEnabled,
           onChanged: (v) {
             setState(() => _offlineScanEnabled = v);
@@ -866,7 +872,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             icon: Icons.my_location,
             label: 'Tag away detections with last GPS',
             subtitle: 'Detections seen while away get the phone\'s last-known location (approximate).',
-            color: AppTheme.themed(const Color(0xFF4AB8FF)),
+            color: AppTheme.accent,
             value: _offlineGpsTag,
             onChanged: (v) {
               setState(() => _offlineGpsTag = v);
@@ -890,7 +896,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         if (appState.isConnected) ...[
           const Padding(
             padding: EdgeInsets.only(top: 16),
-            child: ConfigSectionHeader(label: 'FIRMWARE TIMING'),
+            child: ConfigSectionHeader(label: 'Firmware timing'),
           ),
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
@@ -1056,7 +1062,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        const ConfigSectionHeader(label: 'MODE'),
+        const ConfigSectionHeader(label: 'Mode'),
         Padding(
           padding: const EdgeInsets.only(bottom: 12, left: 2),
           child: Text(
@@ -1097,7 +1103,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           },
         ),
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'STATUS'),
+        const ConfigSectionHeader(label: 'Status'),
         ConfigInfoRow(
           icon: Icons.hub,
           label: 'State',
@@ -1129,7 +1135,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
         if (modeEnc) ...[
           const SizedBox(height: 16),
-          const ConfigSectionHeader(label: 'KEY'),
+          const ConfigSectionHeader(label: 'Key'),
           ConfigInfoRow(
             icon: Icons.key,
             label: 'Fingerprint',
@@ -1149,7 +1155,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ],
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'NODES'),
+        ConfigSectionHeader(label: 'Nodes'),
         ..._buildNodeManageRows(appState),
       ],
     );
@@ -1224,7 +1230,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     }
     if (offlineIds.isNotEmpty) {
       widgets.add(const SizedBox(height: 8));
-      widgets.add(const ConfigSectionHeader(label: 'OFFLINE'));
+      widgets.add(ConfigSectionHeader(label: 'Offline'));
       for (final id in offlineIds) {
         widgets.add(row(id, online: false));
       }
@@ -1284,7 +1290,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        ConfigSectionHeader(label: isMgr ? 'MANAGER INFO' : 'NODE INFO'),
+        ConfigSectionHeader(label: isMgr ? 'Manager info' : 'Node info'),
         ConfigInfoRow(
           icon: Icons.numbers, label: 'Version', value: _fwVersion,
         ),
@@ -1309,7 +1315,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'WIFI NETWORK'),
+        const ConfigSectionHeader(label: 'WiFi network'),
         Padding(
           padding: const EdgeInsets.only(bottom: 12, left: 2),
           child: Text(
@@ -1364,11 +1370,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'UPDATES'),
+        const ConfigSectionHeader(label: 'Updates'),
         _OtaSection(currentVersion: _fwVersion),
 
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'DANGER ZONE'),
+        const ConfigSectionHeader(label: 'Danger zone'),
         ConfigActionRow(
           icon: Icons.refresh,
           label: 'Reboot Device',

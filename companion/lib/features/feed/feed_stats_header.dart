@@ -38,10 +38,16 @@ class FeedStatsHeader extends ConsumerWidget {
       ));
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: t.rule),
+          bottom: BorderSide(color: t.border),
+        ),
+      ),
       child: SizedBox(
-        height: 22,
+        height: MediaQuery.textScalerOf(context).scale(22),
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: items.length,
@@ -166,12 +172,7 @@ class _Section extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(
-            color: color,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-          ),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: t.textSecondary),
         ),
         const SizedBox(width: 8),
         for (int i = 0; i < entries.length; i++) ...[
@@ -191,7 +192,7 @@ class _Section extends StatelessWidget {
               color: t.textPrimary,
               fontSize: 10,
               fontWeight: FontWeight.w500,
-              fontFamily: 'monospace',
+              fontFamily: AppTheme.mono,
             ),
           ),
           const SizedBox(width: 4),
@@ -201,7 +202,7 @@ class _Section extends StatelessWidget {
               color: color,
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              fontFamily: 'monospace',
+              fontFamily: AppTheme.mono,
             ),
           ),
         ],

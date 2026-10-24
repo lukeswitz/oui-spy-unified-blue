@@ -169,9 +169,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
       options: MapOptions(
         initialCenter: initialCenter,
         initialZoom: 14,
-        backgroundColor: mapStyle.isDark
-            ? const Color(0xFF0A0A0A)
-            : const Color(0xFFE8E8EE),
+        backgroundColor: mapStyle.isDark ? Colors.black : Colors.white,
         onMapReady: () {
           _ready = true;
           _fit();
@@ -209,13 +207,6 @@ class _SelfDot extends StatelessWidget {
         shape: BoxShape.circle,
         color: AppTheme.gpsGood,
         border: Border.all(color: Colors.white, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.gpsGood.withValues(alpha: 0.6),
-            blurRadius: 8,
-            spreadRadius: 1,
-          ),
-        ],
       ),
     );
   }

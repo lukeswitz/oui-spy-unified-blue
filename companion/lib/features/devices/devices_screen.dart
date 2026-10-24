@@ -480,14 +480,15 @@ class DeviceRow extends ConsumerWidget {
     final vendor = o.mac.isEmpty
         ? null
         : ref.read(ouiLookupProvider).lookup(o.mac);
-    final title =
-        DeviceExplain.listLabel(
-          o,
-          signatureNames: device.signatureNames,
-          vendor: vendor,
-          guessed: guess,
-        ) ??
-        (o.name.isNotEmpty ? o.name : (o.mac.isNotEmpty ? o.mac : o.key));
+    final title = o.name.isNotEmpty
+        ? o.name
+        : (DeviceExplain.listLabel(
+              o,
+              signatureNames: device.signatureNames,
+              vendor: vendor,
+              guessed: guess,
+            ) ??
+            (o.mac.isNotEmpty ? o.mac : o.key));
     final withYou = ref.read(deviceRegistryProvider).withYou(device);
     final live = [
       for (final s in device.signatures)
@@ -495,7 +496,9 @@ class DeviceRow extends ConsumerWidget {
     ];
     final ble = o.kind == RadioKind.ble;
     final kinds = {for (final s in device.signatures) s.kind}.toList();
-    final accent = kinds.isEmpty ? t.textDim : classColor(kinds.first);
+    final accent = kinds.isEmpty
+        ? (ble ? t.textDim : AppTheme.wardrive)
+        : classColor(kinds.first);
     final text = Theme.of(context).textTheme;
     final iconSize = barIconSize(context) * 0.75;
     Widget flag(String tip, IconData i, Color c) => Padding(
@@ -541,101 +544,130 @@ class DeviceRow extends ConsumerWidget {
               border: Border(bottom: BorderSide(color: t.border)),
             ),
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.only(top: gap * 0.5, right: gap * 0.8),
-                      child: Icon(
-                        device.obs.kind == RadioKind.ble ? Icons.bluetooth : Icons.wifi,
-                        size: 15,
-                        color: accent,
-                      ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.only(top: gap * 0.6),
-                      child: Icon(Icons.circle, size: gap * 0.8, color: confidenceColor(guess.confidence)),
-                    ),
-                    SizedBox(width: gap * 0.6),
-                    Expanded(
-                      child: Text(
+                Padding(
+                  padding: EdgeInsets.only(right: gap * 0.8),
+                  child: Icon(
+                    kinds.isEmpty ? (ble ? Icons.bluetooth : Icons.wifi) : classIcon(kinds.first),
+                    size: 24,
+                    color: accent,
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.only(right: gap * 0.6),
+                  child: Icon(Icons.circle, size: gap * 0.8, color: confidenceColor(guess.confidence)),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: text.bodyMedium?.copyWith(
-                          color: Color.lerp(accent, t.textPrimary, 0.35),
+                          color: t.textPrimary,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      SizedBox(height: gap * 0.5),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            if (kinds.isNotEmpty) ...[
+                              Text(
+                                kinds.first.label.toUpperCase(),
+                                style: barLabelStyle(context, classColor(kinds.first))
+                                    .copyWith(fontSize: (text.labelSmall?.fontSize ?? 11) * 0.95),
+                              ),
+                              SizedBox(width: gap * 0.6),
+                            ],
+                            if (authMeta != null) ...[
+                              Icon(auth == 0 ? Icons.lock_open : Icons.lock,
+                                  size: iconSize,
+                                  color: auth == 0 ? authMeta.$2 : AppTheme.success),
+                              SizedBox(width: gap * 0.25),
+                              Text(authMeta.$1,
+                                  style: barLabelStyle(context,
+                                      auth == 0 ? authMeta.$2 : AppTheme.success)),
+                              SizedBox(width: gap * 0.6),
+                            ],
+                            if (o.hiddenSsid) ...[
+                              Icon(Icons.visibility_off, size: iconSize, color: AppTheme.warning),
+                              SizedBox(width: gap * 0.6),
+                            ],
+                            if (o.randomized) ...[
+                              Icon(Icons.shuffle, size: iconSize, color: t.textDim),
+                              SizedBox(width: gap * 0.6),
+                            ],
+                            if (withYou) ...[
+                              Icon(Icons.directions_walk, size: iconSize, color: AppTheme.error),
+                              SizedBox(width: gap * 0.6),
+                            ],
+                            if (!ble && o.channel > 0) ...[
+                              Text(
+                                'CH ${o.channel}',
+                                style: text.labelMedium?.copyWith(
+                                  color: AppTheme.accent,
+                                  fontFamily: AppTheme.mono,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              SizedBox(width: gap * 0.6),
+                            ],
+                            if (o.mac.isNotEmpty)
+                              Text(
+                                o.mac,
+                                style: text.bodySmall?.copyWith(color: t.textDim, fontFamily: AppTheme.mono),
+                              ),
+                            if (vendor != null && vendor.isNotEmpty) ...[
+                              SizedBox(width: gap * 0.6),
+                              Text(vendor,
+                                  style: text.bodySmall?.copyWith(color: t.textDim)),
+                            ],
+                            for (final f in live) ...[
+                              SizedBox(width: gap * 0.6),
+                              tag(f.display.toUpperCase(), f.emphasis ? AppTheme.error : AppTheme.accent),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: gap),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _RssiSpark(
+                      samples: [for (final s in o.gpsTrail) if (s.rssi != 0) s.rssi],
+                      rssi: o.rssi,
+                      rssiMin: o.rssiMin,
+                      rssiMax: o.rssiMax,
+                      color: rssiColor(o.rssi),
+                      track: t.border,
                     ),
-                    SizedBox(width: gap),
+                    SizedBox(height: gap * 0.3),
                     Text.rich(
                       TextSpan(children: [
                         TextSpan(
                           text: '${o.rssi}',
-                          style: text.titleMedium?.copyWith(
+                          style: text.titleLarge?.copyWith(
                             color: rssiColor(o.rssi),
                             fontFamily: AppTheme.mono,
                             fontWeight: FontWeight.w700,
+                            height: 1,
                           ),
                         ),
                         TextSpan(text: ' dBm', style: text.labelSmall?.copyWith(color: t.textDim)),
                       ]),
                     ),
                   ],
-                ),
-                SizedBox(height: gap * 0.6),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      if (kinds.isNotEmpty) ...[
-                        tag(kinds.first.label.toUpperCase(), classColor(kinds.first)),
-                        SizedBox(width: gap * 0.7),
-                      ],
-                      if (authMeta != null) ...[
-                        Icon(auth == 0 ? Icons.lock_open : Icons.lock, size: iconSize, color: authMeta.$2),
-                        SizedBox(width: gap * 0.3),
-                        Text(authMeta.$1, style: barLabelStyle(context, authMeta.$2)),
-                        SizedBox(width: gap * 0.7),
-                      ],
-                      if (o.hiddenSsid) ...[
-                        Icon(Icons.visibility_off, size: iconSize, color: AppTheme.warning),
-                        SizedBox(width: gap * 0.7),
-                      ],
-                      if (o.randomized) ...[
-                        Icon(Icons.shuffle, size: iconSize, color: t.textDim),
-                        SizedBox(width: gap * 0.7),
-                      ],
-                      if (withYou) ...[
-                        Icon(Icons.directions_walk, size: iconSize, color: AppTheme.error),
-                        SizedBox(width: gap * 0.7),
-                      ],
-                      if (!ble && o.channel > 0) ...[
-                        Text(
-                          'CH ${o.channel}',
-                          style: text.labelMedium?.copyWith(
-                            color: o.channel > 14 ? AppTheme.wardrive : AppTheme.detector,
-                            fontFamily: AppTheme.mono,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        SizedBox(width: gap * 0.7),
-                      ],
-                      if (o.mac.isNotEmpty)
-                        Text(
-                          o.mac,
-                          style: text.bodySmall?.copyWith(color: t.textDim, fontFamily: AppTheme.mono),
-                        ),
-                      for (final f in live) ...[
-                        SizedBox(width: gap * 0.7),
-                        tag(f.display.toUpperCase(), f.emphasis ? AppTheme.error : AppTheme.accent),
-                      ],
-                    ],
-                  ),
                 ),
               ],
             ),
@@ -644,6 +676,87 @@ class DeviceRow extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _RssiSpark extends StatelessWidget {
+  const _RssiSpark({
+    required this.samples,
+    required this.rssi,
+    required this.rssiMin,
+    required this.rssiMax,
+    required this.color,
+    required this.track,
+  });
+
+  final List<int> samples;
+  final int rssi;
+  final int rssiMin;
+  final int rssiMax;
+  final Color color;
+  final Color track;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(52, 15),
+      painter: _RssiSparkPainter(samples, rssi, rssiMin, rssiMax, color, track),
+    );
+  }
+}
+
+class _RssiSparkPainter extends CustomPainter {
+  _RssiSparkPainter(this.samples, this.rssi, this.rssiMin, this.rssiMax, this.color, this.track);
+
+  final List<int> samples;
+  final int rssi;
+  final int rssiMin;
+  final int rssiMax;
+  final Color color;
+  final Color track;
+
+  static const double _lo = -100;
+  static const double _hi = -30;
+
+  double _n(num v) => ((v - _lo) / (_hi - _lo)).clamp(0.0, 1.0);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final pts = samples.length > 14 ? samples.sublist(samples.length - 14) : samples;
+    if (pts.length >= 2) {
+      final path = Path();
+      for (var i = 0; i < pts.length; i++) {
+        final x = size.width * i / (pts.length - 1);
+        final y = size.height * (1 - _n(pts[i]));
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(path, line);
+      canvas.drawCircle(Offset(size.width, size.height * (1 - _n(pts.last))), 1.8, Paint()..color = color);
+      return;
+    }
+    final y = size.height / 2;
+    canvas.drawLine(Offset(0, y), Offset(size.width, y), Paint()
+      ..color = track
+      ..strokeWidth = 1);
+    canvas.drawLine(Offset(size.width * _n(rssiMin), y), Offset(size.width * _n(rssiMax), y), Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round);
+    canvas.drawCircle(Offset(size.width * _n(rssi), y), 2.2, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_RssiSparkPainter old) =>
+      old.rssi != rssi || old.samples.length != samples.length || old.color != color;
 }
 
 class DeviceDetailSheet extends ConsumerWidget {
@@ -701,7 +814,7 @@ class DeviceDetailSheet extends ConsumerWidget {
       ],
     );
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -722,8 +835,7 @@ class DeviceDetailSheet extends ConsumerWidget {
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(color: t.fill),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(child: DEyebrow(g.because, color: t.onFillDim)),
+                    const Spacer(),
                     IconButton(
                       tooltip: 'Close',
                       icon: Icon(Icons.close, color: t.onFill),

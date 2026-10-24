@@ -20,56 +20,84 @@ internal class SdrEngine(
         dev.abort()
     }
 
-    fun run(mode: Mode, centerHz: Long, rate: Int) {
+    fun run(mode: Mode, centerHz: Long, rate: Int, hopHz: List<Long> = emptyList()) {
         if (!dev.open()) {
             log("RTL-SDR: tuner not found")
             return
         }
+        val bands = if (hopHz.isNotEmpty()) hopHz else listOf(centerHz)
         dev.setSampleRate(rate)
-        dev.setCenterFreq(centerHz)
+        dev.setCenterFreq(bands.first())
         dev.setAgc(true)
-        log("RTL-SDR: $mode live at ${centerHz / 1_000_000.0} MHz, ${rate / 1_000_000.0} MS/s")
+        val bandList = bands.joinToString(" / ") { "${it / 1_000_000.0}" }
+        log("RTL-SDR: $mode live at $bandList MHz, ${rate / 1_000_000.0} MS/s")
         when (mode) {
             Mode.SPECTRUM -> runSpectrum(centerHz, rate)
             Mode.ADSB -> runAdsb(rate)
-            Mode.TPMS -> runTpms(centerHz, rate)
-            Mode.RTL433 -> runRtl433(centerHz, rate)
+            Mode.TPMS -> runTpms(bands, rate)
+            Mode.RTL433 -> runRtl433(bands, rate)
         }
     }
 
     private var rtl433ErrLogged = false
 
-    private fun runRtl433(centerHz: Long, rate: Int) {
+    private fun runRtl433(bands: List<Long>, rate: Int) {
         Rtl433Devices.registerAll()
-        Rtl433Registry.centerFreqHz = centerHz
-        val ism = IsmDecoder(rate, centerHz) { b ->
-            onDetection(
-                mapOf(
-                    "kind" to "ism",
-                    "modulation" to b.modulation,
-                    "bits" to b.bitHex,
-                    "bitCount" to b.bitCount,
-                    "frequency" to b.centerHz,
-                    "rssi" to b.rssiDb.toInt(),
-                ),
-            )
+        Rtl433Registry.reset()
+        Rtl433Registry.centerFreqHz = bands.first()
+        val isms = bands.associateWith { c ->
+            IsmDecoder(rate, c) { b ->
+                onDetection(
+                    mapOf(
+                        "kind" to "ism",
+                        "modulation" to b.modulation,
+                        "bits" to b.bitHex,
+                        "bitCount" to b.bitCount,
+                        "frequency" to b.centerHz,
+                        "rssi" to b.rssiDb.toInt(),
+                    ),
+                )
+            }
         }
+        var idx = 0
+        var hopAt = System.currentTimeMillis()
+        var settleUntil = 0L
+        var pkgs = 0
+        var decs = 0
+        var statAt = System.currentTimeMillis()
         dev.readIq { buf, n ->
             if (stop) return@readIq
+            val now = System.currentTimeMillis()
+            if (bands.size > 1 && now - hopAt >= DWELL_MS) {
+                idx = (idx + 1) % bands.size
+                dev.setCenterFreq(bands[idx])
+                Rtl433Registry.centerFreqHz = bands[idx]
+                Rtl433Registry.reset()
+                hopAt = now
+                settleUntil = now + SETTLE_MS
+                return@readIq
+            }
+            if (now < settleUntil) return@readIq
+            val c = bands[idx]
             try {
-                Rtl433Registry.run(buf, n / 2, rate) { r ->
+                pkgs += Rtl433Registry.run(buf, n / 2, rate) { r ->
+                    decs++
                     val m = HashMap<String, Any?>()
                     m["kind"] = "rtl433"
                     m["model"] = r.model
                     m["id"] = r.id
-                    m["frequency"] = centerHz
+                    m["frequency"] = c
                     for ((k, v) in r.fields) if (k !in m) m[k] = v
                     onDetection(m)
                 }
             } catch (e: Exception) {
                 if (!rtl433ErrLogged) { rtl433ErrLogged = true; log("RTL433 decoder threw (continuing): ${e.message}") }
             }
-            ism.feed(buf, n)
+            isms[c]!!.feed(buf, n)
+            if (now - statAt >= 2000) {
+                statAt = now
+                log("SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs")
+            }
         }
     }
 
@@ -124,36 +152,50 @@ internal class SdrEngine(
         }
     }
 
-    private fun runTpms(centerHz: Long, rate: Int) {
-        val dec = IsmDecoder(rate, centerHz) { b ->
-            onDetection(
-                mapOf(
-                    "kind" to "ism",
-                    "modulation" to b.modulation,
-                    "bits" to b.bitHex,
-                    "bitCount" to b.bitCount,
-                    "frequency" to b.centerHz,
-                    "rssi" to b.rssiDb.toInt(),
-                ),
-            )
-            val r = try { TpmsProtocols.decode(hexToBytes(b.bitHex), b.bitCount) } catch (e: Exception) { null }
-            if (r != null && plausibleTpms(r)) {
+    private fun runTpms(bands: List<Long>, rate: Int) {
+        val decs = bands.associateWith { c ->
+            IsmDecoder(rate, c) { b ->
                 onDetection(
                     mapOf(
-                        "kind" to "tpms",
-                        "model" to r.model,
-                        "id" to r.id,
-                        "pressureKpa" to r.pressureKpa,
-                        "tempC" to r.tempC,
-                        "flags" to r.flags,
+                        "kind" to "ism",
+                        "modulation" to b.modulation,
+                        "bits" to b.bitHex,
+                        "bitCount" to b.bitCount,
                         "frequency" to b.centerHz,
+                        "rssi" to b.rssiDb.toInt(),
                     ),
                 )
+                val r = try { TpmsProtocols.decode(hexToBytes(b.bitHex), b.bitCount) } catch (e: Exception) { null }
+                if (r != null && plausibleTpms(r)) {
+                    onDetection(
+                        mapOf(
+                            "kind" to "tpms",
+                            "model" to r.model,
+                            "id" to r.id,
+                            "pressureKpa" to r.pressureKpa,
+                            "tempC" to r.tempC,
+                            "flags" to r.flags,
+                            "frequency" to b.centerHz,
+                        ),
+                    )
+                }
             }
         }
+        var idx = 0
+        var hopAt = System.currentTimeMillis()
+        var settleUntil = 0L
         dev.readIq { buf, n ->
             if (stop) return@readIq
-            dec.feed(buf, n)
+            val now = System.currentTimeMillis()
+            if (bands.size > 1 && now - hopAt >= DWELL_MS) {
+                idx = (idx + 1) % bands.size
+                dev.setCenterFreq(bands[idx])
+                hopAt = now
+                settleUntil = now + SETTLE_MS
+                return@readIq
+            }
+            if (now < settleUntil) return@readIq
+            decs[bands[idx]]!!.feed(buf, n)
         }
     }
 
@@ -182,5 +224,7 @@ internal class SdrEngine(
         const val PEAK_MIN_SEP = 6
         const val ADSB_RATE = 2_000_000
         const val ADSB_HZ = 1_090_000_000L
+        const val DWELL_MS = 2_000L
+        const val SETTLE_MS = 60L
     }
 }
