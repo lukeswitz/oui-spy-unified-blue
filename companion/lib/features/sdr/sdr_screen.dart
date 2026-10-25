@@ -20,14 +20,13 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   late final SdrController _c = ref.read(sdrControllerProvider);
   final _freq = TextEditingController(text: '100.1');
   SdrMode _mode = SdrMode.spectrum;
-  final Set<int> _bands = {433};
+  Set<int> get _bands => _c.bands;
   static const _bandHz = {315: 315000000, 433: 433920000, 915: 915000000};
   String? _deviceId;
   String _deviceName = '';
   bool _busy = false;
   bool _showRaw = false;
   bool _adsbMap = false;
-  Object? _catFilter;
 
   @override
   void initState() {
@@ -92,13 +91,15 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
     if (id == null) {
       await _refresh();
       if (_deviceId == null) {
-        _snack('No RTL-SDR dongle detected — plug it in');
+        _snack('No RTL-SDR dongle detected. Plug one in.');
         return;
       }
     }
     setState(() => _busy = true);
     await _c.start(_deviceId!, _mode, _freqHz(), _rateFor(_mode),
-        freqsHz: _isIsm ? _bandsHz() : const []);
+        freqsHz: _isIsm ? _bandsHz() : const [],
+        raw: _showRaw,
+        categories: _mode == SdrMode.rtl433 ? _c.categories.toList() : const []);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -147,7 +148,6 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   void _setMode(SdrMode m) {
     setState(() {
       _mode = m;
-      _catFilter = null;
       _freq.text = switch (m) {
         SdrMode.adsb => '1090',
         SdrMode.tpms => '433.92',
@@ -161,7 +161,6 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final running = _c.state == SdrState.running || _c.state == SdrState.starting;
-    final showChips = _mode == SdrMode.tpms || _mode == SdrMode.rtl433;
     return Scaffold(
       appBar: AppBar(
         title: const Text('RTL-SDR'),
@@ -169,8 +168,19 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
           Row(
             children: [
               Text('RAW', style: TextStyle(fontSize: 12, color: t.textSecondary)),
-              Switch(value: _showRaw, onChanged: (v) => setState(() => _showRaw = v)),
+              Switch(
+                value: _showRaw,
+                onChanged: (v) {
+                  setState(() => _showRaw = v);
+                  if (_isIsm && _c.state == SdrState.running) _start();
+                },
+              ),
             ],
+          ),
+          IconButton(
+            onPressed: () => _showCategoryLegend(context, t),
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Category guide',
           ),
           IconButton(onPressed: _busy ? null : _refresh, icon: const Icon(Icons.refresh)),
         ],
@@ -248,8 +258,8 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
                   _bands.length > 1
-                      ? 'Hopping ${_bandsHz().length} bands (~2s each) — one dongle, one band at a time'
-                      : 'Single band — add more to hop and catch 315/433/915 devices',
+                      ? 'Sweeping ${_bandsHz().length} bands, about 2s each'
+                      : 'One band. Add 315, 433, or 915 to sweep more.',
                   style: TextStyle(color: t.textDim, fontSize: 11),
                 ),
               ),
@@ -292,24 +302,32 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
               ),
             ],
             const SizedBox(height: 12),
-            if (showChips)
+            if (_mode == SdrMode.rtl433 && !running) ...[
               StreamBuilder<SdrFrame>(
                 stream: _c.frameStream,
                 builder: (context, _) => _CategoryBar(
                   detections: _c.detections,
-                  selected: _catFilter,
+                  selected: _c.categories,
                   t: t,
-                  onSelect: (c) => setState(() => _catFilter = c),
+                  onToggle: (c) => setState(() {
+                    if (_c.categories.contains(c)) {
+                      if (_c.categories.length > 1) _c.categories.remove(c);
+                    } else {
+                      _c.categories.add(c);
+                    }
+                  }),
                 ),
               ),
-            if (showChips) const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             Expanded(
               flex: 2,
               child: StreamBuilder<SdrFrame>(
                 stream: _c.frameStream,
                 builder: (context, _) => switch (_mode) {
                   SdrMode.spectrum => _SpectrumView(
-                      power: _c.power, color: AppTheme.accent, grid: t.border),
+                      power: _c.power, color: AppTheme.accent, grid: t.border,
+                      centerHz: _c.centerHz, rate: _c.rate, labelColor: t.textDim),
                   SdrMode.adsb => _adsbMap
                       ? AdsbMap(aircraft: _c.adsbAircraft, t: t)
                       : AdsbList(aircraft: _c.adsbAircraft, t: t),
@@ -317,7 +335,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                       detections: _c.detections,
                       t: t,
                       showRaw: _showRaw,
-                      catFilter: showChips ? _catFilter : null,
+                      catFilter: null,
                     ),
                 },
               ),
@@ -360,6 +378,29 @@ Color _catColor(Sdr433Category c) => AppTheme.themed(switch (c) {
       Sdr433Category.weather => AppTheme.skySpy,
       Sdr433Category.unknown => AppTheme.textDim,
     });
+
+IconData _catIcon(Sdr433Category c) => switch (c) {
+      Sdr433Category.tpms => Icons.tire_repair,
+      Sdr433Category.meter => Icons.electric_meter,
+      Sdr433Category.security => Icons.shield_outlined,
+      Sdr433Category.fob => Icons.settings_remote,
+      Sdr433Category.environmental => Icons.home_outlined,
+      Sdr433Category.weather => Icons.cloud_outlined,
+      Sdr433Category.unknown => Icons.help_outline,
+    };
+
+IconData _detIcon(SdrDetection d) {
+  switch (d.kind) {
+    case 'adsb':
+      return Icons.flight;
+    case 'ism':
+      return Icons.graphic_eq;
+    case 'rf':
+      return Icons.cell_tower;
+  }
+  final c = _categoryOf(d);
+  return c != null ? _catIcon(c) : Icons.sensors;
+}
 
 class _BandSelector extends StatelessWidget {
   const _BandSelector(
@@ -405,32 +446,37 @@ class _BandSelector extends StatelessWidget {
 }
 
 class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({required this.detections, required this.selected, required this.t, required this.onSelect});
+  const _CategoryBar({required this.detections, required this.selected, required this.t, required this.onToggle});
 
   final List<SdrDetection> detections;
-  final Object? selected;
+  final Set<String> selected;
   final ResolvedTheme t;
-  final void Function(Object?) onSelect;
+  final void Function(String) onToggle;
+
+  static const _scanCats = [
+    Sdr433Category.weather,
+    Sdr433Category.meter,
+    Sdr433Category.security,
+    Sdr433Category.fob,
+    Sdr433Category.environmental,
+  ];
 
   @override
   Widget build(BuildContext context) {
     final counts = <Sdr433Category, int>{};
-    var total = 0;
     for (final d in detections) {
       final c = _categoryOf(d);
-      if (c == null) continue;
-      counts[c] = (counts[c] ?? 0) + 1;
-      total++;
+      if (c != null) counts[c] = (counts[c] ?? 0) + 1;
     }
     final chips = <Widget>[
-      _chip(label: 'All', count: total, color: t.textPrimary, active: selected == null, onTap: () => onSelect(null)),
-      for (final c in Sdr433Category.values)
+      for (final c in _scanCats)
         _chip(
+          icon: _catIcon(c),
           label: c.label,
           count: counts[c] ?? 0,
           color: _catColor(c),
-          active: selected == c,
-          onTap: () => onSelect(c),
+          active: selected.contains(c.name),
+          onTap: () => onToggle(c.name),
         ),
     ];
     return SizedBox(
@@ -445,6 +491,7 @@ class _CategoryBar extends StatelessWidget {
   }
 
   Widget _chip({
+    required IconData icon,
     required String label,
     required int count,
     required Color color,
@@ -463,6 +510,8 @@ class _CategoryBar extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Icon(icon, size: 13, color: active ? color : t.textDim),
+            const SizedBox(width: 5),
             Text(label,
                 style: TextStyle(
                   color: active ? t.textPrimary : t.textDim,
@@ -485,24 +534,38 @@ class _CategoryBar extends StatelessWidget {
 }
 
 class _SpectrumView extends StatelessWidget {
-  const _SpectrumView({required this.power, required this.color, required this.grid});
+  const _SpectrumView(
+      {required this.power,
+      required this.color,
+      required this.grid,
+      required this.centerHz,
+      required this.rate,
+      required this.labelColor});
 
   final List<double> power;
   final Color color;
   final Color grid;
+  final int centerHz;
+  final int rate;
+  final Color labelColor;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(painter: _SpectrumPainter(power, color, grid), child: const SizedBox.expand());
+    return CustomPaint(
+        painter: _SpectrumPainter(power, color, grid, centerHz, rate, labelColor),
+        child: const SizedBox.expand());
   }
 }
 
 class _SpectrumPainter extends CustomPainter {
-  _SpectrumPainter(this.power, this.color, this.grid);
+  _SpectrumPainter(this.power, this.color, this.grid, this.centerHz, this.rate, this.labelColor);
 
   final List<double> power;
   final Color color;
   final Color grid;
+  final int centerHz;
+  final int rate;
+  final Color labelColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -536,6 +599,23 @@ class _SpectrumPainter extends CustomPainter {
     fill.close();
     canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.18));
     canvas.drawPath(path, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 1.5);
+    if (centerHz > 0 && rate > 0) {
+      final half = rate / 2.0;
+      for (final f in const [0.0, 0.25, 0.5, 0.75, 1.0]) {
+        final hz = (centerHz - half) + rate * f;
+        final tp = TextPainter(
+          text: TextSpan(
+            text: (hz / 1e6).toStringAsFixed(2),
+            style: TextStyle(color: labelColor, fontSize: 9),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        var dx = size.width * f - tp.width / 2;
+        if (f == 0.0) dx = 1;
+        if (f == 1.0) dx = size.width - tp.width - 1;
+        tp.paint(canvas, Offset(dx, size.height - tp.height - 1));
+      }
+    }
   }
 
   @override
@@ -553,14 +633,14 @@ class _DetectionList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = detections.where((d) {
-      if (d.kind == 'ism') return showRaw;
+      if (d.kind == 'ism' || d.kind == 'rf') return showRaw;
       if (catFilter is Sdr433Category) return _categoryOf(d) == catFilter;
       return true;
     }).toList();
     if (items.isEmpty) {
-      final ismCount = detections.where((d) => d.kind == 'ism').length;
+      final ismCount = detections.where((d) => d.kind == 'ism' || d.kind == 'rf').length;
       final msg = (ismCount > 0 && !showRaw)
-          ? 'No decoded devices yet — $ismCount raw burst${ismCount == 1 ? '' : 's'} heard.\nTurn on RAW (top right) to see them.'
+          ? 'No decoded devices yet. Heard $ismCount raw burst${ismCount == 1 ? '' : 's'}.\nTurn on RAW (top right) to see them.'
           : 'No signals yet';
       return Center(
         child: Padding(
@@ -576,6 +656,79 @@ class _DetectionList extends StatelessWidget {
       itemBuilder: (context, i) => _DetectionCard(d: items[i], t: t),
     );
   }
+}
+
+void _showCategoryLegend(BuildContext context, ResolvedTheme t) {
+  const cats = [
+    Sdr433Category.weather,
+    Sdr433Category.meter,
+    Sdr433Category.security,
+    Sdr433Category.fob,
+    Sdr433Category.environmental,
+  ];
+  const examples = {
+    Sdr433Category.weather: 'Weather stations — temperature, humidity, wind, rain (Acurite, Oregon, LaCrosse, Fine Offset, TFA, Bresser).',
+    Sdr433Category.meter: 'Utility meters — power, water, gas (ERT/SCM, Neptune, Elster, M-Bus).',
+    Sdr433Category.security: 'Alarms and sensors — door, motion, smoke (Honeywell, DSC, Visonic, Kidde).',
+    Sdr433Category.fob: 'Remotes and key fobs — garage, gate, car (KeeLoq, Nice, Somfy, car keys).',
+    Sdr433Category.environmental: 'Home and property — water leak, air quality, thermostats, soil moisture, BBQ/meat probes, oil tank.',
+  };
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: t.surface,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Scan categories',
+                style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('Choose which 315 / 433 / 915 MHz device types to decode. Fewer types means less load.',
+                style: TextStyle(color: t.textDim, fontSize: 12)),
+            const SizedBox(height: 16),
+            for (final c in cats) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(_catIcon(c), size: 20, color: _catColor(c)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c.label,
+                            style: TextStyle(color: _catColor(c), fontSize: 14, fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 2),
+                        Text(examples[c]!,
+                            style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.3)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
+            Divider(height: 1, color: t.border),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.tire_repair, size: 16, color: t.textDim),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Tire sensors use the TPMS tab, aircraft use the ADS-B tab.',
+                      style: TextStyle(color: t.textDim, fontSize: 11)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
@@ -648,6 +801,8 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
             child: Row(
               children: [
+                Icon(_detIcon(d), size: 22, color: accent),
+                const SizedBox(width: 10),
                 _Badge(label: cat?.label ?? d.kind, color: accent),
                 const SizedBox(width: 10),
                 Expanded(
@@ -825,7 +980,7 @@ class _DetectionCard extends StatelessWidget {
     final count = f['count'] as int?;
     if (count != null && count > 1) specs.add('×$count');
 
-    final isRaw = d.kind == 'ism';
+    final isRaw = d.kind == 'ism' || d.kind == 'rf';
     final titleColor = isRaw ? t.textSecondary : accent;
     final hz = d.frequency;
 
@@ -844,6 +999,8 @@ class _DetectionCard extends StatelessWidget {
         children: [
           Row(
             children: [
+              Icon(_detIcon(d), size: 18, color: accent),
+              const SizedBox(width: 7),
               _Badge(label: badge, color: accent),
               const SizedBox(width: 8),
               Expanded(

@@ -2,7 +2,6 @@ package com.rootdowndigital.ouispy.wifiadapter
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbInterface
-import android.util.Log
 
 internal class SdrEngine(
     conn: UsbDeviceConnection,
@@ -21,7 +20,7 @@ internal class SdrEngine(
         dev.abort()
     }
 
-    fun run(mode: Mode, centerHz: Long, rate: Int, hopHz: List<Long> = emptyList()) {
+    fun run(mode: Mode, centerHz: Long, rate: Int, hopHz: List<Long> = emptyList(), raw: Boolean = false, categories: List<String> = Rtl433Categories.ALL_CATEGORIES) {
         if (!dev.open()) {
             log("RTL-SDR: tuner not found")
             return
@@ -36,17 +35,17 @@ internal class SdrEngine(
             Mode.SPECTRUM -> runSpectrum(centerHz, rate)
             Mode.ADSB -> runAdsb(rate)
             Mode.TPMS -> runTpms(bands, rate)
-            Mode.RTL433 -> runRtl433(bands, rate)
+            Mode.RTL433 -> runRtl433(bands, rate, raw, categories)
         }
     }
 
     private var rtl433ErrLogged = false
 
-    private fun runRtl433(bands: List<Long>, rate: Int) {
-        Rtl433Devices.registerAll()
+    private fun runRtl433(bands: List<Long>, rate: Int, raw: Boolean, categories: List<String>) {
+        Rtl433Devices.registerAll(categories.toSet())
         Rtl433Registry.reset()
         Rtl433Registry.centerFreqHz = bands.first()
-        val isms = bands.associateWith { c ->
+        val isms = if (raw) bands.associateWith { c ->
             IsmDecoder(rate, c) { b ->
                 onDetection(
                     mapOf(
@@ -59,20 +58,15 @@ internal class SdrEngine(
                     ),
                 )
             }
-        }
+        } else emptyMap()
         var idx = 0
         var hopAt = System.currentTimeMillis()
         var settleUntil = 0L
         var pkgs = 0
         var decs = 0
         var statAt = System.currentTimeMillis()
-        var ookP = 0
-        var fskP = 0
-        var maxPul = 0
         var curRssi = 0
-        Rtl433Registry.onPackage = { type, np, rssi ->
-            if (type == PULSE_DATA_FSK) fskP++ else ookP++
-            if (np > maxPul) maxPul = np
+        Rtl433Registry.onPackage = { _, _, rssi ->
             curRssi = rssi
         }
         dev.readIq { buf, n ->
@@ -104,11 +98,10 @@ internal class SdrEngine(
             } catch (e: Exception) {
                 if (!rtl433ErrLogged) { rtl433ErrLogged = true; log("RTL433 decoder threw (continuing): ${e.message}") }
             }
-            isms[c]!!.feed(buf, n)
+            if (raw) isms[c]?.feed(buf, n)
             if (now - statAt >= 2000) {
                 statAt = now
                 log("SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs")
-                Log.i("SDRSCAN", "SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs ook=$ookP fsk=$fskP maxPulses=$maxPul decoders=${Rtl433Registry.decoders.size}")
             }
         }
     }

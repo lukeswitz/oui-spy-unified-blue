@@ -463,7 +463,7 @@ void showDetectionDetails(
                                 .read(wardriveProvider)
                                 .removeDetectionGroup(detection);
                           },
-                          child: const Text('Delete all MACs'),
+                          child: Text(onDelete != null ? 'Delete' : 'Delete all MACs'),
                         ),
                       ),
                     ],

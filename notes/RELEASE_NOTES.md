@@ -25,12 +25,14 @@
 - Boards use a random MAC each boot.
 - App themes and node temperatures.
 - WDGWars upload shows the server's result counts.
-- SDR SCAN decodes the full rtl_433 device set: weather stations, tire sensors, utility meters, Wireless M-Bus, key fobs, and security sensors. Each decode is checksum-verified.
+- SDR SCAN decodes the full rtl_433 device set: weather stations, tire sensors, utility meters, Wireless M-Bus, key fobs, and security sensors. Every decoder checks the device's checksum and drops noise.
 - SDR hits save to History under an SDR filter, with frequency and decoded fields.
 - SDR TPMS and SCAN sweep 315, 433.92, and 915 MHz from a band picker.
 - Foxhunt an SDR signal by its live signal strength.
 - ADS-B tab: aircraft list with photos, a map of each aircraft's flight path, and upload to WDGWars.
-- Bluetooth adult toys detected as their own class.
+- SDR SCAN category picker: choose Weather, Home, Meters, Security, or Remotes, and the app decodes only those. An info button explains each, and list rows show the category's icon.
+- SDR SCAN now skips decoders that have no checksum, matching rtl_433's defaults, so ambiguous signals no longer show as false devices.
+- Detects Bluetooth adult toys as their own class.
 
 ## Changed
 
@@ -63,3 +65,6 @@
 - Camera alert toggle showed off while alerts still fired.
 - A session started right after connecting could switch itself off.
 - StickC boards missing from the OTA list.
+- SDR no longer slows the app or hangs on exit during a scan.
+- SDR band choice (315 / 433 / 915) is kept when you leave and reopen the screen.
+- Spectrum view shows frequency labels along the bottom axis again.

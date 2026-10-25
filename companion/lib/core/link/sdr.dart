@@ -49,7 +49,7 @@ class Sdr {
   }
 
   static Future<bool> start(String id, SdrMode mode, int freqHz, int rate,
-      {List<int> freqsHz = const []}) async {
+      {List<int> freqsHz = const [], bool raw = false, List<String> categories = const []}) async {
     if (!supported) return false;
     return await _methods.invokeMethod<bool>('sdrStart', {
           'id': id,
@@ -57,6 +57,8 @@ class Sdr {
           'freqHz': freqHz,
           'rate': rate,
           'freqsHz': freqsHz,
+          'raw': raw,
+          'categories': categories,
         }) ??
         false;
   }
@@ -122,9 +124,12 @@ class SdrController {
   int _centerHz = 0;
   int _rate = 0;
   final List<SdrDetection> _detections = [];
+  final Map<String, int> _pending = {};
   final Map<String, AdsbAircraft> _adsb = {};
   String _scanStatus = '';
   SdrMode? _mode;
+  final Set<int> bands = {433};
+  final Set<String> categories = {'weather', 'meter', 'security', 'fob', 'environmental'};
 
   SdrState get state => _current;
   SdrMode? get mode => _mode;
@@ -138,10 +143,11 @@ class SdrController {
   Stream<SdrFrame> get frameStream => _frames.stream;
 
   Future<bool> start(String deviceId, SdrMode mode, int freqHz, int rate,
-      {List<int> freqsHz = const []}) async {
+      {List<int> freqsHz = const [], bool raw = false, List<String> categories = const []}) async {
     _set(SdrState.starting);
     if (mode != _mode) {
       _detections.clear();
+      _pending.clear();
       _adsb.clear();
     }
     _mode = mode;
@@ -166,7 +172,7 @@ class SdrController {
       _set(SdrState.error);
     });
     try {
-      final ok = await Sdr.start(deviceId, mode, freqHz, rate, freqsHz: freqsHz);
+      final ok = await Sdr.start(deviceId, mode, freqHz, rate, freqsHz: freqsHz, raw: raw, categories: categories);
       if (!ok) {
         _set(SdrState.error);
         await _sub?.cancel();
@@ -199,20 +205,26 @@ class SdrController {
     final d = f.detection;
     if (d != null) {
       final key = _dedupKey(d);
-      var isNew = false;
-      if (key != null) {
-        final idx = _detections.indexWhere((e) => _dedupKey(e) == key);
+      final idx = key == null ? -1 : _detections.indexWhere((e) => _dedupKey(e) == key);
+      if (key != null && d.kind != 'adsb' && idx < 0) {
+        final seen = (_pending[key] ?? 0) + 1;
+        if (seen < 2) {
+          _pending[key] = seen;
+          _frames.add(f);
+          return;
+        }
+        _pending.remove(key);
+        _detections.insert(0, d);
+        _persist(d);
+      } else {
         if (idx >= 0) {
           final prev = _detections.removeAt(idx);
           d.fields['count'] = ((prev.fields['count'] as int?) ?? 1) + 1;
-        } else {
-          isNew = true;
         }
+        _detections.insert(0, d);
+        if (d.kind == 'adsb') _mergeAdsb(d);
       }
-      _detections.insert(0, d);
       if (_detections.length > 400) _detections.removeRange(400, _detections.length);
-      if (d.kind == 'adsb') _mergeAdsb(d);
-      if (isNew && d.kind != 'adsb') _persist(d);
     }
     _frames.add(f);
   }

@@ -82,34 +82,8 @@ class GenericRemoteDecoder : Rtl433Decoder() {
     }
 }
 
-class HondaRemoteDecoder : Rtl433Decoder() {
-    override val name = "Honda Car Key"
-    override val mod = Mod.FSK_PWM
-    override val short = 250
-    override val long = 500
-    override val reset = 2000
-
-    override fun decode(bb: BitBuffer): List<Reading> {
-        for (row in 0 until bb.numRows) {
-            val b = bb.bb[row]
-            val n = bb.bitsPerRow[row]
-            if (n < 385 || n > 394 || b[0] != 0xFF || b[38] != 0xFF) continue
-            val command = (b[46] - 0xAA) and 0xFF
-            val code = when (command) {
-                0 -> "boot"
-                1 -> "unlock"
-                2 -> "lock"
-                else -> "unknown"
-            }
-            val deviceId = (b[44] shl 8) or b[45]
-            return listOf(Reading("Honda-CarRemote", deviceId.toString(), mapOf("id" to deviceId, "code" to code)))
-        }
-        return emptyList()
-    }
-}
-
 object Rtl433Registry {
-    val decoders = mutableListOf<Rtl433Decoder>(GenericRemoteDecoder(), HondaRemoteDecoder())
+    val decoders = mutableListOf<Rtl433Decoder>()
 
     var centerFreqHz = 433_920_000L
 
@@ -202,6 +176,8 @@ object Rtl433Registry {
     }
 
     fun demo() {
+        decoders.clear()
+        decoders.add(GenericRemoteDecoder())
         val rate = 250_000
 
         val remote = intArrayOf(0xED, 0xCB, 0xFE, 0x80)
@@ -221,8 +197,7 @@ object Rtl433Registry {
         val hondaTrain = pwmTrain(honda, 392, rate, 250, 500, 250, 4000)
         val fskGot = ArrayList<Reading>()
         dispatch(PulsePackage(PULSE_DATA_FSK, hondaTrain)) { fskGot.add(it) }
-        check(fskGot.size == 1) { "honda readings=${fskGot.size}" }
-        check(fskGot[0].model == "Honda-CarRemote" && fskGot[0].id == "4660" && fskGot[0].fields["code"] == "unlock") { "honda ${fskGot[0]}" }
+        check(fskGot.isEmpty()) { "honda is disabled upstream; must not decode by default: $fskGot" }
 
         val ookBb = Slicer.pulsePwm(remoteTrain, GenericRemoteDecoder().sliceParams())
         check(ookBb.size == 1 && ookBb[0].bitsPerRow[0] == 25) { "slicer rows" }

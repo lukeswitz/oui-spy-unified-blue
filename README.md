@@ -88,11 +88,11 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 | Spectrum | You set it, 100.1 MHz by default | A live waterfall of signal strength across the band |
 | ADS-B | 1090 MHz | Aircraft broadcasting their position and identity |
 | TPMS | 315, 433.92, or 915 MHz | Tire-pressure sensors in passing vehicles |
-| SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, tire sensors, utility meters (including Wireless M-Bus), key fobs, security sensors, and more |
+| SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus), security sensors, remotes and key fobs, and home sensors |
 
-TPMS and SCAN hits are decoded on the SDR screen and grouped by category: tire sensors, meters, security devices, key fobs, and environmental and weather sensors. Each decode is verified against the device's own checksum. Noise is rejected, not shown as a false reading. Decoded devices are saved to History under an SDR filter, and you can foxhunt one by its signal strength.
+In SCAN mode you pick which categories to decode: Weather, Home, Meters, Security, and Remotes. The app runs only the decoders for the categories you choose, so a narrower scan does less work on the phone. The info button at the top explains what each category covers, and every list row shows the category's icon. Each decoder checks the device's checksum and drops readings that fail it, so noise does not show up as a device. Decoded devices save to History under an SDR filter, and you can foxhunt one by its signal strength. Tire sensors have their own TPMS tab, which reads them more reliably than SCAN.
 
-On the ADS-B tab, each aircraft shows as a card with its callsign, altitude, speed, heading, and a photo looked up online by its ICAO address. A map view draws each aircraft's flight path from the positions it has broadcast. One button uploads the aircraft you have heard to WDGWars.
+On the ADS-B tab, each aircraft shows as a card with its callsign, altitude, speed, heading, and a photo the app looks up online by its ICAO address. A map view draws each aircraft's flight path from the positions it has broadcast. One button uploads the aircraft you have heard to WDGWars.
 
 ## Engines
 

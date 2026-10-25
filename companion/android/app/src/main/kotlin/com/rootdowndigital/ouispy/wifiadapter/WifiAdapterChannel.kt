@@ -137,7 +137,11 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
 
     fun dispose() {
+        sdrSink = null
+        sink = null
+        eventSink = null
         stopAdapter()
+        main.removeCallbacksAndMessages(null)
         try {
             context.unregisterReceiver(receiver)
         } catch (e: IllegalArgumentException) {
@@ -188,14 +192,16 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 val freqHz = call.argument<Number>("freqHz")?.toLong() ?: 100_100_000L
                 val rate = call.argument<Int>("rate") ?: 2_048_000
                 val freqsHz = call.argument<List<Number>>("freqsHz")?.map { it.toLong() } ?: emptyList()
+                val raw = call.argument<Boolean>("raw") ?: false
+                val categories = call.argument<List<String>>("categories") ?: Rtl433Categories.ALL_CATEGORIES
                 val device = candidates().firstOrNull { it.deviceName == id && kindOf(it) == Kind.RTLSDR }
                 if (device == null) {
                     result.success(false)
                 } else if (usb.hasPermission(device)) {
-                    startSdr(device, mode, freqHz, rate, freqsHz)
+                    startSdr(device, mode, freqHz, rate, freqsHz, raw, categories)
                     result.success(true)
                 } else {
-                    pendingSdr = { startSdr(device, mode, freqHz, rate, freqsHz) }
+                    pendingSdr = { startSdr(device, mode, freqHz, rate, freqsHz, raw, categories) }
                     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
                     val intent = Intent(permissionAction).setPackage(context.packageName)
                     usb.requestPermission(device, PendingIntent.getBroadcast(context, 0, intent, flags))
@@ -454,7 +460,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         main.post { eventSink?.success(mapOf("attached" to attached, "device" to describe(device))) }
     }
 
-    private fun startSdr(device: UsbDevice, mode: String, freqHz: Long, rate: Int, hopHz: List<Long> = emptyList()) {
+    private fun startSdr(device: UsbDevice, mode: String, freqHz: Long, rate: Int, hopHz: List<Long> = emptyList(), raw: Boolean = false, categories: List<String> = Rtl433Categories.ALL_CATEGORIES) {
         stopAdapter()
         val conn = usb.openDevice(device)
         if (conn == null) {
@@ -480,7 +486,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         stopFn = eng::abort
         val t = Thread {
             try {
-                eng.run(m, freqHz, rate, hopHz)
+                eng.run(m, freqHz, rate, hopHz, raw, categories)
             } catch (e: Exception) {
                 main.post { emitStatus("RTL-SDR: ${e.message}") }
             } finally {

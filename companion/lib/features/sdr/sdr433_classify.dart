@@ -3,10 +3,10 @@ enum Sdr433Category { tpms, meter, security, fob, environmental, weather, unknow
 extension Sdr433CategoryLabel on Sdr433Category {
   String get label => switch (this) {
         Sdr433Category.tpms => 'TPMS',
-        Sdr433Category.meter => 'Meter',
+        Sdr433Category.meter => 'Meters',
         Sdr433Category.security => 'Security',
-        Sdr433Category.fob => 'Fob',
-        Sdr433Category.environmental => 'Environmental',
+        Sdr433Category.fob => 'Remotes',
+        Sdr433Category.environmental => 'Home',
         Sdr433Category.weather => 'Weather',
         Sdr433Category.unknown => 'Unknown',
       };
@@ -16,7 +16,7 @@ extension Sdr433CategoryLabel on Sdr433Category {
         Sdr433Category.meter => 'Utility meter (power, water, or gas)',
         Sdr433Category.security => 'Alarm or security sensor (door, motion, smoke)',
         Sdr433Category.fob => 'Remote control or key fob (gate, garage, car)',
-        Sdr433Category.environmental => 'Environmental sensor (soil, leak, air quality)',
+        Sdr433Category.environmental => 'Home sensor (leak, air quality, thermostat, soil, probe)',
         Sdr433Category.weather => 'Weather-station sensor (temperature, wind, rain)',
         Sdr433Category.unknown => 'Unrecognized 433 MHz device',
       };
