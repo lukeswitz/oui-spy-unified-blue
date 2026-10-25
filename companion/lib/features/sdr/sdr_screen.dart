@@ -146,6 +146,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   }
 
   void _setMode(SdrMode m) {
+    _c.clearDetections();
     setState(() {
       _mode = m;
       _freq.text = switch (m) {
@@ -178,7 +179,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
             ],
           ),
           IconButton(
-            onPressed: () => _showCategoryLegend(context, t),
+            onPressed: () => _showSdrInfo(context, t, _mode),
             icon: const Icon(Icons.info_outline),
             tooltip: 'Category guide',
           ),
@@ -369,6 +370,14 @@ Sdr433Category? _categoryOf(SdrDetection d) {
   }
 }
 
+bool _fullAdsb(SdrDetection d) {
+  final f = d.fields;
+  return f['lat'] != null ||
+      f['altitude'] != null ||
+      f['velocity'] != null ||
+      ((f['callsign'] as String?)?.trim().isNotEmpty ?? false);
+}
+
 Color _catColor(Sdr433Category c) => AppTheme.themed(switch (c) {
       Sdr433Category.tpms => AppTheme.wardrive,
       Sdr433Category.meter => AppTheme.wigle,
@@ -468,25 +477,28 @@ class _CategoryBar extends StatelessWidget {
       final c = _categoryOf(d);
       if (c != null) counts[c] = (counts[c] ?? 0) + 1;
     }
-    final chips = <Widget>[
-      for (final c in _scanCats)
-        _chip(
+    Widget chipFor(Sdr433Category c) => _chip(
           icon: _catIcon(c),
           label: c.label,
           count: counts[c] ?? 0,
           color: _catColor(c),
           active: selected.contains(c.name),
           onTap: () => onToggle(c.name),
-        ),
-    ];
-    return SizedBox(
-      height: 34,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: chips.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (_, i) => chips[i],
-      ),
+        );
+    Widget rowOf(List<Sdr433Category> cs) => Row(
+          children: [
+            for (var i = 0; i < cs.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(child: chipFor(cs[i])),
+            ],
+          ],
+        );
+    return Column(
+      children: [
+        rowOf(_scanCats.take(3).toList()),
+        const SizedBox(height: 6),
+        rowOf(_scanCats.skip(3).toList()),
+      ],
     );
   }
 
@@ -502,7 +514,8 @@ class _CategoryBar extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? t.fill : Colors.transparent,
           border: Border.all(color: active ? color : t.border),
@@ -512,12 +525,15 @@ class _CategoryBar extends StatelessWidget {
           children: [
             Icon(icon, size: 13, color: active ? color : t.textDim),
             const SizedBox(width: 5),
-            Text(label,
-                style: TextStyle(
-                  color: active ? t.textPrimary : t.textDim,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                )),
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: active ? t.textPrimary : t.textDim,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  )),
+            ),
             const SizedBox(width: 6),
             Text('$count',
                 style: TextStyle(
@@ -634,6 +650,7 @@ class _DetectionList extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = detections.where((d) {
       if (d.kind == 'ism' || d.kind == 'rf') return showRaw;
+      if (d.kind == 'adsb' && !_fullAdsb(d)) return showRaw;
       if (catFilter is Sdr433Category) return _categoryOf(d) == catFilter;
       return true;
     }).toList();
@@ -658,7 +675,73 @@ class _DetectionList extends StatelessWidget {
   }
 }
 
-void _showCategoryLegend(BuildContext context, ResolvedTheme t) {
+void _showSdrInfo(BuildContext context, ResolvedTheme t, SdrMode mode) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: t.surface,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: switch (mode) {
+          SdrMode.rtl433 => _scanInfoBody(t),
+          SdrMode.adsb => _infoBody(t, 'ADS-B — aircraft', const [
+              'Aircraft broadcasting their position and identity on 1090 MHz.',
+              'List: aircraft with real data, enriched by ICAO address with operator (airline), type, registration, and a photo.',
+              'Map: aircraft with a position fix, with their flight path drawn.',
+              'Upload the aircraft you have heard to WDGWars.',
+              'Bare ICAO-only replies show in the raw feed, not the list.',
+            ]),
+          SdrMode.tpms => _infoBody(t, 'TPMS — tire sensors', const [
+              'Tire-pressure sensors in passing vehicles on 315, 433.92, or 915 MHz.',
+              'Pick the bands to sweep.',
+              'Each reading is checksum-checked, with pressure and temperature when the sensor sends them.',
+            ]),
+          SdrMode.spectrum => _infoBody(t, 'Spectrum', const [
+              'A live waterfall of signal strength across the band.',
+              'Set the center frequency in MHz, then START.',
+              'Peaks mark active signals; this view does not decode them.',
+            ]),
+        },
+      ),
+    ),
+  );
+}
+
+Widget _infoBody(ResolvedTheme t, String title, List<String> lines) {
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(title,
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 12),
+      for (final l in lines)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(color: AppTheme.accent, shape: BoxShape.circle)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(l,
+                    style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.35)),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+}
+
+Widget _scanInfoBody(ResolvedTheme t) {
   const cats = [
     Sdr433Category.weather,
     Sdr433Category.meter,
@@ -673,61 +756,51 @@ void _showCategoryLegend(BuildContext context, ResolvedTheme t) {
     Sdr433Category.fob: 'Remotes and key fobs — garage, gate, car (KeeLoq, Nice, Somfy, car keys).',
     Sdr433Category.environmental: 'Home and property — water leak, air quality, thermostats, soil moisture, BBQ/meat probes, oil tank.',
   };
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: t.surface,
-    isScrollControlled: true,
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('Scan categories',
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      Text('Choose which 315 / 433 / 915 MHz device types to decode. Fewer types means less load.',
+          style: TextStyle(color: t.textDim, fontSize: 12)),
+      const SizedBox(height: 16),
+      for (final c in cats) ...[
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Scan categories',
-                style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text('Choose which 315 / 433 / 915 MHz device types to decode. Fewer types means less load.',
-                style: TextStyle(color: t.textDim, fontSize: 12)),
-            const SizedBox(height: 16),
-            for (final c in cats) ...[
-              Row(
+            Icon(_catIcon(c), size: 20, color: _catColor(c)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(_catIcon(c), size: 20, color: _catColor(c)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(c.label,
-                            style: TextStyle(color: _catColor(c), fontSize: 14, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 2),
-                        Text(examples[c]!,
-                            style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.3)),
-                      ],
-                    ),
-                  ),
+                  Text(c.label,
+                      style: TextStyle(color: _catColor(c), fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(examples[c]!,
+                      style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.3)),
                 ],
               ),
-              const SizedBox(height: 14),
-            ],
-            Divider(height: 1, color: t.border),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.tire_repair, size: 16, color: t.textDim),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Tire sensors use the TPMS tab, aircraft use the ADS-B tab.',
-                      style: TextStyle(color: t.textDim, fontSize: 11)),
-                ),
-              ],
             ),
           ],
         ),
+        const SizedBox(height: 14),
+      ],
+      Divider(height: 1, color: t.border),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Icon(Icons.tire_repair, size: 16, color: t.textDim),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Tire sensors use the TPMS tab, aircraft use the ADS-B tab.',
+                style: TextStyle(color: t.textDim, fontSize: 11)),
+          ),
+        ],
       ),
-    ),
+    ],
   );
 }
 

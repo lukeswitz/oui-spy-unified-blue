@@ -9,38 +9,66 @@ import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 
-class AircraftPhoto {
-  const AircraftPhoto(this.thumb, this.large, this.by, this.link);
+class AircraftInfo {
+  const AircraftInfo(
+      {this.thumb,
+      this.photo,
+      this.registration,
+      this.type,
+      this.manufacturer,
+      this.owner,
+      this.ownerCountry});
   final String? thumb;
-  final String? large;
-  final String? by;
-  final String? link;
+  final String? photo;
+  final String? registration;
+  final String? type;
+  final String? manufacturer;
+  final String? owner;
+  final String? ownerCountry;
 
-  static final Map<String, Future<AircraftPhoto?>> _cache = {};
+  String? get typeLabel {
+    final parts = [
+      if ((manufacturer ?? '').trim().isNotEmpty) manufacturer!.trim(),
+      if ((type ?? '').trim().isNotEmpty) type!.trim(),
+    ];
+    return parts.isEmpty ? null : parts.join(' ');
+  }
+
+  static final Map<String, Future<AircraftInfo?>> _cache = {};
   static final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 6),
     receiveTimeout: const Duration(seconds: 6),
     responseType: ResponseType.json,
+    headers: const {
+      'User-Agent': 'OUI-SPY/1 (+https://github.com/lukeswitz/oui-spy-unified-blue)',
+    },
   ));
 
-  static Future<AircraftPhoto?> forIcao(String icao) {
+  static Future<AircraftInfo?> forIcao(String icao) {
     final key = icao.toUpperCase().trim();
     if (key.isEmpty) return Future.value(null);
     return _cache.putIfAbsent(key, () => _fetch(key));
   }
 
-  static Future<AircraftPhoto?> _fetch(String icao) async {
+  static Future<AircraftInfo?> _fetch(String icao) async {
     try {
-      final r = await _dio.get<Map<String, dynamic>>(
-          'https://api.planespotters.net/pub/photos/hex/$icao');
-      final photos = (r.data?['photos'] as List?) ?? const [];
-      if (photos.isEmpty) return null;
-      final p = photos.first as Map<String, dynamic>;
-      String? src(String k) => (p[k] as Map<String, dynamic>?)?['src'] as String?;
-      return AircraftPhoto(src('thumbnail'), src('thumbnail_large') ?? src('thumbnail'),
-          p['photographer'] as String?, p['link'] as String?);
+      final r = await _dio
+          .get<Map<String, dynamic>>('https://api.adsbdb.com/v0/aircraft/$icao');
+      final resp = r.data?['response'];
+      if (resp is! Map<String, dynamic>) return null;
+      final a = resp['aircraft'] as Map<String, dynamic>?;
+      if (a == null) return null;
+      return AircraftInfo(
+        thumb: (a['url_photo_thumbnail'] as String?) ?? (a['url_photo'] as String?),
+        photo: (a['url_photo'] as String?) ?? (a['url_photo_thumbnail'] as String?),
+        registration: a['registration'] as String?,
+        type: a['type'] as String?,
+        manufacturer: a['manufacturer'] as String?,
+        owner: a['registered_owner'] as String?,
+        ownerCountry: a['registered_owner_country_name'] as String?,
+      );
     } on Exception {
-      // planespotters unreachable or no photo for this hex: show placeholder, non-fatal.
+      // adsbdb unreachable or unknown hex: show what we decoded, non-fatal.
       return null;
     }
   }
@@ -53,12 +81,14 @@ class AdsbList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final list = [...aircraft]
-      ..sort((a, b) =>
-          (b.lastSeen ?? b.firstSeen).compareTo(a.lastSeen ?? a.firstSeen));
+    final list = [
+      for (final a in aircraft)
+        if (a.hasFix || a.callsign.trim().isNotEmpty || a.altFt != 0 || a.velocityKt != 0) a,
+    ]..sort((a, b) =>
+        (b.lastSeen ?? b.firstSeen).compareTo(a.lastSeen ?? a.firstSeen));
     if (list.isEmpty) {
       return Center(
-        child: Text('No aircraft yet — listening on 1090 MHz',
+        child: Text('No aircraft yet. Listening on 1090 MHz.',
             style: TextStyle(color: t.textDim, fontSize: 13)),
       );
     }
@@ -178,7 +208,7 @@ class _AdsbCard extends StatelessWidget {
           border: Border.all(color: t.border, width: 0.5),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SizedBox(
               width: 96,
@@ -190,7 +220,7 @@ class _AdsbCard extends StatelessWidget {
                 padding: const EdgeInsets.all(10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(children: [
                       Expanded(
@@ -205,6 +235,40 @@ class _AdsbCard extends StatelessWidget {
                           style: TextStyle(
                               color: accent, fontSize: 11, fontFamily: AppTheme.mono)),
                     ]),
+                    FutureBuilder<AircraftInfo?>(
+                      future: AircraftInfo.forIcao(a.icao),
+                      builder: (context, snap) {
+                        final info = snap.data;
+                        final type = info?.typeLabel;
+                        final owner = (info?.owner ?? '').trim();
+                        if (type == null && owner.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text.rich(
+                            TextSpan(children: [
+                              if (owner.isNotEmpty)
+                                TextSpan(
+                                    text: owner,
+                                    style: TextStyle(
+                                        color: AppTheme.accent,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800)),
+                              if (owner.isNotEmpty && type != null)
+                                TextSpan(
+                                    text: '  ·  ',
+                                    style: TextStyle(color: t.textDim, fontSize: 11)),
+                              if (type != null)
+                                TextSpan(
+                                    text: type,
+                                    style:
+                                        TextStyle(color: t.textSecondary, fontSize: 11)),
+                            ]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 4),
                     Text(_line(a),
                         style: TextStyle(color: t.textSecondary, fontSize: 12)),
@@ -250,23 +314,34 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = Container(
-      color: t.fill,
-      child: Icon(Icons.flight, color: accent.withValues(alpha: 0.6), size: 28),
-    );
-    return FutureBuilder<AircraftPhoto?>(
-      future: AircraftPhoto.forIcao(icao),
+    Widget plane(double size) => Container(
+          color: t.fill,
+          alignment: Alignment.center,
+          child: Icon(Icons.flight, color: accent.withValues(alpha: 0.6), size: size),
+        );
+    return FutureBuilder<AircraftInfo?>(
+      future: AircraftInfo.forIcao(icao),
       builder: (context, snap) {
-        final url = snap.data?.thumb;
-        if (url == null) return placeholder;
+        final info = snap.data;
+        final url = info?.thumb;
+        if (url == null) return plane(_planeSize(info?.manufacturer));
         return Image.network(url,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => placeholder,
+            errorBuilder: (_, _, _) => plane(_planeSize(info?.manufacturer)),
             loadingBuilder: (c, child, p) =>
                 p == null ? child : Container(color: t.fill));
       },
     );
   }
+}
+
+double _planeSize(String? manufacturer) {
+  final m = (manufacturer ?? '').toLowerCase();
+  const heavy = ['boeing', 'airbus', 'embraer', 'bombardier', 'mcdonnell', 'lockheed', 'antonov'];
+  const light = ['cessna', 'piper', 'cirrus', 'diamond', 'beechcraft', 'mooney', 'robinson', 'pilatus', 'van'];
+  if (heavy.any(m.contains)) return 34;
+  if (light.any(m.contains)) return 20;
+  return 26;
 }
 
 class _AdsbDetail extends StatelessWidget {
@@ -321,25 +396,52 @@ class _AdsbDetail extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FutureBuilder<AircraftPhoto?>(
-                    future: AircraftPhoto.forIcao(a.icao),
+                  FutureBuilder<AircraftInfo?>(
+                    future: AircraftInfo.forIcao(a.icao),
                     builder: (context, snap) {
-                      final p = snap.data;
-                      final url = p?.large ?? p?.thumb;
-                      if (url == null) return const SizedBox.shrink();
+                      final info = snap.data;
+                      final url = info?.photo ?? info?.thumb;
+                      final extra = <(String, String)>[
+                        if ((info?.owner ?? '').trim().isNotEmpty)
+                          ('Operator', info!.owner!.trim()),
+                        if (info?.typeLabel != null) ('Type', info!.typeLabel!),
+                        if ((info?.registration ?? '').trim().isNotEmpty)
+                          ('Registration', info!.registration!.trim()),
+                        if ((info?.ownerCountry ?? '').trim().isNotEmpty)
+                          ('Country', info!.ownerCountry!.trim()),
+                      ];
                       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        ClipRect(
-                          child: Image.network(url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => const SizedBox.shrink()),
-                        ),
-                        if ((p?.by ?? '').isNotEmpty)
+                        if (url != null) ...[
+                          ClipRect(
+                            child: Image.network(url,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const SizedBox.shrink()),
+                          ),
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: Text('© ${p!.by} / planespotters.net',
+                            child: Text('photo via adsbdb.com',
                                 style: TextStyle(color: t.textDim, fontSize: 10)),
                           ),
-                        const SizedBox(height: 12),
+                          const SizedBox(height: 12),
+                        ],
+                        for (final e in extra)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 120,
+                                  child: Text(e.$1,
+                                      style: TextStyle(color: t.textDim, fontSize: 13)),
+                                ),
+                                Expanded(
+                                  child: Text(e.$2,
+                                      style: TextStyle(color: t.textPrimary, fontSize: 13)),
+                                ),
+                              ],
+                            ),
+                          ),
                       ]);
                     },
                   ),

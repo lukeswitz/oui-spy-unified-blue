@@ -195,6 +195,13 @@ class SdrController {
     _set(SdrState.idle);
   }
 
+  void clearDetections() {
+    _detections.clear();
+    _pending.clear();
+    _adsb.clear();
+    _power = const [];
+  }
+
   void _onFrame(SdrFrame f) {
     if (f.status != null) _scanStatus = f.status!;
     if (f.power != null) {

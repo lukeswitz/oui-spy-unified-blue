@@ -70,7 +70,7 @@ class _SdrFoxhuntViewState extends ConsumerState<SdrFoxhuntView> {
     final color =
         lost ? t.textDim : Color.lerp(AppTheme.error, AppTheme.success, normalized)!;
     final hint = lost
-        ? 'NO SIGNAL — move or wait for the next burst'
+        ? 'No signal. Move, or wait for the next burst.'
         : trend > 0
             ? 'WARMER'
             : trend < 0
@@ -118,7 +118,7 @@ class _SdrFoxhuntViewState extends ConsumerState<SdrFoxhuntView> {
             Text('best $_best dBFS',
                 style: TextStyle(color: t.textDim, fontSize: 13)),
             const SizedBox(height: 4),
-            Text('Walk toward the strongest reading; it updates on each burst.',
+            Text('Walk toward the strongest reading.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: t.textSecondary, fontSize: 12)),
           ],
