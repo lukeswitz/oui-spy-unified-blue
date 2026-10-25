@@ -2,6 +2,7 @@ package com.rootdowndigital.ouispy.wifiadapter
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbInterface
+import android.util.Log
 
 internal class SdrEngine(
     conn: UsbDeviceConnection,
@@ -30,7 +31,7 @@ internal class SdrEngine(
         dev.setCenterFreq(bands.first())
         dev.setAgc(true)
         val bandList = bands.joinToString(" / ") { "${it / 1_000_000.0}" }
-        log("RTL-SDR: $mode live at $bandList MHz, ${rate / 1_000_000.0} MS/s")
+        log("$mode live at $bandList MHz, ${rate / 1_000_000.0} MS/s")
         when (mode) {
             Mode.SPECTRUM -> runSpectrum(centerHz, rate)
             Mode.ADSB -> runAdsb(rate)
@@ -65,6 +66,15 @@ internal class SdrEngine(
         var pkgs = 0
         var decs = 0
         var statAt = System.currentTimeMillis()
+        var ookP = 0
+        var fskP = 0
+        var maxPul = 0
+        var curRssi = 0
+        Rtl433Registry.onPackage = { type, np, rssi ->
+            if (type == PULSE_DATA_FSK) fskP++ else ookP++
+            if (np > maxPul) maxPul = np
+            curRssi = rssi
+        }
         dev.readIq { buf, n ->
             if (stop) return@readIq
             val now = System.currentTimeMillis()
@@ -87,6 +97,7 @@ internal class SdrEngine(
                     m["model"] = r.model
                     m["id"] = r.id
                     m["frequency"] = c
+                    m["rssi"] = curRssi
                     for ((k, v) in r.fields) if (k !in m) m[k] = v
                     onDetection(m)
                 }
@@ -97,6 +108,7 @@ internal class SdrEngine(
             if (now - statAt >= 2000) {
                 statAt = now
                 log("SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs")
+                Log.i("SDRSCAN", "SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs ook=$ookP fsk=$fskP maxPulses=$maxPul decoders=${Rtl433Registry.decoders.size}")
             }
         }
     }

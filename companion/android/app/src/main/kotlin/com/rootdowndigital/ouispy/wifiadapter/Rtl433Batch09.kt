@@ -1524,7 +1524,6 @@ internal object WattsVision : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - twogig_key2e.c is disabled upstream (.disabled = 1, payload undecoded, rtl_433 issue #2584)
 internal object TwogigKey2e : Rtl433Decoder() {
     override val name = "2GIG-KEY2E-345 encrypted keyfob"
     override val mod = Mod.OOK_PCM
@@ -1532,17 +1531,69 @@ internal object TwogigKey2e : Rtl433Decoder() {
     override val long = 136
     override val reset = 408
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1 || bb.bitsPerRow[0] < 96) return emptyList()
+        val rawLen = bb.bitsPerRow[0]
+        val rawPos = bb.search(0, 0, intArrayOf(0x55, 0x55, 0x56), 24)
+        if (rawPos + 24 >= rawLen) return emptyList()
+        val decoded = BitBuffer()
+        bb.manchesterDecode(0, rawPos + 24, decoded, 72)
+        if (decoded.bitsPerRow[0] < 72) return emptyList()
+        val b = IntArray(9) { decoded.bb[0][it] }
+        if (b[4] != 0x25) return emptyList()
+        val crcCalc = Rtl433BitUtil.crc16(b, 7, 0x8005, 0x4c57)
+        val crcRecv = (b[7] shl 8) or b[8]
+        if (crcCalc != crcRecv) return emptyList()
+        val encId = String.format("%02x%02x%02x%02x", b[0], b[1], b[2], b[3])
+        val encStatus = String.format("%02x%02x", b[5], b[6])
+        return listOf(Reading("TwoGig-KEY2E345", null, mapOf(
+            "encrypted_id" to encId,
+            "encrypted_status" to encStatus,
+            "mic" to "CRC",
+        )))
+    }
 }
 
-// unverified: not ported - vivint.c keeps per-device seed state (vivint_ctx_t) and a Rabbit stream cipher; the Rtl433Decoder API carries no per-instance state
 internal object Vivint : Rtl433Decoder() {
     override val name = "Vivint Door/Window Sensor, V-DW21R-345/V-DW11-345"
     override val mod = Mod.OOK_MC_ZEROBIT
     override val short = 150
     override val reset = 300
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1) return emptyList()
+        bb.invert()
+        val pos = bb.search(0, 0, intArrayOf(0xff, 0xe0), 12) + 12
+        val len = bb.bitsPerRow[0] - pos
+        if (len < 80) return emptyList()
+        val b = IntArray(11)
+        bb.extractBytes(0, pos, b, 80)
+        val eventType = b[0]
+        val counter = (b[1] shl 8) or b[2]
+        val flags = b[3]
+        val id = (b[4] shl 24) or (b[5] shl 16) or (b[6] shl 8) or b[7]
+        val crc = (b[8] shl 8) or b[9]
+        if (id == 0 || id == -1) return emptyList()
+        val crcValid = if (eventType == 0xd0) {
+            crc == Rtl433BitUtil.crc16(b, 8, 0x8050, 0)
+        } else {
+            val b8Full = b[8]
+            b[8] = b[8] and 0xF0
+            val crcFull = Rtl433BitUtil.crc16(b, 9, 0x8050, 0)
+            b[8] = b8Full
+            (crcFull shr 4) == (((b8Full and 0x0F) shl 8) or b[9])
+        }
+        if (!crcValid) return emptyList()
+        val idStr = "%04d-%07d".format((id ushr 20) and 0xfff, id and 0xfffff)
+        val payload = (0 until 10).joinToString("") { "%02x".format(b[it]) }
+        return listOf(Reading("Vivint-Security", idStr, mapOf(
+            "counter" to "%04x".format(counter),
+            "flags" to "%02x".format(flags),
+            "event_type" to "%02x".format(eventType),
+            "data" to payload,
+            "mic" to "CRC",
+        )))
+    }
 }
 
 internal val BATCH_09: List<Rtl433Decoder> = listOf(

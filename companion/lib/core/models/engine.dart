@@ -15,7 +15,9 @@ enum Engine {
   wardrive(
       'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8A3D), 0x40),
   pcap(
-      'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF13A884), 0x80);
+      'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF13A884), 0x80),
+  sdr(
+      'SDR', 'RTL-SDR 433/315/915 ISM + ADS-B', Color(0xFF8B5CF6), 0x100);
 
   const Engine(this.label, this.description, this.baseColor, this.bitmask);
 
@@ -55,6 +57,7 @@ enum Engine {
       Engine.uniPwn => Icons.smart_toy,
       Engine.wardrive => Icons.drive_eta,
       Engine.pcap => Icons.fiber_manual_record,
+      Engine.sdr => Icons.sensors,
     };
   }
 }

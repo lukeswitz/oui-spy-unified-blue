@@ -191,6 +191,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       list = list.where((d) => d['engine'] == 'skySpy').toList();
     } else if (_engineFilter == 'signature') {
       list = list.where((d) => d['engine'] == 'signature' || d['mergedClasses'] != null).toList();
+    } else if (_engineFilter == 'sdr') {
+      list = list.where((d) => d['engine'] == 'sdr').toList();
     }
 
     if (_noGpsOnly) {
@@ -251,6 +253,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'detector' => AppTheme.detector,
     'skySpy' => AppTheme.skySpy,
     'signature' => AppTheme.warning,
+    'sdr' => const Color(0xFF8B5CF6),
     _ => AppTheme.accent,
   };
 
@@ -268,6 +271,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'detector' => 'DETECTOR',
     'skySpy' => 'DRONE',
     'signature' => 'SIGNATURE',
+    'sdr' => 'SDR',
     _ => engine,
   };
 
@@ -432,6 +436,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
         'detector' => _detections.where((d) => d['engine'] == 'detector').length,
         'drone' => _detections.where((d) => d['engine'] == 'skySpy').length,
         'signature' => _detections.where((d) => d['engine'] == 'signature' || d['mergedClasses'] != null).length,
+        'sdr' => _detections.where((d) => d['engine'] == 'sdr').length,
         _ => _detections.length,
       };
 
@@ -525,6 +530,14 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                         color: AppTheme.warning,
                         onTap: () => apply(() => setState(() => _engineFilter =
                             _engineFilter == 'signature' ? null : 'signature')),
+                      ),
+                      CommandChip(
+                        label: 'SDR',
+                        count: _engineCount('sdr'),
+                        selected: _engineFilter == 'sdr',
+                        color: const Color(0xFF8B5CF6),
+                        onTap: () => apply(() => setState(() => _engineFilter =
+                            _engineFilter == 'sdr' ? null : 'sdr')),
                       ),
                     ],
                   ),

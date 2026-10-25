@@ -1,10 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart' as drift;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/link/wifi_adapter.dart';
+import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
 
 enum SdrMode { spectrum, adsb, tpms, rtl433 }
 
@@ -92,6 +98,7 @@ class AdsbAircraft {
   int velocityKt = 0;
   int heading = 0;
   DateTime? lastSeen;
+  final List<(double, double)> track = [];
 
   bool get hasFix => lat != null && lon != null;
 }
@@ -99,7 +106,13 @@ class AdsbAircraft {
 enum SdrState { idle, starting, running, error }
 
 class SdrController {
-  SdrController();
+  SdrController({AppDatabase? db, GpsPosition? Function()? gps})
+      : _db = db,
+        _gps = gps;
+
+  final AppDatabase? _db;
+  final GpsPosition? Function()? _gps;
+  String _dbSession = '';
 
   final _state = StreamController<SdrState>.broadcast();
   final _frames = StreamController<SdrFrame>.broadcast();
@@ -111,8 +124,10 @@ class SdrController {
   final List<SdrDetection> _detections = [];
   final Map<String, AdsbAircraft> _adsb = {};
   String _scanStatus = '';
+  SdrMode? _mode;
 
   SdrState get state => _current;
+  SdrMode? get mode => _mode;
   String get scanStatus => _scanStatus;
   List<double> get power => _power;
   int get centerHz => _centerHz;
@@ -125,9 +140,26 @@ class SdrController {
   Future<bool> start(String deviceId, SdrMode mode, int freqHz, int rate,
       {List<int> freqsHz = const []}) async {
     _set(SdrState.starting);
-    _detections.clear();
-    _adsb.clear();
+    if (mode != _mode) {
+      _detections.clear();
+      _adsb.clear();
+    }
+    _mode = mode;
     _scanStatus = '';
+    final db = _db;
+    if (db != null) {
+      _dbSession = 'sdr-${DateTime.now().microsecondsSinceEpoch}';
+      db
+          .insertSession(SessionsCompanion(
+            id: drift.Value(_dbSession),
+            name: drift.Value(
+                'SDR ${DateTime.now().toIso8601String().substring(0, 16)}'),
+            nodeId: const drift.Value('default'),
+            startedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+            isWardrive: const drift.Value(false),
+          ))
+          .catchError((Object e) => DebugLog.log('SDR: insertSession failed: $e'));
+    }
     await _sub?.cancel();
     _sub = Sdr.frames.listen(_onFrame, onError: (Object e) {
       DebugLog.log('SDR: $e');
@@ -167,18 +199,59 @@ class SdrController {
     final d = f.detection;
     if (d != null) {
       final key = _dedupKey(d);
+      var isNew = false;
       if (key != null) {
         final idx = _detections.indexWhere((e) => _dedupKey(e) == key);
         if (idx >= 0) {
           final prev = _detections.removeAt(idx);
           d.fields['count'] = ((prev.fields['count'] as int?) ?? 1) + 1;
+        } else {
+          isNew = true;
         }
       }
       _detections.insert(0, d);
       if (_detections.length > 400) _detections.removeRange(400, _detections.length);
       if (d.kind == 'adsb') _mergeAdsb(d);
+      if (isNew && d.kind != 'adsb') _persist(d);
     }
     _frames.add(f);
+  }
+
+  void _persist(SdrDetection d) {
+    final db = _db;
+    if (db == null || _dbSession.isEmpty) return;
+    final f = d.fields;
+    final model = (f['model'] ?? f['icao'] ?? d.kind).toString();
+    final ident = (f['id'] ?? f['icao'] ?? '').toString();
+    final mac = ident.isNotEmpty ? '$model|$ident' : model;
+    final cs = (f['callsign'] as String?)?.trim() ?? '';
+    final name = d.kind == 'adsb' && cs.isNotEmpty ? cs : model;
+    final rssi = (f['rssi'] as num?)?.toInt() ?? 0;
+    final pos = _gps?.call();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    db
+        .insertDetection(DetectionsCompanion(
+          sessionId: drift.Value(_dbSession),
+          nodeId: const drift.Value('default'),
+          macAddress: drift.Value(mac),
+          deviceName: drift.Value(name),
+          engine: drift.Value(Engine.sdr.name),
+          detectionMethod: drift.Value(d.kind),
+          rssi: drift.Value(rssi),
+          channel: const drift.Value(0),
+          ssid: drift.Value(jsonEncode(f)),
+          deviceTimestampMs: drift.Value(now),
+          appTimestamp: drift.Value(now),
+          latitude: drift.Value(pos?.latitude),
+          longitude: drift.Value(pos?.longitude),
+          altitude: drift.Value(pos?.altitude),
+          speed: drift.Value(pos?.speed),
+          heading: drift.Value(pos?.heading),
+          accuracy: drift.Value(pos?.accuracy),
+          satelliteCount: drift.Value(pos?.satelliteCount),
+        ))
+        .catchError(
+            (Object e) => DebugLog.log('SDR: insertDetection failed: $e'));
   }
 
   String? _dedupKey(SdrDetection d) {
@@ -205,6 +278,10 @@ class SdrController {
     if (lat != null && lon != null) {
       a.lat = lat;
       a.lon = lon;
+      if (a.track.isEmpty || a.track.last.$1 != lat || a.track.last.$2 != lon) {
+        a.track.add((lat, lon));
+        if (a.track.length > 500) a.track.removeAt(0);
+      }
     }
     final alt = (d.fields['altitude'] as num?)?.toInt();
     if (alt != null) a.altFt = alt;
@@ -228,7 +305,10 @@ class SdrController {
 }
 
 final sdrControllerProvider = Provider<SdrController>((ref) {
-  final c = SdrController();
+  final c = SdrController(
+    db: ref.read(databaseProvider),
+    gps: () => ref.read(wardriveProvider).currentPosition,
+  );
   ref.onDispose(c.dispose);
   return c;
 });

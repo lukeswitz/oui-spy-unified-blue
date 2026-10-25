@@ -262,6 +262,7 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   static const _routes = ['/home', '/detections', '/wardrive', '/config'];
   static const _configIndex = 3;
+  bool _sdrAutoOpened = false;
 
   void _onNavTap(int i) {
     final alreadyHere = _routes[i] == GoRouterState.of(context).uri.path;
@@ -302,9 +303,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (p != null && prev == null) _askMuteNoisy(p);
     });
     ref.listen(sdrPresentProvider, (prev, next) {
-      final was = prev?.valueOrNull ?? false;
       final now = next.valueOrNull ?? false;
-      if (now && !was && GoRouterState.of(context).uri.path != '/sdr') {
+      if (!now) {
+        _sdrAutoOpened = false;
+        return;
+      }
+      if (!_sdrAutoOpened && GoRouterState.of(context).uri.path != '/sdr') {
+        _sdrAutoOpened = true;
         context.push('/sdr');
       }
     });

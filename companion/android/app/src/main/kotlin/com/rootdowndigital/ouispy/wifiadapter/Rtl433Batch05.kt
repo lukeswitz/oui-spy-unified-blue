@@ -1648,16 +1648,460 @@ internal object OilSmart : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - netatmo_thw.c:116-251 decode is transcribable, but struct netatmo_thw.c:253 sets short_width=8.5 and long_width=8.5 (non-integer), which the frozen Int API cannot carry; widths left at 0 so the slicer ignores them
+// unverified: netatmo_thw.c:116-251; struct netatmo_thw.c:253 sets short_width=8.5 and long_width=8.5 (non-integer), which the frozen Int API cannot carry; widths left at 0 so the slicer ignores them
 internal object NetatmoThw : Rtl433Decoder() {
     override val name = "NetAtmo temp/hum and wind sensors"
     override val mod = Mod.FSK_PCM
     override val reset = 800
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1) return emptyList()
+        val rowBits = bb.bitsPerRow[0]
+        val preamble = intArrayOf(0xaa, 0xaa, 0xe7, 0x12)
+        val startPos = bb.search(0, 0, preamble, 32)
+        if (startPos >= rowBits) return emptyList()
+        val lenBuf = IntArray(1)
+        bb.extractBytes(0, startPos + 32, lenBuf, 8)
+        val len = lenBuf[0]
+        if (startPos + 32 + (len + 2) * 8 > rowBits) return emptyList()
+        val frame = IntArray(len + 3)
+        frame[0] = len
+        val body = IntArray(len + 2)
+        bb.extractBytes(0, startPos + 40, body, (len + 2) * 8)
+        for (i in body.indices) frame[i + 1] = body[i]
+        val crc = Rtl433BitUtil.crc16(frame, len + 1, 0x8005, 0xffff)
+        if (((frame[len + 1] shl 8) or frame[len + 2]) != crc) return emptyList()
+        val b = frame
+        val id = String.format("%08x", (b[1] shl 24) or (b[2] shl 16) or (b[3] shl 8) or b[4])
+        val signal = b[6].toByte().toInt()
+        return when (len) {
+            6 -> listOf(Reading("NetAtmo-TH", id, mapOf(
+                "signal_dB" to signal,
+                "mic" to "CRC",
+            )))
+            0x19 -> {
+                val batteryMv = (b[8] * 256 + b[7]) * 2
+                val tempRaw = s16((b[23] shl 8) or b[22])
+                val tempC = tempRaw * 0.1f
+                listOf(Reading("NetAtmo-TH", id, mapOf(
+                    "battery_mV" to batteryMv,
+                    "signal_dB" to signal,
+                    "temperature_C" to tempC.toDouble(),
+                    "humidity" to b[25],
+                    "mic" to "CRC",
+                )))
+            }
+            0x31 -> {
+                val batteryMv = b[8] * 256 + b[7]
+                val rawA = s16((b[26] shl 8) or b[25])
+                val rawB = s16((b[28] shl 8) or b[27])
+                val rawC = s16((b[30] shl 8) or b[29])
+                val rawD = s16((b[32] shl 8) or b[31])
+                val ws315 = rawA + rawB
+                val ws45 = rawC + rawD
+                val windSpeed = Math.sqrt((ws45 * ws45 + ws315 * ws315).toFloat().toDouble()).toFloat() * 0.05f
+                val windDir = (Math.atan2(ws45.toFloat().toDouble(), ws315.toFloat().toDouble()).toFloat() / Math.PI.toFloat() * 180 + 315).toInt() % 360
+                listOf(Reading("NetAtmo-Wind", id, mapOf(
+                    "battery_mV" to batteryMv,
+                    "signal_dB" to signal,
+                    "raw_a_315" to rawA,
+                    "raw_b_315" to rawB,
+                    "raw_c_045" to rawC,
+                    "raw_d_045" to rawD,
+                    "wind_spd_km_h" to windSpeed.toDouble(),
+                    "wind_dir_deg" to windDir,
+                    "mic" to "CRC",
+                )))
+            }
+            else -> listOf(Reading("NetAtmo-THW", id, mapOf(
+                "signal_dB" to signal,
+                "mic" to "CRC",
+            )))
+        }
+    }
 }
 
-// unverified: not ported - m_bus.c:1493-1500 struct (FSK_PCM, short 10, long 10, reset 500), decoder body lives in m_bus.c (1868 lines) with shared 3-of-6 and frame helpers, not transcribed this batch
+private const val MBUS_BLOCK1A = 12
+private const val MBUS_BLOCK1B = 10
+private const val MBUS_BLOCK2B = 118
+private const val MBUS_BUF = 640
+
+private class MBusData {
+    var length = 0
+    val data = IntArray(MBUS_BUF)
+}
+
+private class MBusBlock2 {
+    var ci = 0
+    var ac = 0
+    var st = 0
+    var cw = 0
+    var plOffset = 0
+    var ellCi = 0
+    var ellCc = 0
+    var ellAcc = 0
+    var ellSecMode = 0
+    var knxCtrl = 0
+    var src = 0
+    var dst = 0
+    var lNpci = 0
+    var tpci = 0
+    var apci = 0
+}
+
+private class MBusBlock1 {
+    var l = 0
+    var c = 0
+    var mStr = ""
+    var aId = 0
+    var aVersion = 0
+    var aDevType = 0
+    var knx = false
+    val knxSn = IntArray(6)
+    val block2 = MBusBlock2()
+}
+
+private fun mbusBcd2int(bcd: Int): Int = 10 * (bcd shr 4) + (bcd and 0xf)
+
+private fun mbusRowByte(bb: BitBuffer, pos: Int): Int {
+    val t = IntArray(2)
+    bb.extractBytes(0, pos, t, 8)
+    return t[0]
+}
+
+private fun mbus3of6(v: Int): Int = when (v) {
+    22 -> 0x00
+    13 -> 0x01
+    14 -> 0x02
+    11 -> 0x03
+    28 -> 0x04
+    25 -> 0x05
+    26 -> 0x06
+    19 -> 0x07
+    44 -> 0x08
+    37 -> 0x09
+    38 -> 0x0A
+    35 -> 0x0B
+    52 -> 0x0C
+    49 -> 0x0D
+    50 -> 0x0E
+    41 -> 0x0F
+    else -> 0xF0
+}
+
+private fun mbusDecode3of6(bb: BitBuffer, bitOffset: Int, out: IntArray, numBytes: Int) {
+    for (n in 0 until numBytes) {
+        val h = mbus3of6(mbusRowByte(bb, n * 12 + bitOffset) shr 2)
+        var l = mbus3of6(mbusRowByte(bb, n * 12 + bitOffset + 6) shr 2)
+        if (h > 0xf || l > 0xf) l = l and 0x0F
+        out[n] = ((h shl 4) or l) and 0xFF
+    }
+}
+
+private fun mbusCrcValid(b: IntArray, off: Int, n: Int): Boolean {
+    val sub = b.copyOfRange(off, off + n + 2)
+    val calc = Rtl433BitUtil.crc16(sub, n, 0x3D65, 0).inv() and 0xFFFF
+    val read = (sub[n] shl 8) or sub[n + 1]
+    return calc == read
+}
+
+private fun mbusManufDecode(m: Int): String {
+    val sb = StringBuilder()
+    sb.append((((m shr 10) and 0x1F) + 0x40).toChar())
+    sb.append((((m shr 5) and 0x1F) + 0x40).toChar())
+    sb.append(((m and 0x1F) + 0x40).toChar())
+    return sb.toString()
+}
+
+private fun mbusDeviceTypeStr(t: Int): String = when (t) {
+    0x00 -> "Other"
+    0x01 -> "Oil"
+    0x02 -> "Electricity"
+    0x03 -> "Gas"
+    0x04 -> "Heat"
+    0x05 -> "Steam"
+    0x06 -> "Warm Water"
+    0x07 -> "Water"
+    0x08 -> "Heat Cost Allocator"
+    0x09 -> "Compressed Air"
+    0x0A, 0x0B -> "Cooling load meter"
+    0x0C -> "Heat"
+    0x0D -> "Heat/Cooling load meter"
+    0x0E -> "Bus/System component"
+    0x0F -> "Unknown"
+    0x15 -> "Hot Water"
+    0x16 -> "Cold Water"
+    0x17 -> "Hot/Cold Water meter"
+    0x18 -> "Pressure"
+    0x19 -> "A/D Converter"
+    0x1A -> "Smoke detector"
+    0x1B -> "Room sensor"
+    0x1C -> "Gas detector"
+    0x20 -> "Breaker (electricity)"
+    0x21 -> "Valve (gas or water)"
+    0x28 -> "Waste water meter"
+    0x29 -> "Garbage"
+    0x2A -> "Carbon dioxide"
+    0x25 -> "Customer unit (display device)"
+    0x31 -> "Communication controller"
+    0x32 -> "Unidirectional repeater"
+    0x33 -> "Bidirectional repeater"
+    0x36 -> "Radio converter (system side)"
+    0x37 -> "Radio converter (meter side)"
+    else -> ""
+}
+
+private fun mbusEllLen(ci: Int): Int = when (ci) {
+    0x8C -> 2
+    0x8D -> 8
+    0x8E -> 10
+    0x8F -> 16
+    else -> -1
+}
+
+private fun mbusParseCi(d: IntArray, base: Int, remaining: Int, plBase: Int, b2: MBusBlock2) {
+    if (remaining < 1) return
+    b2.ci = d[base]
+    val ellLen = mbusEllLen(b2.ci)
+    if (ellLen >= 0) {
+        if (remaining < 1 + ellLen) return
+        b2.ellCi = d[base]
+        b2.ellCc = d[base + 1]
+        b2.ellAcc = d[base + 2]
+        if (b2.ci == 0x8D || b2.ci == 0x8F) {
+            val snOff = if (b2.ci == 0x8F) 11 else 3
+            val sn = d[base + snOff] or (d[base + snOff + 1] shl 8) or (d[base + snOff + 2] shl 16) or (d[base + snOff + 3] shl 24)
+            b2.ellSecMode = (sn ushr 29) and 0x7
+        } else {
+            b2.ellSecMode = 0
+        }
+        if (b2.ellSecMode != 0) return
+        mbusParseCi(d, base + 1 + ellLen, remaining - 1 - ellLen, plBase + 1 + ellLen, b2)
+        return
+    }
+    if (b2.ci == 0x90) {
+        if (remaining < 2) return
+        val aflLen = d[base + 1]
+        if (remaining < 2 + aflLen) return
+        mbusParseCi(d, base + 2 + aflLen, remaining - 2 - aflLen, plBase + 2 + aflLen, b2)
+        return
+    }
+    if (b2.ci == 0x7A) {
+        b2.ac = d[base + 1]
+        b2.st = d[base + 2]
+        b2.cw = (d[base + 4] shl 8) or d[base + 3]
+        b2.plOffset = plBase + 5
+    } else if (b2.ci == 0x72) {
+        b2.ac = d[base + 9]
+        b2.st = d[base + 10]
+        b2.cw = (d[base + 12] shl 8) or d[base + 11]
+        b2.plOffset = plBase + 13
+    } else if (b2.ci == 0x78) {
+        b2.plOffset = plBase + 1
+    }
+    if (b2.ci == 0x78 && d[base + 1] == 0x0d && d[base + 2] == 0xff && d[base + 3] == 0x5f && d[base + 4] == 0x35) {
+        b2.ac = d[base + 7]
+        b2.st = d[base + 5]
+        b2.cw = (d[base + 9] shl 8) or d[base + 8]
+        b2.plOffset = plBase + 1
+    }
+}
+
+private fun mbusParseBlock2(inp: MBusData, b1: MBusBlock1, block1Size: Int, plBase: Int) {
+    val b2 = b1.block2
+    val d = inp.data
+    if (b1.knx) {
+        b2.knxCtrl = d[block1Size]
+        b2.src = (d[block1Size + 1] shl 8) or d[block1Size + 2]
+        b2.dst = (d[block1Size + 3] shl 8) or d[block1Size + 4]
+        b2.lNpci = d[block1Size + 5]
+        b2.tpci = d[block1Size + 6]
+        b2.apci = d[block1Size + 7]
+    } else {
+        val remaining = if (inp.length > block1Size) inp.length - block1Size else 0
+        mbusParseCi(d, block1Size, remaining, plBase, b2)
+    }
+}
+
+private fun mbusDecodeFormatA(inp: MBusData, out: MBusData, b1: MBusBlock1): Boolean {
+    val d = inp.data
+    b1.l = d[0]
+    b1.c = d[1]
+    if (d[2] == 0xFF && d[3] == 0x03) {
+        b1.knx = true
+        for (i in 0 until 6) b1.knxSn[i] = d[4 + i]
+    } else {
+        b1.mStr = mbusManufDecode((d[3] shl 8) or d[2])
+        b1.aId = mbusBcd2int(d[7]) * 1000000 + mbusBcd2int(d[6]) * 10000 + mbusBcd2int(d[5]) * 100 + mbusBcd2int(d[4])
+        b1.aVersion = d[8]
+        b1.aDevType = d[9]
+    }
+    out.length = b1.l - 9 + MBUS_BLOCK1A - 2
+    if (!mbusCrcValid(d, 0, 10)) return false
+    if (b1.l < 9) return false
+    val numDataBlocks = (b1.l - 9 + 15) / 16
+    val avail = if (inp.length >= MBUS_BLOCK1A) inp.length - MBUS_BLOCK1A else Int.MAX_VALUE
+    if ((b1.l - 9) + numDataBlocks * 2 > avail) return false
+    for (i in 0 until MBUS_BLOCK1A - 2) out.data[i] = d[i]
+    for (n in 0 until numDataBlocks) {
+        val inPtr = MBUS_BLOCK1A + n * 18
+        val outPtr = n * 16 + MBUS_BLOCK1A - 2
+        val blockSize = minOf(b1.l - 9 - n * 16, 16) + 2
+        if (!mbusCrcValid(d, inPtr, blockSize - 2)) return false
+        for (i in 0 until blockSize) out.data[outPtr + i] = d[inPtr + i]
+    }
+    mbusParseBlock2(inp, b1, MBUS_BLOCK1A, MBUS_BLOCK1A - 2)
+    return true
+}
+
+private fun mbusDecodeFormatB(inp: MBusData, out: MBusData, b1: MBusBlock1): Boolean {
+    val d = inp.data
+    b1.l = d[0]
+    b1.c = d[1]
+    b1.mStr = mbusManufDecode((d[3] shl 8) or d[2])
+    b1.aId = mbusBcd2int(d[7]) * 1000000 + mbusBcd2int(d[6]) * 10000 + mbusBcd2int(d[5]) * 100 + mbusBcd2int(d[4])
+    b1.aVersion = d[8]
+    b1.aDevType = d[9]
+    out.length = b1.l - (9 + 2) + MBUS_BLOCK1B - 2
+    if (b1.l < 12 || b1.l + 1 > inp.length) return false
+    if (!mbusCrcValid(d, 0, minOf(b1.l - 1, (MBUS_BLOCK1B + MBUS_BLOCK2B) - 2))) return false
+    val first = minOf(b1.l - 11, MBUS_BLOCK2B - 2) + MBUS_BLOCK1B
+    for (i in 0 until first) out.data[i] = d[i]
+    val lOffset = MBUS_BLOCK1B + MBUS_BLOCK2B - 1
+    if (b1.l > lOffset + 2) {
+        if (!mbusCrcValid(d, MBUS_BLOCK1B + MBUS_BLOCK2B, b1.l - lOffset - 2)) return false
+        for (i in 0 until b1.l - lOffset - 2) out.data[(MBUS_BLOCK2B - 2) + i] = d[MBUS_BLOCK2B + i]
+        out.length -= 2
+    }
+    out.length += 2
+    mbusParseBlock2(inp, b1, MBUS_BLOCK1B, MBUS_BLOCK1B)
+    return true
+}
+
+private fun mbusOutput(out: MBusData, b1: MBusBlock1, mode: String): List<Reading> {
+    val b2 = b1.block2
+    val f = LinkedHashMap<String, Any?>()
+    val model: String
+    val id: String
+    if (b1.knx) {
+        val sn = b1.knxSn.joinToString("") { "%02x".format(it) }
+        model = "KNX-RF"
+        id = sn
+        f["sn"] = sn
+        f["knx_ctrl"] = "0x%02X".format(b2.knxCtrl)
+        f["src"] = "0x%04X".format(b2.src)
+        f["dst"] = "0x%04X".format(b2.dst)
+        f["l_npci"] = "0x%02X".format(b2.lNpci)
+        f["tpci"] = "0x%02X".format(b2.tpci)
+        f["apci"] = "0x%02X".format(b2.apci)
+    } else {
+        model = "Wireless-MBus"
+        id = b1.aId.toString()
+        f["mode"] = mode
+        f["M"] = b1.mStr
+        f["id"] = b1.aId
+        f["version"] = b1.aVersion
+        f["type"] = "0x%02X".format(b1.aDevType)
+        f["type_string"] = mbusDeviceTypeStr(b1.aDevType)
+        f["C"] = "0x%02X".format(b1.c)
+    }
+    f["data"] = (0 until out.length.coerceIn(0, out.data.size)).joinToString("") { "%02x".format(out.data[it]) }
+    if (b2.ellCi != 0) {
+        f["ell_ci"] = "0x%02X".format(b2.ellCi)
+        f["ell_cc"] = "0x%02X".format(b2.ellCc)
+        f["ell_acc"] = "0x%02X".format(b2.ellAcc)
+    }
+    if (b2.ci != 0 && b2.ci != b2.ellCi) {
+        f["CI"] = "0x%02X".format(b2.ci)
+        if (b2.plOffset != 0) {
+            f["AC"] = "0x%02X".format(b2.ac)
+            f["ST"] = "0x%02X".format(b2.st)
+            f["CW"] = "0x%04X".format(b2.cw)
+        }
+    }
+    if (!b1.knx && b2.plOffset == 0) {
+        if (b2.ellCi != 0 && b2.ellSecMode != 0) f["payload_encrypted"] = 1
+    } else if ((b2.cw and 0x0500) != 0) {
+        f["payload_encrypted"] = 1
+    }
+    f["mic"] = "CRC"
+    return listOf(Reading(model, id, f))
+}
+
+private fun mbusDecodeCT(bb: BitBuffer): List<Reading> {
+    val bits = bb.bitsPerRow[0]
+    if (bits < 32 + 13 * 8 || bits > 64 + 256 * 12) return emptyList()
+    var off = bb.search(0, 0, intArrayOf(0x54, 0x3D), 16)
+    if (off + 13 * 8 >= bits) return emptyList()
+    off += 16
+    var next = mbusRowByte(bb, off)
+    off += 8
+    val inp = MBusData()
+    val out = MBusData()
+    val b1 = MBusBlock1()
+    val mode: String
+    if (next == 0x54) {
+        mode = "C"
+        next = mbusRowByte(bb, off)
+        off += 8
+        if (next == 0xCD) {
+            inp.length = (bits - off) / 8
+            bb.extractBytes(0, off, inp.data, inp.length * 8)
+            if (!mbusDecodeFormatA(inp, out, b1)) return emptyList()
+        } else if (next == 0x3D) {
+            inp.length = (bits - off) / 8
+            bb.extractBytes(0, off, inp.data, inp.length * 8)
+            if (!mbusDecodeFormatB(inp, out, b1)) return emptyList()
+        } else {
+            return emptyList()
+        }
+    } else {
+        mode = "T"
+        off -= 8
+        inp.length = (bits - off) / 12
+        mbusDecode3of6(bb, off, inp.data, inp.length)
+        if (!mbusDecodeFormatA(inp, out, b1)) return emptyList()
+    }
+    return mbusOutput(out, b1, mode)
+}
+
+private fun mbusDecodeR(bb: BitBuffer): List<Reading> {
+    val bits = bb.bitsPerRow[0]
+    if (bits < 32 + 13 * 8 || bits > 64 + 256 * 8) return emptyList()
+    var off = bb.search(0, 0, intArrayOf(0x55, 0x54, 0x76, 0x96), 32)
+    if (off + 13 * 8 >= bits) return emptyList()
+    off += 32
+    val inp = MBusData()
+    val out = MBusData()
+    val b1 = MBusBlock1()
+    inp.length = (bits - off) / 8
+    bb.extractBytes(0, off, inp.data, inp.length * 8)
+    if (!mbusDecodeFormatA(inp, out, b1)) return emptyList()
+    return mbusOutput(out, b1, "R")
+}
+
+private fun mbusDecodeS(bb: BitBuffer): List<Reading> {
+    val bits = bb.bitsPerRow[0]
+    if (bits < 32 + 13 * 8 || bits > 64 + 256 * 8) return emptyList()
+    val offset = bb.search(0, 0, intArrayOf(0xaa, 0xab, 0x32), 24) + 24
+    if (offset < bits) {
+        bb.invert()
+        return emptyList()
+    }
+    var off = bb.search(0, 0, intArrayOf(0x54, 0x76, 0x96), 24)
+    off += 24
+    if (off >= bits) return emptyList()
+    val packet = BitBuffer()
+    bb.manchesterDecode(0, off, packet, 800)
+    val inp = MBusData()
+    val out = MBusData()
+    val b1 = MBusBlock1()
+    inp.length = bits
+    packet.extractBytes(0, 0, inp.data, inp.length)
+    if (!mbusDecodeFormatA(inp, out, b1)) return emptyList()
+    return mbusOutput(out, b1, "S")
+}
+
 internal object MBusModeCT : Rtl433Decoder() {
     override val name = "Wireless M-Bus, Mode C&T, 100kbps (-f 868.95M -s 1200k)"
     override val mod = Mod.FSK_PCM
@@ -1665,15 +2109,14 @@ internal object MBusModeCT : Rtl433Decoder() {
     override val long = 10
     override val reset = 500
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = mbusDecodeCT(bb)
 }
 
-// unverified: not ported - m_bus.c:1504-1514 struct (FSK_PCM, widths 1000/32.768 us non-integer, left at 0 for the Int API), decoder body in m_bus.c not transcribed this batch
 internal object MBusModeCTDownlink : Rtl433Decoder() {
     override val name = "Wireless M-Bus, Mode T, 32.768kbps (-f 868.3M -s 1000k)"
     override val mod = Mod.FSK_PCM
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = mbusDecodeCT(bb)
 }
 
 // unverified: not ported - m_bus.c:1558-1566 struct (FSK_PCM, width 1000/2.4 us non-integer, left at 0; upstream disabled=1), decoder body in m_bus.c not transcribed this batch
@@ -1685,20 +2128,18 @@ internal object MBusModeF : Rtl433Decoder() {
     override fun decode(bb: BitBuffer): List<Reading> = emptyList()
 }
 
-// unverified: not ported - m_bus.c:1534-1542 struct (FSK_MC_ZEROBIT, width 1000/4.8/2 us non-integer, left at 0; upstream disabled=1), decoder body in m_bus.c not transcribed this batch
 internal object MBusModeR : Rtl433Decoder() {
     override val name = "Wireless M-Bus, Mode R, 4.8kbps (-f 868.33M)"
     override val mod = Mod.FSK_MC_ZEROBIT
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = mbusDecodeR(bb)
 }
 
-// unverified: not ported - m_bus.c:1516-1524 struct (FSK_PCM, widths 1000/32.768 us non-integer, left at 0), decoder body in m_bus.c not transcribed this batch
 internal object MBusModeS : Rtl433Decoder() {
     override val name = "Wireless M-Bus, Mode S, 32.768kbps (-f 868.3M -s 1000k)"
     override val mod = Mod.FSK_PCM
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = mbusDecodeS(bb)
 }
 
 internal val BATCH_05: List<Rtl433Decoder> = listOf(

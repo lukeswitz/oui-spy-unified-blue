@@ -82,6 +82,7 @@ class BleProtocol {
               : wardrive.ssid;
         case Engine.foxhunter:
         case Engine.pcap:
+        case Engine.sdr:
           break;
       }
     }
@@ -458,6 +459,7 @@ class BleProtocol {
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => const ['wifi_ap', 'ble_adv'][method.clamp(0, 1)],
       Engine.pcap => 'pcap',
+      Engine.sdr => 'sdr',
     };
   }
 

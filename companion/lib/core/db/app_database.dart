@@ -393,7 +393,7 @@ class AppDatabase extends _$AppDatabase {
   Future<List<Map<String, dynamic>>> getFlockDetectorDetections() async {
     final rows = await (select(detections)
           ..where((d) => d.engine.isIn([
-                'flockBle', 'flockWifi', 'detector', 'skySpy',
+                'flockBle', 'flockWifi', 'detector', 'skySpy', 'sdr',
               ]))
           ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))
         .get();
@@ -609,7 +609,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> clearFlockDetectorDetections() => (delete(detections)
-        ..where((d) => d.engine.isIn(['flockBle', 'flockWifi', 'detector', 'skySpy'])))
+        ..where((d) => d.engine.isIn(['flockBle', 'flockWifi', 'detector', 'skySpy', 'sdr'])))
       .go();
 
   Future<void> deleteDetectionsByMacs(String sessionId, List<String> macs) {

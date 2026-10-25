@@ -23,6 +23,7 @@ final _classColors = <SignatureClass, Color>{
   SignatureClass.isp: Color(0xFF06B6D4),
   SignatureClass.mesh: Color(0xFF14B8A6),
   SignatureClass.phone: AppTheme.accent,
+  SignatureClass.toy: Color(0xFFA855F7),
   SignatureClass.other: AppTheme.textDim,
 };
 
@@ -48,6 +49,7 @@ IconData classIcon(SignatureClass c) => switch (c) {
       SignatureClass.isp => Icons.router,
       SignatureClass.mesh => Icons.hub,
       SignatureClass.phone => Icons.smartphone,
+      SignatureClass.toy => Icons.vibration,
       SignatureClass.other => Icons.devices_other,
     };
 

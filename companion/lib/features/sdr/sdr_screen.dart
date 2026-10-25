@@ -5,6 +5,8 @@ import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_adsb.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
+import 'package:oui_spy/features/sdr/sdr_adsb_list.dart';
+import 'package:oui_spy/features/sdr/sdr_foxhunt.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class SdrScreen extends ConsumerStatefulWidget {
@@ -24,11 +26,22 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   String _deviceName = '';
   bool _busy = false;
   bool _showRaw = false;
+  bool _adsbMap = false;
   Object? _catFilter;
 
   @override
   void initState() {
     super.initState();
+    final m = _c.mode;
+    if (m != null) {
+      _mode = m;
+      _freq.text = switch (m) {
+        SdrMode.adsb => '1090',
+        SdrMode.tpms => '433.92',
+        SdrMode.rtl433 => '433.92',
+        SdrMode.spectrum => '100.1',
+      };
+    }
     _refresh();
   }
 
@@ -267,6 +280,16 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('List')),
+                  ButtonSegment(value: true, label: Text('Map')),
+                ],
+                selected: {_adsbMap},
+                onSelectionChanged: (s) => setState(() => _adsbMap = s.first),
+              ),
             ],
             const SizedBox(height: 12),
             if (showChips)
@@ -284,14 +307,19 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
               flex: 2,
               child: StreamBuilder<SdrFrame>(
                 stream: _c.frameStream,
-                builder: (context, _) => _mode == SdrMode.spectrum
-                    ? _SpectrumView(power: _c.power, color: AppTheme.accent, grid: t.border)
-                    : _DetectionList(
-                        detections: _c.detections,
-                        t: t,
-                        showRaw: _showRaw,
-                        catFilter: showChips ? _catFilter : null,
-                      ),
+                builder: (context, _) => switch (_mode) {
+                  SdrMode.spectrum => _SpectrumView(
+                      power: _c.power, color: AppTheme.accent, grid: t.border),
+                  SdrMode.adsb => _adsbMap
+                      ? AdsbMap(aircraft: _c.adsbAircraft, t: t)
+                      : AdsbList(aircraft: _c.adsbAircraft, t: t),
+                  _ => _DetectionList(
+                      detections: _c.detections,
+                      t: t,
+                      showRaw: _showRaw,
+                      catFilter: showChips ? _catFilter : null,
+                    ),
+                },
               ),
             ),
             if (_mode == SdrMode.spectrum) ...[
@@ -631,6 +659,20 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
                         fontWeight: FontWeight.w700,
                       )),
                 ),
+                if (d.kind != 'adsb')
+                  IconButton(
+                    icon: Icon(Icons.my_location, color: accent),
+                    tooltip: 'Foxhunt this signal',
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => SdrFoxhuntView(
+                          targetKey: SdrFoxhuntView.keyOf(d),
+                          title: (d.fields['model'] ?? d.kind).toString(),
+                        ),
+                      ));
+                    },
+                  ),
                 IconButton(
                   icon: Icon(Icons.close, color: t.textSecondary),
                   onPressed: () => Navigator.pop(ctx),

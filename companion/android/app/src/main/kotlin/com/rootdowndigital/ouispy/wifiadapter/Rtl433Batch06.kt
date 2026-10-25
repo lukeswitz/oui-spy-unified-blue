@@ -1370,7 +1370,7 @@ internal object RevoltZx7717 : Rtl433Decoder() {
     }
 }
 
-// unverified: rfm69_lowpowerlab_moteino.c:46-107 not ported - C passes int node/gateway ids to DATA_STRING (undefined behavior), no defined output to transcribe
+// unverified: rfm69_lowpowerlab_moteino.c:46-107 (C passes int node/gateway ids to DATA_STRING; emitted here as ints)
 internal object Rfm69LowpowerlabMoteino : Rtl433Decoder() {
     override val name = "RFM69 LowPowerLab Moteino board (-s 1000k)"
     override val mod = Mod.FSK_PCM
@@ -1378,7 +1378,38 @@ internal object Rfm69LowpowerlabMoteino : Rtl433Decoder() {
     override val long = 18
     override val reset = 400
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows == 0) return emptyList()
+        val posn = bb.search(0, 0, intArrayOf(0x2d), 8)
+        if (posn < 24 || posn > 28) return emptyList()
+        val message = IntArray(80)
+        bb.extractBytes(0, posn - 24, message, 65 * 8)
+        val payloadLen = message[5]
+        if (payloadLen > 65) return emptyList()
+        val payload = IntArray(72)
+        bb.extractBytes(0, posn + 16, payload, (payloadLen + 1) * 8)
+        val crc = Rtl433BitUtil.crc16(payload, payloadLen + 1, 0x1021, 0x1d0f).inv() and 0xffff
+        if ((crc shr 8) != message[6 + payloadLen] || (crc and 0xff) != message[6 + payloadLen + 1]) return emptyList()
+        if (message[7] != 0x02) return emptyList()
+        message[6 + payloadLen] = 0
+        val sb = StringBuilder()
+        var i = 9
+        while (i < 39 && message[i] != 0) {
+            sb.append(message[i].toChar())
+            i++
+        }
+        return listOf(
+            Reading(
+                "Moteino-RFM69",
+                message[6].toString(),
+                mapOf(
+                    "gateway_id" to message[7],
+                    "msg" to sb.toString(),
+                    "mic" to "CRC",
+                ),
+            ),
+        )
+    }
 }
 
 // unverified: rftech.c:42-70 (upstream .disabled = 1, not represented in API)
@@ -1740,17 +1771,503 @@ internal object S3318p : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - oregon_scientific.c:196-1043 (v2.1 and v3 multi-model decoders, ~830 lines), too large for this batch
+private fun osReflectNibbles(b: IntArray, n: Int) {
+    for (i in 0 until n) {
+        var v = ((b[i] and 0xCC) shr 2) or ((b[i] and 0x33) shl 2)
+        v = ((v and 0xAA) shr 1) or ((v and 0x55) shl 1)
+        b[i] = v and 0xFF
+    }
+}
+
+private fun osSwapNibbles(b: Int): Int = ((b and 0xf) shl 4) or ((b and 0xff) shr 4)
+
+private fun osChecksum(msg: IntArray, idx: Int): Boolean {
+    var sum = 0
+    var i = 0
+    while (i < idx - 1) {
+        val v = msg[i shr 1]
+        sum += (v shr 4) + (v and 0x0f)
+        i += 2
+    }
+    val checksum: Int
+    if ((idx and 1) != 0) {
+        sum += msg[idx shr 1] shr 4
+        checksum = (msg[idx shr 1] and 0x0f) or (msg[(idx + 1) shr 1] and 0xf0)
+    } else {
+        checksum = (msg[idx shr 1] shr 4) or ((msg[idx shr 1] and 0x0f) shl 4)
+    }
+    return (sum and 0xff) == checksum
+}
+
+private fun osV2Ok(msg: IntArray, expectedBits: Int, msgBits: Int, idx: Int): Boolean =
+    expectedBits == msgBits && osChecksum(msg, idx)
+
+private fun osTemp(m: IntArray): Float {
+    var t = (((m[5] shr 4) * 100) + ((m[4] and 0x0f) * 10) + ((m[4] shr 4) and 0x0f)).toFloat() / 10.0f
+    t += (m[5] and 0x07) * 100.0f
+    if ((m[5] and 0x08) != 0) t = -t
+    return t
+}
+
+private fun osRainRate(m: IntArray): Float =
+    (((m[5] and 0x0f) * 1000) + ((m[5] shr 4) * 100) + ((m[4] and 0x0f) * 10) + (m[4] shr 4)).toFloat() / 100.0f
+
+private fun osTotalRain(m: IntArray): Float =
+    (m[8] and 0x0f) * 100.0f +
+        ((m[8] shr 4) and 0x0f) * 10.0f + (m[7] and 0x0f) +
+        ((m[7] shr 4) and 0x0f) / 10.0f + (m[6] and 0x0f) / 100.0f +
+        ((m[6] shr 4) and 0x0f) / 1000.0f
+
+private fun osHumidity(m: IntArray): Int = ((m[6] and 0x0f) * 10) + (m[6] shr 4)
+
+private fun osUv(m: IntArray): Int = ((m[4] and 0x0f) * 10) + (m[4] shr 4)
+
+private fun osCm180Power(msg: IntArray): Int {
+    val v = (msg[4] shl 8) or (msg[3] and 0xF0)
+    return (v.toFloat() * 1.00625f).toInt()
+}
+
+private fun osCm180Total(msg: IntArray): Long {
+    if ((msg[1] and 0x0F) != 0) return 0L
+    return (msg[10].toLong() shl 40) +
+        (msg[9].toLong() shl 32) +
+        (msg[8].toLong() shl 24) +
+        (msg[7].toLong() shl 16) +
+        (msg[6].toLong() shl 8) +
+        msg[5].toLong()
+}
+
+private fun osRead(model: String, deviceId: Int, channel: Int?, batteryLow: Int, extra: List<Pair<String, Any?>>): Reading {
+    val f = linkedMapOf<String, Any?>()
+    if (channel != null) f["channel"] = channel
+    f["battery_ok"] = if (batteryLow != 0) 0 else 1
+    for ((k, v) in extra) f[k] = v
+    f["mic"] = "CHECKSUM"
+    return Reading(model, deviceId.toString(), f)
+}
+
+private fun oregonV2(bb: BitBuffer): Reading? {
+    val b = bb.bb[0]
+    if ((b[1] != 0x55 || b[2] != 0x55) && (b[1] != 0xAA || b[2] != 0xAA)) return null
+    val databits = BitBuffer()
+    val syncTest = (b[3].toLong() shl 24) or (b[4].toLong() shl 16) or (b[5].toLong() shl 8) or b[6].toLong()
+    for (p in 0 until 8) {
+        val mask = 0xffff0000L shr p
+        val pattern = 0x55990000L shr p
+        val pattern2 = 0xaa990000L shr p
+        if ((syncTest and mask) != pattern && (syncTest and mask) != pattern2) continue
+        bb.manchesterDecode(0, p + 40, databits, 173)
+        osReflectNibbles(databits.bb[0], (databits.bitsPerRow[0] + 7) / 8)
+        break
+    }
+    val msg = databits.bb[0]
+    val msgBits = databits.bitsPerRow[0]
+    val sensorId = (msg[0] shl 8) or msg[1]
+    val channel = (msg[2] shr 4) and 0x0f
+    val deviceId = (msg[2] and 0x0f) or (msg[3] and 0xf0)
+    val batteryLow = (msg[3] shr 2) and 0x01
+
+    if (sensorId == 0x1d20 || sensorId == 0x1d30) {
+        if (!osV2Ok(msg, 68, msgBits, 15) && !osV2Ok(msg, 76, msgBits, 15)) return null
+        val model = if (sensorId == 0x1d30) "Oregon-THGR968" else if (msgBits == 76) "Oregon-THGR122N" else "Oregon-THGR228N"
+        return osRead(
+            model, deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg)),
+        )
+    }
+    if (sensorId == 0x3d00) {
+        if (!osV2Ok(msg, 94, msgBits, 17)) return null
+        val quadrant = ((msg[4] and 0x0f) * 10 + ((msg[4] shr 4) and 0x0f) * 1 + ((msg[5] shr 4) and 0x0f) * 100).toFloat()
+        val avgWind = ((msg[7] shr 4) and 0x0f) / 10.0f + (msg[7] and 0x0f) * 1.0f + ((msg[8] shr 4) and 0x0f) / 10.0f
+        val gustWind = (msg[5] and 0x0f) / 10.0f + ((msg[6] shr 4) and 0x0f) * 1.0f + (msg[6] and 0x0f) / 10.0f
+        return osRead(
+            "Oregon-WGR968", deviceId, channel, batteryLow,
+            listOf("wind_max_m_s" to gustWind.toDouble(), "wind_avg_m_s" to avgWind.toDouble(), "wind_dir_deg" to quadrant.toDouble()),
+        )
+    }
+    if (sensorId == 0x5d60) {
+        if (!osV2Ok(msg, 92, msgBits, 19)) return null
+        val pressure = (((msg[7] and 0x0f) or (msg[8] and 0xf0)) + 856).toFloat()
+        return osRead(
+            "Oregon-BHTR968", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg), "pressure_hPa" to pressure.toDouble()),
+        )
+    }
+    if (sensorId == 0x5d50) {
+        if (!osV2Ok(msg, 84, msgBits, 19)) return null
+        val pressure = (((msg[7] and 0x0f) or (msg[8] and 0xf0)) + 795).toFloat()
+        return osRead(
+            "Oregon-BTHR918", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg), "pressure_hPa" to pressure.toDouble()),
+        )
+    }
+    if (sensorId == 0x2d10) {
+        if (!osV2Ok(msg, 80, msgBits, 16)) return null
+        val rainRate = ((msg[4] and 0x0f) * 100 + (msg[4] shr 4) * 10 + ((msg[5] shr 4) and 0x0f)).toFloat() / 10.0f
+        val totalRain = ((msg[7] and 0xf) * 10000 + (msg[7] shr 4) * 1000 + (msg[6] and 0xf) * 100 + (msg[6] shr 4) * 10 + (msg[5] and 0xf)).toFloat() / 10.0f
+        return osRead(
+            "Oregon-RGR968", deviceId, channel, batteryLow,
+            listOf("rain_rate_mm_h" to rainRate.toDouble(), "rain_mm" to totalRain.toDouble()),
+        )
+    }
+    if ((sensorId == 0xec40 || sensorId == 0xec41) && msgBits == 76) {
+        if (!osV2Ok(msg, 76, msgBits, 12)) return null
+        return osRead(
+            if (sensorId == 0xec40) "Oregon-THR228N" else "Oregon-AWR129", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble()),
+        )
+    }
+    if (sensorId == 0xec40 && msgBits == 64) {
+        if (!osV2Ok(msg, 64, msgBits, 12)) return null
+        if (((msg[5] shr 4) and 0x0F) > 9 || (msg[4] and 0x0F) > 9 || ((msg[4] shr 4) and 0x0F) > 9) return null
+        val t = osTemp(msg)
+        if (t > 70 || t < -50) return null
+        return osRead("Oregon-THN132N", deviceId, channel, batteryLow, listOf("temperature_C" to t.toDouble()))
+    }
+    if ((sensorId and 0x0fff) == 0x0cc3 && msgBits == 80) {
+        if (!osV2Ok(msg, 80, msgBits, 15)) return null
+        return osRead(
+            "Oregon-RTGN129", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg)),
+        )
+    }
+    if ((sensorId == 0xdcc3 || sensorId == 0xccc3 || sensorId == 0xbcc3 || sensorId == 0xacc3 || sensorId == 0x9cc3) && msgBits == 173) {
+        if (!osV2Ok(msg, 173, msgBits, 15)) return null
+        return osRead(
+            "Oregon-RTGR328N", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg)),
+        )
+    }
+    if (sensorId == 0x8ce3 || sensorId == 0x8ae3) {
+        if (!osV2Ok(msg, 100, msgBits, 21)) return null
+        val year = ((msg[9] and 0x0F) * 10) + ((msg[9] and 0xF0) shr 4) + 2000
+        val month = (msg[8] and 0xF0) shr 4
+        val day = ((msg[7] and 0x0F) * 10) + ((msg[7] and 0xF0) shr 4)
+        val hours = ((msg[6] and 0x0F) * 10) + ((msg[6] and 0xF0) shr 4)
+        val minutes = ((msg[5] and 0x0F) * 10) + ((msg[5] and 0xF0) shr 4)
+        val seconds = ((msg[4] and 0x0F) * 10) + ((msg[4] and 0xF0) shr 4)
+        val clock = String.format("%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hours, minutes, seconds)
+        return osRead("Oregon-RTGR328N", deviceId, channel, batteryLow, listOf("radio_clock" to clock))
+    }
+    if ((sensorId and 0x0fff) == 0x0cc3) {
+        if (msgBits == 76 && osV2Ok(msg, 76, msgBits, 15)) {
+            return osRead(
+                "Oregon-RTGN318", deviceId, channel, batteryLow,
+                listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg)),
+            )
+        }
+        return null
+    }
+    if (sensorId == 0xcc43 || (sensorId and 0x0FFF) == 0x0cd3) {
+        if (osV2Ok(msg, 68, msgBits, 12)) {
+            return osRead(
+                if (sensorId == 0xcc43) "Oregon-THN129" else "Oregon-RTHN129", deviceId, channel, batteryLow,
+                listOf("temperature_C" to osTemp(msg).toDouble()),
+            )
+        }
+        return null
+    }
+    if (sensorId == 0x5d53) {
+        if (!osV2Ok(msg, 92, msgBits, 19)) return null
+        val pressure = (((msg[7] and 0x0f) or (msg[8] and 0xf0)) * 2 + (msg[8] and 0x01) + 600).toFloat()
+        return osRead(
+            "Oregon-BTHGN129", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg), "pressure_hPa" to pressure.toDouble()),
+        )
+    }
+    if (sensorId == 0xec70 && msgBits == 148) {
+        if (!osV2Ok(msg, 148, msgBits, 12)) return null
+        if (((msg[4] shr 4) and 0x0F) > 9 || (msg[4] and 0x0F) > 9) return null
+        val uvidx = osUv(msg)
+        if (uvidx < 0 || uvidx > 25) return null
+        return osRead("Oregon-UVR128", deviceId, null, batteryLow, listOf("uvi" to uvidx.toDouble()))
+    }
+    if (sensorId == 0xcc23) {
+        if (!osV2Ok(msg, 173, msgBits, 15)) return null
+        return osRead(
+            "Oregon-THGR328N", deviceId, channel, batteryLow,
+            listOf("temperature_C" to osTemp(msg).toDouble(), "humidity" to osHumidity(msg)),
+        )
+    }
+    return null
+}
+
+private fun oregonV3(bb: BitBuffer): Reading? {
+    val b = bb.bb[0]
+    if ((((b[0] and 0xf) != 0x0f) || (b[1] != 0xff) || ((b[2] and 0xc0) != 0xc0)) &&
+        (((b[0] and 0xf) != 0x00) || (b[1] != 0x00) || ((b[2] and 0xc0) != 0x00))
+    ) return null
+
+    val msg = IntArray(44)
+    val rowBits = bb.bitsPerRow[0]
+    val osPos = bb.search(0, 0, intArrayOf(0x00, 0x05), 16) + 16
+    val cm180Pos = bb.search(0, 0, intArrayOf(0x00, 0x46), 16) + 8
+    val cm180iPos = bb.search(0, 0, intArrayOf(0x00, 0x4A), 16) + 8
+    val cm130Pos = bb.search(0, 0, intArrayOf(0x00, 0x00, 0x00, 0x60), 32) + 24
+    val altPos = bb.search(0, 0, intArrayOf(0xff, 0xf5), 16) + 16
+
+    var msgPos = 0
+    var msgLen = 0
+    if (rowBits - osPos >= 7 * 8) {
+        msgPos = osPos
+        msgLen = rowBits - osPos
+    } else if (rowBits - cm180Pos >= 52) {
+        msgPos = cm180Pos
+        msgLen = rowBits - cm180Pos
+    } else if (rowBits - cm180iPos >= 84) {
+        msgPos = cm180iPos
+        msgLen = rowBits - cm180iPos
+    } else if (rowBits - cm130Pos >= 96) {
+        msgPos = cm130Pos
+        msgLen = rowBits - cm130Pos
+    } else if (rowBits - altPos >= 7 * 8) {
+        msgPos = altPos
+        msgLen = rowBits - altPos
+    }
+    if (msgLen == 0 || msgLen > msg.size * 8) return null
+
+    bb.extractBytes(0, msgPos, msg, msgLen)
+    osReflectNibbles(msg, (msgLen + 7) / 8)
+
+    val sensorId = (msg[0] shl 8) or msg[1]
+    val channel = (msg[2] shr 4) and 0x0f
+    val deviceId = (msg[2] and 0x0f) or (msg[3] and 0xf0)
+    val batteryLow = (msg[3] shr 2) and 0x01
+
+    if ((sensorId and 0xf0ff) == 0xf024 || sensorId == 0xf8b4) {
+        if (!osChecksum(msg, 15)) return null
+        if (((msg[5] shr 4) and 0x0F) > 9 || (msg[4] and 0x0F) > 9 || ((msg[4] shr 4) and 0x0F) > 9 ||
+            (msg[6] and 0x0F) > 9 || ((msg[6] shr 4) and 0x0F) > 9
+        ) return null
+        val t = osTemp(msg)
+        val hum = osHumidity(msg)
+        if (t > 70 || t < -50) return null
+        val txButton = msg[0] and 1
+        val extra = ArrayList<Pair<String, Any?>>()
+        if (txButton != 0) extra.add("button" to txButton)
+        extra.add("temperature_C" to t.toDouble())
+        extra.add("humidity" to hum)
+        return osRead("Oregon-THGR810", deviceId, channel, batteryLow, extra)
+    }
+    if (sensorId == 0xc844) {
+        if (!osChecksum(msg, 12)) return null
+        return osRead("Oregon-THN802", deviceId, channel, batteryLow, listOf("temperature_C" to osTemp(msg).toDouble()))
+    }
+    if (sensorId == 0xd874) {
+        if (!osChecksum(msg, 13)) return null
+        return osRead("Oregon-UV800", deviceId, channel, batteryLow, listOf("uvi" to osUv(msg).toDouble()))
+    }
+    if (sensorId == 0x2914) {
+        if (!osChecksum(msg, 18)) return null
+        for (i in 4..8) {
+            if ((msg[i] and 0x0F) > 9 || ((msg[i] shr 4) and 0x0F) > 9) return null
+        }
+        return osRead(
+            "Oregon-PCR800", deviceId, channel, batteryLow,
+            listOf("rain_rate_in_h" to osRainRate(msg).toDouble(), "rain_in" to osTotalRain(msg).toDouble()),
+        )
+    }
+    if (sensorId == 0x2d14) {
+        if (!osChecksum(msg, 18)) return null
+        return osRead(
+            "Oregon-PCR800a", deviceId, channel, batteryLow,
+            listOf("rain_rate_in_h" to osRainRate(msg).toDouble(), "rain_in" to osTotalRain(msg).toDouble()),
+        )
+    }
+    if (sensorId == 0x1984 || sensorId == 0x1994) {
+        if (!osChecksum(msg, 17)) return null
+        if ((msg[5] and 0x0F) > 9 ||
+            ((msg[6] shr 4) and 0x0F) > 9 ||
+            (msg[6] and 0x0F) > 9 ||
+            ((msg[7] shr 4) and 0x0F) > 9 ||
+            (msg[7] and 0x0F) > 9 ||
+            ((msg[8] shr 4) and 0x0F) > 9
+        ) return null
+        val gust = (msg[5] and 0x0f) / 10.0f + ((msg[6] shr 4) and 0x0f) * 1.0f + (msg[6] and 0x0f) * 10.0f
+        val avg = ((msg[7] shr 4) and 0x0f) / 10.0f + (msg[7] and 0x0f) * 1.0f + ((msg[8] shr 4) and 0x0f) * 10.0f
+        val quadrant = ((msg[4] shr 4) and 0x0f) * 22.5f
+        if (gust < 0 || gust > 56 || avg < 0 || avg > 56) return null
+        return osRead(
+            "Oregon-WGR800", deviceId, channel, batteryLow,
+            listOf("wind_max_m_s" to gust.toDouble(), "wind_avg_m_s" to avg.toDouble(), "wind_dir_deg" to quadrant.toDouble()),
+        )
+    }
+    if (msg[0] == 0x20 || msg[0] == 0x21 || msg[0] == 0x22 || msg[0] == 0x23 || msg[0] == 0x24) {
+        msg[0] = msg[0] and 0x0F
+        if (!osChecksum(msg, 22)) return null
+        val id = msg[1] and 0x0F
+        val currentAmps = osSwapNibbles(msg[3]) or ((msg[4] shr 4) shl 8)
+        val currentWatts = currentAmps * 0.07 * 230
+        val totalAmps = (osSwapNibbles(msg[10]).toLong() shl 36) or
+            (osSwapNibbles(msg[9]).toLong() shl 28) or
+            (osSwapNibbles(msg[8]).toLong() shl 20) or
+            (osSwapNibbles(msg[7]).toLong() shl 12) or
+            (osSwapNibbles(msg[6]).toLong() shl 4) or
+            (msg[5] and 0xf).toLong()
+        val totalKwh = totalAmps.toDouble() * 230.0 / 3600.0 / 1000.0 * 1.12
+        return Reading(
+            "Oregon-CM160",
+            id.toString(),
+            linkedMapOf<String, Any?>(
+                "power_W" to currentWatts,
+                "energy_kWh" to totalKwh,
+                "mic" to "CHECKSUM",
+            ),
+        )
+    }
+    if (msg[0] == 0x26) {
+        msg[0] = msg[0] and 0x0f
+        if (!osChecksum(msg, 23)) return null
+        for (k in 0 until 44) msg[k] = osSwapNibbles(msg[k])
+        val sequence = msg[1] and 0x0F
+        val id = (msg[2] shl 8) or (msg[1] and 0xF0)
+        val battLow = msg[3] and 0x1
+        val ipower = osCm180Power(msg)
+        val itotal = osCm180Total(msg)
+        val totalEnergy = itotal.toFloat() / 3600.0f / 1000.0f
+        val f = linkedMapOf<String, Any?>(
+            "battery_ok" to (if (battLow != 0) 0 else 1),
+            "power_W" to ipower,
+        )
+        if (itotal != 0L) f["energy_kWh"] = totalEnergy.toDouble()
+        f["sequence"] = sequence
+        f["mic"] = "CHECKSUM"
+        return Reading("Oregon-CM180", id.toString(), f)
+    }
+    if (msg[0] == 0x60) {
+        val crcIn = msg.copyOfRange(1, 11)
+        if (Rtl433BitUtil.crc8(crcIn, 10, 0x07, 0x00) != osSwapNibbles(msg[11])) return null
+        for (k in 0 until 12) msg[k] = osSwapNibbles(msg[k])
+        val id = msg[2]
+        val powerW = ((msg[4] shl 8) or msg[3]) * 16
+        val energyCnt = msg[6].toLong() or (msg[7].toLong() shl 8) or (msg[8].toLong() shl 16) or (msg[9].toLong() shl 24)
+        val energyKwh = energyCnt.toFloat() / 8192.0f
+        return Reading(
+            "Oregon-CM130",
+            id.toString(),
+            linkedMapOf<String, Any?>(
+                "power_W" to powerW,
+                "energy_kWh" to energyKwh.toDouble(),
+                "mic" to "CRC",
+            ),
+        )
+    }
+    return null
+}
+
+// unverified: oregon_scientific.c:196-1043 (v2.1 + v3; CM180i branch omitted - upstream has no checksum on it)
 internal object OregonScientific : Rtl433Decoder() {
     override val name = "Oregon Scientific Weather Sensor"
     override val mod = Mod.OOK_MC_ZEROBIT
     override val short = 440
     override val reset = 2400
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows == 0) return emptyList()
+        val r = oregonV2(bb) ?: oregonV3(bb) ?: return emptyList()
+        return listOf(r)
+    }
 }
 
-// unverified: not ported - RADIAN UART frame decoder lives in m_bus.c:1571-1868 and depends on m_bus helpers, not transcribed this batch
+private fun radianByte(bb: BitBuffer, row: Int, col: Int): Int {
+    val r = row + col / BITBUF_COLS
+    return if (r < BITBUF_ROWS) bb.bb[r][col % BITBUF_COLS] else 0
+}
+
+private fun uart8n2(bb: BitBuffer, row: Int, offsetIn: Int, numBitsIn: Int, dst: IntArray): Int {
+    var offset = offsetIn
+    var numBits = numBitsIn
+    var ret = 0
+    while (numBits > 11) {
+        val startb = radianByte(bb, row, offset / 8) shr (7 - (offset % 8))
+        if ((startb and 1) == 0) break
+        offset += 1
+        numBits -= 1
+    }
+    while (numBits >= 11) {
+        val startb = radianByte(bb, row, offset / 8) shr (7 - (offset % 8))
+        offset += 1
+        var datab = radianByte(bb, row, offset / 8)
+        if (offset % 8 != 0) {
+            datab = (radianByte(bb, row, offset / 8) shl 8) or radianByte(bb, row, offset / 8 + 1)
+            datab = datab shr (8 - (offset % 8))
+        }
+        offset += 8
+        val stop1 = radianByte(bb, row, offset / 8) shr (7 - (offset % 8))
+        offset += 1
+        val stop2 = radianByte(bb, row, offset / 8) shr (7 - (offset % 8))
+        offset += 1
+        if ((startb and 1) != 0) break
+        if ((stop1 and 1) != 1) break
+        if ((stop2 and 1) != 1) break
+        dst[ret] = rv8(datab and 0xff)
+        ret += 1
+        numBits -= 11
+    }
+    return ret
+}
+
+private fun radianHex(src: IntArray, off: Int, n: Int): String {
+    val sb = StringBuilder()
+    for (i in 0 until n) sb.append(String.format("%02x", src[off + i]))
+    return sb.toString()
+}
+
+private fun radianDecodeRow(bb: BitBuffer, row: Int): Reading? {
+    val syncTail = intArrayOf(0x0f, 0xff, 0xff, 0xff, 0xf0)
+    val frame = IntArray(256)
+    val rowBits = bb.bitsPerRow[row]
+    var pos = bb.search(row, 0, syncTail, 36)
+    if (pos >= rowBits) return null
+    pos += 36
+    if (pos >= rowBits) return null
+    val availBits = rowBits - pos
+    val maxBits = minOf(availBits, 256 * 11)
+    val frameLen = uart8n2(bb, row, pos, maxBits, frame)
+    if (frameLen < 6) return null
+    val declared = frame[0]
+    if (declared < 6 || declared > 256) return null
+    if (frameLen < declared) return null
+    val crcRx = frame[declared - 2] or (frame[declared - 1] shl 8)
+    val crcCalc = Rtl433BitUtil.crc16lsb(frame, declared - 2, 0x8408, 0x0000)
+    if (crcCalc != crcRx) return null
+    val control = frame[1]
+    var addrOff = 2
+    var bodyOff = 12
+    var spaced = 0
+    if (declared >= 18 && frame[2] == 0x00 && frame[8] == 0x00 && frame[14] == 0x00) {
+        addrOff = 3
+        bodyOff = 15
+        spaced = 1
+    }
+    if (bodyOff + 2 > declared) return null
+    val bodyLen = declared - bodyOff - 2
+    val controlString = when (control) {
+        0x06 -> "ack"
+        0x10 -> "request"
+        0x11 -> "response"
+        else -> "unknown"
+    }
+    return Reading(
+        "RADIAN",
+        null,
+        linkedMapOf<String, Any?>(
+            "len" to declared,
+            "control" to String.format("0x%02x", control),
+            "control_string" to controlString,
+            "header_variant" to (if (spaced != 0) "spaced" else "compact"),
+            "receiver_id" to radianHex(frame, addrOff, 5),
+            "sender_id" to radianHex(frame, addrOff + 5 + spaced, 5),
+            "body_len" to bodyLen,
+            "body" to radianHex(frame, bodyOff, bodyLen),
+            "crc" to String.format("0x%04x", crcRx),
+            "data" to radianHex(frame, 0, declared),
+            "mic" to "CRC",
+        ),
+    )
+}
+
+// unverified: m_bus.c:1568-1868 link layer only (UART 8N2 + CRC16-KERMIT gate); embedded M-Bus record parse_payload not ported
 internal object Radian : Rtl433Decoder() {
     override val name = "RADIAN/RADIAN0 meter"
     override val mod = Mod.FSK_PCM
@@ -1758,7 +2275,14 @@ internal object Radian : Rtl433Decoder() {
     override val long = 416
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val out = ArrayList<Reading>()
+        for (row in 0 until bb.numRows) {
+            if (bb.bitsPerRow[row] < 36 + 6 * 11) continue
+            radianDecodeRow(bb, row)?.let { out.add(it) }
+        }
+        return out
+    }
 }
 
 internal val BATCH_06: List<Rtl433Decoder> = listOf(

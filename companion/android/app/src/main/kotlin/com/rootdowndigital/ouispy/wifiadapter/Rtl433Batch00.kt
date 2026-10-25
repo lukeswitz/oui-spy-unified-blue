@@ -436,7 +436,6 @@ internal object AcuriteTh : Rtl433Decoder() {
     }
 }
 
-// unverified: acurite.c:1342-1584 multi-protocol dispatch not ported; acurite_txr_check helper at acurite.c:1268
 internal object AcuriteTxr : Rtl433Decoder() {
     override val name = "Acurite 592TXR temp/humidity, 592TX temp, 5n1, 3n1, Atlas weather station, 515 fridge/freezer, 6045 lightning, 899 rain, 1190/1192 leak"
     override val mod = Mod.OOK_PWM
@@ -446,7 +445,95 @@ internal object AcuriteTxr : Rtl433Decoder() {
     override val gap = 500
     override val reset = 4000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private val windDirs = intArrayOf(14, 11, 13, 12, 15, 10, 0, 9, 3, 6, 4, 5, 2, 7, 1, 8)
+    private val channels = arrayOf("C", "E", "B", "A")
+
+    private fun txrCheck(b: IntArray, browlen: Int, explen: Int): Boolean {
+        if (browlen < 6 || browlen < explen) return false
+        if ((Rtl433BitUtil.addBytes(b, explen - 1) and 0xff) != b[explen - 1]) return false
+        val par = Rtl433BitUtil.parityBytes(b.copyOfRange(2, explen - 1), explen - 3)
+        if (par != 0) return false
+        return channels[(b[0] and 0xC0) shr 6] != "E"
+    }
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        bb.invert()
+        val out = ArrayList<Reading>()
+        for (row in 0 until bb.numRows) {
+            val browlen = bb.bitsPerRow[row] / 8
+            if (browlen < 6 || browlen > 10) continue
+            val b = bb.bb[row]
+            if (b[0] == 0 && b[1] == 0 && b[2] == 0 && b[browlen - 1] == 0) continue
+            val msgType = b[2] and 0x3f
+            val channel = channels[(b[0] and 0xC0) shr 6]
+            val batteryLow = (b[2] and 0x40) == 0
+            when (msgType) {
+                0x04 -> {
+                    if (!txrCheck(b, browlen, 7)) continue
+                    val id = ((b[0] and 0x3f) shl 8) or b[1]
+                    val humidity = b[3] and 0x7f
+                    if (humidity > 100 && humidity != 127) continue
+                    val tempRaw = ((b[4] and 0x7F) shl 7) or (b[5] and 0x7F)
+                    val tempC = (tempRaw - 1000) * 0.1f
+                    if (tempC < -40 || tempC > 70) continue
+                    val f = linkedMapOf<String, Any?>(
+                        "channel" to channel,
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "temperature_C" to tempC.toDouble(),
+                    )
+                    if (humidity != 127) f["humidity"] = humidity
+                    out.add(Reading("Acurite-Tower", id.toString(), f))
+                }
+                0x20 -> {
+                    if (browlen < 8) continue
+                    if ((Rtl433BitUtil.addBytes(b, 7) and 0xff) != b[7]) continue
+                    if (channel == "E") continue
+                    val id = ((b[0] and 0x3f) shl 8) or b[1]
+                    val humidity = b[3] and 0x7f
+                    if (humidity > 100) continue
+                    val tempRaw = ((b[4] and 0x1F) shl 7) or (b[5] and 0x7F)
+                    val tempF = (tempRaw - 1480) * 0.1f
+                    if (tempF < -40.0 || tempF > 158.0) continue
+                    out.add(Reading("Acurite-3n1", id.toString(), mapOf(
+                        "message_type" to msgType,
+                        "channel" to channel,
+                        "sequence_num" to ((b[0] and 0x30) shr 4),
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "wind_avg_mi_h" to (b[6] and 0x7f).toDouble(),
+                        "temperature_F" to tempF.toDouble(),
+                        "humidity" to humidity,
+                    )))
+                }
+                0x31, 0x38 -> {
+                    if (!txrCheck(b, browlen, 8)) continue
+                    val id = ((b[0] and 0x0f) shl 8) or b[1]
+                    val windRaw = ((b[3] and 0x1F) shl 3) or ((b[4] and 0x70) shr 4)
+                    val windKph = if (windRaw > 0) windRaw * 0.8278f + 1.0f else 0f
+                    val f = linkedMapOf<String, Any?>(
+                        "message_type" to msgType,
+                        "channel" to channel,
+                        "sequence_num" to ((b[0] and 0x30) shr 4),
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "wind_avg_km_h" to windKph.toDouble(),
+                    )
+                    if (msgType == 0x31) {
+                        f["wind_dir_deg"] = (windDirs[b[4] and 0x0f] * 22.5f).toDouble()
+                        f["rain_in"] = ((((b[5] and 0x7f) shl 7) or (b[6] and 0x7f)) * 0.01f).toDouble()
+                    } else {
+                        val tempRaw = ((b[4] and 0x0F) shl 7) or (b[5] and 0x7F)
+                        val tempF = (tempRaw - 400) * 0.1f
+                        if (tempF < -40.0 || tempF > 158.0) continue
+                        val humidity = b[6] and 0x7f
+                        if (humidity > 100) continue
+                        f["temperature_F"] = tempF.toDouble()
+                        f["humidity"] = humidity
+                    }
+                    out.add(Reading("Acurite-5n1", id.toString(), f))
+                }
+            }
+        }
+        return out
+    }
 }
 
 // unverified: akhan_100F14.c:23-62, struct akhan_100F14.c:72
@@ -700,10 +787,107 @@ internal object AmbientweatherWh31e : Rtl433Decoder() {
     override val reset = 1500
     override val gap = 1800
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private fun hex(b: IntArray, from: Int, n: Int): String {
+        val s = StringBuilder()
+        for (i in from until from + n) s.append(String.format("%02x", b[i]))
+        return s.toString()
+    }
+
+    private fun micOk(b: IntArray, n: Int): Boolean =
+        Rtl433BitUtil.crc8(b, n, 0x31, 0x00) == 0 &&
+            ((Rtl433BitUtil.addBytes(b, n) - b[n]) and 0xFF) == 0
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val out = ArrayList<Reading>()
+        val preamble = intArrayOf(0xaa, 0x2d, 0xd4)
+        for (row in 0 until bb.numRows) {
+            val start = bb.search(row, 0, preamble, 24)
+            if (start == bb.bitsPerRow[row]) continue
+            val b = IntArray(18)
+            bb.extractBytes(row, start + 24, b, 18 * 8)
+            val type = b[0]
+            when (type) {
+                0x30, 0x37 -> {
+                    if (!micOk(b, 6)) continue
+                    val tempRaw = ((b[2] and 0x03) shl 8) or b[3]
+                    out.add(Reading(if (type == 0x30) "AmbientWeather-WH31E" else "AmbientWeather-WH31B", b[1].toString(), mapOf(
+                        "channel" to (((b[2] and 0x70) shr 4) + 1),
+                        "battery_ok" to (if (((b[2] and 0x04) shr 2) != 0) 0 else 1),
+                        "temperature_C" to ((tempRaw - 400) * 0.1f).toDouble(),
+                        "humidity" to b[4],
+                        "data" to hex(b, 6, 5),
+                    )))
+                }
+                0x52 -> {
+                    if (!micOk(b, 10)) continue
+                    val year = ((b[3] and 0xF0) shr 4) * 10 + (b[3] and 0x0F) + 2000
+                    val month = ((b[4] and 0x10) shr 4) * 10 + (b[4] and 0x0F)
+                    val day = ((b[5] and 0x30) shr 4) * 10 + (b[5] and 0x0F)
+                    val hours = ((b[6] and 0x30) shr 4) * 10 + (b[6] and 0x0F)
+                    val minutes = ((b[7] and 0x70) shr 4) * 10 + (b[7] and 0x0F)
+                    val seconds = ((b[8] and 0x70) shr 4) * 10 + (b[8] and 0x0F)
+                    out.add(Reading("AmbientWeather-WH31E", b[1].toString(), mapOf(
+                        "data" to b[2],
+                        "radio_clock" to String.format("%04d-%02d-%02dT%02d:%02d:%02dZ", year, month, day, hours, minutes, seconds),
+                    )))
+                }
+                0x40 -> {
+                    if (!micOk(b, 8)) continue
+                    val id = ((b[1] and 0x0f) shl 16) or (b[2] shl 8) or b[3]
+                    val battV = b[4] and 0x1f
+                    var battLvl = if (battV <= 9) 0 else 100 * (battV - 9) / 6
+                    if (battLvl > 100) battLvl = 100
+                    val rainRaw = (b[5] shl 8) or b[6]
+                    val f = linkedMapOf<String, Any?>()
+                    if (battV != 0) {
+                        f["battery_V"] = (battV * 0.1f).toDouble()
+                        f["battery_ok"] = (battLvl * 0.01f).toDouble()
+                    }
+                    f["rain_mm"] = rainRaw * 0.1
+                    f["data"] = hex(b, 9, 5)
+                    out.add(Reading("EcoWitt-WH40", String.format("%05x", id), f))
+                }
+                0x20 -> {
+                    if (!micOk(b, 9)) continue
+                    val id = (b[2] shl 8) or b[3]
+                    val battRaw = b[4]
+                    val battLvl0 = if (battRaw <= 90) 0 else 100 * (battRaw - 90) / 60
+                    val battLvl = if (battLvl0 > 100) 100 else battLvl0
+                    val rainRaw = (b[5] shl 8) or b[6]
+                    out.add(Reading("EcoWitt-WN20", id.toString(), mapOf(
+                        "battery_V" to (battRaw * 0.02f).toDouble(),
+                        "battery_ok" to (if (battLvl > 0) 1 else 0),
+                        "battery_pct" to battLvl,
+                        "rain_mm" to rainRaw * 0.1,
+                        "data" to hex(b, 10, 5),
+                    )))
+                }
+                0x68 -> {
+                    if (!micOk(b, 15)) continue
+                    val id = (b[2] shl 8) or b[3]
+                    val lux = (b[4] shl 8) or b[5]
+                    val batt = b[6]
+                    val wspeed = ((b[7] and 0x10) shl 4) or b[10]
+                    val wdir = ((b[7] and 0x20) shl 3) or b[11]
+                    val wgust = ((b[7] and 0x40) shl 2) or b[12]
+                    val uv = (b[13] * 0.1f).toInt()
+                    out.add(Reading("EcoWitt-WS68", id.toString(), mapOf(
+                        "battery_raw" to batt,
+                        "battery_ok" to (if (batt > 0x20) 1 else 0),
+                        "light_lux" to lux * 10,
+                        "wind_avg_m_s" to (wspeed * 0.1f).toDouble(),
+                        "wind_max_m_s" to (wgust * 0.1f).toDouble(),
+                        "uvi" to uv.toDouble(),
+                        "wind_dir_deg" to wdir,
+                        "data" to String.format("%02x%01x", b[16], b[17] shr 4),
+                    )))
+                }
+            }
+        }
+        return out
+    }
 }
 
-// unverified: not ported - ANT FSK packet parser (ant_antplus.c:80-139), disabled upstream, not transcribed this batch
 internal object AntAntplus : Rtl433Decoder() {
     override val name = "ANT and ANT+ devices"
     override val mod = Mod.FSK_PCM
@@ -713,7 +897,36 @@ internal object AntAntplus : Rtl433Decoder() {
     override val gap = 500
     override val reset = 500
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private val preamble = intArrayOf(0xAA)
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.bitsPerRow[0] < 120 || bb.bitsPerRow[0] > 200) return emptyList()
+        val bitOffset = bb.search(0, 0, preamble, 8) + 8
+        if (bitOffset + 17 * 8 > bb.bitsPerRow[0]) return emptyList()
+        val b = IntArray(17)
+        bb.extractBytes(0, bitOffset, b, 17 * 8)
+        if (Rtl433BitUtil.crc16(b, 17, 0x1021, 0xffff) != 0) {
+            bb.extractBytes(0, bitOffset + 1, b, 17 * 8)
+            if (Rtl433BitUtil.crc16(b, 17, 0x1021, 0xffff) != 0) return emptyList()
+        }
+        val netKey = (b[1] shl 8) or b[0]
+        val id = (b[3] shl 8) or b[2]
+        val payload = (7..14).joinToString(" ") { "%02x".format(b[it]) }
+        return listOf(
+            Reading(
+                "Garmin-ANT",
+                "0x%04x".format(id),
+                mapOf(
+                    "network" to (if (netKey == 0xc5a6) "ANT+" else "ANT"),
+                    "channel" to "0x%04x".format(netKey),
+                    "device_type" to b[4],
+                    "tx_type" to b[5],
+                    "payload" to payload,
+                    "mic" to "CRC",
+                ),
+            ),
+        )
+    }
 }
 
 // unverified: apator_metra_eitn30.c:106-202, struct apator_metra_eitn30.c:215
@@ -781,7 +994,78 @@ internal object ApatorMetraErm30 : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - Dialog3G decoder (arad_ms_meter.c:513-627) not transcribed this batch
+private const val ARAD_LFSR_MASK = 0xffffffffffL
+private const val ARAD_LFSR_KEY = 0x3037889dd8L
+private const val ARAD_LFSR_GEN39 = 0x00014013f8L
+private const val ARAD_LFSR_GEN31 = 0x201080d890L
+private const val ARAD_LFSR_GEN23 = 0x00018f36c8L
+private val ARAD_SYNC4 = intArrayOf(0xf5, 0x13, 0x85, 0x37)
+
+private fun aradLfsrRoll(key: Long): Long {
+    var next = (key shl 1) and ARAD_LFSR_MASK
+    if (key and (1L shl 39) != 0L) next = next xor ARAD_LFSR_GEN39
+    if (key and (1L shl 31) != 0L) next = next xor ARAD_LFSR_GEN31
+    if (key and (1L shl 23) != 0L) next = next xor ARAD_LFSR_GEN23
+    return next
+}
+
+private val ARAD_KEYS: LongArray by lazy {
+    val keys = LongArray(88)
+    var key = ARAD_LFSR_KEY
+    for (j in 87 downTo 0) {
+        keys[j] = key
+        key = aradLfsrRoll(key)
+    }
+    keys
+}
+
+private fun aradChecksum(b: IntArray): Long {
+    var sum = 0L
+    for (n in 0 until 11) {
+        for (i in 0 until 8) {
+            if ((b[n] shr (7 - i)) and 1 != 0) sum = sum xor ARAD_KEYS[n * 8 + i]
+        }
+    }
+    return sum
+}
+
+private fun aradFlip(b: IntArray, bitIndex: Int) {
+    b[bitIndex / 8] = b[bitIndex / 8] xor (1 shl (7 - bitIndex % 8))
+}
+
+private fun aradCorrectBits(b: IntArray, syndrome: Long): Int {
+    val keys = ARAD_KEYS
+    for (i in 0 until 88) {
+        if (keys[i] == syndrome) {
+            aradFlip(b, i)
+            return 1
+        }
+    }
+    for (i in 0 until 88) {
+        for (j in i + 1 until 88) {
+            if ((keys[i] xor keys[j]) == syndrome) {
+                aradFlip(b, i)
+                aradFlip(b, j)
+                return 2
+            }
+        }
+    }
+    for (i in 0 until 88) {
+        for (j in i + 1 until 88) {
+            val x = keys[i] xor keys[j]
+            for (k in j + 1 until 88) {
+                if ((x xor keys[k]) == syndrome) {
+                    aradFlip(b, i)
+                    aradFlip(b, j)
+                    aradFlip(b, k)
+                    return 3
+                }
+            }
+        }
+    }
+    return -1
+}
+
 internal object AradMsMeter : Rtl433Decoder() {
     override val name = "Arad/Master Meter Dialog3G water utility meter"
     override val mod = Mod.FSK_MC_ZEROBIT
@@ -789,7 +1073,66 @@ internal object AradMsMeter : Rtl433Decoder() {
     override val long = 8
     override val reset = 100
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val row = 0
+        if (bb.numRows > 1) return emptyList()
+        if (bb.bitsPerRow[row] < 18 * 8) return emptyList()
+        val matchPos = bb.search(row, 0, ARAD_SYNC4, 32)
+        if (matchPos + 32 > bb.bitsPerRow[row]) return emptyList()
+        var uidStart = matchPos - 16
+        if (uidStart < 0) uidStart = 0
+        val payloadStart = matchPos + 32
+        if (payloadStart + 128 > bb.bitsPerRow[row]) return emptyList()
+        var uidBits = payloadStart - uidStart
+        if (uidBits > 7 * 8) uidBits = 7 * 8
+        bb.invert()
+        val u = IntArray(7)
+        bb.extractBytes(row, uidStart, u, uidBits)
+        val uidStr = bitrowSnprint(u, uidBits)
+        val b = IntArray(16)
+        bb.extractBytes(row, payloadStart, b, 128)
+        val xorRaw = (b[11].toLong() shl 32) or (b[12].toLong() shl 24) or (b[13].toLong() shl 16) or (b[14].toLong() shl 8) or b[15].toLong()
+        val xorCal = aradChecksum(b)
+        var corrections = 0
+        if (xorRaw != xorCal) {
+            corrections = aradCorrectBits(b, xorRaw xor xorCal)
+            if (corrections < 0) return emptyList()
+        }
+        val leaking = (b[0] and 0x20) shr 5
+        val serno = b[1].toLong() or (b[2].toLong() shl 8) or (b[3].toLong() shl 16)
+        val snSufx = b[4]
+        val flags1 = b[5]
+        val wreadraw = b[6].toLong() or (b[7].toLong() shl 8) or (b[8].toLong() shl 16)
+        val flags2 = b[10]
+        var scale = 0.1f
+        var unit = "m3"
+        if (snSufx == 0x00 && (flags1 == 0x00 || flags1 == 0x40)) {
+            scale = 0.01f
+            unit = "m3"
+        } else if (snSufx == 0x27 && flags1 == 0x00) {
+            scale = 0.1f
+            unit = "gal"
+        }
+        val volume = wreadraw.toFloat() * scale
+        val sernoOut = "%08d-%02x".format(serno, snSufx)
+        return listOf(
+            Reading(
+                "AradMsMeter-Dialog3G",
+                sernoOut,
+                mapOf(
+                    "uid" to uidStr,
+                    "leaking" to leaking,
+                    "flags1" to "%02x".format(flags1),
+                    "gear" to scale.toDouble(),
+                    "volume" to volume.toDouble(),
+                    "unit" to unit,
+                    "flags2" to "%02x".format(flags2),
+                    "corrections" to corrections,
+                    "mic" to "CHECKSUM",
+                ),
+            ),
+        )
+    }
 }
 
 // unverified: archos_tbh.c:60-213, struct archos_tbh.c:228
@@ -983,7 +1326,6 @@ internal object Astrostart2000 : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - atech_ws308.c:82-120 needs pwm_decode (atech_ws308.c:48), a helper not in the Rtl433 API
 internal object AtechWs308 : Rtl433Decoder() {
     override val name = "Atech-WS308 temperature sensor"
     override val mod = Mod.OOK_RZI
@@ -992,7 +1334,42 @@ internal object AtechWs308 : Rtl433Decoder() {
     override val gap = 2500
     override val reset = 9000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 2) return emptyList()
+        val bitLen = bb.bitsPerRow[1]
+        if (bitLen < 58) return emptyList()
+        val src = bb.bb[1]
+        val b = IntArray(4)
+        var pos = 0
+        var cnt = 0
+        for (i in 0 until bitLen) {
+            if ((src[i / 8] and (1 shl (7 - (i % 8)))) != 0) {
+                cnt++
+            } else {
+                if (pos % 8 == 0) b[pos / 8] = 0
+                if (cnt == 1) {
+                    pos++
+                } else if (cnt == 3) {
+                    b[pos / 8] = b[pos / 8] or (1 shl (7 - (pos % 8)))
+                    pos++
+                } else {
+                    break
+                }
+                if (pos >= 32) break
+                cnt = 0
+            }
+        }
+        if (pos < 28) return emptyList()
+        var chk = Rtl433BitUtil.xorBytes(b, 3)
+        chk = ((chk xor b[3]) shr 4) xor (chk and 0xf)
+        if (chk != 0) return emptyList()
+        val tempRaw = ((b[1] and 0xf) * 100) + ((b[2] shr 4) * 10) + (b[2] and 0xf)
+        val sign = if ((b[1] and 0x20) != 0) -1 else 1
+        val tempC = sign * tempRaw * 0.1f
+        return listOf(Reading("Atech-WS308", b[0].toString(), mapOf(
+            "temperature_C" to tempC.toDouble(),
+        )))
+    }
 }
 
 // unverified: audiovox_pro_oe3b.c:48-111, struct audiovox_pro_oe3b.c:120
@@ -1258,7 +1635,37 @@ internal object AuriolHg04641a : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - badger_water.c:84-138 needs badger_decode_3of6_buffer (badger_water.c:71), a helper not in the Rtl433 API
+private val BADGER_PREAMBLE = intArrayOf(0x54, 0x3D)
+
+private fun badgerDecode3of6(v: Int): Int = when (v) {
+    22 -> 0x0
+    13 -> 0x1
+    14 -> 0x2
+    11 -> 0x3
+    28 -> 0x4
+    25 -> 0x5
+    26 -> 0x6
+    19 -> 0x7
+    44 -> 0x8
+    37 -> 0x9
+    38 -> 0xA
+    35 -> 0xB
+    52 -> 0xC
+    49 -> 0xD
+    50 -> 0xE
+    41 -> 0xF
+    else -> 0xFF
+}
+
+private fun badgerDecode3of6Buffer(bits: IntArray, bitOffset: Int, output: IntArray) {
+    for (n in 0 until 10) {
+        val nibbleH = badgerDecode3of6(bitrowGetByte(bits, n * 12 + bitOffset) shr 2)
+        val nibbleL = badgerDecode3of6(bitrowGetByte(bits, n * 12 + bitOffset + 6) shr 2)
+        if ((nibbleH or nibbleL) > 15) return
+        output[n] = (nibbleH shl 4) or nibbleL
+    }
+}
+
 internal object BadgerOrion : Rtl433Decoder() {
     override val name = "Badger ORION water meter, 100kbps (-f 916.45M -s 1200k)"
     override val mod = Mod.FSK_PCM
@@ -1266,7 +1673,33 @@ internal object BadgerOrion : Rtl433Decoder() {
     override val long = 10
     override val reset = 1000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.bitsPerRow[0] < 16 + 12 * 10 || bb.bitsPerRow[0] > 128 + 16 + 12 * 10 + 96) return emptyList()
+        var bitOffset = bb.search(0, 0, BADGER_PREAMBLE, 16)
+        if (bitOffset + 12 * 10 >= bb.bitsPerRow[0]) return emptyList()
+        bitOffset += 16
+        val dataIn = IntArray(10)
+        badgerDecode3of6Buffer(bb.bb[0], bitOffset, dataIn)
+        val crcRead = (dataIn[8] shl 8) or dataIn[9]
+        val crcCalc = Rtl433BitUtil.crc16(dataIn, 8, 0x3D65, 0).inv() and 0xFFFF
+        if (crcCalc != crcRead) return emptyList()
+        val deviceId = dataIn[0] or (dataIn[1] shl 8) or (dataIn[2] shl 16)
+        val flags1 = dataIn[3]
+        val volume = dataIn[4] or (dataIn[5] shl 8) or (dataIn[6] shl 16)
+        val flags2 = dataIn[7]
+        return listOf(
+            Reading(
+                "Badger-ORION",
+                deviceId.toString(),
+                mapOf(
+                    "flags_1" to flags1,
+                    "volume_gal" to volume,
+                    "flags_2" to flags2,
+                    "mic" to "CRC",
+                ),
+            ),
+        )
+    }
 }
 
 // unverified: baldr_hcs528arf.c:56-107, struct baldr_hcs528arf.c:117
@@ -1375,7 +1808,20 @@ internal object BaldrTherm : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - blueline.c:241-386 is stateful (decoder_user_data context); the Rtl433Decoder API carries no per-instance state
+private fun bluelineRevCrc8(message: IntArray, nBytes: Int, polynomial: Int, remainderIn: Int): Int {
+    val poly = (polynomial shr 1) or 0x80
+    var remainder = remainderIn and 0xFF
+    var byte = nBytes
+    while (byte-- > 0) {
+        var bit = 8
+        while (bit-- > 0) {
+            remainder = if (remainder and 0x01 != 0) (remainder shr 1) xor poly else remainder shr 1
+        }
+        remainder = remainder xor message[byte]
+    }
+    return remainder and 0xFF
+}
+
 internal object Blueline : Rtl433Decoder() {
     override val name = "BlueLine Innovations Power Cost Monitor, Black & Decker EM100B"
     override val mod = Mod.OOK_PPM
@@ -1384,7 +1830,106 @@ internal object Blueline : Rtl433Decoder() {
     override val gap = 2000
     override val reset = 8000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private val idGuessHits = IntArray(65536 / 4)
+    private var currentSensorId = 0
+    private var searchingForNewId = true
+
+    private fun guessId(row: IntArray): Int {
+        val startValue = (row[2] shl 8) or row[1]
+        val recvCrc = row[3]
+        val rcvMsgType = row[1] and 0x03
+        val working = intArrayOf(0x00, row[2])
+        var bestId = 0
+        var bestHits = 0
+        var numAtBestHits = 0
+        var highByteSteps = 256
+        while (highByteSteps-- > 0) {
+            val rev = bluelineRevCrc8(working, 2, 0x07, recvCrc)
+            if ((rev and 0x03) == rcvMsgType) {
+                val workingValue = (startValue - ((working[1] shl 8) or rev)) and 0xFFFF
+                val idx = workingValue / 4
+                idGuessHits[idx]++
+                if (idGuessHits[idx] >= bestHits) {
+                    if (idGuessHits[idx] > bestHits) {
+                        bestHits = idGuessHits[idx]
+                        bestId = workingValue
+                        numAtBestHits = 1
+                    } else {
+                        numAtBestHits++
+                    }
+                }
+            }
+            working[1] = (working[1] + 1) and 0xFF
+        }
+        return if (bestHits >= 4 && numAtBestHits == 1) bestId else 0
+    }
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        bb.invert()
+        val out = ArrayList<Reading>()
+        for (rowIndex in 0 until bb.numRows) {
+            val row = bb.bb[rowIndex]
+            if (bb.bitsPerRow[rowIndex] != 32 || row[0] != 0xFE) continue
+            val messageType = row[1] and 0x03
+            val recvCrc = row[3]
+            var offsetU16 = 0
+            val offsetU8 = IntArray(2)
+            val calcCrc: Int
+            if (messageType == 0x00) {
+                calcCrc = Rtl433BitUtil.crc8(intArrayOf(row[1], row[2]), 2, 0x07, 0x00)
+            } else {
+                offsetU16 = (((row[2] shl 8) or row[1]) - currentSensorId) and 0xFFFF
+                offsetU8[0] = offsetU16 and 0xFF
+                offsetU8[1] = offsetU16 shr 8
+                calcCrc = Rtl433BitUtil.crc8(offsetU8, 2, 0x07, 0x00)
+            }
+            if (calcCrc != recvCrc) {
+                if (searchingForNewId && messageType != 0x00) {
+                    val idGuess = guessId(row)
+                    if (idGuess != 0) {
+                        currentSensorId = idGuess
+                        searchingForNewId = false
+                    }
+                }
+                continue
+            }
+            when (messageType) {
+                0x00 -> {
+                    val receivedId = (row[2] shl 8) or row[1]
+                    out.add(Reading("Blueline-PowerCost", receivedId.toString(), mapOf("mic" to "CRC")))
+                    if (searchingForNewId) {
+                        currentSensorId = receivedId
+                        searchingForNewId = false
+                    }
+                }
+                0x01 -> out.add(
+                    Reading("Blueline-PowerCost", currentSensorId.toString(), mapOf("gap" to offsetU16, "mic" to "CRC")),
+                )
+                0x02 -> {
+                    val temperature = offsetU8[1]
+                    val flags = offsetU8[0] shr 2
+                    val battery = (flags and 0x20) shr 5
+                    val temperatureC = (0.436f * temperature) - 30.36f
+                    out.add(
+                        Reading(
+                            "Blueline-PowerCost",
+                            currentSensorId.toString(),
+                            mapOf(
+                                "flags" to "%02x".format(flags),
+                                "battery_ok" to (if (battery == 0) 1 else 0),
+                                "temperature_C" to temperatureC.toDouble(),
+                                "mic" to "CRC",
+                            ),
+                        ),
+                    )
+                }
+                else -> out.add(
+                    Reading("Blueline-PowerCost", currentSensorId.toString(), mapOf("impulses" to offsetU16, "mic" to "CRC")),
+                )
+            }
+        }
+        return out
+    }
 }
 
 // unverified: blyss.c:24-54, struct blyss.c:62

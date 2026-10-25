@@ -2277,7 +2277,6 @@ internal object ChamberlainCwpirc : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - bresser_garden.c:432-1028 decode (~600 lines of multi-variant payload logic) not transcribed this batch
 internal object BresserGarden : Rtl433Decoder() {
     override val name = "Bresser SmartHome Garden soil moisture and water timer valve (Baldr Homgar, RainPoint)"
     override val mod = Mod.FSK_PCM
@@ -2285,7 +2284,139 @@ internal object BresserGarden : Rtl433Decoder() {
     override val long = 50
     override val reset = 10000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private fun modelOf(sourceId: Long): String = when ((sourceId shr 24).toInt()) {
+        0x47 -> "Bresser-SoilMoisture"
+        0x1f -> "Bresser-WaterTimer"
+        0x01 -> "Bresser-Gateway"
+        else -> "Bresser-Garden"
+    }
+
+    private fun le32(b: IntArray, o: Int): Long =
+        (b[o + 3].toLong() shl 24) or (b[o + 2].toLong() shl 16) or (b[o + 1].toLong() shl 8) or b[o].toLong()
+
+    private fun payloadHex(b: IntArray, len: Int): String {
+        val s = StringBuilder()
+        for (i in 0 until minOf(len, 20)) s.append(String.format("%02x", b[11 + i]))
+        return s.toString()
+    }
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1) return emptyList()
+        val msgLen = bb.bitsPerRow[0]
+        if (msgLen > 2000) return emptyList()
+        val pre = intArrayOf(0xaa, 0xf3, 0xe9, 0x10, 0x5e, 0x51)
+        var offset = bb.search(0, 0, pre, pre.size * 8)
+        if (offset >= msgLen) return emptyList()
+        offset += pre.size * 8
+        if (msgLen - offset < 33 * 8) return emptyList()
+        val b = IntArray(33)
+        bb.extractBytes(0, offset, b, 33 * 8)
+        if (Rtl433BitUtil.crc16(b, 33, 0x1021, 0xd636) != 0) return emptyList()
+
+        val targetId = le32(b, 0)
+        val sourceId = le32(b, 4)
+        val counter = b[8]
+        val msgType = b[9]
+        val msgLength = b[10]
+        val ack = msgType shr 7
+        if (msgLength > 20) return emptyList()
+        val model = modelOf(sourceId)
+        val id = sourceId.toString()
+
+        when {
+            msgType == 0x01 && (msgLength == 0x07 || msgLength == 0x08) -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Init Pairing",
+                "target_id" to targetId,
+                "msg_counter" to counter,
+                "device_type" to b[11],
+                "firmware" to b[17],
+                "msg_type" to msgType,
+                "msg_length" to msgLength,
+                "msg" to payloadHex(b, msgLength),
+            )))
+            msgType == 0x03 && msgLength == 0x07 -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Soil telemetry",
+                "device_type" to b[11],
+                "station_id" to targetId,
+                "msg_counter" to counter,
+                "msg_type" to msgType,
+                "temperature_F" to (s16((b[17] shl 8) or b[16]) * 0.1f).toDouble(),
+                "moisture" to b[14],
+                "battery_ok" to (if (((b[12] and 0x10) shr 4) != 0) 0 else 1),
+                "battery_level" to (b[12] and 0x0f),
+            )))
+            (msgType == 0x83 || msgType == 0x84 || msgType == 0x89 || msgType == 0x8a) && msgLength == 0x01 -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Acknowledgement",
+                "target_id" to targetId,
+                "msg_counter" to counter,
+                "acknowledgement" to ack,
+                "msg_type" to msgType,
+                "msg_length" to msgLength,
+            )))
+            msgType == 0x0a && msgLength == 0x09 -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Relay telemetry",
+                "device_type" to b[11],
+                "sensor_number" to b[12],
+                "station_id" to targetId,
+                "msg_counter" to counter,
+                "msg_type" to msgType,
+                "temperature_F" to (s16((b[19] shl 8) or b[18]) * 0.1f).toDouble(),
+                "moisture" to b[16],
+                "soil_rssi" to b[13],
+                "battery_ok" to (if (((b[14] and 0x10) shr 4) != 0) 0 else 1),
+                "battery_level" to (b[14] and 0x0f),
+            )))
+            msgType == 0x09 && msgLength == 0x09 -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Soil telemetry",
+                "device_type" to b[11],
+                "sensor_number" to b[12],
+                "station_id" to targetId,
+                "msg_counter" to counter,
+                "msg_type" to msgType,
+                "temperature_F" to (s16((b[19] shl 8) or b[18]) * 0.1f).toDouble(),
+                "moisture" to b[16],
+                "battery_ok" to (if (((b[14] and 0x10) shr 4) != 0) 0 else 1),
+                "battery_level" to (b[14] and 0x0f),
+            )))
+            msgType == 0x04 && msgLength == 0x0e -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Watering",
+                "sensor_number" to b[11],
+                "station_id" to targetId,
+                "msg_counter" to counter,
+                "msg_type" to msgType,
+                "program" to String.format("%04x", (b[14] shl 8) or b[15]),
+                "cycle_counter" to (b[16] or (b[17] shl 8)),
+                "trigger" to String.format("%02x", b[18]),
+                "water_usage_l" to ((b[19] or (b[20] shl 8)) * 0.1f).toDouble(),
+                "duration_s" to (b[23] or (b[24] shl 8)),
+            )))
+            msgType == 0x85 && msgLength == 0x0f -> return listOf(Reading(model, id, mapOf(
+                "msg_name" to "Schedule config",
+                "target_id" to targetId,
+                "sensor_number" to b[18],
+                "msg_counter" to counter,
+                "msg_type" to msgType,
+                "default_duration_s" to (b[12] or (b[13] shl 8)),
+                "mist_run_s" to (b[14] or (b[15] shl 8)),
+                "mist_interval_s" to (b[16] or (b[17] shl 8)),
+                "stop_moisture" to b[19],
+                "flow_rate" to b[24].toByte().toInt(),
+                "unknown" to String.format("%02x", b[22]),
+            )))
+            msgType == 0x20 && (msgLength == 0x02 || msgLength == 0x03) -> {
+                val f = linkedMapOf<String, Any?>(
+                    "msg_name" to "Config change",
+                    "target_id" to targetId,
+                    "msg_counter" to counter,
+                    "msg_type" to msgType,
+                    "config_counter" to b[11],
+                )
+                if (msgLength == 0x03 && b[12] == 0x04) f["rf_channel"] = b[13]
+                return listOf(Reading(model, id, f))
+            }
+        }
+        return emptyList()
+    }
 }
 
 internal val BATCH_01: List<Rtl433Decoder> = listOf(

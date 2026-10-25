@@ -1873,7 +1873,7 @@ internal object FineoffsetWH51 : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - fineoffset.c:604-606 dispatches to fineoffset_WH0290_callback (fineoffset.c:524) and fineoffset_WH24_callback (fineoffset.c:309) for other lengths; those callbacks not transcribed this batch
+// unverified: WH24/WH65/WS69/HP1000 (fineoffset_WH24_callback) and WH0290 delegations (rows <160 or 190..439 bits) not ported; only the WH25/WH32/WH32B/WN32B path
 internal object FineoffsetWH25 : Rtl433Decoder() {
     override val name = "Fine Offset Electronics, WH25, WH32, WH32B, WN32B, WH24, WH65, WS69, HP1000, Misol WS2320 Temperature/Humidity/Pressure Sensor"
     override val mod = Mod.FSK_PCM
@@ -1881,10 +1881,49 @@ internal object FineoffsetWH25 : Rtl433Decoder() {
     override val long = 58
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private val PREAMBLE = intArrayOf(0xAA, 0x2D, 0xD4)
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val bits = bb.bitsPerRow[0]
+        var type = 25
+        if (bits < 160) return emptyList()
+        else if (bits < 190) type = 32
+        else if (bits < 440) return emptyList()
+        if (bits > 510) type = 32
+        val bitOffset = bb.search(0, 0, PREAMBLE, 24) + 24
+        if (bitOffset + 64 > bits) return emptyList()
+        val b = IntArray(9)
+        bb.extractBytes(0, bitOffset, b, 64)
+        val msgType = b[0] and 0xf0
+        if (type == 32 && msgType == 0xd0) type = 31
+        else if (msgType != 0xe0) return emptyList()
+        val sum = (Rtl433BitUtil.addBytes(b, 6) and 0xff) - b[6]
+        if (sum != 0) return emptyList()
+        var bitsum = Rtl433BitUtil.xorBytes(b, 6)
+        bitsum = ((bitsum and 0x0f) shl 4) or (bitsum shr 4)
+        if (type == 25 && bitsum != b[7]) return emptyList()
+        val id = ((b[0] and 0x0f) shl 4) or (b[1] shr 4)
+        val lowBattery = (b[1] and 0x08) shr 3
+        val tempRaw = ((b[1] and 0x03) shl 8) or b[2]
+        val temperature = (tempRaw - 400) * 0.1f
+        val humidity = b[3]
+        val pressureRaw = (b[4] shl 8) or b[5]
+        val pressure = pressureRaw * 0.1f
+        val model = when (type) {
+            31 -> "Fineoffset-WH32"
+            32 -> "Fineoffset-WH32B"
+            else -> "Fineoffset-WH25"
+        }
+        val fields = linkedMapOf<String, Any?>()
+        fields["battery_ok"] = if (lowBattery == 0) 1 else 0
+        fields["temperature_C"] = temperature.toDouble()
+        fields["humidity"] = humidity
+        if (pressureRaw != 0xffff) fields["pressure_hPa"] = pressure.toDouble()
+        fields["mic"] = "CRC"
+        return listOf(Reading(model, id.toString(), fields))
+    }
 }
 
-// unverified: not ported - fineoffset.c:1087-1088 dispatches 63/95-bit rows to alecto_ws1200v1_callback (fineoffset.c:866) and alecto_ws1200v2_callback (fineoffset.c:1018); not transcribed this batch
 internal object FineoffsetWH0530 : Rtl433Decoder() {
     override val name = "Fine Offset Electronics, WH0530 Temperature/Rain Sensor"
     override val mod = Mod.OOK_PWM
@@ -1893,10 +1932,71 @@ internal object FineoffsetWH0530 : Rtl433Decoder() {
     override val reset = 1200
     override val tolerance = 160
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.bitsPerRow[0] != 71) return emptyList()
+        val r = bb.bb[0]
+        if ((r[0] shr 1) != 0x7F || (r[1] shr 5) != 0x3) return emptyList()
+        val b = IntArray(9)
+        bb.extractBytes(0, 7, b, 64)
+        val crc = Rtl433BitUtil.crc8(b, 7, 0x31, 0)
+        val sum = (Rtl433BitUtil.addBytes(b, 7) and 0xff) - b[7]
+        if (crc != 0 || sum != 0) return emptyList()
+        val id = ((b[0] and 0x0f) shl 4) or (b[1] shr 4)
+        val batteryLow = (b[1] shr 3) and 0x1
+        val tempRaw = ((b[1] and 0x7) shl 8) or b[2]
+        val temperature = (tempRaw - 400) * 0.1f
+        val rainRaw = (b[4] shl 8) or b[3]
+        val rainfall = rainRaw * 0.3f
+        return listOf(Reading("Fineoffset-WH0530", id.toString(), mapOf(
+            "battery_ok" to (if (batteryLow == 0) 1 else 0),
+            "temperature_C" to temperature.toDouble(),
+            "rain_mm" to rainfall.toDouble(),
+            "mic" to "CRC",
+        )))
+    }
 }
 
-// unverified: not ported - ert_idm.c:90-300 (ert_idm_decode) and ert_idm.c:330-591 (ert_netidm_decode) packet parsers with meter-type tables (ert_idm.c:41-62), ~470 lines, not transcribed this batch
+private const val IDM_PACKET_BYTES = 92
+private const val IDM_PACKET_BITLEN = 720
+private val IDM_FRAME_SYNC = intArrayOf(0x16, 0xA3, 0x1C)
+
+private fun idmMeterTypeName(ertType: Int): String = when (ertType and 0x0f) {
+    4, 5, 7, 8 -> "Electric"
+    0, 1, 2, 9, 12 -> "Gas"
+    3, 11, 13 -> "Water"
+    else -> "unknown"
+}
+
+private fun idmHex(b: IntArray, from: Int, count: Int): String {
+    val sb = StringBuilder("0x")
+    for (j in 0 until count) sb.append("%02X".format(b[from + j]))
+    return sb.toString()
+}
+
+private fun idmFrame(bb: BitBuffer): Pair<Int, IntArray>? {
+    if (bb.bitsPerRow[0] < IDM_PACKET_BITLEN) return null
+    val syncIndex = bb.search(0, 0, IDM_FRAME_SYNC, 24)
+    if (syncIndex >= bb.bitsPerRow[0]) return null
+    if (bb.bitsPerRow[0] - syncIndex < IDM_PACKET_BITLEN) return null
+    val b = IntArray(IDM_PACKET_BYTES)
+    bb.extractBytes(0, syncIndex, b, IDM_PACKET_BITLEN)
+    val packetCrc = (b[88] shl 8) or b[89]
+    if (Rtl433BitUtil.crc16(b.copyOfRange(2, 88), 86, 0x1021, 0xD895) != packetCrc) return null
+    return Pair(syncIndex, b)
+}
+
+private fun idmIntervals(bb: BitBuffer, startPos: Int, count: Int, width: Int): List<Int> {
+    var pos = startPos
+    val out = ArrayList<Int>(count)
+    for (j in 0 until count) {
+        val buffy = IntArray(4)
+        bb.extractBytes(0, pos, buffy, width)
+        out.add(if (width == 9) (buffy[0] shl 1) or (buffy[1] shr 7) else (buffy[0] shl 6) or (buffy[1] shr 2))
+        pos += width
+    }
+    return out
+}
+
 internal object ErtIdm : Rtl433Decoder() {
     override val name = "ERT Interval Data Message (IDM)"
     override val mod = Mod.OOK_MC_ZEROBIT
@@ -1904,10 +2004,38 @@ internal object ErtIdm : Rtl433Decoder() {
     override val gap = 20000
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val (syncIndex, b) = idmFrame(bb) ?: return emptyList()
+        val serial = ((b[7].toLong() shl 24) or (b[8].toLong() shl 16) or (b[9].toLong() shl 8) or b[10].toLong())
+        val lastConsumption = ((b[27].toLong() shl 24) or (b[28].toLong() shl 16) or (b[29].toLong() shl 8) or b[30].toLong())
+        return listOf(
+            Reading(
+                "IDM",
+                serial.toString(),
+                mapOf(
+                    "PacketTypeID" to "0x%02X".format(b[2]),
+                    "PacketLength" to b[3],
+                    "ApplicationVersion" to b[5],
+                    "ERTType" to "0x%02X".format(b[6]),
+                    "ERTSerialNumber" to serial,
+                    "ConsumptionIntervalCount" to b[11],
+                    "ModuleProgrammingState" to "0x%02X".format(b[12]),
+                    "TamperCounters" to idmHex(b, 13, 6),
+                    "AsynchronousCounters" to "0x%02X".format((b[19] shl 8) or b[20]),
+                    "PowerOutageFlags" to idmHex(b, 21, 6),
+                    "LastConsumptionCount" to lastConsumption,
+                    "DifferentialConsumptionIntervals" to idmIntervals(bb, syncIndex + 31 * 8, 47, 9),
+                    "TransmitTimeOffset" to ((b[84] shl 8) or b[85]),
+                    "MeterIdCRC" to "0x%04X".format((b[86] shl 8) or b[87]),
+                    "PacketCRC" to "0x%04X".format((b[88] shl 8) or b[89]),
+                    "MeterType" to idmMeterTypeName(b[6]),
+                    "mic" to "CRC",
+                ),
+            ),
+        )
+    }
 }
 
-// unverified: not ported - ert_idm.c:330-591 (ert_netidm_decode) packet parser, ~260 lines, not transcribed this batch
 internal object ErtNetidm : Rtl433Decoder() {
     override val name = "ERT Interval Data Message (IDM) for Net Meters"
     override val mod = Mod.OOK_MC_ZEROBIT
@@ -1915,7 +2043,38 @@ internal object ErtNetidm : Rtl433Decoder() {
     override val gap = 20000
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val (syncIndex, b) = idmFrame(bb) ?: return emptyList()
+        val serial = ((b[7].toLong() shl 24) or (b[8].toLong() shl 16) or (b[9].toLong() shl 8) or b[10].toLong())
+        val lastGeneration = (b[26] shl 16) or (b[27] shl 8) or b[28]
+        val lastConsumption = ((b[32].toLong() shl 24) or (b[33].toLong() shl 16) or (b[34].toLong() shl 8) or b[35].toLong())
+        return listOf(
+            Reading(
+                "NETIDM",
+                serial.toString(),
+                mapOf(
+                    "PacketTypeID" to "0x%02X".format(b[2]),
+                    "PacketLength" to b[3],
+                    "ApplicationVersion" to b[5],
+                    "ERTType" to "0x%02X".format(b[6]),
+                    "ERTSerialNumber" to serial,
+                    "ConsumptionIntervalCount" to b[11],
+                    "ModuleProgrammingState" to "0x%02X".format(b[12]),
+                    "TamperCounters" to idmHex(b, 13, 6),
+                    "Unknown_field_1" to idmHex(b, 19, 7),
+                    "LastGenerationCount" to lastGeneration,
+                    "Unknown_field_2" to idmHex(b, 29, 3),
+                    "LastConsumptionCount" to lastConsumption,
+                    "DifferentialConsumptionIntervals" to idmIntervals(bb, syncIndex + 36 * 8, 27, 14),
+                    "TransmitTimeOffset" to ((b[84] shl 8) or b[85]),
+                    "MeterIdCRC" to "0x%04X".format((b[86] shl 8) or b[87]),
+                    "PacketCRC" to "0x%04X".format((b[88] shl 8) or b[89]),
+                    "MeterType" to idmMeterTypeName(b[6]),
+                    "mic" to "CRC",
+                ),
+            ),
+        )
+    }
 }
 
 private val WH1080_WIND_DIR_DEGR = intArrayOf(0, 23, 45, 68, 90, 113, 135, 158, 180, 203, 225, 248, 270, 293, 315, 338)

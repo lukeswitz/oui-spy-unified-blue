@@ -987,7 +987,6 @@ internal object TfaDrop303233 : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - tfa_30_3307.c:79-130 is a bit-level PSK/NRZS/G3RUH descrambler state machine with a sync-word shift register and CRC-32 (stateful, stubbed per batch rule)
 internal object Tfa303307 : Rtl433Decoder() {
     override val name = "TFA 30.3307.02 Wind sensor"
     override val mod = Mod.OOK_RZI
@@ -995,7 +994,70 @@ internal object Tfa303307 : Rtl433Decoder() {
     override val long = 167
     override val reset = 500
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1) return emptyList()
+        val len = bb.bitsPerRow[0]
+        val b = bb.bb[0]
+        var lastBit = 0
+        var psk = 0
+        var lastPsk = 0
+        var nrzs = 0
+        var lfsr = 0
+        var sr = 0
+        var srCnt = -1
+        val rdata = IntArray(48)
+        var byteCnt = 0
+        var i = 0
+        while (i < len && byteCnt < rdata.size) {
+            val bit = bitrowGetBit(b, i)
+            if (bit == lastBit) psk = 1 - psk
+            if (psk == lastPsk) nrzs = 1 - nrzs
+            lastBit = bit
+            lastPsk = psk
+            val descrambled = nrzs xor ((lfsr ushr 16) and 1) xor ((lfsr ushr 11) and 1)
+            lfsr = (lfsr shl 1) or nrzs
+            sr = (sr ushr 1) or (descrambled shl 31)
+            if (sr == 0x2bd42d4b) {
+                srCnt = 0
+                rdata[0] = sr and 0xff
+                rdata[1] = (sr ushr 8) and 0xff
+                rdata[2] = (sr ushr 16) and 0xff
+                byteCnt = 3
+            }
+            if (srCnt == 0) {
+                rdata[byteCnt] = (sr ushr 24) and 0xff
+                byteCnt++
+            }
+            if (srCnt >= 0) srCnt = (srCnt + 1) and 7
+            i++
+        }
+        if (byteCnt < 12) return emptyList()
+        val plen = rdata[4]
+        if (plen < 11 || plen + 4 > byteCnt) return emptyList()
+        if (rdata[5] != 0x0b) return emptyList()
+        var crcCalc = 0xe7720ae4.toInt()
+        for (j in 4 until plen) {
+            crcCalc = crcCalc xor (rdata[j] shl 24)
+            for (k in 0 until 8) {
+                crcCalc = if ((crcCalc and Int.MIN_VALUE) != 0) (crcCalc shl 1) xor 0x04c11db7 else crcCalc shl 1
+            }
+        }
+        val crcMsg = (rdata[plen] shl 24) or (rdata[plen + 1] shl 16) or (rdata[plen + 2] shl 8) or rdata[plen + 3]
+        if (crcCalc != crcMsg) return emptyList()
+        val msgLen = plen - 11
+        if (msgLen < 7) return emptyList()
+        val v = (rdata[14] shl 24) or (rdata[15] shl 16) or (rdata[16] shl 8) or rdata[17]
+        val direction = 22.5f * (v ushr 28)
+        val speed = (((v ushr 16) and 0xff) + 256 * ((v ushr 25) and 1)) / 10.0f
+        val gust = (((v ushr 8) and 0xff) + 256 * ((v ushr 24) and 1)) / 10.0f
+        val idStr = (5 until 11).joinToString("") { "%02x".format(rdata[it]) }
+        return listOf(Reading("TFA-303307", idStr, mapOf(
+            "wind_dir_deg" to direction.toDouble(),
+            "wind_avg_m_s" to speed.toDouble(),
+            "wind_max_m_s" to gust.toDouble(),
+            "mic" to "CRC",
+        )))
+    }
 }
 
 // unverified: tfa_14_1504_v2.c:51-116, struct tfa_14_1504_v2.c:128
@@ -1764,7 +1826,265 @@ internal object SomfyIohc : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - silver_spring_mesh.c:138-522 is an 802.15.4 PHR/TLV/IPv6/route parser (~550 lines of helpers), too large for this batch
+private class SsOut(private val cap: Int) {
+    val sb = StringBuilder()
+    fun add(s: String) {
+        val room = cap - 1 - sb.length
+        if (room > 0) sb.append(if (s.length > room) s.substring(0, room) else s)
+    }
+    fun hasText(): Boolean = sb.isNotEmpty()
+}
+
+private class SsExtras {
+    var seenDll2 = false
+    var seenDll4 = false
+    var seenDll9 = false
+    var seenMpdu = false
+    var haveSeq = false
+    var retry = 0
+    var fragMore = 0
+    var fragNum = 0
+    var seqNum = 0
+    var haveFet = false
+    var fet = 0
+    var haveRssi = false
+    var rssi = 0
+    var haveCli = false
+    var cliTxPri = 0
+    var cliTxTime = 0
+    var cliRxPri = 0
+    var cliRxTime = 0
+    var haveSync = false
+    var syncChannel = 0
+    var routes = ""
+    var ipv6 = ""
+}
+
+private class SsTlv(val used: Int, val type: Int, val isDll: Boolean)
+
+private fun ssHex(a: IntArray, o: Int, n: Int): String {
+    val sb = StringBuilder()
+    for (k in 0 until n) sb.append(String.format("%02x", a[o + k] and 0xFF))
+    return sb.toString()
+}
+
+private fun ssCrc32(data: IntArray, len: Int): Long {
+    var crc = 0xffffffffL
+    for (i in 0 until len) {
+        crc = crc xor ((data[i].toLong() and 0xFF) shl 24)
+        for (b in 0 until 8) {
+            crc = if ((crc and 0x80000000L) != 0L) ((crc shl 1) xor 0x04c11db7L) and 0xffffffffL else (crc shl 1) and 0xffffffffL
+        }
+    }
+    return crc
+}
+
+private fun ssDescramble(buf: IntArray, len: Int, seed: Int) {
+    var reg = seed and 0xFF
+    for (i in 0 until len) {
+        var k = 0
+        for (b in 0 until 8) {
+            k = ((k shl 1) or ((reg shr 7) and 1)) and 0xFF
+            var t = reg and 0x8e
+            t = t xor (t shr 4)
+            t = t xor (t shr 2)
+            t = t xor (t shr 1)
+            reg = ((reg shl 1) or (t and 1)) and 0xFF
+        }
+        buf[i] = buf[i] xor k
+    }
+}
+
+private fun ssAppendRoute(buf: IntArray, len: Int, o: Int, out: SsOut): Int {
+    if (o + 36 > len || buf[o] != 0x21) return 0
+    val count = buf[o + 28]
+    val total = 36 + 8 * count
+    if (o + total > len) return 0
+    val pathCost = (buf[o + 32] shl 8) or buf[o + 33]
+    val linkCost = (buf[o + 34] shl 8) or buf[o + 35]
+    out.add("${if (out.hasText()) "; " else ""}hop<=${buf[o + 1]} cost=$pathCost/$linkCost egress=")
+    out.add(ssHex(buf, o + 20, 8))
+    for (n in 0 until count) {
+        out.add(" next=")
+        out.add(ssHex(buf, o + 36 + 8 * n, 8))
+    }
+    return total
+}
+
+private fun ssParseRoutes(buf: IntArray): String {
+    val out = SsOut(384)
+    var o = 0
+    while (o < buf.size) {
+        val used = ssAppendRoute(buf, buf.size, o, out)
+        if (used == 0) break
+        o += used
+    }
+    return out.sb.toString()
+}
+
+private fun ssIpSum(sumIn: Long, data: IntArray, off: Int, len: Int): Long {
+    var sum = sumIn
+    var i = 0
+    while (i + 1 < len) {
+        sum += ((data[off + i] shl 8) or data[off + i + 1]).toLong()
+        i += 2
+    }
+    if (i < len) sum += (data[off + i] shl 8).toLong()
+    return sum
+}
+
+private fun ssParseIpv6(p: IntArray): String {
+    val len = p.size
+    if (len < 40) return ""
+    val plen = (p[4] shl 8) or p[5]
+    val nextHdr = p[6]
+    if (40 + plen > len) return ""
+    val out = SsOut(256)
+    out.add("[")
+    for (i in 0 until 16 step 2) out.add("${if (i != 0) ":" else ""}${ssHex(p, 8 + i, 2)}")
+    out.add("] -> [")
+    for (i in 0 until 16 step 2) out.add("${if (i != 0) ":" else ""}${ssHex(p, 24 + i, 2)}")
+    out.add("]")
+    if (nextHdr == 17 && plen >= 8) {
+        val sport = (p[40] shl 8) or p[41]
+        val dport = (p[42] shl 8) or p[43]
+        val ulen = (p[44] shl 8) or p[45]
+        if (ulen <= plen) {
+            var sum = 17L + ulen
+            sum = ssIpSum(sum, p, 8, 16)
+            sum = ssIpSum(sum, p, 24, 16)
+            sum = ssIpSum(sum, p, 40, ulen)
+            while ((sum ushr 16) != 0L) sum = (sum and 0xffff) + (sum ushr 16)
+            val ok = (sum and 0xffff) == 0xffffL
+            out.add(" $sport->$dport len=$ulen cksum=${if (ok) "ok" else "bad"}")
+            if (dport == 648 && ulen >= 14) out.add(" mgmt_len=${(p[52] shl 8) or p[53]}")
+        }
+    }
+    return out.sb.toString()
+}
+
+private fun ssParseMpdu16(v: IntArray, extras: SsExtras) {
+    val vlen = v.size
+    if (vlen < 1) return
+    if (v[0] == 0x21) {
+        extras.routes = ssParseRoutes(v)
+        return
+    }
+    if (vlen < 4) return
+    val pid = v[0] and 0x0f
+    val addrCnt = v[3] and 0x3f
+    val hdrLen = 4 + 8 * addrCnt
+    if (hdrLen > vlen) return
+    val payload = v.copyOfRange(hdrLen, vlen)
+    if (pid == 3) extras.routes = ssParseRoutes(payload)
+    else if (pid == 6) extras.ipv6 = ssParseIpv6(payload)
+}
+
+private fun ssAppendTlv(psdu: IntArray, len: Int, i: Int, out: SsOut, extras: SsExtras?): SsTlv? {
+    if (i + 2 > len) return null
+    val h0 = psdu[i]
+    val h1 = psdu[i + 1]
+    val isMpdu = (h0 and 0x80) != 0
+    val type = if (isMpdu) h0 shr 3 else (h0 shl 1) or (h1 shr 7)
+    val vlen = if (isMpdu) ((h0 and 0x07) shl 8) or h1 else h1 and 0x7f
+    if (i + 2 + vlen > len) return null
+    val v = psdu.copyOfRange(i + 2, i + 2 + vlen)
+    out.add("${if (out.hasText()) " " else ""}${if (isMpdu) "M" else "D"}$type/$vlen")
+    if (isMpdu && type == 17 && vlen > 0) {
+        out.add("{")
+        ssAppendTlv(psdu, i + 2 + vlen, i + 2, out, null)
+        out.add("}")
+    }
+    if (extras != null) {
+        if (isMpdu) {
+            extras.seenMpdu = true
+            if (type == 16) ssParseMpdu16(v, extras)
+        } else {
+            when (type) {
+                2 -> {
+                    extras.seenDll2 = true
+                    if (vlen == 3) {
+                        val raw = (v[0] shl 16) or (v[1] shl 8) or v[2]
+                        extras.haveCli = true
+                        extras.cliTxPri = (raw shr 21) and 0x7
+                        extras.cliTxTime = (raw shr 12) and 0x1ff
+                        extras.cliRxPri = (raw shr 9) and 0x7
+                        extras.cliRxTime = raw and 0x1ff
+                    }
+                }
+                4 -> {
+                    extras.seenDll4 = true
+                    if (vlen == 2) {
+                        val raw = (v[0] shl 8) or v[1]
+                        extras.haveSeq = true
+                        extras.retry = (raw shr 15) and 1
+                        extras.fragMore = (raw shr 14) and 1
+                        extras.fragNum = (raw shr 10) and 0xf
+                        extras.seqNum = raw and 0x3ff
+                    }
+                }
+                9 -> {
+                    extras.seenDll9 = true
+                    if (vlen == 1) {
+                        extras.haveRssi = true
+                        extras.rssi = if (v[0] >= 128) v[0] - 256 else v[0]
+                    }
+                }
+                1 -> {
+                    if (vlen == 2) {
+                        extras.haveFet = true
+                        extras.fet = (v[0] shl 8) or v[1]
+                    }
+                }
+                8 -> {
+                    if (vlen == 5) {
+                        extras.haveSync = true
+                        extras.syncChannel = v[4]
+                    }
+                }
+            }
+        }
+    }
+    return SsTlv(2 + vlen, type, !isMpdu)
+}
+
+private fun ssParseTlvs(psdu: IntArray, psduLen: Int, start: Int, extras: SsExtras): String {
+    val out = SsOut(256)
+    var i = start
+    var sawCrc = false
+    while (i < psduLen) {
+        val t = ssAppendTlv(psdu, psduLen, i, out, extras) ?: break
+        i += t.used
+        if (t.isDll && t.type == 6) {
+            sawCrc = true
+            continue
+        }
+        if (t.isDll && t.type == 5) {
+            if (i < psduLen) out.add(" +${psduLen - i}B")
+            return out.sb.toString()
+        }
+    }
+    if (sawCrc && i + 4 == psduLen) {
+        val want = (psdu[i].toLong() shl 24) or (psdu[i + 1].toLong() shl 16) or (psdu[i + 2].toLong() shl 8) or psdu[i + 3].toLong()
+        val got = ssCrc32(psdu, i)
+        out.add("${if (out.hasText()) " " else ""}:${if (got == want) "ok" else "bad"}")
+    } else if (i < psduLen) {
+        out.add("${if (out.hasText()) " " else ""}+${psduLen - i}B")
+    }
+    return out.sb.toString()
+}
+
+private fun ssClassifyLink(fctrl: Int, e: SsExtras): String {
+    if (fctrl == 2) return "broadcast"
+    if (fctrl == 3) return "poll"
+    if (fctrl == 1) {
+        if (e.seenDll4 || e.seenMpdu) return "data"
+        if (e.seenDll2) return "poll_ack"
+        if (e.seenDll9) return "data_ack"
+    }
+    return ""
+}
+
 internal object SilverSpringMesh : Rtl433Decoder() {
     override val name = "Silver Spring Networks mesh endpoint (-s 1600k)"
     override val mod = Mod.FSK_PCM
@@ -1772,10 +2092,103 @@ internal object SilverSpringMesh : Rtl433Decoder() {
     override val long = 10
     override val reset = 1000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private val syncPattern = intArrayOf(0xaa, 0xaa, 0x18, 0xbf)
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1) return emptyList()
+        var pos = bb.search(0, 0, syncPattern, 32)
+        if (pos >= bb.bitsPerRow[0]) {
+            bb.invert()
+            pos = bb.search(0, 0, syncPattern, 32)
+            if (pos >= bb.bitsPerRow[0]) return emptyList()
+        }
+        val frameStart = pos + 32 - 1
+        val availBits = bb.bitsPerRow[0] - frameStart
+        if (availBits < (3 + 4) * 8) return emptyList()
+        var availBytes = availBits / 8
+        if (availBytes > 512) availBytes = 512
+        bb.invert()
+        val frame = IntArray(512 + 2)
+        bb.extractBytes(0, frameStart, frame, availBytes * 8)
+
+        if ((frame[1] and 0xf8) != 0) return emptyList()
+
+        val channel = frame[0]
+        val psduLen = ((frame[1] and 0x07) shl 8) or frame[2]
+        val frameLen = 3 + psduLen + 4
+        if (psduLen < 1 || frameLen > availBytes) return emptyList()
+
+        val psdu = IntArray(512 + 8)
+        val scrLen = psduLen + 4
+        var seedFound = -1
+        var seed = 1
+        while (seed < 256 && seedFound < 0) {
+            for (k in 0 until scrLen) psdu[k] = frame[3 + k]
+            ssDescramble(psdu, scrLen, seed)
+            val fcs = (psdu[psduLen].toLong() shl 24) or (psdu[psduLen + 1].toLong() shl 16) or
+                (psdu[psduLen + 2].toLong() shl 8) or psdu[psduLen + 3].toLong()
+            if (ssCrc32(psdu, psduLen) == fcs) seedFound = seed
+            seed++
+        }
+        if (seedFound < 0) return emptyList()
+
+        val psduStr = ssHex(psdu, 0, psduLen)
+
+        val fctrl = psdu[0]
+        var addrOff = 1
+        var dstStr = ""
+        var srcStr = ""
+        if ((fctrl and 0x01) != 0 && addrOff + 8 <= psduLen) {
+            dstStr = ssHex(psdu, addrOff, 8)
+            addrOff += 8
+        }
+        if ((fctrl and 0x02) != 0 && addrOff + 8 <= psduLen) {
+            srcStr = ssHex(psdu, addrOff, 8)
+            addrOff += 8
+        }
+
+        val extras = SsExtras()
+        val tlvStr = ssParseTlvs(psdu, psduLen, addrOff, extras)
+        val link = ssClassifyLink(fctrl, extras)
+
+        val fields = linkedMapOf<String, Any?>()
+        if (dstStr.isNotEmpty()) fields["dst_id"] = dstStr
+        if (srcStr.isNotEmpty()) fields["src_id"] = srcStr
+        fields["channel"] = channel
+        fields["seed"] = String.format("%02x", seedFound)
+        fields["len"] = psduLen
+        if (link.isNotEmpty()) fields["link"] = link
+        if (extras.haveSeq) {
+            fields["seq_num"] = extras.seqNum
+            fields["frag_num"] = extras.fragNum
+            fields["frag_more"] = extras.fragMore
+            fields["retry"] = extras.retry
+        }
+        if (extras.haveFet) fields["fet"] = extras.fet
+        if (extras.haveRssi) fields["rssi"] = extras.rssi
+        if (extras.haveCli) {
+            fields["cli_tx_pri"] = extras.cliTxPri
+            fields["cli_tx_time"] = extras.cliTxTime
+            fields["cli_rx_pri"] = extras.cliRxPri
+            fields["cli_rx_time"] = extras.cliRxTime
+        }
+        if (extras.haveSync) fields["sync_channel"] = extras.syncChannel
+        if (extras.routes.isNotEmpty()) fields["routes"] = extras.routes
+        if (extras.ipv6.isNotEmpty()) fields["ipv6"] = extras.ipv6
+        if (tlvStr.isNotEmpty()) fields["tlvs"] = tlvStr
+        fields["data"] = psduStr
+        fields["mic"] = "CRC"
+        val id = if (srcStr.isNotEmpty()) srcStr else if (dstStr.isNotEmpty()) dstStr else null
+        return listOf(Reading("SilverSpring-Mesh", id, fields))
+    }
 }
 
-// unverified: not ported - secplus_v1.c:145-390 keeps a static cached first half across callbacks (cached_result, cached_tv, 800 ms timeout), stateful, stubbed per batch rule
+private fun spReverse32(x: Int): Int {
+    var r = 0
+    for (i in 0 until 32) r = (r shl 1) or ((x ushr i) and 1)
+    return r
+}
+
 internal object SecplusV1 : Rtl433Decoder() {
     override val name = "Security+ (Keyfob)"
     override val mod = Mod.OOK_PCM
@@ -1785,10 +2198,162 @@ internal object SecplusV1 : Rtl433Decoder() {
     override val reset = 80000
     override val tolerance = 20
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private const val CACHE_MAX_AGE_MS = 800L
+    private val cachedResult = IntArray(24)
+    private var cachedMs = 0L
+    private val preamble1 = intArrayOf(0x02)
+    private val preamble2 = intArrayOf(0x07)
+
+    private fun decodeHalf(bits: IntArray, result: IntArray): Int {
+        var r = 0
+        var x = 0
+        for (i in 0 until 11) {
+            for (j in 0 until 8) {
+                val k = (bits[i] shl j) and 0x80
+                if (k != 0) {
+                    x++
+                } else {
+                    if (x == 0) continue
+                    if (x > 3) return -1
+                    result[r++] = x - 1
+                    x = 0
+                }
+            }
+        }
+        return result[0]
+    }
+
+    private fun findNext(bb: BitBuffer, cur: Int): Int {
+        val b0 = bb.bb[0][0]
+        if (cur == 0 && ((b0 and 0xf0) == 0x10 || (b0 and 0xf0) == 0x70)) return 0
+        if (cur == 0 && ((b0 and 0xE0) == 0xe0 || (b0 and 0xc0) == 0x80)) return 0
+        val s1 = bb.search(0, cur, preamble1, 8) + 3
+        val s2 = bb.search(0, cur, preamble2, 8) + 3
+        return if (s1 < s2) s1 else s2
+    }
+
+    @Synchronized
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val len0 = bb.bitsPerRow[0]
+        if (len0 < 84 || len0 > 130) return emptyList()
+        val result1 = IntArray(24)
+        val result2 = IntArray(24)
+        var status = 0
+        var searchIndex = 0
+        while (searchIndex < bb.bitsPerRow[0] && status == 0) {
+            val buffy = IntArray(44)
+            val buffi = IntArray(11)
+            searchIndex = findNext(bb, searchIndex)
+            if (searchIndex == -1 || searchIndex + 84 > bb.bitsPerRow[0]) break
+            bb.extractBytes(0, searchIndex, buffi, 84)
+            val dr = decodeHalf(buffi, buffy)
+            if (dr < 0 || dr == 1) {
+                searchIndex += 4
+                continue
+            } else if (dr == 0) {
+                buffy.copyInto(result1, 0, 0, 22)
+                status = status xor 1
+                searchIndex += 88
+            } else if (dr == 2) {
+                buffy.copyInto(result2, 0, 0, 22)
+                status = status xor 2
+                searchIndex += 88
+            }
+            if (status == 3) break
+        }
+        if (status == 0) return emptyList()
+
+        val now = System.currentTimeMillis()
+        if (cachedMs != 0L) {
+            if (now - cachedMs < CACHE_MAX_AGE_MS) {
+                if (status == 2 && cachedResult[0] == 0) {
+                    cachedResult.copyInto(result1, 0, 0, 21)
+                    status = 3
+                } else if (status == 1 && cachedResult[0] == 2) {
+                    cachedResult.copyInto(result2, 0, 0, 21)
+                    status = 3
+                }
+            }
+            cachedResult.fill(0)
+            cachedMs = 0L
+        }
+
+        if (status == 1) {
+            cachedMs = now
+            result1.copyInto(cachedResult, 0, 0, 21)
+            return emptyList()
+        } else if (status == 2) {
+            cachedMs = now
+            result2.copyInto(cachedResult, 0, 0, 21)
+            return emptyList()
+        } else if (status != 3) {
+            return emptyList()
+        }
+
+        var rollingTemp = 0
+        var fixed = 0L
+        for (src in arrayOf(result1, result2)) {
+            var acc = 0
+            var i = 0
+            while (i < 20) {
+                var digit = src[1 + i]
+                rollingTemp = rollingTemp * 3 + digit
+                acc += digit
+                digit = (60 + src[2 + i] - acc) % 3
+                fixed = (fixed * 3 + digit) and 0xffffffffL
+                acc += digit
+                i += 2
+            }
+        }
+        val rolling = spReverse32(rollingTemp).toLong() and 0xffffffffL
+
+        val switchId = (fixed % 3).toInt()
+        val id: Int
+        val id0 = ((fixed / 3) % 3).toInt()
+        val id1 = ((fixed / 9).toInt()) % 3
+        var padId = 0
+        var pin = 0
+        var pinS = ""
+        var remoteId = 0
+        var button = ""
+
+        if (id1 == 0) {
+            padId = ((fixed / 27) % 2187).toInt()
+            id = padId
+            pin = ((fixed / 59049) % 19683).toInt()
+            if (pin in 0..9999) {
+                pinS = String.format("%04d", pin)
+            } else if (pin in 10000..11029) {
+                pinS = "enter"
+            }
+            val pinSuffix = ((fixed / 1162261467L) % 3).toInt()
+            if (pinSuffix == 1) pinS += "#" else if (pinSuffix == 2) pinS += "*"
+        } else {
+            remoteId = fixed.toInt() / 27
+            id = remoteId
+            button = when (switchId) {
+                1 -> "left"
+                0 -> "middle"
+                else -> "right"
+            }
+        }
+
+        val fields = linkedMapOf<String, Any?>()
+        fields["id0"] = id0
+        fields["id1"] = id1
+        fields["switch_id"] = switchId
+        if (padId != 0) fields["pad_id"] = padId
+        if (pin != 0) fields["pin"] = pinS
+        if (remoteId != 0) {
+            fields["remote_id"] = remoteId
+            fields["button_id"] = button
+        }
+        fields["fixed"] = fixed.toString()
+        fields["rolling"] = rolling.toString()
+        return listOf(Reading("Secplus-v1", id.toString(), fields))
+    }
 }
 
-// unverified: not ported - secplus_v2.c:268-462 keeps static cached halves across callbacks (cached_fixed_1/2, cached_rolling_1/2, cached_v2_tv, 800 ms timeout), stateful, stubbed per batch rule
 internal object SecplusV2 : Rtl433Decoder() {
     override val name = "Security+ 2.0 (Keyfob)"
     override val mod = Mod.OOK_PCM
@@ -1798,7 +2363,168 @@ internal object SecplusV2 : Rtl433Decoder() {
     override val reset = 9000
     override val tolerance = 50
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private const val CACHE_TIMEOUT_MS = 800L
+    private val preamble = intArrayOf(0xaa, 0xaa, 0x95, 0x60)
+    private var cachedFixed1: BitBuffer? = null
+    private var cachedRolling1 = IntArray(16)
+    private var cachedTv1 = 0L
+    private var cachedFixed2: BitBuffer? = null
+    private var cachedRolling2 = IntArray(16)
+    private var cachedTv2 = 0L
+
+    private fun decodeHalf(bits: BitBuffer, rollArray: IntArray, fixedP: BitBuffer): Int {
+        val buffy = IntArray(10)
+        bits.extractBytes(0, 4, buffy, 8)
+        val order = buffy[0] shr 4
+        val invert = buffy[0] and 0x0f
+        bits.extractBytes(0, 12, buffy, 30)
+        var x = (buffy[0] shl 24) or (buffy[1] shl 16) or (buffy[2] shl 8) or buffy[3]
+        x = x ushr 2
+        var p0 = 0
+        var p1 = 0
+        var p2 = 0
+        for (i in 0 until 10) {
+            p2 = p2 xor ((x and 1) shl i)
+            x = x ushr 1
+            p1 = p1 xor ((x and 1) shl i)
+            x = x ushr 1
+            p0 = p0 xor ((x and 1) shl i)
+            x = x ushr 1
+        }
+        when (invert) {
+            0x00 -> { p0 = p0.inv() and 0x03FF; p1 = p1.inv() and 0x03FF }
+            0x01 -> p1 = p1.inv() and 0x03FF
+            0x02 -> p2 = p2.inv() and 0x03FF
+            0x04 -> { p0 = p0.inv() and 0x03FF; p1 = p1.inv() and 0x03FF; p2 = p2.inv() and 0x03FF }
+            0x05, 0x0a -> { p0 = p0.inv() and 0x03FF; p2 = p2.inv() and 0x03FF }
+            0x06 -> { p1 = p1.inv() and 0x03FF; p2 = p2.inv() and 0x03FF }
+            0x08 -> p0 = p0.inv() and 0x03FF
+            0x09 -> {}
+            else -> return 1
+        }
+        val a = p0
+        val b = p1
+        val c = p2
+        when (order) {
+            0x06, 0x09 -> { p2 = a; p1 = b; p0 = c }
+            0x08, 0x04 -> { p1 = a; p2 = b; p0 = c }
+            0x01 -> { p2 = a; p0 = b; p1 = c }
+            0x00 -> { p0 = a; p2 = b; p1 = c }
+            0x05 -> { p1 = a; p0 = b; p2 = c }
+            0x02, 0x0a -> { p0 = a; p1 = b; p2 = c }
+            else -> return 2
+        }
+        bits.extractBytes(0, 4, buffy, 8)
+        val rx = buffy[0]
+        var k = 0
+        var i = 6
+        while (i >= 0) {
+            rollArray[k++] = (rx shr i) and 0x03
+            i -= 2
+        }
+        i = 8
+        while (i >= 0) {
+            rollArray[k++] = (p2 shr i) and 0x03
+            i -= 2
+        }
+        for (n in 0 until 9) if (rollArray[n] == 3) return 1
+        for (n in 9 downTo 0) fixedP.addBit((p0 shr n) and 1)
+        for (n in 9 downTo 0) fixedP.addBit((p1 shr n) and 1)
+        return 0
+    }
+
+    @Synchronized
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val bits = BitBuffer()
+        var fixed1 = BitBuffer()
+        var rolling1 = IntArray(16)
+        var fixed2 = BitBuffer()
+        var rolling2 = IntArray(16)
+
+        for (row in 0 until bb.numRows) {
+            if (bb.bitsPerRow[row] < 110) continue
+            val searchIndex = bb.search(row, 0, preamble, 28)
+            if (searchIndex >= bb.bitsPerRow[row]) break
+            bits.clear()
+            bb.manchesterDecode(row, searchIndex + 26, bits, 80)
+            if (bits.bitsPerRow[0] < 42) continue
+            if ((bits.bb[0][0] and 0xB0) != 0) continue
+            if ((bits.bb[0][0] and 0xC0) != 0) {
+                decodeHalf(bits, rolling2, fixed2)
+            } else {
+                decodeHalf(bits, rolling1, fixed1)
+            }
+            if (fixed1.bitsPerRow[0] > 1 && fixed2.bitsPerRow[0] > 1) break
+        }
+
+        val got1 = fixed1.bitsPerRow[0] > 1
+        val got2 = fixed2.bitsPerRow[0] > 1
+        if (got1 && got2) {
+            cachedFixed1 = null
+            cachedFixed2 = null
+        } else {
+            val now = System.currentTimeMillis()
+            if (cachedFixed1 != null && now - cachedTv1 >= CACHE_TIMEOUT_MS) cachedFixed1 = null
+            if (cachedFixed2 != null && now - cachedTv2 >= CACHE_TIMEOUT_MS) cachedFixed2 = null
+            if (got1) {
+                cachedFixed1 = fixed1
+                cachedRolling1 = rolling1
+                cachedTv1 = now
+            }
+            if (got2) {
+                cachedFixed2 = fixed2
+                cachedRolling2 = rolling2
+                cachedTv2 = now
+            }
+            val c1 = cachedFixed1
+            val c2 = cachedFixed2
+            if (c1 != null && c2 != null) {
+                fixed1 = c1
+                rolling1 = cachedRolling1
+                fixed2 = c2
+                rolling2 = cachedRolling2
+                cachedFixed1 = null
+                cachedFixed2 = null
+            } else {
+                return emptyList()
+            }
+        }
+
+        if (fixed1.bitsPerRow[0] == 0 || fixed2.bitsPerRow[0] == 0) return emptyList()
+
+        val rollingDigits = IntArray(24)
+        var r = 0
+        rollingDigits[r++] = rolling2[8]
+        rollingDigits[r++] = rolling1[8]
+        for (i in 4 until 8) rollingDigits[r++] = rolling2[i]
+        for (i in 4 until 8) rollingDigits[r++] = rolling1[i]
+        for (i in 0 until 4) rollingDigits[r++] = rolling2[i]
+        for (i in 0 until 4) rollingDigits[r++] = rolling1[i]
+
+        var rollingTemp = 0L
+        for (i in 0 until 18) rollingTemp = (rollingTemp * 3 + rollingDigits[i]) and 0xffffffffL
+        if (rollingTemp >= 0x10000000L) return emptyList()
+        val rollingTotal = (spReverse32(rollingTemp.toInt()).toLong() and 0xffffffffL) ushr 4
+
+        var fixedTotal = 0L
+        var f = fixed1.bb[0]
+        fixedTotal = fixedTotal xor (f[0].toLong() shl 32)
+        fixedTotal = fixedTotal xor (f[1].toLong() shl 24)
+        fixedTotal = fixedTotal xor (f[2].toLong() shl 16)
+        f = fixed2.bb[0]
+        fixedTotal = fixedTotal xor (f[0].toLong() shl 12)
+        fixedTotal = fixedTotal xor (f[1].toLong() shl 4)
+        fixedTotal = fixedTotal xor ((f[2] shr 4) and 0x0f).toLong()
+
+        val remoteId = (fixedTotal and 0xffffffffL).toInt()
+        val fields = linkedMapOf<String, Any?>(
+            "button_id" to (fixedTotal shr 32).toInt(),
+            "remote_id" to remoteId,
+            "fixed" to fixedTotal.toString(),
+            "rolling" to rollingTotal.toString(),
+        )
+        return listOf(Reading("Secplus-v2", remoteId.toString(), fields))
+    }
 }
 
 internal val BATCH_07: List<Rtl433Decoder> = listOf(

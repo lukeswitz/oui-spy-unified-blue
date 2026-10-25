@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +18,7 @@ import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
@@ -503,7 +506,9 @@ class _DetailSummary extends ConsumerWidget {
         why,
       ));
     }
-    rows.add(_detailRow(context, 'RSSI', '${detection.rssi} dBm'));
+    if (!(detection.engine == Engine.sdr && detection.rssi == 0)) {
+      rows.add(_detailRow(context, 'RSSI', '${detection.rssi} dBm'));
+    }
     if (detection.channel > 0) {
       rows.add(_detailRow(context, 'Channel', '${detection.channel}'));
     }
@@ -514,7 +519,27 @@ class _DetailSummary extends ConsumerWidget {
           : detection.sourceNodeId;
       rows.add(_detailRow(context, 'Source Node', lbl));
     }
-    if (detection.ssid.isNotEmpty) {
+    if (detection.engine == Engine.sdr && detection.ssid.isNotEmpty) {
+      Map<String, dynamic>? payload;
+      try {
+        final decoded = jsonDecode(detection.ssid);
+        if (decoded is Map<String, dynamic>) payload = decoded;
+      } on FormatException {
+        // Non-JSON ssid on an SDR row (legacy record): render no extra fields.
+      }
+      if (payload != null) {
+        final freq = (payload['frequency'] as num?)?.toDouble();
+        if (freq != null) {
+          rows.add(_detailRow(
+              context, 'Frequency', '${(freq / 1e6).toStringAsFixed(3)} MHz'));
+        }
+        const skip = {'frequency', 'model', 'id', 'kind', 'count', 'rssi'};
+        for (final e in payload.entries) {
+          if (skip.contains(e.key) || e.value == null) continue;
+          rows.add(_detailRow(context, sdrFieldLabel(e.key), '${e.value}'));
+        }
+      }
+    } else if (detection.ssid.isNotEmpty) {
       rows.add(_detailRow(context, 'SSID', detection.ssid));
     }
     if (detection.wardrive != null) {

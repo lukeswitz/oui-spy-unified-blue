@@ -23,6 +23,7 @@ enum SignatureClass {
   isp('ISP / routers'),
   mesh('Mesh'),
   phone('Phones / PCs'),
+  toy('Adult toys'),
   other('Other');
 
   final String label;

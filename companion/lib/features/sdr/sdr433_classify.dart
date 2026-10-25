@@ -25,7 +25,7 @@ extension Sdr433CategoryLabel on Sdr433Category {
 const _tpmsModels = [
   'tpms', 'schrader', 'steelmate', 'jansite', 'eeztire', 'tyreguard', 'airpuxem',
   'abarth-124', 'shenzhen-egqq85', 'pmv-107j', 'hyundai-vdo', 'audi-pressurealert',
-  'bmw-gen', 'gm-aftermarket', 'ave',
+  'bmw-gen', 'gm-aftermarket', 'ave', 'smartire', 'sefis',
 ];
 const _tpmsFields = ['pressure_kpa', 'pressure_psi'];
 
@@ -33,7 +33,9 @@ const _meterModels = [
   'ert-scm', 'scmplus', 'idm', 'netidm', 'neptune-r900', 'badger', 'orion-endpoint',
   'mueller', 'wireless-mbus', 'apator', 'arad', 'landisgyr', 'flowis', 'currentcost',
   'efergy', 'geo-minim', 'esic', 'revolt', 'blueline', 'emontx', 'ec3k',
-  'ikea-sparsnas', 'clipsal', 'oregon-cm1',
+  'ikea-sparsnas', 'clipsal', 'oregon-cm1', 'elster-power', 'rfxmeter', 'ecodhome',
+  'ecoeye', 'gira-ehz', 'elv-em1000', 'radian', 'sparsnas', 'minim', 'gridstream',
+  'silver spring', 'marlec', 'm-bus', 'mbus',
 ];
 const _meterFields = [
   'consumption_data', 'consumption', 'endpointid', 'ertserialnumber', 'erttype',
@@ -44,7 +46,8 @@ const _meterFields = [
 const _securityModels = [
   'dsc-security', 'honeywell-security', 'interlogix', 'kerui', 'chuango', 'cavius',
   'powercode', 'visonic', 'risco', 'simplisafe', 'yale-hsa', 'x10-security', 'cwpirc',
-  'generic-motion', 'smoke-', 'govee-contact',
+  'generic-motion', 'smoke-', 'govee-contact', 'security', 'vivint', 'quhwa',
+  'doorbell', 'elro-db', 'activlink', 'olympia', 'blyss',
 ];
 const _securityFields = [
   'reed_open', 'contact_open', 'xtamper1', 'xtamper2', 'xactivity', 'motion', 'opened',
@@ -56,7 +59,10 @@ const _fobModels = [
   'hcs361', 'secplus', 'megacode', 'nice-flor', 'cardin', 'ht680', 'quinetic',
   'proflame2', 'somfy', 'abo1502t', '5wy72xx', 'akhan', 'alps-fwb', 'astrostart',
   'audiovox', 'compustar', 'continental-kr5', 'nidec', 'mic6sc2', 'frdpc2002',
-  'dickert', 'marantec', 'hormann', 'novoferm', 'came-topligo',
+  'dickert', 'marantec', 'hormann', 'novoferm', 'came-topligo', 'brennenstuhl',
+  'dish-rc', 'elero', 'markisol', 'martec', 'mcpower', 'klikaanklikuit', 'tr-502',
+  'x10-rf', 'insteon', 'opel-mokka', 'coloreffects', 'imars', 'srsmith', 'eberle',
+  'deltadore', 'honda-kr5',
 ];
 const _fobFields = [
   'button_id', 'button_code', 'button_str', 'rbutton', 'rolling', 'fixed', 'remote_id',
@@ -68,6 +74,7 @@ const _envModels = [
   'sensibleliving', 'rosstech', 'nexus-sauna', 'oria-wa150km', 'acurite-515',
   'acurite-leak', 'acurite-01185m', 'govee-water', 'govee-h5059', 'bresser-leakage',
   'bresser-co2', 'bresser-hchovoc', 'maverick', 'thermopro-tp', 'burnhard', 'gasmate',
+  'watchman', 'typhur', 'thermopro-temp', 'ultrasonic',
 ];
 const _envFields = [
   'depth_cm', 'moisture', 'detect_wet', 'leak_detected', 'leaking', 'pm2_5_ug_m3',
@@ -81,7 +88,8 @@ const _weatherModels = [
   'esperanza', 'geevon', 'gt-wt', 'hideki', 'holman', 'inkbird', 'inovalley', 'kedsum',
   'klimalogg', 'missil', 'norgo', 'philips', 'sainlogic', 'schou', 'sharp-spc',
   'solight', 'telldus', 'thermor', 'vauno', 'vevor', 'ws2032', 'wt450', 'thermopro-tx',
-  'infactory', 'nexus-th',
+  'infactory', 'nexus-th', 'netatmo', 'elsner', 'en2058', 'en2053', 'omni-multisensor',
+  'wl-th6r',
 ];
 const _weatherFields = [
   'temperature_c', 'temperature_f', 'humidity', 'rain_mm', 'rain_in', 'rain_rate_mm_h',
@@ -101,7 +109,7 @@ Sdr433Category classify433(String model, Iterable<String> fieldKeys, {String dev
   if (_anySub(m, _securityModels) || _anyKey(fkeys, _securityFields)) return Sdr433Category.security;
   if (_anySub(m, _fobModels) || _anyKey(fkeys, _fobFields)) return Sdr433Category.fob;
   if (_anySub(m, _envModels) || _anyKey(fkeys, _envFields)) return Sdr433Category.environmental;
-  if (_anySub(m, _weatherModels) || _anyKey(fkeys, _weatherFields)) return Sdr433Category.weather;
+  if (_anySub(m, _weatherModels) || _anyKey(fkeys, _weatherFields) || fkeys.any((k) => k.startsWith('temperature'))) return Sdr433Category.weather;
   return Sdr433Category.unknown;
 }
 

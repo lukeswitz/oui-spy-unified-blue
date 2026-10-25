@@ -1,6 +1,9 @@
 // Kotlin reimplementation of rtl_433's device row and dispatch (include/r_device.h, src/r_api.c run_ook_demods/run_fsk_demods, src/r_flow.c; GPL-3 reference, algorithm transcribed as facts).
 package com.rootdowndigital.ouispy.wifiadapter
 
+import kotlin.math.log10
+import kotlin.math.max
+
 data class Reading(val model: String, val id: String?, val fields: Map<String, Any?>) {
     val key: String get() = "$model::${id ?: ""}"
 }
@@ -110,6 +113,8 @@ object Rtl433Registry {
 
     var centerFreqHz = 433_920_000L
 
+    var onPackage: ((Int, Int, Int) -> Unit)? = null
+
     private val lowPass = Baseband.LowPassState()
     private val fmState = Baseband.FmState()
     private val detector = PulseDetector()
@@ -170,6 +175,8 @@ object Rtl433Registry {
         var packages = 0
         while (true) {
             val pkg = detector.detectPackage(am, fm, n, sampleRate, mode) ?: break
+            val rssiDb = (10.0 * log10(max(1, pkg.data.ookHighEstimate) / 32258.0)).toInt()
+            onPackage?.invoke(pkg.type, pkg.data.numPulses, rssiDb)
             dispatch(pkg, onReading)
             packages++
         }

@@ -177,7 +177,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             SizedBox(
               width: 200, height: 200,
               child: CustomPaint(
-                painter: _RssiGaugePainter(rssi: rssi, normalized: normalized, color: color),
+                painter: RssiGaugePainter(rssi: rssi, normalized: normalized, color: color),
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -269,8 +269,8 @@ class _NodeTargetPicker extends ConsumerWidget {
   }
 }
 
-class _RssiGaugePainter extends CustomPainter {
-  _RssiGaugePainter({required this.rssi, required this.normalized, required this.color});
+class RssiGaugePainter extends CustomPainter {
+  RssiGaugePainter({required this.rssi, required this.normalized, required this.color});
   final int rssi;
   final double normalized;
   final Color color;
@@ -300,6 +300,6 @@ class _RssiGaugePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RssiGaugePainter old) =>
+  bool shouldRepaint(covariant RssiGaugePainter old) =>
       old.rssi != rssi || old.normalized != normalized;
 }

@@ -411,7 +411,50 @@ internal object Fordremote : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - fs20.c:104-324 parity-byte preamble scan (fs20_find_preamble, get_byte, fs20_frame_fits helpers in fs20.c) with FS20/FHT plausibility gates; disabled upstream (false decodes, issue #3611)
+private val FS20_CMD_TAB = arrayOf(
+    "off", "on, 6.25%", "on, 12.5%", "on, 18.75%", "on, 25%", "on, 31.25%", "on, 37.5%", "on, 43.75%",
+    "on, 50%", "on, 56.25%", "on, 62.5%", "on, 68.75%", "on, 75%", "on, 81.25%", "on, 87.5%", "on, 93.75%",
+    "on, 100%", "on, last value", "toggle on/off", "dim up", "dim down", "dim up/down", "set timer",
+    "status request", "off, timer", "on, timer", "last value, timer", "reset to default",
+    "unused", "unused", "unused", "unused",
+)
+private val FS20_FLAGS_TAB = arrayOf(
+    "(none)", "Extended", "BiDir", "Extended | BiDir", "Response", "Response | Extended",
+    "Response | BiDir", "Response | Extended | BiDir",
+)
+private val FHT_CMD_TAB = arrayOf(
+    "end-of-sync", "valve open", "valve close", "? (0x3)", "? (0x4)", "? (0x5)", "valve open <ext>%",
+    "? (0x7)", "offset adjust", "? (0x9)", "valve de-scale", "? (0x11)", "sync countdown", "? (0x13)",
+    "beep", "pairing?",
+)
+private val FHT_FLAGS_TAB = arrayOf(
+    "(none)", "Extended", "BS?", "Extended | BS?", "Repeat", "Repeat | Extended", "Repeat | BS?",
+    "Repeat | Extended | BS?",
+)
+
+private fun fs20FindPreamble(bb: BitBuffer, start: Int): Int {
+    var bitpos = start
+    val rowBits = bb.bitsPerRow[0]
+    val bits = bb.bb[0]
+    while (bitpos + 12 + 45 <= rowBits && (bits[bitpos / 8 + 1] == 0 || bits[bitpos / 8] != 0)) bitpos += 8
+    if (bitpos != 0) {
+        bitpos--
+        bitpos = bitpos and 3.inv()
+    }
+    bitpos = bb.search(0, bitpos, intArrayOf(0x00, 0x10), 12)
+    if (bitpos >= rowBits) return -1
+    val dataPos = bitpos + 12
+    if (dataPos + 45 > rowBits) return -1
+    return dataPos
+}
+
+private fun fs20GetByte(bits: IntArray, pos: Int): Int {
+    val word = (((bits[pos / 8] shl 8) or bits[pos / 8 + 1]) shl (pos and 7)) and 0xFFFF
+    val data = (word shr 8) and 0xFF
+    val err = if (Rtl433BitUtil.parity8(data) != ((word shr 7) and 1)) 1 else 0
+    return (err shl 8) or data
+}
+
 internal object Fs20 : Rtl433Decoder() {
     override val name = "FS20 / FHT"
     override val mod = Mod.OOK_PWM
@@ -419,7 +462,80 @@ internal object Fs20 : Rtl433Decoder() {
     override val long = 600
     override val reset = 9000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        bb.invert()
+        val bits = bb.bb[0]
+        var cmd = 0
+        var hc = 0
+        var address = 0
+        var ext = 0
+        var sum = 0
+        var found = false
+        var bitpos = 0
+        while (true) {
+            bitpos = fs20FindPreamble(bb, bitpos)
+            if (bitpos < 0) return emptyList()
+            ext = 0
+            if (bitpos + 45 > bb.bitsPerRow[0]) return emptyList()
+            var res = fs20GetByte(bits, bitpos)
+            if (res shr 8 != 0) continue
+            hc = (res and 0xFF) shl 8
+            res = fs20GetByte(bits, bitpos + 9)
+            if (res shr 8 != 0) continue
+            hc = hc or (res and 0xFF)
+            res = fs20GetByte(bits, bitpos + 18)
+            if (res shr 8 != 0) continue
+            address = res and 0xFF
+            res = fs20GetByte(bits, bitpos + 27)
+            if (res shr 8 != 0) continue
+            cmd = res and 0xFF
+            res = fs20GetByte(bits, bitpos + 36)
+            if (res shr 8 != 0) continue
+            if ((cmd and 0x20) != 0) {
+                ext = res and 0xFF
+                if (bitpos + 54 > bb.bitsPerRow[0]) return emptyList()
+                res = fs20GetByte(bits, bitpos + 45)
+                if (res shr 8 != 0) continue
+            }
+            sum = res and 0xFF
+            found = true
+            break
+        }
+        if (!found) return emptyList()
+        sum = (sum - (hc shr 8) - (hc and 0xFF) - address - cmd - ext) and 0xFF
+        val isFs20 = sum in 6..8
+        val isFht = sum in 0xC..0xE
+        if (!isFs20 && !isFht) return emptyList()
+        if (isFht && (cmd and 0x0f) == 0 && (cmd and 0x20) == 0) return emptyList()
+        if (isFs20 && (cmd and 0x1f) >= 0x1c) return emptyList()
+        if (hc == 0 && address == 0) return emptyList()
+        var adB4 = 0
+        var a = address
+        for (i in 0 until 4) {
+            adB4 += (a % 4 + 1) shl (i * 4)
+            a /= 4
+        }
+        var hcB4 = 0
+        var h = hc
+        for (i in 0 until 8) {
+            hcB4 += (h % 4 + 1) shl (i * 4)
+            h /= 4
+        }
+        return listOf(
+            Reading(
+                if (isFs20) "FS20" else "FHT",
+                null,
+                mapOf(
+                    "housecode" to String.format("%x", hcB4),
+                    "address" to String.format("%x", adB4),
+                    "command" to (if (isFs20) FS20_CMD_TAB[cmd and 0x1f] else FHT_CMD_TAB[cmd and 0xf]),
+                    "flags" to (if (isFs20) FS20_FLAGS_TAB[cmd shr 5] else FHT_FLAGS_TAB[cmd shr 5]),
+                    "ext" to String.format("%x", ext),
+                    "mic" to "PARITY",
+                ),
+            ),
+        )
+    }
 }
 
 private fun reverse8(x: Int): Int {
@@ -1258,7 +1374,22 @@ internal object Hcs361TxwakBsel0 : Rtl433Decoder() {
     override fun decode(bb: BitBuffer): List<Reading> = hcs361Frame(bb)
 }
 
-// unverified: not ported - geo_minim.c:264-344 frame parser with display and CT-sensor sub-decoders (geo_minim.c:~100-262) and mktime clock normalization; not transcribed this batch
+private fun geoClock(days: Int, hour: Int, min: Int): String {
+    val totalMin = (13514L + days) * 1440L + hour * 60L + min
+    val epochDay = Math.floorDiv(totalMin, 1440L)
+    val minOfDay = (totalMin - epochDay * 1440L).toInt()
+    val z = epochDay + 719468L
+    val era = Math.floorDiv(z, 146097L)
+    val doe = z - era * 146097L
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = doy - (153 * mp + 2) / 5 + 1
+    val m = if (mp < 10) mp + 3 else mp - 9
+    val y = yoe + era * 400 + (if (m <= 2) 1 else 0)
+    return String.format("%04d-%02d-%02d %02d:%02d", y, m, d, minOfDay / 60, minOfDay % 60)
+}
+
 internal object GeoMinim : Rtl433Decoder() {
     override val name = "GEO minim+ energy monitor"
     override val mod = Mod.FSK_PCM
@@ -1266,7 +1397,58 @@ internal object GeoMinim : Rtl433Decoder() {
     override val long = 24
     override val reset = 3000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1) return emptyList()
+        val pre1 = intArrayOf(0xaa, 0xaa, 0x7b, 0xb9)
+        val pre2 = intArrayOf(0x55, 0x55, 0x7b, 0xb9)
+        var bitpos = bb.search(0, 0, pre1, 32) + 32
+        if (bitpos >= bb.bitsPerRow[0]) bitpos = bb.search(0, 0, pre2, 32) + 32
+        if (bitpos >= bb.bitsPerRow[0]) return emptyList()
+        var bits = bb.bitsPerRow[0]
+        if (bitpos + 32 >= bits) return emptyList()
+        bits -= bitpos
+        val buf = IntArray(129)
+        bb.extractBytes(0, bitpos, buf, 32)
+        val dataLength = buf[3]
+        if (dataLength != 0x2a && dataLength != 0x05) return emptyList()
+        var bytes = bits / 8
+        if (bytes > 128) bytes = 128
+        val crcLen = 4 + dataLength
+        if (crcLen + 2 > bytes) return emptyList()
+        val tmp = IntArray(130)
+        bb.extractBytes(0, bitpos + 32, tmp, (bytes - 4) * 8)
+        for (i in 0 until bytes - 4) buf[4 + i] = tmp[i]
+        val crc = Rtl433BitUtil.crc16(buf, crcLen, 0x8005, 0)
+        if (crc != ((buf[crcLen] shl 8) or buf[crcLen + 1])) return emptyList()
+        val id = String.format("%02X%02X%02X", buf[0], buf[1], buf[2])
+        if (dataLength == 0x05) {
+            if (bytes != 11) return emptyList()
+            val uptimeS = 8L * ((buf[6] shl 16) + (buf[7] shl 8) + buf[8])
+            var va = 10 * (buf[5] + ((buf[4] and 0x0f) shl 8))
+            if ((buf[4] and 0x40) != 0) va += 5
+            val flags4 = buf[4] and 0x4f.inv() and 0xFF
+            val fields = LinkedHashMap<String, Any?>()
+            fields["power_VA"] = va
+            if (flags4 != 0x30) fields["flags4"] = flags4
+            fields["uptime_s"] = uptimeS
+            fields["mic"] = "CRC"
+            return listOf(Reading("GEO-minimCT", id, fields))
+        }
+        if (bytes != 48) return emptyList()
+        val watts = 5 * (buf[4] + ((buf[5] and 0x7f) shl 8))
+        val flags5 = buf[5] and 0x7f.inv() and 0xFF
+        val wh = buf[14] + ((buf[15] and 0x7) shl 8)
+        val flags15 = buf[15] and 0x7.inv() and 0xFF
+        val clock = geoClock(buf[30] + (buf[31] shl 8), buf[32] and 0x1f, buf[33] and 0x3f)
+        val fields = LinkedHashMap<String, Any?>()
+        fields["power_W"] = watts
+        fields["energy_kWh"] = wh * 0.001
+        fields["clock"] = clock
+        if (flags5 != 0) fields["flags5"] = flags5
+        if (flags15 != 0x40) fields["flags15"] = flags15
+        fields["mic"] = "CRC"
+        return listOf(Reading("GEO-minimDP", id, fields))
+    }
 }
 
 // unverified: govee.c:138-259, struct govee.c:273
@@ -1389,7 +1571,61 @@ internal object GoveeH5054 : Rtl433Decoder() {
     }
 }
 
-// unverified: not ported - govee_h5059.c:152-293 sync/skew search, per-family XOR key table and decrypt pass; priority-ordered frame claims against govee_h5310/govee_h5112 not modeled
+private object GoveeFsk {
+    const val MAX_FRAME = 128
+    private const val KEY = "s6amyEvO8UslCY0eZjgc2S6APCVLgLxzFvL2Z5GWPW7fKVjy2oAU6uiKU3lZCHm62VYQQuCtgxzPgGd8UDRPVZpDRAsh5EdYq1E4j4morJ3vd6tWx8BiWOLDc2I8wKUK"
+    private val SYNC = intArrayOf(0x2c, 0x4c, 0x4a)
+    private val SKEW = intArrayOf(0x16, 0x26, 0x25)
+
+    class Frame(val bytes: IntArray, val avail: Int)
+
+    fun locate(bb: BitBuffer): Frame? {
+        var row = -1
+        var syncPos = 0
+        for (r in 0 until bb.numRows) {
+            if (bb.bitsPerRow[r] < 8 * 7) continue
+            val pos = bb.search(r, 0, SYNC, 24)
+            if (pos < bb.bitsPerRow[r]) {
+                row = r
+                syncPos = pos
+                break
+            }
+            val skew = bb.search(r, 0, SKEW, 24)
+            if (skew < bb.bitsPerRow[r]) {
+                row = r
+                syncPos = skew + 1
+                break
+            }
+        }
+        if (row < 0) return null
+        syncPos += 24
+        val bitsAfter = bb.bitsPerRow[row] - syncPos
+        if (bitsAfter < 32) return null
+        var avail = bitsAfter / 8
+        if (avail > MAX_FRAME) avail = MAX_FRAME
+        val frame = IntArray(MAX_FRAME + 1)
+        bb.extractBytes(row, syncPos, frame, avail * 8)
+        return Frame(frame, avail)
+    }
+
+    fun decrypt(f: Frame, encLen: Int): IntArray? {
+        val frame = f.bytes
+        val crcOffs = 2 + encLen
+        val payload = IntArray(encLen) { frame[2 + it] }
+        val calc = Rtl433BitUtil.crc16(payload, encLen, 0x1021, 0x1d0f)
+        val recv = (frame[crcOffs] shl 8) or frame[crcOffs + 1]
+        if (calc != recv) return null
+        val seed = frame[1]
+        return IntArray(encLen) { frame[2 + it] xor KEY[(it + seed) % KEY.length].code }
+    }
+
+    fun idStrings(dec: IntArray): Pair<String, String> {
+        val wire = (dec[1] shl 24) or (dec[2] shl 16) or (dec[3] shl 8) or dec[4]
+        val id = ((wire and 0xffff) shl 16) or ((wire ushr 16) and 0xffff)
+        return Pair(String.format("%08x", id), String.format("%08x", wire))
+    }
+}
+
 internal object GoveeH5059 : Rtl433Decoder() {
     override val name = "Govee Water Leak Detector H5059"
     override val mod = Mod.FSK_PCM
@@ -1397,10 +1633,56 @@ internal object GoveeH5059 : Rtl433Decoder() {
     override val long = 100
     override val reset = 2000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val f = GoveeFsk.locate(bb) ?: return emptyList()
+        val outerLen = f.bytes[0]
+        if (outerLen < 4 || outerLen > GoveeFsk.MAX_FRAME - 1) return emptyList()
+        if (f.avail < 1 + outerLen) return emptyList()
+        val encLen = outerLen - 3
+        if (encLen < 8 || encLen > 64) return emptyList()
+        val dec = GoveeFsk.decrypt(f, encLen) ?: return emptyList()
+        if (encLen < 19) return emptyList()
+        val msgClass = dec[0]
+        val (idStr, idWireStr) = GoveeFsk.idStrings(dec)
+        val subtype = dec[13]
+        val leakTop = dec[14]
+        val leakBottom = dec[15]
+        val leakAlarm = dec[17]
+        var leakStatus = -1
+        val event: String
+        when (msgClass) {
+            0x11 -> {
+                if (subtype == 0x05) {
+                    event = "Button Press"
+                    leakStatus = 0
+                } else if (subtype == 0x06 && leakAlarm != 0 && (leakTop == 1 || leakBottom == 1)) {
+                    event = "Water Leak"
+                    leakStatus = 1
+                } else if (subtype == 0x07) {
+                    event = "Post Alarm"
+                } else {
+                    event = "Telemetry"
+                }
+            }
+            0x01 -> event = "Pairing"
+            0x02 -> event = "Class 0x02"
+            else -> return emptyList()
+        }
+        val fields = linkedMapOf<String, Any?>()
+        fields["id_wire"] = idWireStr
+        fields["event"] = event
+        fields["msg_class"] = msgClass
+        fields["subtype"] = subtype
+        if (leakStatus >= 0) fields["detect_wet"] = leakStatus
+        if (leakStatus == 1) {
+            fields["leak_top"] = if (leakTop == 1) 1 else 0
+            fields["leak_bottom"] = if (leakBottom == 1) 1 else 0
+        }
+        fields["mic"] = "CRC"
+        return listOf(Reading("Govee-H5059", idStr, fields))
+    }
 }
 
-// unverified: not ported - govee_h5112.c:246-421 sync/skew search, per-family XOR key table and decrypt pass; priority-ordered frame claims not modeled
 internal object GoveeH5112 : Rtl433Decoder() {
     override val name = "Govee H5112 Dual-Probe Thermometer"
     override val mod = Mod.FSK_PCM
@@ -1408,10 +1690,57 @@ internal object GoveeH5112 : Rtl433Decoder() {
     override val long = 100
     override val reset = 2000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private fun packed(dec: IntArray, base: Int): Int =
+        dec[base] or (dec[base + 1] shl 8) or (dec[base + 2] shl 16) or (dec[base + 3] shl 24)
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val f = GoveeFsk.locate(bb) ?: return emptyList()
+        val outerLen = f.bytes[0]
+        if (outerLen < 4 || outerLen > GoveeFsk.MAX_FRAME - 1) return emptyList()
+        if (f.avail < 1 + outerLen) return emptyList()
+        val encLen = outerLen - 3
+        if (encLen < 10 || encLen > GoveeFsk.MAX_FRAME) return emptyList()
+        val dec = GoveeFsk.decrypt(f, encLen) ?: return emptyList()
+        val msgClass = dec[0]
+        if (msgClass != 0x13 && msgClass != 0x71) return emptyList()
+        if (msgClass == 0x13 && encLen != 57) return emptyList()
+        if (msgClass == 0x71 && encLen != 28) return emptyList()
+        val (idStr, idWireStr) = GoveeFsk.idStrings(dec)
+        val batteryPct = dec[5]
+        val p = packed(dec, 6)
+        val probe2 = p and 0x7ff
+        val probe1 = (p ushr 11) and 0x7ff
+        val humid = (p ushr 22) and 0x3ff
+        val probe1C = probe1 / 10.0f - 40.0f
+        val probe2C = probe2 / 10.0f - 40.0f
+        val humidity = humid / 10.0f
+        if (humidity > 100.0f) return emptyList()
+        val fields = linkedMapOf<String, Any?>()
+        fields["id_wire"] = idWireStr
+        fields["battery_ok"] = if (batteryPct > 0) 1 else 0
+        fields["battery_pct"] = batteryPct
+        fields["temperature_C"] = probe1C.toDouble()
+        fields["temperature_2_C"] = probe2C.toDouble()
+        fields["humidity"] = humidity.toDouble()
+        if (msgClass == 0x13 && encLen >= 17 + 10 * 4) {
+            val t1 = ArrayList<Double>()
+            val t2 = ArrayList<Double>()
+            val hum = ArrayList<Double>()
+            for (i in 0 until 10) {
+                val hp = packed(dec, 17 + i * 4)
+                t1.add((hp ushr 11 and 0x7ff) / 10.0 - 40.0)
+                t2.add((hp and 0x7ff) / 10.0 - 40.0)
+                hum.add((hp ushr 22 and 0x3ff) / 10.0)
+            }
+            fields["temperature_C_history"] = t1
+            fields["temperature_2_C_history"] = t2
+            fields["humidity_history"] = hum
+        }
+        fields["mic"] = "CRC"
+        return listOf(Reading("Govee-H5112", idStr, fields))
+    }
 }
 
-// unverified: not ported - govee_h5310.c:238-382 sync/skew search, per-family XOR key table and decrypt pass; priority-ordered frame claims not modeled
 internal object GoveeH5310 : Rtl433Decoder() {
     override val name = "Govee Pool/Spa Thermometer H5310"
     override val mod = Mod.FSK_PCM
@@ -1419,10 +1748,193 @@ internal object GoveeH5310 : Rtl433Decoder() {
     override val long = 100
     override val reset = 2000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val f = GoveeFsk.locate(bb) ?: return emptyList()
+        val outerLen = f.bytes[0]
+        val isTemp = outerLen == 0x10
+        val isPeriodic = outerLen == 0x3d
+        val isStatus = outerLen == 0x1f
+        if (!isTemp && !isPeriodic && !isStatus) return emptyList()
+        if (f.avail < 1 + outerLen) return emptyList()
+        val encLen = outerLen - 3
+        val dec = GoveeFsk.decrypt(f, encLen) ?: return emptyList()
+        val expectedMarker = if (isTemp) 0x11 else if (isPeriodic) 0x1b else 0x71
+        if (dec[0] != expectedMarker) return emptyList()
+        val (idStr, idWireStr) = GoveeFsk.idStrings(dec)
+        val batteryPct: Int
+        val raw: Int
+        val event: String
+        if (isTemp) {
+            batteryPct = dec[6]
+            raw = dec[7] or (dec[8] shl 8)
+            event = "Temperature Update"
+        } else if (isPeriodic) {
+            batteryPct = dec[5]
+            raw = dec[6] or (dec[7] shl 8)
+            event = "Periodic Update"
+        } else {
+            if (dec[8] != 0xcc || dec[9] != 0xff) return emptyList()
+            batteryPct = dec[5]
+            raw = dec[6] or (dec[7] shl 8)
+            event = "Status"
+        }
+        val tempC = (raw.toFloat() - 33168) / 10.0f
+        if (tempC < -20.0f || tempC > 60.0f) return emptyList()
+        return listOf(Reading("Govee-H5310", idStr, mapOf(
+            "id_wire" to idWireStr,
+            "event" to event,
+            "battery_ok" to (if (batteryPct > 0) 1 else 0),
+            "battery_pct" to batteryPct,
+            "temperature_C" to tempC.toDouble(),
+            "mic" to "CRC",
+        )))
+    }
 }
 
-// unverified: not ported - gridstream.c:119-261 UART 8N1 extraction, gridstream_checksum with known_crc_init table, subtype-dependent field layout; shared decoder for the three 96/192/384 variants
+private class GsCrcInit(val value: Int, val location: String, val provider: String)
+
+private val GS_KNOWN_CRC_INIT = arrayOf(
+    GsCrcInit(0xe623, "Kansas City MO", "Evergy-Missouri West"),
+    GsCrcInit(0x5fd6, "Dallas TX", "Oncor"),
+    GsCrcInit(0xD553, "Austin TX", "Austin Energy"),
+    GsCrcInit(0x45F8, "Dallas TX", "CoServ"),
+    GsCrcInit(0x62C1, "Quebec CAN", "Hydro-Quebec"),
+    GsCrcInit(0x23D1, "Seattle WA", "Seattle City Light"),
+    GsCrcInit(0x2C22, "Santa Barbara CA", "Southern California Edison"),
+    GsCrcInit(0x142A, "Washington", "Puget Sound Energy"),
+    GsCrcInit(0x47F7, "Pennsylvania", "PPL Electric"),
+    GsCrcInit(0x22c6, "Long Island NY", "PSEG Long Island"),
+    GsCrcInit(0x8819, "Alameda CA", "Alameda Municipal Power"),
+    GsCrcInit(0x4E2D, "Milwaukee WI", "We Energies"),
+    GsCrcInit(0x1D65, "Phoenix AZ", "APS"),
+    GsCrcInit(0xB9A9, "Mattoon IL", "Coles-Moultrie Electric Co-op"),
+    GsCrcInit(0xD1FF, "Newark NJ", "PSEG New Jersey"),
+    GsCrcInit(0xba1f, "Burleson TX", "United Cooperative Services"),
+)
+
+private fun gsUart8n1(msg: IntArray, offsetBits: Int, numBits: Int, dst: IntArray): Int {
+    var ret = 0
+    var off = offsetBits
+    var nb = numBits
+    while (nb >= 10 && ret < dst.size) {
+        val startb = msg[off / 8] shr (7 - (off % 8))
+        off += 1
+        var datab = msg[off / 8]
+        if (off % 8 != 0) {
+            datab = (msg[off / 8] shl 8) or msg[off / 8 + 1]
+            datab = datab shr (8 - (off % 8))
+        }
+        off += 8
+        val stopb = msg[off / 8] shr (7 - (off % 8))
+        off += 1
+        if ((startb and 1) != 0) break
+        if ((stopb and 1) != 1) break
+        dst[ret] = reverse8(datab and 0xff)
+        ret += 1
+        nb -= 10
+    }
+    return ret
+}
+
+private fun gsChecksum(fullLength: Int, length: Int, b: IntArray, adjust: Int): Int {
+    if (length < 2) return -1
+    if (fullLength - 4 + adjust < length) return -1
+    val crc = (b[2 + length + adjust] shl 8) or b[3 + length + adjust]
+    val payload = b.copyOfRange(4 + adjust, 4 + adjust + length - 2)
+    for (i in GS_KNOWN_CRC_INIT.indices) {
+        if (Rtl433BitUtil.crc16(payload, length - 2, 0x1021, GS_KNOWN_CRC_INIT[i].value) == crc) return i
+    }
+    return -1
+}
+
+private fun gsHex(b: IntArray, from: Int, count: Int): String {
+    val sb = StringBuilder()
+    for (i in from until from + count) sb.append(String.format("%02x", b[i]))
+    return sb.toString()
+}
+
+private fun gsU32(b: IntArray, i: Int): Long =
+    (b[i].toLong() shl 24) or (b[i + 1].toLong() shl 16) or (b[i + 2].toLong() shl 8) or b[i + 3].toLong()
+
+private fun gridstream(bb: BitBuffer): List<Reading> {
+    val preV4 = intArrayOf(0xAA, 0xAA, 0x00, 0x5F, 0xF0)
+    val preV5 = intArrayOf(0xAA, 0xAA, 0x00, 0x7F, 0xF8)
+    val b = IntArray(256)
+    val decodedLen: Int
+    val protocolVersion: Int
+    var offset = bb.search(0, 0, preV4, 36) + 36
+    if (offset >= bb.bitsPerRow[0]) {
+        offset = bb.search(0, 0, preV5, 37) + 37
+        if (offset >= bb.bitsPerRow[0]) return emptyList()
+        decodedLen = gsUart8n1(bb.bb[0], offset, minOf(bb.bitsPerRow[0] - offset, b.size * 10), b)
+        protocolVersion = 5
+    } else {
+        decodedLen = gsUart8n1(bb.bb[0], offset, minOf(bb.bitsPerRow[0] - offset, b.size * 10), b)
+        protocolVersion = 4
+    }
+    if (decodedLen < 5) return emptyList()
+    if (b[0] != 0x2A) return emptyList()
+    val subtype = b[1]
+    var subtypeMod = 0
+    val streamLen: Int
+    if (subtype == 0xD2) {
+        streamLen = b[2]
+        subtypeMod = -1
+    } else {
+        streamLen = (b[2] shl 8) or b[3]
+    }
+    val ci = b[4 + subtypeMod]
+    if (subtype == 0xD2 && ci == 0x52) {
+        return listOf(
+            Reading(
+                "LandisGyr-GS",
+                null,
+                mapOf("subtype" to subtype, "protoversion" to protocolVersion, "ci" to ci, "encrypted" to 1),
+            ),
+        )
+    }
+    val crcIdx = gsChecksum(decodedLen, streamLen, b, subtypeMod)
+    if (crcIdx < 0) return emptyList()
+    val known = GS_KNOWN_CRC_INIT[crcIdx]
+    var srcAddress = ""
+    var destAddress = ""
+    var destWan = ""
+    var srcWan = ""
+    var hasSrcWan = false
+    var uptime = 0L
+    var clock = 0L
+    if (subtype == 0x55) {
+        destWan = gsHex(b, 5, 6)
+        srcWan = gsHex(b, 11, 6)
+        hasSrcWan = true
+        srcAddress = gsHex(b, 24, 4)
+        uptime = gsU32(b, 18)
+    } else if (subtype == 0xD5) {
+        destAddress = gsHex(b, 5, 4)
+        srcAddress = gsHex(b, 9, 4)
+        if (streamLen == 0x47) {
+            clock = gsU32(b, 14)
+            uptime = gsU32(b, 22)
+            srcWan = gsHex(b, 30, 6)
+            hasSrcWan = true
+        }
+    }
+    val fields = LinkedHashMap<String, Any?>()
+    fields["networkID"] = String.format("%04x", known.value)
+    fields["location"] = known.location
+    fields["provider"] = known.provider
+    fields["subtype"] = subtype
+    fields["protoversion"] = protocolVersion
+    fields["ci"] = ci
+    fields["mic"] = "CRC"
+    if (hasSrcWan) fields["wanaddress"] = srcWan
+    if (subtype == 0x55) fields["destaddress"] = destWan
+    if (subtype == 0xD5) fields["destaddress"] = destAddress
+    if (subtype == 0xD5 && streamLen == 0x47) fields["timestamp"] = clock.toInt()
+    if (uptime > 0) fields["uptime"] = uptime
+    return listOf(Reading("LandisGyr-GS", if (subtype != 0xD2) srcAddress else null, fields))
+}
+
 internal object Gridstream96 : Rtl433Decoder() {
     override val name = "Landis & Gyr Gridstream Power Meters 9.6k"
     override val mod = Mod.FSK_PCM
@@ -1430,10 +1942,10 @@ internal object Gridstream96 : Rtl433Decoder() {
     override val long = 104
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = gridstream(bb)
 }
 
-// unverified: not ported - gridstream.c:119-261 (shared decoder, see Gridstream96); struct gridstream.c:295
+// unverified: gridstream.c:119-261 (shared decoder, see Gridstream96); struct gridstream.c:295
 internal object Gridstream192 : Rtl433Decoder() {
     override val name = "Landis & Gyr Gridstream Power Meters 19.2k"
     override val mod = Mod.FSK_PCM
@@ -1441,10 +1953,10 @@ internal object Gridstream192 : Rtl433Decoder() {
     override val long = 52
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = gridstream(bb)
 }
 
-// unverified: not ported - gridstream.c:119-261 (shared decoder, see Gridstream96); struct gridstream.c:306
+// unverified: gridstream.c:119-261 (shared decoder, see Gridstream96); struct gridstream.c:306
 internal object Gridstream384 : Rtl433Decoder() {
     override val name = "Landis & Gyr Gridstream Power Meters 38.4k"
     override val mod = Mod.FSK_PCM
@@ -1452,7 +1964,7 @@ internal object Gridstream384 : Rtl433Decoder() {
     override val long = 22
     override val reset = 20000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> = gridstream(bb)
 }
 
 internal val BATCH_03: List<Rtl433Decoder> = listOf(

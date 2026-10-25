@@ -1797,7 +1797,6 @@ internal object LacrosseTx141x : Rtl433Decoder() {
     override fun decode(bb: BitBuffer): List<Reading> = lacrosseTx141xDecode(bb)
 }
 
-// unverified: not ported - honeywell_cm921.c:146-467 is a multi-row message reassembler (parse_msg, decode_10to8, device map) with cross-row state; not transcribed this batch
 internal object HoneywellCm921 : Rtl433Decoder() {
     override val name = "Honeywell CM921 Wireless Programmable Room Thermostat"
     override val mod = Mod.FSK_PCM
@@ -1806,10 +1805,190 @@ internal object HoneywellCm921 : Rtl433Decoder() {
     override val tolerance = 5
     override val reset = 2000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    override fun decode(bb: BitBuffer): List<Reading> {
+        if (bb.numRows != 1 || bb.bitsPerRow[0] < 60) return emptyList()
+        val row = bb.bb[0]
+        val rowBits = bb.bitsPerRow[0]
+        val preambleBits = 30
+        val preambleStart = bb.search(0, 0, intArrayOf(0x55, 0x5F, 0xF0, 0x04), preambleBits)
+        val start = preambleStart + preambleBits
+        val len = rowBits - start
+        if (len < 8) return emptyList()
+        val end = start + len
+
+        val bytes = BitBuffer()
+        var pos = start
+        while (pos < end) {
+            if (pos + 10 > end) break
+            if (bitrowGetBit(row, pos) != 0) break
+            if (bitrowGetBit(row, pos + 9) != 1) break
+            val byte = bitrowGetByte(row, pos + 1)
+            for (i in 0 until 8) bytes.addBit((byte shr i) and 1)
+            pos += 10
+        }
+
+        val br = bytes.bb[0]
+        if (bitrowGetByte(br, 0) != 0x33 || bitrowGetByte(br, 8) != 0x55 || bitrowGetByte(br, 16) != 0x53) return emptyList()
+
+        var fi = bytes.bitsPerRow[0] - 8
+        var seenAa = false
+        while (fi >= 0 && bitrowGetByte(br, fi) == 0x55) {
+            seenAa = true
+            fi -= 8
+        }
+        if (!seenAa || fi < 0 || bitrowGetByte(br, fi) != 0x35) return emptyList()
+
+        val firstByte = 24
+        val numBits = fi - firstByte
+        val packet = BitBuffer()
+        val fpos = bytes.manchesterDecode(0, firstByte, packet, numBits)
+        val manErrors = numBits - (fpos - firstByte - 2)
+        if (manErrors != 0) return emptyList()
+
+        val pbits = packet.bitsPerRow[0]
+        if (pbits < 8) return emptyList()
+        val numBytes = pbits / 8
+        val pb = packet.bb[0]
+        if ((Rtl433BitUtil.addBytes(pb, numBytes) and 0xff) != 0) return emptyList()
+
+        var ipos = 0
+        val header = pb[ipos++]
+        val numDeviceIds = when (header) {
+            0x14 -> 1
+            0x18 -> 2
+            0x1c -> 2
+            0x10 -> 2
+            0x3c -> 2
+            else -> (header shr 2) and 0x03
+        }
+        val deviceId = Array(4) { IntArray(3) }
+        for (i in 0 until numDeviceIds) {
+            for (j in 0 until 3) deviceId[i][j] = pb[ipos++]
+        }
+        val command = (pb[ipos] shl 8) or pb[ipos + 1]
+        ipos += 2
+        val payloadLength = pb[ipos++]
+        if (ipos + payloadLength + 1 > numBytes) return emptyList()
+        val payload = IntArray(256)
+        for (i in 0 until payloadLength) payload[i] = pb[ipos++]
+
+        val ds = (0 until numDeviceIds).joinToString(" ") {
+            String.format("%02x%02x%02x", deviceId[it][0], deviceId[it][1], deviceId[it][2])
+        }
+        val fields = LinkedHashMap<String, Any?>()
+        fields["ids"] = ds
+
+        when (command) {
+            0x1030 -> {
+                if (payloadLength != 16) {
+                    fields["unknown"] = command
+                } else {
+                    fields["zone_idx"] = payload[0]
+                    for (i in 0 until 5) {
+                        val p = 1 + 3 * i
+                        val value = payload[p + 2]
+                        when (payload[p]) {
+                            0xC8 -> fields["max_flow_temp"] = value
+                            0xC9 -> fields["pump_run_time"] = value
+                            0xCA -> fields["actuator_run_time"] = value
+                            0xCB -> fields["min_flow_temp"] = value
+                        }
+                    }
+                }
+            }
+            0x313F -> {
+                if (payloadLength != 1 && payloadLength != 9) {
+                    fields["unknown"] = command
+                } else if (payloadLength == 1) {
+                    fields["time_request"] = payload[0]
+                } else {
+                    val second = payload[2]
+                    val minute = payload[3]
+                    val hour = payload[4] and 0x1F
+                    val day = payload[5]
+                    val month = payload[6]
+                    val year = (payload[7] shl 8) or payload[8]
+                    fields["datetime"] = String.format("%02d:%02d:%02d %02d-%02d-%04d", hour, minute, second, day, month, year)
+                }
+            }
+            0x0008 -> {
+                if (payloadLength != 2) {
+                    fields["unknown"] = command
+                } else {
+                    fields["domain_id"] = payload[0]
+                    fields["demand"] = (payload[1] * (1f / 200f)).toDouble()
+                }
+            }
+            0x3ef0 -> {
+                if (payloadLength != 3 && payloadLength != 6) {
+                    fields["unknown"] = command
+                } else if (payloadLength == 3) {
+                    fields["status"] = (payload[1] * (1f / 200f)).toDouble()
+                } else {
+                    fields["boiler_modulation_level"] = (payload[1] * (1f / 200f)).toDouble()
+                    fields["flame_status"] = payload[3]
+                }
+            }
+            0x2309 -> {
+                if (payloadLength != 3) {
+                    fields["unknown"] = command
+                } else {
+                    fields["zone"] = payload[0]
+                    fields["setpoint"] = (((payload[1] shl 8) or payload[2]) * (1f / 100f)).toDouble()
+                }
+            }
+            0x1100 -> {
+                if (payloadLength != 5 && payloadLength != 8) {
+                    fields["unknown"] = command
+                } else {
+                    fields["domain_id"] = payload[0]
+                    fields["cycle_rate"] = (payload[1] * (1f / 4f)).toDouble()
+                    fields["minimum_on_time"] = (payload[2] * (1f / 4f)).toDouble()
+                    fields["minimum_off_time"] = (payload[3] * (1f / 4f)).toDouble()
+                    if (payloadLength == 8) {
+                        fields["proportional_band_width"] = (((payload[5] shl 8) or payload[6]) * (1f / 100f)).toDouble()
+                    }
+                }
+            }
+            0x0009 -> {
+                if (payloadLength != 3) {
+                    fields["unknown"] = command
+                } else {
+                    fields["device_number"] = payload[0]
+                    fields["failsafe_mode"] = when (payload[1]) {
+                        0 -> "off"
+                        1 -> "20-80"
+                        else -> "unknown"
+                    }
+                }
+            }
+            0x3B00 -> {
+                if (payloadLength != 2) {
+                    fields["unknown"] = command
+                } else {
+                    fields["domain_id"] = payload[0]
+                    fields["state"] = (payload[1] * (1f / 200f)).toDouble()
+                }
+            }
+            0x30C9 -> {
+                val numZones = payloadLength / 3
+                for (i in 0 until numZones) {
+                    val temp = s16((payload[3 * i + 1] shl 8) or payload[3 * i + 2])
+                    fields["temperature (zone ${payload[3 * i]})"] = (temp * (1f / 100f)).toDouble()
+                }
+            }
+            0x1fd4 -> fields["ticker"] = (payload[1] shl 8) or payload[2]
+            0x3150 -> {
+                fields["zone"] = payload[0]
+                fields["heat_demand"] = payload[1]
+            }
+            else -> fields["unknown"] = command
+        }
+        fields["mic"] = "CHECKSUM"
+        return listOf(Reading("Honeywell-CM921", ds, fields))
+    }
 }
 
-// unverified: not ported - ikea_sparsnas.c:94-137 brute-force encryption keyed by a file-static sensor id (ikea_sparsnas.c:92) and the pulse-level decode at ikea_sparsnas.c:139-284; stateful, not transcribed this batch
 internal object IkeaSparsnas : Rtl433Decoder() {
     override val name = "IKEA Sparsnas Energy Meter Monitor"
     override val mod = Mod.FSK_PCM
@@ -1818,10 +1997,99 @@ internal object IkeaSparsnas : Rtl433Decoder() {
     override val gap = 1000
     override val reset = 3000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private const val MSG_BITLEN = 160
+    private const val MSG_BYTELEN = 20
+    private const val MSG_BITLEN_MAX = 260
+    private const val PREAMBLE_BITLEN = 32
+    private const val ID_KEY_SUB = 0x5D38E8CBL
+    private const val PULSES_PER_KWH = 1000
+    private var sensorId = 0L
+
+    private fun bruteForce(buffer: IntArray): Long {
+        val b5 = buffer[5]
+        val b6 = buffer[6]
+        val b7 = buffer[7]
+        val b8 = buffer[8]
+        val batteryEnc = buffer[17]
+        val d3 = b8 xor 0x47
+        for (k0 in 0 until 0xFF) {
+            val d0 = b5 xor k0
+            if (d0 > 0x0F) continue
+            for (k1 in 0 until 0xFF) {
+                val d1 = b6 xor k1
+                for (k2 in 0 until 0xFF) {
+                    val d2 = b7 xor k2
+                    val batteryDec = batteryEnc xor k2
+                    val decSensorId = (d0.toLong() shl 24) or (d1.toLong() shl 16) or (d2.toLong() shl 8) or d3.toLong()
+                    if (decSensorId > 999999L) continue
+                    for (k4 in 0 until 0xFF) {
+                        val keySensorId = (((k0.toLong() shl 24) or (k4.toLong() shl 16) or (k2.toLong() shl 8) or k1.toLong()) + ID_KEY_SUB) and 0xFFFFFFFFL
+                        if (decSensorId == keySensorId && batteryDec <= 100) return decSensorId
+                    }
+                }
+            }
+        }
+        return 0L
+    }
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val rowBits = bb.bitsPerRow[0]
+        if (rowBits < MSG_BITLEN || rowBits > MSG_BITLEN_MAX) return emptyList()
+        val bitpos = bb.search(0, 0, intArrayOf(0xAA, 0xAA, 0xD2, 0x01), PREAMBLE_BITLEN)
+        if (rowBits == bitpos || bitpos + MSG_BITLEN > rowBits) return emptyList()
+        val buffer = IntArray(MSG_BYTELEN)
+        bb.extractBytes(0, bitpos + PREAMBLE_BITLEN, buffer, MSG_BITLEN)
+        val crcCalc = Rtl433BitUtil.crc16(buffer, MSG_BYTELEN - 2, 0x8005, 0xffff)
+        val crcRecv = (buffer[18] shl 8) or buffer[19]
+        if (crcRecv != crcCalc) return emptyList()
+
+        if (sensorId == 0L) sensorId = bruteForce(buffer)
+
+        val sub = (sensorId - ID_KEY_SUB) and 0xFFFFFFFFL
+        val key = intArrayOf(
+            ((sub shr 24) and 0xFF).toInt(),
+            (sub and 0xFF).toInt(),
+            ((sub shr 8) and 0xFF).toInt(),
+            0x47,
+            ((sub shr 16) and 0xFF).toInt(),
+        )
+        val decrypted = IntArray(18)
+        for (i in 0 until 5) decrypted[i] = buffer[i]
+        for (i in 0 until 13) decrypted[5 + i] = buffer[5 + i] xor key[i % 5]
+
+        val rcvSensorId = (decrypted[5].toLong() shl 24) or (decrypted[6].toLong() shl 16) or (decrypted[7].toLong() shl 8) or decrypted[8].toLong()
+
+        if (sensorId == 0L || rcvSensorId != sensorId) {
+            return listOf(Reading("Ikea-Sparsnas", sensorId.toString(), mapOf(
+                "id" to sensorId,
+                "mic" to "CRC",
+            )))
+        }
+
+        if (decrypted[0] != 0x11) return emptyList()
+        if (decrypted[3] != 0x07) return emptyList()
+
+        val sequence = (decrypted[9] shl 8) or decrypted[10]
+        val effect = (decrypted[11] shl 8) or decrypted[12]
+        val pulses = (decrypted[13].toLong() shl 24) or (decrypted[14].toLong() shl 16) or (decrypted[15].toLong() shl 8) or decrypted[16].toLong()
+        val battery = decrypted[17]
+        val mode = decrypted[4] xor 0x0f
+        val cumulativeKwh = pulses.toFloat() / PULSES_PER_KWH.toFloat()
+
+        return listOf(Reading("Ikea-Sparsnas", rcvSensorId.toString(), mapOf(
+            "id" to rcvSensorId,
+            "sequence" to sequence,
+            "battery_ok" to (battery * 0.01f).toDouble(),
+            "pulses_per_kWh" to PULSES_PER_KWH,
+            "cumulative_kWh" to cumulativeKwh.toDouble(),
+            "effect" to effect,
+            "pulses" to pulses,
+            "mode" to mode,
+            "mic" to "CRC",
+        )))
+    }
 }
 
-// unverified: not ported - insteon.c:114-376 parse_insteon_pkt plus CRC helpers (insteon.c:80-112) and callback (insteon.c:378-481); multi-packet parser, not transcribed this batch
 internal object Insteon : Rtl433Decoder() {
     override val name = "Insteon"
     override val mod = Mod.FSK_PCM
@@ -1831,7 +2099,140 @@ internal object Insteon : Rtl433Decoder() {
     override val tolerance = 15
     override val reset = 1000
 
-    override fun decode(bb: BitBuffer): List<Reading> = emptyList()
+    private const val PACKET_MIN = 10
+    private const val PACKET_MAX = 13
+    private const val PACKET_MIN_EXT = 23
+    private const val PACKET_MAX_EXT = 32
+    private const val BITLEN_MIN = PACKET_MIN * 28 + 2
+    private const val PREAMBLE_LEN = 16
+    private val preamble = intArrayOf(0xCE, 0xAA)
+    private val msgText = arrayOf(
+        "Direct Message",
+        "ACK of Direct Message",
+        "Group Cleanup Direct Message",
+        "ACK of Group Cleanup Direct Message",
+        "Broadcast Message",
+        "NAK of Direct Message",
+        "Group Broadcast Message",
+        "NAK of Group Cleanup Direct Message",
+    )
+
+    private fun genExtCrc(dat: IntArray): Int {
+        var r = 0
+        for (i in 7 until 22) r = (r + dat[i]) and 0xFF
+        r = r.inv() and 0xFF
+        return (r + 1) and 0xFF
+    }
+
+    private fun genCrc(dat: IntArray): Int {
+        var r = 0
+        for (i in 0 until 9) {
+            r = r xor dat[i]
+            r = r xor ((((r xor (r shl 1)) and 0x0F) shl 4))
+            r = r and 0xFF
+        }
+        return r
+    }
+
+    private fun parsePkt(bits: BitBuffer, row: Int, startIn: Int): Reading? {
+        val results = IntArray(35)
+        var resultsLen = 0
+        var startPos = startIn + 7
+
+        val iBits = BitBuffer()
+        val dBits = BitBuffer()
+        var nextPos = bits.manchesterDecode(row, startPos, iBits, 5)
+        var pktI = rv8(iBits.bb[0][0])
+        nextPos = bits.manchesterDecode(row, nextPos, dBits, 8)
+        val pktD0 = rv8(dBits.bb[0][0])
+        results[resultsLen++] = pktD0
+
+        if (pktI != 31) return null
+
+        val delim = IntArray(1)
+        bits.extractBytes(row, startPos + 26, delim, 2)
+        if (delim[0] != 0xc0) return null
+
+        var extended = 0
+        var maxPktLen = PACKET_MAX
+        var minPktLen = PACKET_MIN
+        if (results[0] and 0x10 != 0) {
+            extended = 1
+            maxPktLen = PACKET_MAX_EXT
+            minPktLen = PACKET_MIN_EXT
+        }
+
+        var prevI = 33
+        for (j in 1 until maxPktLen) {
+            startPos += 28
+            iBits.clear()
+            dBits.clear()
+            nextPos = bits.manchesterDecode(row, startPos, iBits, 5)
+            nextPos = bits.manchesterDecode(row, nextPos, dBits, 8)
+            if (nextPos - startPos != 26) break
+            pktI = rv8(iBits.bb[0][0])
+            val pktD = rv8(dBits.bb[0][0])
+            results[resultsLen++] = pktD
+            if (pktI < prevI) prevI = pktI else return null
+        }
+
+        if (resultsLen < minPktLen) return null
+
+        val crcVal = if (extended == 1) genExtCrc(results) else genCrc(results)
+        if (results[minPktLen - 1] != crcVal) return null
+
+        val toAddr = String.format("%02X%02X%02X", results[3], results[2], results[1])
+        val fromAddr = String.format("%02X%02X%02X", results[6], results[5], results[4])
+        val cmdArray = ArrayList<Int>()
+        val cmdStr = StringBuilder()
+        for (j in 7 until minPktLen - 1) {
+            cmdStr.append(String.format("%02X ", results[j]))
+            cmdArray.add(results[j])
+        }
+        val payload = StringBuilder()
+        for (j in 0 until resultsLen) payload.append(String.format("%02X", results[j]))
+        val formatted = String.format("%02X : %s : %s : %s %02X", results[0], toAddr, fromAddr, cmdStr.toString(), results[minPktLen - 1])
+
+        val hopsMax = results[0] and 0x03
+        val hopsLeft = (results[0] shr 2) and 0x03
+        val pktType = (results[0] shr 5) and 0x07
+
+        return Reading("Insteon", fromAddr, mapOf(
+            "from_id" to fromAddr,
+            "to_id" to toAddr,
+            "msg_type" to pktType,
+            "msg_str" to msgText[pktType],
+            "extended" to extended,
+            "hopsmax" to hopsMax,
+            "hopsleft" to hopsLeft,
+            "formatted" to formatted,
+            "mic" to "CRC",
+            "payload" to payload.toString(),
+            "cmd_dat" to cmdArray,
+        ))
+    }
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        val out = ArrayList<Reading>()
+        bb.invert()
+        for (row in 0 until bb.numRows) {
+            var bitIndex = 0
+            if (bb.bitsPerRow[row] < BITLEN_MIN) continue
+            while (true) {
+                if (bb.bitsPerRow[row] - bitIndex < BITLEN_MIN) break
+                val searchIndex = bb.search(row, bitIndex, preamble, PREAMBLE_LEN)
+                if (searchIndex >= bb.bitsPerRow[row]) break
+                val r = parsePkt(bb, row, searchIndex)
+                if (r != null) {
+                    out.add(r)
+                    bitIndex = searchIndex + BITLEN_MIN
+                } else {
+                    bitIndex = searchIndex + PREAMBLE_LEN
+                }
+            }
+        }
+        return out
+    }
 }
 
 internal val BATCH_04: List<Rtl433Decoder> = listOf(
