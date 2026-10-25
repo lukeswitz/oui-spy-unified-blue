@@ -87,10 +87,12 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 |---|---|---|
 | Spectrum | You set it, 100.1 MHz by default | A live waterfall of signal strength across the band |
 | ADS-B | 1090 MHz | Aircraft broadcasting their position and identity |
-| TPMS | 433.92 MHz | Tire-pressure sensors in passing vehicles |
-| 433 | 433.92 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters, key fobs, and other sensors |
+| TPMS | 315, 433.92, or 915 MHz | Tire-pressure sensors in passing vehicles |
+| SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, tire sensors, utility meters (including Wireless M-Bus), key fobs, security sensors, and more |
 
-TPMS and 433 hits are decoded on the SDR screen and grouped by category: tire sensors, meters, security devices, key fobs, and environmental and weather sensors.
+TPMS and SCAN hits are decoded on the SDR screen and grouped by category: tire sensors, meters, security devices, key fobs, and environmental and weather sensors. Each decode is verified against the device's own checksum. Noise is rejected, not shown as a false reading. Decoded devices are saved to History under an SDR filter, and you can foxhunt one by its signal strength.
+
+On the ADS-B tab, each aircraft shows as a card with its callsign, altitude, speed, heading, and a photo looked up online by its ICAO address. A map view draws each aircraft's flight path from the positions it has broadcast. One button uploads the aircraft you have heard to WDGWars.
 
 ## Engines
 

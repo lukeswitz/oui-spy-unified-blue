@@ -25,6 +25,12 @@
 - Boards use a random MAC each boot.
 - App themes and node temperatures.
 - WDGWars upload shows the server's result counts.
+- SDR SCAN decodes the full rtl_433 device set: weather stations, tire sensors, utility meters, Wireless M-Bus, key fobs, and security sensors. Each decode is checksum-verified.
+- SDR hits save to History under an SDR filter, with frequency and decoded fields.
+- SDR TPMS and SCAN sweep 315, 433.92, and 915 MHz from a band picker.
+- Foxhunt an SDR signal by its live signal strength.
+- ADS-B tab: aircraft list with photos, a map of each aircraft's flight path, and upload to WDGWars.
+- Bluetooth adult toys detected as their own class.
 
 ## Changed
 
