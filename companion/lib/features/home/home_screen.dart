@@ -746,7 +746,10 @@ class _UsbScanSources extends ConsumerWidget {
           on: selected,
           trailing: Switch(
             value: selected,
-            onChanged: (v) => ref.read(usbAdapterScanProvider.notifier).state = v,
+            onChanged: (v) {
+              ref.read(usbAdapterScanProvider.notifier).state = v;
+              if (!v && wifiRunning) ctl.stop();
+            },
           ),
         ),
       if (sdrPresent || sdrActive)
