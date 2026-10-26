@@ -121,7 +121,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: t.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text('Connection Restored',
           style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
         content: Text(
@@ -355,8 +354,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     if (_exclusionZones.isEmpty) return [];
     final circles = <CircleMarker>[];
     final polygons = <Polygon>[];
-    const zoneColor = Color(0x30E6A85A); // warning @ 0.19
-    const zoneBorder = Color(0x99E6A85A); // warning @ 0.6
+    final zoneColor = AppTheme.warning.withValues(alpha: 0.19);
+    final zoneBorder = AppTheme.warning.withValues(alpha: 0.6);
 
     for (final g in _exclusionZones) {
       if (g.zoneType == 'circle' && g.centerLat != null && g.centerLon != null) {
@@ -620,7 +619,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 15,
-                backgroundColor: darkBase ? const Color(0xFF0A0A0A) : const Color(0xFFE8E8EE),
+                backgroundColor: mapStyle.isDark ? Colors.black : Colors.white,
                 onMapReady: _onMapReady,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
@@ -822,7 +821,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                               horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: t.surface.withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(6),
                             border: Border.all(
                                 color: AppTheme.warning.withValues(alpha: 0.7)),
                           ),
@@ -938,7 +936,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       FlockPanel(
                         detections: wd.droneDetections,
                         icon: Icons.flight,
-                        accent: const Color(0xFF4AFFEA),
+                        accent: Engine.skySpy.color,
                         onDetectionTap: (d) => _zoomToDetection(d),
                       ),
                     ],
@@ -947,7 +945,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       FlockPanel(
                         detections: wd.detectorDetections,
                         icon: Icons.radar,
-                        accent: const Color(0xFF4A9EFF),
+                        accent: Engine.detector.color,
                         onDetectionTap: (d) => _zoomToDetection(d),
                       ),
                     ],
@@ -976,7 +974,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Center(child: _runControls(ref, wd)),
+                    _runControls(ref, wd),
                     const SizedBox(height: 8),
                     if (wd.dedupedDetections.isNotEmpty)
                       Padding(
@@ -1379,12 +1377,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 shape: BoxShape.circle,
                 color: pinColor,
                 border: Border.all(color: Colors.white, width: 2),
-                boxShadow: const [
-                  BoxShadow(
-                      color: Color(0xAA000000),
-                      blurRadius: 4,
-                      spreadRadius: 0.5),
-                ],
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -1480,26 +1472,16 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
   Widget _runControls(WidgetRef ref, WardriveController wd) {
-    if (wd.radioTransition == 'stopping') {
-      return const SizedBox.shrink();
-    }
-    return switch (wd.state) {
-      WardriveState.idle => const SizedBox.shrink(),
-      WardriveState.running => Row(mainAxisSize: MainAxisSize.min, children: [
-          _OutlinePill(label: 'PAUSE', color: AppTheme.of(context).textSecondary,
-              onTap: () => ref.read(wardriveProvider).pauseSession()),
-          const SizedBox(width: 12),
-          _Pill(label: 'STOP', color: AppTheme.error,
-              onTap: () => ref.read(wardriveProvider).stopSession()),
-        ]),
-      WardriveState.paused => Row(mainAxisSize: MainAxisSize.min, children: [
-          _Pill(label: 'RESUME', color: AppTheme.success,
-              onTap: () => ref.read(wardriveProvider).resumeSession()),
-          const SizedBox(width: 12),
-          _OutlinePill(label: 'STOP', color: AppTheme.error,
-              onTap: () => ref.read(wardriveProvider).stopSession()),
-        ]),
-    };
+    if (wd.state == WardriveState.idle) return const SizedBox.shrink();
+    return WardriveRunCard(
+      showButtons: wd.radioTransition != 'stopping',
+      stats: wd.currentStats,
+      targets: wd.activeLabel,
+      paused: wd.state == WardriveState.paused,
+      onPause: () => ref.read(wardriveProvider).pauseSession(),
+      onResume: () => ref.read(wardriveProvider).resumeSession(),
+      onStop: () => ref.read(wardriveProvider).stopSession(),
+    );
   }
 }
 

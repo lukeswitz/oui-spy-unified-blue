@@ -34,7 +34,12 @@ void main() {
     await tester.tap(find.text('App'));
     await tester.pumpAndSettle();
     expect(find.text('Cyberpunk'), findsOneWidget);
+    expect(find.text('Dark Mode'), findsNothing);
+    await tester.tap(find.text('Default'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Dark Mode'), 200);
     expect(find.text('Dark Mode'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Terminal'), -200);
     await tester.tap(find.text('Terminal'));
     await tester.pumpAndSettle();
     expect(container.read(appStyleProvider), AppStyle.terminal);
