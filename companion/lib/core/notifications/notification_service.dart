@@ -45,6 +45,7 @@ class NotificationService extends ChangeNotifier {
 
   // Per-engine notification toggles
   bool flockEnabled = true;
+  bool flockOuiOnly = false;
   bool detectorEnabled = true;
   bool droneEnabled = true;
   bool foxhuntEnabled = false; // foxhunt is high-frequency, off by default
@@ -673,6 +674,7 @@ class NotificationService extends ChangeNotifier {
   Future<void> _loadPrefs() async {
     final p = await SharedPreferences.getInstance();
     flockEnabled = p.getBool('notif_flock') ?? true;
+    flockOuiOnly = p.getBool('notif_flock_oui_only') ?? false;
     detectorEnabled = p.getBool('notif_detector') ?? true;
     droneEnabled = p.getBool('notif_drone') ?? true;
     foxhuntEnabled = p.getBool('notif_foxhunt') ?? false;
@@ -703,6 +705,7 @@ class NotificationService extends ChangeNotifier {
   Future<void> _savePrefs() async {
     final p = await SharedPreferences.getInstance();
     p.setBool('notif_flock', flockEnabled);
+    p.setBool('notif_flock_oui_only', flockOuiOnly);
     p.setBool('notif_detector', detectorEnabled);
     p.setBool('notif_drone', droneEnabled);
     p.setBool('notif_foxhunt', foxhuntEnabled);
@@ -718,6 +721,12 @@ class NotificationService extends ChangeNotifier {
 
   void setFlockEnabled(bool v) {
     flockEnabled = v;
+    notifyListeners();
+    _savePrefs();
+  }
+
+  void setFlockOuiOnly(bool v) {
+    flockOuiOnly = v;
     notifyListeners();
     _savePrefs();
   }

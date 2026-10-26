@@ -19,6 +19,8 @@ import 'package:oui_spy/core/link/link_session.dart';
 import 'package:oui_spy/core/link/usb_serial.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
+import 'package:oui_spy/core/oui/flock_oui.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 
@@ -89,6 +91,12 @@ class BleManager {
 
   void setDetectorSigMaskGetter(int Function() getter) {
     _sigMaskGetter = getter;
+  }
+
+  bool Function()? _flockOuiOnlyGetter;
+
+  void setFlockOuiOnlyGetter(bool Function() getter) {
+    _flockOuiOnlyGetter = getter;
   }
 
   final _connectionState = StreamController<NodeConnectionState>.broadcast();
@@ -468,6 +476,27 @@ class BleManager {
       satelliteCount: _lastSatCount,
       wardrive: WardriveExtension(ssid: ssid, authMode: authMode),
     ));
+    if ((_flockOuiOnlyGetter?.call() ?? false) && FlockOui.match(bssid)) {
+      _detections.add(Detection(
+        id: '${bssid}_flock_${now.millisecondsSinceEpoch}',
+        sessionId: _sessionId,
+        nodeId: nodeId,
+        macAddress: bssid,
+        engine: Engine.flockWifi,
+        method: client ? 'oui_addr2' : 'oui_addr3',
+        rssi: rssi,
+        channel: channel,
+        deviceTimestampMs: 0,
+        appTimestamp: now,
+        ssid: ssid,
+        sourceNodeId: nodeId,
+        latitude: _lastLat,
+        longitude: _lastLon,
+        accuracy: _lastAccuracy,
+        satelliteCount: _lastSatCount,
+        flock: const FlockExtension(signals: FlockSignal.oui),
+      ));
+    }
   }
 
   // -- Scanning --
@@ -1977,6 +2006,10 @@ final bleManagerProvider = Provider<BleManager>((ref) {
     }
   });
   manager.setDetectorSigMaskGetter(() => ref.read(detectorSigMaskProvider));
+  manager.setFlockOuiOnlyGetter(() {
+    final n = ref.read(notificationServiceProvider);
+    return n.flockEnabled && n.flockOuiOnly;
+  });
   ref.listen(detectorSigMaskProvider, (prev, next) {
     if (manager.currentConnectionState == NodeConnectionState.ready) {
       manager.setDetectorSigMask(next);

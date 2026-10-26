@@ -138,7 +138,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
         ),
         for (final (title, items) in _watchGroups) ...[
           ConfigSectionHeader(label: title, topPadding: 6),
-          for (final w in items)
+          for (final w in items) ...[
             ConfigToggleRow(
               icon: w.icon,
               label: w.label,
@@ -149,6 +149,16 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               notify: !notif.isMuted(muteKeys(w)),
               onNotify: (v) => notif.setMuted(muteKeys(w), !v),
             ),
+            if (w.flock && isOn(w))
+              ConfigToggleRow(
+                icon: Icons.fingerprint,
+                label: 'Flock OUI hits from phone and USB adapters',
+                subtitle: 'Report a Wi-Fi device from this phone or a USB adapter on a Flock OUI match alone, as Suspected. More hits, more false positives.',
+                color: AppTheme.error,
+                value: notif.flockOuiOnly,
+                onChanged: notif.setFlockOuiOnly,
+              ),
+          ],
           const SizedBox(height: 12),
         ],
         ConfigActionRow(
