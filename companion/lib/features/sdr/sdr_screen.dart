@@ -337,6 +337,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                       t: t,
                       showRaw: _showRaw,
                       catFilter: null,
+                      mode: _mode,
                     ),
                 },
               ),
@@ -348,7 +349,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                 child: StreamBuilder<SdrFrame>(
                   stream: _c.frameStream,
                   builder: (context, _) => _DetectionList(
-                      detections: _c.detections, t: t, showRaw: _showRaw, catFilter: null),
+                      detections: _c.detections, t: t, showRaw: _showRaw, catFilter: null, mode: _mode),
                 ),
               ),
             ],
@@ -642,18 +643,21 @@ class _SpectrumPainter extends CustomPainter {
 }
 
 class _DetectionList extends StatelessWidget {
-  const _DetectionList({required this.detections, required this.t, required this.showRaw, required this.catFilter});
+  const _DetectionList({required this.detections, required this.t, required this.showRaw, required this.catFilter, required this.mode});
 
   final List<SdrDetection> detections;
   final ResolvedTheme t;
   final bool showRaw;
   final Object? catFilter;
+  final SdrMode mode;
 
   @override
   Widget build(BuildContext context) {
     final items = detections.where((d) {
       if (d.kind == 'ism' || d.kind == 'rf') return showRaw;
       if (d.kind == 'adsb' && !_fullAdsb(d)) return showRaw;
+      if (mode == SdrMode.tpms) return d.kind == 'tpms';
+      if (mode == SdrMode.rtl433 && d.kind == 'tpms') return false;
       if (catFilter is Sdr433Category) return _categoryOf(d) == catFilter;
       return true;
     }).toList();
