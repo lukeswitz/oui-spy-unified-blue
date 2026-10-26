@@ -25,8 +25,8 @@
 
 <div align="center">
 
-  <img height="430" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" src="docs/screenshots/ui/setup.jpg" />
   <img height="430" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" src="docs/screenshots/ui/overview.png" />
+  <img height="430" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" src="docs/screenshots/ui/setup.jpg" />
 
 </div>
 
