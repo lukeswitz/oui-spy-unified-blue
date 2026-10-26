@@ -25,6 +25,7 @@
 - Boards use a random MAC each boot.
 - App themes and node temperatures.
 - WDGWars upload shows the server's result counts.
+- RTL-SDR dongles on Android: plug one in for Spectrum, ADS-B, TPMS and rtl_433 SCAN modes.
 - SDR SCAN decodes the full rtl_433 device set: weather stations, tire sensors, utility meters, Wireless M-Bus, key fobs, and security sensors. Every decoder checks the device's checksum and drops noise.
 - SDR hits save to History under an SDR filter, with frequency and decoded fields.
 - SDR TPMS and SCAN sweep 315, 433.92, and 915 MHz from a band picker.
@@ -33,6 +34,7 @@
 - SDR SCAN category picker: choose Weather, Home, Meters, Security, or Remotes, and the app decodes only those. An info button explains each, and list rows show the category's icon.
 - SDR SCAN now skips decoders that have no checksum, matching rtl_433's defaults, so ambiguous signals no longer show as false devices.
 - Detects Bluetooth adult toys as their own class.
+- USB Wi-Fi adapters on Android (MediaTek, Realtek, Atheros, Ralink) scan in monitor mode, user space, no root; the MT7921AU also scans Bluetooth LE.
 
 ## Changed
 
