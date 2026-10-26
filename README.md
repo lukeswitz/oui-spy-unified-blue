@@ -25,8 +25,8 @@
 
 <div align="center">
 
-  <img width="300" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" src="docs/screenshots/ui/overview.png" />
-  <img width="300" alt="Map: a drone and its pilot, a Flock camera, and trackers" src="docs/screenshots/ui/map.png" />
+  <img height="430" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" src="docs/screenshots/ui/setup.jpg" />
+  <img height="430" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" src="docs/screenshots/ui/overview.png" />
 
 </div>
 
@@ -150,8 +150,6 @@ On the **ADS-B** tab:
 
 In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off.
 
-<img width="300" alt="Detection and alerts: per-type alert, log-only, or off" src="docs/screenshots/ui/detection-alerts.png" />
-
 ### Flock confidence
 
 | Tier | Matched |
@@ -166,7 +164,18 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
-<img width="300" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" src="docs/screenshots/ui/settings.png" />
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/ui/settings.png" width="100%" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /></td>
+    <td width="33%"><img src="docs/screenshots/ui/detection-alerts.png" width="100%" alt="Detection and alerts: per-type alert, log-only, or off" /></td>
+    <td width="33%"><img src="docs/screenshots/ui/map.png" width="100%" alt="Map: a drone and its pilot, a Flock camera, and trackers" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Settings</sub></td>
+    <td align="center"><sub>Detection &amp; alerts</sub></td>
+    <td align="center"><sub>Map: drone, Flock, trackers</sub></td>
+  </tr>
+</table>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
