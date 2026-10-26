@@ -25,7 +25,7 @@
 
 <div align="center">
 
-  <img width="610" alt="APEX overview" src="https://github.com/user-attachments/assets/0a798936-51f3-41d2-b103-cdec0e7d9134" />
+  <img width="300" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" src="docs/screenshots/ui/overview.png" />
 
 </div>
 
@@ -72,7 +72,7 @@
 Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX drives it directly — no root, kernel driver, or custom ROM.
 
 - **User space:** the app talks to the adapter through Android's USB API, so it works on a stock phone.
-- **Concurrent:** the phone's own Wi-Fi and Bluetooth keep running while the adapter scans.
+- **Run several at once:** the phone's radios, a USB Wi-Fi adapter, and an RTL-SDR dongle all scan into one session at the same time.
 - **Setup:** plug it in, choose OUI-APEX when Android asks, and tick "Use by default for this USB device". It appears on the Home screen with its own START control and waits there — it does not scan until you start it.
 - **Reclaim:** with "use by default" set, the app grabs the adapter again after a restart, so you don't have to unplug and replug it.
 
@@ -140,6 +140,10 @@ On the **ADS-B** tab:
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
 
+In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off.
+
+<img width="300" alt="Detection and alerts: per-type alert, log-only, or off" src="docs/screenshots/ui/detection-alerts.png" />
+
 ### Flock confidence
 
 | Tier | Matched |
@@ -153,6 +157,8 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 ## App
 
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
+
+<img width="300" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" src="docs/screenshots/ui/settings.png" />
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
@@ -170,7 +176,7 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
 - **Android**: during a session, an ongoing notification shows live counts and the last alert.
 
-<img width="910" alt="Wardrive map" src="https://github.com/user-attachments/assets/cc0d4cc9-6524-41c7-bb04-9cd01dae58b8" />
+<img width="300" alt="Map plotting a drone and its pilot, a Flock camera, and trackers" src="docs/screenshots/ui/map.png" />
 
 ## Internet services
 
