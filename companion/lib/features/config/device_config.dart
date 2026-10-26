@@ -585,7 +585,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const _ChannelRangeSlider(),
 
         const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'External WiFi adapter'),
+        ConfigSectionHeader(label: 'External Adapters'),
         const _WifiAdapterSection(),
       ],
     );
