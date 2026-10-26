@@ -74,3 +74,7 @@ managed_components/
 sdkconfig.*
 
 logs/
+
+# working notes — kept out of the repo (RELEASE_NOTES.md stays, used by CI)
+notes/*
+!notes/RELEASE_NOTES.md
