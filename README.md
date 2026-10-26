@@ -26,6 +26,7 @@
 <div align="center">
 
   <img width="300" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" src="docs/screenshots/ui/overview.png" />
+  <img width="300" alt="Map: a drone and its pilot, a Flock camera, and trackers" src="docs/screenshots/ui/map.png" />
 
 </div>
 
@@ -165,16 +166,7 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/ui/settings.png" width="100%" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /></td>
-    <td width="50%"><img src="docs/screenshots/ui/map.png" width="100%" alt="Map plotting a drone and its pilot, a Flock camera, and trackers" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Settings</sub></td>
-    <td align="center"><sub>Map: drone + pilot, Flock, trackers</sub></td>
-  </tr>
-</table>
+<img width="300" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" src="docs/screenshots/ui/settings.png" />
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
