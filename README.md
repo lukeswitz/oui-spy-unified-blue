@@ -42,7 +42,7 @@
 
 | Mode | How | What you get |
 |---|---|---|
-| **App** | Phone connected over Bluetooth | Every engine, live feed, map, GPS from the phone, PCAP saved on the phone |
+| **App + board** | Phone app connected to an ESP32 board over Bluetooth | The board does the scanning and runs every engine; the app controls it, shows the live feed and map, adds the phone's GPS, and saves PCAP on the phone |
 | **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
 | **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
 | **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's radios: Bluetooth and Wi-Fi on Android, Bluetooth on iPhone |
