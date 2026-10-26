@@ -103,7 +103,20 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 | TPMS | 315, 433.92, or 915 MHz | Tire-pressure sensors in passing vehicles |
 | SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus), security sensors, remotes and key fobs, and home sensors |
 
-<img width="300" alt="Live spectrum waterfall with frequency labels along the bottom axis" src="docs/screenshots/sdr/sdr-spectrum.png" />
+<table>
+  <tr>
+    <td width="25%"><img src="docs/screenshots/sdr/sdr-scan.png" width="100%" alt="SCAN decoding weather, meter, security and remote devices" /></td>
+    <td width="25%"><img src="docs/screenshots/sdr/sdr-scan-categories.png" width="100%" alt="Scan category info sheet" /></td>
+    <td width="25%"><img src="docs/screenshots/sdr/sdr-adsb.png" width="100%" alt="ADS-B aircraft list with photos" /></td>
+    <td width="25%"><img src="docs/screenshots/sdr/sdr-spectrum.png" width="100%" alt="Live spectrum with frequency labels" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>SCAN decodes</sub></td>
+    <td align="center"><sub>Category picker</sub></td>
+    <td align="center"><sub>ADS-B</sub></td>
+    <td align="center"><sub>Spectrum</sub></td>
+  </tr>
+</table>
 
 In SCAN mode you pick which categories to decode: **Weather, Home, Meters, Security, Remotes**. The app runs only those decoders, so a narrower scan does less work on the phone.
 
@@ -112,18 +125,11 @@ In SCAN mode you pick which categories to decode: **Weather, Home, Meters, Secur
 - Decoded devices save to History under an SDR filter, and you can foxhunt one by its signal strength.
 - Tire sensors have their own **TPMS** tab, which reads them more reliably than SCAN.
 
-<p>
-  <img width="300" alt="SCAN decoding weather, meter, security, and remote devices, each row tagged with its category" src="docs/screenshots/sdr/sdr-scan.png" />
-  <img width="300" alt="Info sheet describing each scan category" src="docs/screenshots/sdr/sdr-scan-categories.png" />
-</p>
-
 On the **ADS-B** tab:
 
 - Each aircraft is a card with callsign, altitude, speed, heading, and a photo looked up online by its ICAO address.
 - The map view draws each aircraft's flight path from the positions it has broadcast.
 - One button uploads the aircraft you've heard to WDGWars.
-
-<img width="300" alt="ADS-B aircraft list showing operator, type, registration, and a photo for each aircraft" src="docs/screenshots/sdr/sdr-adsb.png" />
 
 ## Engines
 
@@ -158,7 +164,16 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
-<img width="300" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" src="docs/screenshots/ui/settings.png" />
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/ui/settings.png" width="100%" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /></td>
+    <td width="50%"><img src="docs/screenshots/ui/map.png" width="100%" alt="Map plotting a drone and its pilot, a Flock camera, and trackers" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Settings</sub></td>
+    <td align="center"><sub>Map: drone + pilot, Flock, trackers</sub></td>
+  </tr>
+</table>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
@@ -175,8 +190,6 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
 - **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
 - **Android**: during a session, an ongoing notification shows live counts and the last alert.
-
-<img width="300" alt="Map plotting a drone and its pilot, a Flock camera, and trackers" src="docs/screenshots/ui/map.png" />
 
 ## Internet services
 
