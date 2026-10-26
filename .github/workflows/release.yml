@@ -229,11 +229,24 @@ jobs:
     needs: [build-firmware]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: artifacts
           pattern: firmware-*
           merge-multiple: true
+
+      - name: Read changelog from RELEASE_NOTES.md
+        id: notes
+        run: |
+          {
+            echo 'changelog<<RELEASE_NOTES_EOF'
+            tail -n +3 notes/RELEASE_NOTES.md
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create Draft Release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
@@ -248,74 +261,7 @@ jobs:
 
             ### What's new since v0.6.1
 
-            **New**
-            - Device classifier: DETECTIONS → DEVICES lists and classifies every nearby device.
-            - 20 classes including cameras, surveillance, public safety, drones, finder tags.
-            - Also glasses, wearables, vehicles, pentest tools, locks, health, home IoT.
-            - Co-travel and flood detection flag suspicious device behavior.
-            - Alert sounds: choose or compose a melody per alert type.
-            - Manager pushes tones and previews to every mesh node.
-            - Axon detection via BLE UUIDs FE6B/FE6C, with presence tones.
-            - Foxhunt can now target any device, including law enforcement.
-            - Watchlist import/export as CSV or JSON, up to 5000 rows.
-            - Fieldwatch catalog of 253 fleets added.
-            - Optional OUI-only Flock WiFi hits.
-            - XIAO ESP32-C5 mesh manager, available in the web flasher.
-            - `ouispy-flash.sh` detects T-Dongle and StickC boards, lists all firmware.
-            - Class alerts for cameras, smart glasses and trackers, saved to HISTORY.
-            - Camera and Amazon Sidewalk detection; full IEEE OUI database.
-            - Live Activity shows alert counts and the last alert; CarPlay support.
-            - Locked-phone alerts come through the Live Activity.
-            - Phone scan from the status bar: Bluetooth and Wi-Fi on Android, with or without a board; Bluetooth on iPhone and Mac. Shows as node PHONE.
-            - Phone foxhunt: track a device with the phone's radio, with or without a board.
-            - Map: SHOW ALL shows every detection of a class.
-            - Boards use a random MAC each boot.
-            - App themes and node temperatures.
-            - WDGWars upload shows how many networks were imported, new and merged.
-            - Android: an ongoing notification shows live counts and the last alert during a session.
-            - README lists every internet service the app uses, what each one receives, and the usage rules the app follows.
-
-            **Changed**
-            - New four-tab layout; history and rules moved, refreshed list rows.
-            - Watchlist notifications titled by entry description, with device details.
-            - Notifications: four engine toggles; class alerts always on.
-            - Wardrive WiFi / BLE / Both selector always visible while idle.
-            - Button-started engines keep running when the phone disconnects.
-            - WiGLE sessions start without waiting for a GPS fix.
-            - Classifier: iBeacon now "Beacons", Honeywell moved to industrial.
-            - Shorter notification body: RSSI, channel, name, MAC.
-            - App reconnects to a rebooted board by node ID.
-            - Map styles now come from OpenFreeMap, which needs no account and sets no request limit: Dark (the default), Fiord, Liberty, Bright and Positron.
-            - Satellite (US) uses USGS imagery: public domain, no account, United States only.
-            - CARTO, OpenStreetMap, Topo, Terrain and Esri Satellite styles removed: CARTO and Esri require an account, and the OpenStreetMap and Topo servers limit heavy use. A saved choice switches to the nearest new style.
-            - MAPPED ALPRs waits at least 30 seconds after an Overpass rate limit.
-            - The OUI database downloads at most once a week, as Wireshark asks.
-            - The firmware update check pauses until GitHub's rate limit resets.
-            - FAA lookups identify as the app instead of as a web browser.
-            - After a WiGLE rate limit the app makes no WiGLE requests for 24 hours.
-
-            **Fixed**
-            - Mesh nodes scanning BLE missed manager commands, on every chip.
-            - Nodes now find a manager powered on after them.
-            - LilyGO T-Dongle S3 reboot loop when receiving an ignore list.
-            - XIAO ESP32-C5 nodes missing from the app's connect list.
-            - Manager tone changes not reaching nodes; removed tones kept playing.
-            - Connect screen scan list squeezed left and not scanning.
-            - Web flasher did not restart the board after flashing.
-            - Same-length offline filter list replacements were not saved.
-            - Classifier dropped router and IoT vendors.
-            - Manager showed fewer devices than a single node.
-            - Nodes under a manager could miss devices in busy areas.
-            - Bluetooth devices seen through a manager were not classified.
-            - MAPPED ALPRs always failed and kept loading after being turned off.
-            - SHOW ALL removed a HISTORY detection from the map.
-            - Camera alert toggle showed off while alerts still fired.
-            - A session started right after connecting could switch itself off.
-            - A map session started inside an exclusion zone kept scanning. The radios now stay off in a zone, and the map shows RADIOS OFF.
-            - Auto-PCAP could stay off after the app closed inside an exclusion zone.
-            - A manager pushed default alert timings to its nodes when none had been set in the app.
-            - Offline scan could restart with fewer engines after a reboot during an auto-PCAP capture.
-            - StickC boards missing from the OTA list.
+            ${{ steps.notes.outputs.changelog }}
 
             Flash the manager and every node together; the mesh record format changed.
 
