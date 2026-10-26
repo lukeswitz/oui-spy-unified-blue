@@ -105,20 +105,13 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 | TPMS | 315, 433.92, or 915 MHz | Tire-pressure sensors in passing vehicles |
 | SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus), security sensors, remotes and key fobs, and home sensors |
 
-<table>
-  <tr>
-    <td width="25%"><img src="docs/screenshots/sdr/sdr-scan.png" width="100%" alt="SCAN decoding weather, meter, security and remote devices" /></td>
-    <td width="25%"><img src="docs/screenshots/sdr/sdr-scan-categories.png" width="100%" alt="Scan category info sheet" /></td>
-    <td width="25%"><img src="docs/screenshots/sdr/sdr-adsb.png" width="100%" alt="ADS-B aircraft list with photos" /></td>
-    <td width="25%"><img src="docs/screenshots/sdr/sdr-spectrum.png" width="100%" alt="Live spectrum with frequency labels" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>SCAN decodes</sub></td>
-    <td align="center"><sub>Category picker</sub></td>
-    <td align="center"><sub>ADS-B</sub></td>
-    <td align="center"><sub>Spectrum</sub></td>
-  </tr>
-</table>
+<div align="center">
+  <img width="190" src="docs/screenshots/sdr/sdr-scan.png" alt="SCAN decoding weather, meter, security and remote devices" />
+  <img width="190" src="docs/screenshots/sdr/sdr-scan-categories.png" alt="Scan category info sheet" />
+  <img width="190" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with photos" />
+  <img width="190" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum with frequency labels" />
+  <br><sub>SCAN decodes · Category picker · ADS-B · Spectrum</sub>
+</div>
 
 In SCAN mode you pick which categories to decode: **Weather, Home, Meters, Security, Remotes**. The app runs only those decoders, so a narrower scan does less work on the phone.
 
@@ -164,18 +157,12 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
-<table>
-  <tr>
-    <td width="33%"><img src="docs/screenshots/ui/settings.png" width="100%" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /></td>
-    <td width="33%"><img src="docs/screenshots/ui/detection-alerts.png" width="100%" alt="Detection and alerts: per-type alert, log-only, or off" /></td>
-    <td width="33%"><img src="docs/screenshots/ui/map.png" width="100%" alt="Map: a drone and its pilot, a Flock camera, and trackers" /></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Settings</sub></td>
-    <td align="center"><sub>Detection &amp; alerts</sub></td>
-    <td align="center"><sub>Map: drone, Flock, trackers</sub></td>
-  </tr>
-</table>
+<div align="center">
+  <img width="190" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" />
+  <img width="190" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" />
+  <img width="190" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" />
+  <br><sub>Settings · Detection &amp; alerts · Map</sub>
+</div>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
