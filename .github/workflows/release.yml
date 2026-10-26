@@ -31,7 +31,7 @@ jobs:
           FW=$(sed -n 's/.*#define FW_VERSION  *"\([0-9.]*\)".*/\1/p' src/protocol.h)
           FWNUM=$(sed -n 's/.*#define FW_VERSION_NUM  *\(0x[0-9a-fA-F]*\).*/\1/p' src/protocol.h)
           PUB=$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' companion/pubspec.yaml)
-          APP=$(sed -n "s/.*appVersion = '\([0-9.]*\)'.*/\1/p" companion/lib/features/config/device_config.dart)
+          APP=$(sed -n "s/.*appVersion = '\([0-9.]*\)'.*/\1/p" companion/lib/features/config/config_misc.dart)
           WEB=$(sed -n 's/.*<div class="version">v\([0-9.]*\)<\/div>.*/\1/p' docs/index.html)
 
           rc=0
