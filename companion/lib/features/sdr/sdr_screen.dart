@@ -586,11 +586,14 @@ class _SpectrumPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = Colors.black);
+    final hasLabels = centerHz > 0 && rate > 0;
+    final labelH = hasLabels ? 16.0 : 0.0;
+    final plotH = size.height - labelH;
     final gp = Paint()
       ..color = grid.withValues(alpha: 0.4)
       ..strokeWidth = 1;
     for (var i = 0; i <= 4; i++) {
-      final y = size.height * i / 4;
+      final y = plotH * i / 4;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gp);
     }
     if (power.length < 2) return;
@@ -601,35 +604,35 @@ class _SpectrumPainter extends CustomPainter {
     for (var i = 0; i < power.length; i++) {
       final x = size.width * i / (power.length - 1);
       final norm = ((power[i] - minDb) / (maxDb - minDb)).clamp(0.0, 1.0);
-      final y = size.height * norm;
+      final y = plotH * norm;
       if (i == 0) {
         path.moveTo(x, y);
-        fill.moveTo(x, size.height);
+        fill.moveTo(x, plotH);
         fill.lineTo(x, y);
       } else {
         path.lineTo(x, y);
         fill.lineTo(x, y);
       }
     }
-    fill.lineTo(size.width, size.height);
+    fill.lineTo(size.width, plotH);
     fill.close();
     canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.18));
     canvas.drawPath(path, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 1.5);
-    if (centerHz > 0 && rate > 0) {
+    if (hasLabels) {
       final half = rate / 2.0;
       for (final f in const [0.0, 0.25, 0.5, 0.75, 1.0]) {
         final hz = (centerHz - half) + rate * f;
         final tp = TextPainter(
           text: TextSpan(
             text: (hz / 1e6).toStringAsFixed(2),
-            style: TextStyle(color: labelColor, fontSize: 9),
+            style: TextStyle(color: labelColor, fontSize: 10, fontWeight: FontWeight.w600),
           ),
           textDirection: TextDirection.ltr,
         )..layout();
         var dx = size.width * f - tp.width / 2;
         if (f == 0.0) dx = 1;
         if (f == 1.0) dx = size.width - tp.width - 1;
-        tp.paint(canvas, Offset(dx, size.height - tp.height - 1));
+        tp.paint(canvas, Offset(dx, plotH + (labelH - tp.height) / 2));
       }
     }
   }
