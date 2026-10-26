@@ -18,55 +18,7 @@ class OuiLookupService extends ChangeNotifier {
   static const _legacyLocalFileName = 'oui_vendors.tsv';
 
   static const Map<String, String> _overrides = {
-    // Flock Safety — FS Ext Battery (BLE, Silicon Labs EFR32)
-    '588E81': 'Flock Safety (Battery)',
-    'EC1BBD': 'Flock Safety (Battery)',
-    '9035EA': 'Flock Safety (Battery)',
-    '040D84': 'Flock Safety (Battery)',
-    'F082C0': 'Flock Safety (Battery)',
-    '1C34F1': 'Flock Safety (Battery)',
-    '385B44': 'Flock Safety (Battery)',
-    '943469': 'Flock Safety (Battery)',
-    'B4E3F9': 'Flock Safety (Battery)',
-    // @NitekryDPaul / OrdoOuroborous — original promiscuous-mode set
-    '70C94E': 'Flock Safety (Falcon)',
-    '3C9180': 'Flock Safety (Falcon)',
-    'D8F3BC': 'Flock Safety (Falcon)',
-    '803049': 'Flock Safety (Falcon)',
-    'B83532': 'Flock Safety (Falcon)',
-    '145AFC': 'Flock Safety (Falcon)',
-    '744CA1': 'Flock Safety (Falcon)',
-    '083A88': 'Flock Safety (Falcon)',
-    '9C2F9D': 'Flock Safety (Falcon)',
-    'C03532': 'Flock Safety (Falcon)',
-    '940853': 'Flock Safety (Falcon)',
-    'E4AAEA': 'Flock Safety (Falcon)',
-    'F46ADD': 'Flock Safety (Falcon)',
-    '24B2B9': 'Flock Safety (Falcon)',
-    '00F48D': 'Flock Safety (Falcon)',
-    'D03957': 'Flock Safety (Falcon)',
-    'E8D0FC': 'Flock Safety (Falcon)',
-    'E04F43': 'Flock Safety (Falcon)',
-    'B81EA4': 'Flock Safety (Falcon)',
-    '700894': 'Flock Safety (Falcon)',
-    '3C71BF': 'Flock Safety (Falcon)',
-    '5800E3': 'Flock Safety (Falcon)',
-    '5C93A2': 'Flock Safety (Falcon)',
-    '646E69': 'Flock Safety (Falcon)',
-    '4827EA': 'Flock Safety (Falcon)',
-    'A4CF12': 'Flock Safety (Falcon)',
-    // @NitekryDPaul April 2026 additions
     'B41E52': 'Flock Safety',
-    '14B5CD': 'Flock Safety (Falcon)',
-    'D411D6': 'Flock Safety (Falcon)',
-    'E00AF6': 'Flock Safety (Falcon)',
-    // DeFlockJoplin — wildcard-probe field research
-    '826BF2': 'Flock Safety (Falcon)',
-    // Flock Safety BLE — @NitekryDPaul Jul 2026 LE CSV
-    '00408C': 'Flock Safety',
-    'ACCC8E': 'Flock Safety',
-    // Flock Safety — Raven gunshot detector (Espressif)
-    'EC6260': 'Flock Safety (Raven)',
   };
 
   static const Map<String, String> lawEnforcementOuis = {
