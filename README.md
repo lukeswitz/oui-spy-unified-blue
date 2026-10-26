@@ -38,7 +38,7 @@
 - **Android:** set Location to **Allow all the time**, or scanning stops when the screen is off.
 - **macOS:** the release zip is signed but not notarized, so Gatekeeper blocks the first launch. For a notarized build, use [TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
 
-## Ways to run a board
+## Ways to run
 
 | Mode | How | What you get |
 |---|---|---|
@@ -46,6 +46,7 @@
 | **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
 | **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
 | **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's radios: Bluetooth and Wi-Fi on Android, Bluetooth on iPhone |
+| **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 433 / 315 / 915 MHz and ADS-B; a USB Wi-Fi adapter scans Wi-Fi (the MT7921AU also Bluetooth LE). Run them together or on their own, alongside the phone's own radios |
 
 - **Together:** the board keeps detecting while the phone foxhunts a device it found, or both scan into one session.
 - **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot.
