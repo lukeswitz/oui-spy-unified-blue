@@ -8,6 +8,7 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
@@ -196,7 +197,19 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
 
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(title: const Text('PCAP CAPTURE')),
+      appBar: AppBar(
+        title: const Text('PCAP CAPTURE'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () => showInfoSheet(context, t, 'PCAP', const [
+              'Captures raw 802.11 or BLE advertising frames to a Wireshark .pcap file.',
+              'Files save on the phone; open the library to view or share them.',
+            ]),
+          ),
+        ],
+      ),
       body: StreamBuilder<PcapStats>(
         stream: ble.pcapStats,
         initialData: ble.latestPcapStats,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 class FoxhunterScreen extends ConsumerStatefulWidget {
   const FoxhunterScreen({super.key});
@@ -73,6 +74,15 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
       appBar: AppBar(
         title: const Text('FOXHUNTER'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () => showInfoSheet(context, t, 'Foxhunter', const [
+              'Tracks one target device by its signal strength.',
+              'Beep rate rises as you get closer; boards without a buzzer show an RSSI meter instead.',
+              'Pick a target, then move around to narrow down where it is.',
+            ]),
+          ),
           Container(
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

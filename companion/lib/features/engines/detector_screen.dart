@@ -10,6 +10,7 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 class DetectorScreen extends ConsumerWidget {
   const DetectorScreen({super.key});
@@ -32,6 +33,16 @@ class DetectorScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Detector'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () => showInfoSheet(context, t, 'Detector', const [
+              'Watches for the devices and threats you turn on, all off by default.',
+              'Add a MAC, OUI prefix, name, or 16-bit BLE service UUID to your watchlist.',
+              'Built-in signatures: Find My / AirTag following you, Flipper Zero, Wi-Fi deauth floods, directed probes, Pwnagotchi, smart glasses, law-enforcement gear, cameras by vendor OUI, Amazon Sidewalk.',
+              'Hits save to History.',
+            ]),
+          ),
           Transform.scale(
             scale: 0.7,
             child: Switch(

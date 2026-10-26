@@ -8,6 +8,7 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/engines/drone_map_view.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 class SkySpyScreen extends ConsumerWidget {
   const SkySpyScreen({super.key});
@@ -25,6 +26,15 @@ class SkySpyScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('SKY SPY'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () => showInfoSheet(context, t, 'Sky Spy', const [
+              'Finds drones broadcasting FAA Remote ID over BLE and Wi-Fi.',
+              "Shows each drone's ID, position, altitude, speed, and the pilot's position.",
+              'Drones plot on the map at their own location.',
+            ]),
+          ),
           Transform.scale(
             scale: 0.7,
             child: Switch(

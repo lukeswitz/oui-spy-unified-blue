@@ -8,6 +8,7 @@ import 'package:oui_spy/core/engine_control.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 class UnipwnScreen extends ConsumerStatefulWidget {
   const UnipwnScreen({super.key});
@@ -70,6 +71,14 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
       appBar: AppBar(
         title: const Text('UNIPWN'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () => showInfoSheet(context, t, 'UniPwn', const [
+              'Finds Unitree robots by their BLE name (Go2_, G1_, H1_, and similar).',
+              'Sends control commands to a selected robot over BLE.',
+            ]),
+          ),
           Transform.scale(
             scale: 0.7,
             child: Switch(
