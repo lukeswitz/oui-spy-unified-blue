@@ -90,7 +90,7 @@ Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX
 | Atheros AR9271 | Wi-Fi (2.4 GHz) |
 | Ralink RT3070 | Wi-Fi (2.4 GHz) |
 
-**The MT7921AU (Alfa AWUS036AXM) is the one to get.** It is the only adapter here that also scans Bluetooth LE — pick BLE or WiFi+BLE on the radio control and it runs the Bluetooth radio next to the Wi-Fi capture. Its Wi-Fi hits are tagged `USB WIFI` and its Bluetooth hits `USB-BLE`, so you can tell them from the phone's own radios.
+**The MT7921AU (Alfa AWUS036AXM) is the only adapter here that also scans Bluetooth LE** — pick BLE or WiFi+BLE on the radio control and it runs the Bluetooth radio next to the Wi-Fi capture. Its Wi-Fi hits are tagged `USB WIFI` and its Bluetooth hits `USB-BLE`, so you can tell them from the phone's own radios.
 
 ### RTL-SDR
 
