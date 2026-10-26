@@ -304,13 +304,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
     ref.listen(sdrPresentProvider, (prev, next) {
       final now = next.valueOrNull ?? false;
-      if (!now) {
-        _sdrAutoOpened = false;
-        return;
-      }
+      if (!now) return;
       if (!_sdrAutoOpened && GoRouterState.of(context).uri.path != '/sdr') {
         _sdrAutoOpened = true;
-        context.push('/sdr');
+        context.push('/sdr').then((_) => _sdrAutoOpened = false);
       }
     });
     ref.listen(wifiAdapterStateProvider, (prev, next) {
