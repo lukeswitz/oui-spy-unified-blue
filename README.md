@@ -12,16 +12,8 @@
 
 </div>
 
-> [!TIP]
-> **Turn off Android's Wi-Fi scan limit.** Android lets a foreground app start four Wi-Fi scans every two minutes, and all background apps together one scan every 30 minutes. Scan requests past the limit fail. To turn the limit off:
-> 1. Open **Settings → About phone** and tap **Build number** seven times. This turns on Developer options.
-> 2. Open **Settings → System → Developer options**. Under **Networking**, turn off **Wi-Fi scan throttling**.
->
-> The menu path differs on some phones. The limit applies only to the phone's own Wi-Fi radio. USB Wi-Fi adapters are not limited, because the app reads them over USB instead of through Android's Wi-Fi scan.
 
-- ESP32 firmware and standalone phone app for detecting surveillance hardware, trackers and drones, and for wardriving. One firmware runs every detection engine; the app turns them on and off, maps results, and uploads to WiGLE and WDGWars. 
-
-- The phone is a radio too — run it alone, or have a board detect while the phone foxhunts. **Android scans Bluetooth and Wi-Fi; iPhone and MacOS scan BLE only.**
+Firmware and app for detecting surveillance hardware, trackers and drones, and for wardriving. One firmware runs every detection engine; maps results, and uploads to WiGLE and WDGWars. The phone is a radio too — run it alone, or have a board detect while the phone foxhunts. **Android scans Bluetooth and Wi-Fi; iPhone and MacOS scan BLE only.**
 
 **On Android**, extend the phone further with an RTL-SDR dongle or most USB Wi-Fi adapter chipsets.
 
@@ -29,6 +21,7 @@
 > Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks with additional features.
 >
 > **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
+
 
 <div align="center">
 <table>
@@ -38,6 +31,19 @@
   </tr>
 </table>
 </div>
+
+
+> [!IMPORTANT]
+> **Turn off Android's Wi-Fi scan limit.**
+>
+> Android only allows four Wi-Fi scans every two minutes. Scan requests past the 2min limit fail.
+>
+> **To turn the limit off:**
+> 1. Open **Settings → About phone** and tap **Build number** seven times. This turns on Developer options.
+> 2. Open **Settings → System → Developer options**. Under **Networking**, turn off **Wi-Fi scan throttling**.
+>
+> The menu path differs on some phones. The limit applies only to the phone's own Wi-Fi radio. USB Wi-Fi adapters are not limited, because the app reads them over USB instead of through Android's Wi-Fi scan.
+
 
 ## Quick start
 
