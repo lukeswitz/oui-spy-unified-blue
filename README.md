@@ -14,16 +14,20 @@
 
 - ESP32 firmware and standalone phone app for detecting surveillance hardware, trackers and drones, and for wardriving. One firmware runs every detection engine; the app turns them on and off, maps results, and uploads to WiGLE and WDGWars. 
 
-- The phone is a radio too — run it alone, or have a board detect while the phone foxhunts. **Android scans Bluetooth and Wi-Fi; iPhone and Mac scan Bluetooth LE only.**
+- The phone is a radio too — run it alone, or have a board detect while the phone foxhunts. **Android scans Bluetooth and Wi-Fi; iPhone and MacOS scan BLE only.**
 
-- **On Android**, extend the phone further with an RTL-SDR dongle or most USB Wi-Fi adapter chipsets.
+**On Android**, extend the phone further with an RTL-SDR dongle or most USB Wi-Fi adapter chipsets.
 
 > [!NOTE]
 > Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks with additional features.
+>
+> **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
 
-**Not affiliated with OUI-SPY.** Beta, bugs can exist. 
+<div align="center">
 
-<img width="610" alt="APEX overview" src="https://github.com/user-attachments/assets/0a798936-51f3-41d2-b103-cdec0e7d9134" />
+  <img width="610" alt="APEX overview" src="https://github.com/user-attachments/assets/0a798936-51f3-41d2-b103-cdec0e7d9134" />
+
+</div>
 
 ## Quick start
 
