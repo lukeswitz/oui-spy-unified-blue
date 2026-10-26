@@ -12,6 +12,13 @@
 
 </div>
 
+> [!TIP]
+> **Turn off Android's Wi-Fi scan limit.** Android lets a foreground app start four Wi-Fi scans every two minutes, and all background apps together one scan every 30 minutes. Scan requests past the limit fail. To turn the limit off:
+> 1. Open **Settings → About phone** and tap **Build number** seven times. This turns on Developer options.
+> 2. Open **Settings → System → Developer options**. Under **Networking**, turn off **Wi-Fi scan throttling**.
+>
+> The menu path differs on some phones. The limit applies only to the phone's own Wi-Fi radio. USB Wi-Fi adapters are not limited, because the app reads them over USB instead of through Android's Wi-Fi scan.
+
 - ESP32 firmware and standalone phone app for detecting surveillance hardware, trackers and drones, and for wardriving. One firmware runs every detection engine; the app turns them on and off, maps results, and uploads to WiGLE and WDGWars. 
 
 - The phone is a radio too — run it alone, or have a board detect while the phone foxhunts. **Android scans Bluetooth and Wi-Fi; iPhone and MacOS scan BLE only.**
@@ -24,10 +31,12 @@
 > **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
 
 <div align="center">
-
-  <img height="430" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" src="docs/screenshots/ui/overview.png" />
-  <img height="430" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" src="docs/screenshots/ui/setup.jpg" />
-
+<table>
+  <tr>
+    <td><img width="194" src="docs/screenshots/ui/overview.png" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" /></td>
+    <td><img width="349" src="docs/screenshots/ui/home-photo.jpg" alt="Phone running OUI-APEX on the Home screen with an RTL-SDR connected" /></td>
+  </tr>
+</table>
 </div>
 
 ## Quick start
@@ -73,6 +82,14 @@
 
 Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX drives it directly — no root, kernel driver, or custom ROM.
 
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><img width="400" src="docs/screenshots/ui/setup.jpg" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" /><br><sub>Settings → External Adapters</sub></td>
+  </tr>
+</table>
+</div>
+
 - **User space:** the app talks to the adapter through Android's USB API, so it works on a stock phone.
 - **Run several at once:** the phone's radios, a USB Wi-Fi adapter, and an RTL-SDR dongle all scan into one session at the same time.
 - **Setup:** plug it in, choose OUI-APEX when Android asks, and tick "Use by default for this USB device". It appears on the Home screen with its own START control and waits there — it does not scan until you start it.
@@ -106,11 +123,16 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 | SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus), security sensors, remotes and key fobs, and home sensors |
 
 <div align="center">
-  <img width="190" src="docs/screenshots/sdr/sdr-scan.png" alt="SCAN decoding weather, meter, security and remote devices" />
-  <img width="190" src="docs/screenshots/sdr/sdr-scan-categories.png" alt="Scan category info sheet" />
-  <img width="190" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with photos" />
-  <img width="190" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum with frequency labels" />
-  <br><sub>SCAN decodes · Category picker · ADS-B · Spectrum</sub>
+<table>
+  <tr>
+    <td align="center"><img width="189" src="docs/screenshots/sdr/sdr-scan.png" alt="SCAN decoding weather, meter, security and remote devices" /><br><sub>SCAN decodes</sub></td>
+    <td align="center"><img width="162" src="docs/screenshots/sdr/sdr-scan-categories.png" alt="Scan category info sheet" /><br><sub>Category picker</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img width="180" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with photos" /><br><sub>ADS-B</sub></td>
+    <td align="center"><img width="162" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum with frequency labels" /><br><sub>Spectrum</sub></td>
+  </tr>
+</table>
 </div>
 
 In SCAN mode you pick which categories to decode: **Weather, Home, Meters, Security, Remotes**. The app runs only those decoders, so a narrower scan does less work on the phone.
@@ -158,10 +180,13 @@ The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY,
 Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
 <div align="center">
-  <img width="190" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" />
-  <img width="190" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" />
-  <img width="190" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" />
-  <br><sub>Settings · Detection &amp; alerts · Map</sub>
+<table>
+  <tr>
+    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /><br><sub>Settings</sub></td>
+    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" /><br><sub>Detection &amp; alerts</sub></td>
+    <td align="center" width="34%"><img width="176" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" /><br><sub>Map</sub></td>
+  </tr>
+</table>
 </div>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
