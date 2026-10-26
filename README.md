@@ -90,9 +90,18 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 | TPMS | 315, 433.92, or 915 MHz | Tire-pressure sensors in passing vehicles |
 | SCAN | 315, 433.92, or 915 MHz | Devices the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus), security sensors, remotes and key fobs, and home sensors |
 
+<img width="300" alt="Live spectrum waterfall with frequency labels along the bottom axis" src="docs/screenshots/sdr/sdr-spectrum.png" />
+
 In SCAN mode you pick which categories to decode: Weather, Home, Meters, Security, and Remotes. The app runs only the decoders for the categories you choose, so a narrower scan does less work on the phone. The info button at the top explains what each category covers, and every list row shows the category's icon. Each decoder checks the device's checksum and drops readings that fail it, so noise does not show up as a device. Decoded devices save to History under an SDR filter, and you can foxhunt one by its signal strength. Tire sensors have their own TPMS tab, which reads them more reliably than SCAN.
 
+<p>
+  <img width="300" alt="SCAN decoding weather, meter, security, and remote devices, each row tagged with its category" src="docs/screenshots/sdr/sdr-scan.png" />
+  <img width="300" alt="Info sheet describing each scan category" src="docs/screenshots/sdr/sdr-scan-categories.png" />
+</p>
+
 On the ADS-B tab, each aircraft shows as a card with its callsign, altitude, speed, heading, and a photo the app looks up online by its ICAO address. A map view draws each aircraft's flight path from the positions it has broadcast. One button uploads the aircraft you have heard to WDGWars.
+
+<img width="300" alt="ADS-B aircraft list showing operator, type, registration, and a photo for each aircraft" src="docs/screenshots/sdr/sdr-adsb.png" />
 
 ## Engines
 
