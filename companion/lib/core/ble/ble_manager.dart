@@ -2191,7 +2191,16 @@ class BleManager {
       final expectNodeId = _nodeId;
       final expectRole = _role;
       final expectMgr = expectRole == 'mgr';
-      final useAuto = Platform.isAndroid && _reconnectAttempt.isOdd;
+      var bonded = false;
+      if (Platform.isAndroid) {
+        try {
+          bonded = (await FlutterBluePlus.bondedDevices).any((b) => b.remoteId == target.remoteId);
+        } catch (e) {
+          DebugLog.log('BLE: bond lookup failed: $e');
+        }
+      }
+      if (_device == null || _userInitiatedDisconnect) return;
+      final useAuto = Platform.isAndroid && (_reconnectAttempt.isOdd || bonded);
       var found = useAuto ? target : await _scanForRemoteId(target.remoteId.toString());
       if (found == null && expectNodeId.isNotEmpty) {
         found = await _scanForSameRole(expectMgr, exclude: _reconnectRejected);
