@@ -2,6 +2,7 @@
 #include "detector.h"
 #include "../engine_registry.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -13,6 +14,9 @@
 #define ENOW_MAX_NODES           24
 #define ENOW_NODE_TIMEOUT_MS     60000
 #define ENOW_SCAN_CHANNEL_COUNT  40
+#define ENOW_REFRESH_MS          5000
+
+static const uint8_t ENOW_BCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 enum : uint8_t {
     ENOW_CORE_REQUEST = 1,
@@ -68,6 +72,35 @@ static volatile bool s_topologyDirty = false;
 static volatile uint32_t s_records = 0;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
+#define ENOW_SEEN_MAX   16
+#define ENOW_CAP_SLOTS  16
+#define ENOW_CAP_BYTES  48
+
+struct EnowSeen {
+    uint8_t  mac[6];
+    int8_t   rssi;
+    uint32_t lastMs;
+    uint32_t records;
+    char     name[24];
+    bool     used;
+    bool     dirty;
+};
+
+struct EnowCap {
+    uint8_t  src[6];
+    uint8_t  dst[6];
+    uint16_t len;
+    uint8_t  body[ENOW_CAP_BYTES];
+};
+
+static EnowSeen s_seen[ENOW_SEEN_MAX];
+static EnowCap s_cap[ENOW_CAP_SLOTS];
+static volatile uint8_t s_capHead = 0;
+static volatile uint8_t s_capTail = 0;
+static volatile bool s_capture = false;
+static EnowNodeSink s_nodeSink = nullptr;
+static EnowFrameSink s_frameSink = nullptr;
+
 static void deriveKey16(const char* pass, const char* suffix, uint8_t out[16]) {
     uint8_t hash[32];
     mbedtls_sha256_context ctx;
@@ -94,7 +127,6 @@ bool enowHubSelfTest(void) {
 }
 
 static bool allowed(const uint8_t* mac) {
-    if (s_allowCount == 0) return true;
     for (uint8_t i = 0; i < s_allowCount; i++) {
         if (memcmp(s_allow[i], mac, 6) == 0) return true;
     }
@@ -175,7 +207,87 @@ static uint8_t authFromSecurity(const char* s, int n) {
     if (is("[WPA_WPA2_PSK]")) return 4;
     if (is("[WPA2]")) return 5;
     if (is("[WPA3_PSK]") || is("[WPA2_WPA3_PSK]")) return 6;
+    if (is("OPEN")) return 0;
+    if (is("WEP")) return 1;
+    if (is("WPA")) return 2;
+    if (is("WPA2")) return 3;
+    if (is("WPAWPA2")) return 4;
+    if (is("WPA2EAP") || is("[WPA2_ENTERPRISE]")) return 5;
+    if (is("WPA3") || is("WPA2WPA3")) return 6;
     return 3;
+}
+
+static int seenSlot(const uint8_t* mac) {
+    int freeSlot = -1, oldest = -1;
+    for (int i = 0; i < ENOW_SEEN_MAX; i++) {
+        if (s_seen[i].used && memcmp(s_seen[i].mac, mac, 6) == 0) return i;
+        if (!s_seen[i].used) { if (freeSlot < 0) freeSlot = i; continue; }
+        if (allowed(s_seen[i].mac)) continue;
+        if (oldest < 0 || (int32_t)(s_seen[i].lastMs - s_seen[oldest].lastMs) < 0) oldest = i;
+    }
+    int slot = freeSlot >= 0 ? freeSlot : oldest;
+    if (slot < 0) return -1;
+    memset(&s_seen[slot], 0, sizeof(EnowSeen));
+    memcpy(s_seen[slot].mac, mac, 6);
+    s_seen[slot].used = true;
+    s_seen[slot].dirty = true;
+    return slot;
+}
+
+static void noteSeen(const uint8_t* mac, int8_t rssi, const EnowTextMsg* hello) {
+    portENTER_CRITICAL(&s_mux);
+    int s = seenSlot(mac);
+    if (s >= 0) {
+        s_seen[s].rssi = rssi;
+        s_seen[s].lastMs = millis();
+        if (hello && hello->len > 0) {
+            size_t n = hello->len < sizeof(s_seen[s].name) - 1 ? hello->len : sizeof(s_seen[s].name) - 1;
+            if (memcmp(s_seen[s].name, hello->text, n) != 0 || s_seen[s].name[n] != 0) {
+                memcpy(s_seen[s].name, hello->text, n);
+                s_seen[s].name[n] = 0;
+                s_seen[s].dirty = true;
+            }
+        }
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void countRecord(const uint8_t* mac) {
+    portENTER_CRITICAL(&s_mux);
+    for (int i = 0; i < ENOW_SEEN_MAX; i++) {
+        if (s_seen[i].used && memcmp(s_seen[i].mac, mac, 6) == 0) { s_seen[i].records++; break; }
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void capturePush(const uint8_t* src, const uint8_t* dst, const uint8_t* body, int len) {
+    portENTER_CRITICAL(&s_mux);
+    uint8_t next = (uint8_t)((s_capHead + 1) % ENOW_CAP_SLOTS);
+    if (next != s_capTail) {
+        EnowCap& c = s_cap[s_capHead];
+        memcpy(c.src, src, 6);
+        memcpy(c.dst, dst, 6);
+        c.len = (uint16_t)len;
+        memcpy(c.body, body, len < ENOW_CAP_BYTES ? len : ENOW_CAP_BYTES);
+        s_capHead = next;
+    }
+    portEXIT_CRITICAL(&s_mux);
+}
+
+static void enowSniff(void* buf, wifi_promiscuous_pkt_type_t type) {
+    if (!s_capture || type != WIFI_PKT_MGMT) return;
+    const wifi_promiscuous_pkt_t* p = (const wifi_promiscuous_pkt_t*)buf;
+    const uint8_t* f = p->payload;
+    int len = (int)p->rx_ctrl.sig_len;
+    if (len < 44 || f[0] != 0xD0 || f[24] != 0x7F) return;
+    if (f[25] != 0x18 || f[26] != 0xFE || f[27] != 0x34) return;
+    if (f[32] != 0xDD || f[34] != 0x18 || f[35] != 0xFE || f[36] != 0x34 || f[37] != 0x04) return;
+    int bodyLen = (int)f[33] - 5;
+    if (bodyLen < 5 || 39 + bodyLen > len) return;
+    const uint8_t* body = f + 39;
+    if (memcmp(body, ENOW_MAGIC, 4) != 0) return;
+    if (body[4] == ENOW_TEXT && allowed(f + 10)) return;
+    capturePush(f + 10, f + 4, body, bodyLen);
 }
 
 static void handleText(const uint8_t* src, const EnowTextMsg* m) {
@@ -208,22 +320,27 @@ static void handleText(const uint8_t* src, const EnowTextMsg* m) {
         if (ssidLen > 0) memcpy(evt.ext.wardrive.ssid, t + cMac + 1, ssidLen);
         evt.ext.wardrive.auth_mode = authFromSecurity(t + cSec + 1, cChan - cSec - 1);
     }
-    if (pushDetection(&evt)) s_records++;
+    if (pushDetection(&evt)) {
+        s_records++;
+        countRecord(src);
+    }
 }
 
 #ifdef OUISPY_NIMBLE2
 static void enowRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
     const uint8_t* src = info ? info->src_addr : nullptr;
+    int8_t rssi = (info && info->rx_ctrl) ? (int8_t)info->rx_ctrl->rssi : 0;
 #else
 static void enowRecv(const uint8_t* src, const uint8_t* data, int len) {
+    int8_t rssi = 0;
 #endif
     if (!s_active || !s_nodes || !src || !data || len < 5) return;
     if (memcmp(data, ENOW_MAGIC, 4) != 0) return;
-    if (!allowed(src)) return;
     uint8_t type = data[4];
+    noteSeen(src, rssi, (type == 7 && len >= (int)sizeof(EnowTextMsg)) ? (const EnowTextMsg*)data : nullptr);
+    if (!allowed(src)) return;
     if (s_encrypt && type != ENOW_CORE_REQUEST && findTrusted(src) < 0) return;
     if (type == ENOW_CORE_REQUEST || type == ENOW_HEARTBEAT) {
-        if (len < (int)sizeof(EnowTextMsg)) return;
         portENTER_CRITICAL(&s_mux);
         int slot = touchNode(src);
         if (slot >= 0) {
@@ -265,6 +382,22 @@ static void reassign(void) {
     Serial.printf("[ENOW] assignment v%u across %u nodes\n", (unsigned)s_version, (unsigned)n);
 }
 
+static void enowHubListOne(int i) {
+    EnowSeen e;
+    portENTER_CRITICAL(&s_mux);
+    e = s_seen[i];
+    portEXIT_CRITICAL(&s_mux);
+    if (!e.used || !s_nodeSink) return;
+    uint8_t flags = 0;
+    if (allowed(e.mac)) flags |= ENOW_NODE_PAIRED;
+    int slot = s_nodes ? findNode(e.mac) : -1;
+    if (slot >= 0) {
+        flags |= ENOW_NODE_ONLINE;
+        if (s_nodes[slot].encrypted) flags |= ENOW_NODE_ENCRYPTED;
+    }
+    s_nodeSink(e.mac, e.rssi, flags, e.records, e.name);
+}
+
 void enowHubTick(void) {
     if (!s_active || !s_nodes) return;
     uint32_t now = millis();
@@ -281,8 +414,40 @@ void enowHubTick(void) {
     s_pendingReply = 0;
     s_pendingAdmin = 0;
     portEXIT_CRITICAL(&s_mux);
-    if (topo) reassign();
+    if (topo) {
+        reassign();
+        portENTER_CRITICAL(&s_mux);
+        for (int i = 0; i < ENOW_SEEN_MAX; i++) if (s_seen[i].used) s_seen[i].dirty = true;
+        portEXIT_CRITICAL(&s_mux);
+    }
+    if (s_nodeSink) {
+        for (int i = 0; i < ENOW_SEEN_MAX; i++) {
+            portENTER_CRITICAL(&s_mux);
+            bool send = s_seen[i].used && s_seen[i].dirty;
+            s_seen[i].dirty = false;
+            portEXIT_CRITICAL(&s_mux);
+            if (send) enowHubListOne(i);
+        }
+    }
+    for (int k = 0; k < 4 && s_capTail != s_capHead; k++) {
+        EnowCap c;
+        portENTER_CRITICAL(&s_mux);
+        c = s_cap[s_capTail];
+        s_capTail = (uint8_t)((s_capTail + 1) % ENOW_CAP_SLOTS);
+        portEXIT_CRITICAL(&s_mux);
+        if (s_frameSink) s_frameSink(c.src, c.dst, c.body, c.len < ENOW_CAP_BYTES ? c.len : ENOW_CAP_BYTES, c.len);
+    }
     uint8_t count = enowHubNodeCount();
+    static uint32_t lastRefresh = 0;
+    bool refresh = now - lastRefresh >= ENOW_REFRESH_MS;
+    if (refresh) {
+        lastRefresh = now;
+        EnowTextMsg hb = {};
+        memcpy(hb.magic, ENOW_MAGIC, 4);
+        hb.type = ENOW_HEARTBEAT;
+        hb.counter = now;
+        if (ensurePeer(ENOW_BCAST, false)) esp_now_send(ENOW_BCAST, (const uint8_t*)&hb, sizeof(hb));
+    }
     for (int i = 0; i < ENOW_MAX_NODES; i++) {
         EnowNode& nd = s_nodes[i];
         if (!nd.active) continue;
@@ -293,20 +458,18 @@ void enowHubTick(void) {
             if (ensurePeer(nd.mac, false)) esp_now_send(nd.mac, (const uint8_t*)&m, sizeof(m));
             nd.encrypted = s_encrypt && ensurePeer(nd.mac, true);
         }
-        if ((admin & (1u << i)) && nd.sentVersion != s_version) {
-            EnowAdminMsg a = {};
-            memcpy(a.magic, ENOW_MAGIC, 4);
-            a.type = ENOW_ADMIN;
-            a.version = s_version;
-            a.index = nd.index;
-            a.count = count;
-            a.start = nd.start;
-            a.end = nd.end;
-            if (ensurePeer(nd.mac, nd.encrypted) &&
-                esp_now_send(nd.mac, (const uint8_t*)&a, sizeof(a)) == ESP_OK) {
-                nd.sentVersion = s_version;
-            }
-        }
+        bool assign = (admin & (1u << i)) && nd.sentVersion != s_version;
+        if (!assign && !refresh) continue;
+        if (!ensurePeer(nd.mac, nd.encrypted)) continue;
+        EnowAdminMsg a = {};
+        memcpy(a.magic, ENOW_MAGIC, 4);
+        a.type = ENOW_ADMIN;
+        a.version = s_version;
+        a.index = nd.index;
+        a.count = count;
+        a.start = nd.start;
+        a.end = nd.end;
+        if (esp_now_send(nd.mac, (const uint8_t*)&a, sizeof(a)) == ESP_OK) nd.sentVersion = s_version;
     }
 }
 
@@ -319,8 +482,7 @@ bool enowHubBlocksEngine(EngineId id) {
 
 uint8_t enowHubStart(const char* passphrase, const uint8_t* allow, uint8_t allowCount) {
     if (s_active) return ENOW_HUB_OK;
-    if (allowCount > ENOW_HUB_MAX_ALLOW) return ENOW_HUB_REFUSE_ARGS;
-    if (allowCount == 0 || !allow) return ENOW_HUB_REFUSE_NOALLOW;
+    if (allowCount > ENOW_HUB_MAX_ALLOW || (allowCount && !allow)) return ENOW_HUB_REFUSE_ARGS;
     if (meshIsEnabled()) return ENOW_HUB_REFUSE_MESH;
     for (int e = 0; e < ENGINE_COUNT; e++) {
         if (engineGetState((EngineId)e) == ESTATE_DISABLED) continue;
@@ -348,14 +510,84 @@ uint8_t enowHubStart(const char* passphrase, const uint8_t* allow, uint8_t allow
     s_records = 0;
     s_version = 0;
     s_pendingReply = s_pendingAdmin = 0;
+    memset(s_seen, 0, sizeof(s_seen));
+    s_capHead = s_capTail = 0;
     s_active = true;
     Serial.printf("[ENOW] hub on ch%u encrypt=%d allow=%u\n", (unsigned)ENOW_CHANNEL, (int)s_encrypt,
                   (unsigned)allowCount);
     return ENOW_HUB_OK;
 }
 
+void enowHubSetSinks(EnowNodeSink node, EnowFrameSink frame) {
+    s_nodeSink = node;
+    s_frameSink = frame;
+}
+
+bool enowHubPair(const uint8_t mac[6]) {
+    bool ok = true;
+    portENTER_CRITICAL(&s_mux);
+    if (!allowed(mac)) {
+        if (s_allowCount >= ENOW_HUB_MAX_ALLOW) ok = false;
+        else memcpy(s_allow[s_allowCount++], mac, 6);
+    }
+    if (ok) {
+        int s = seenSlot(mac);
+        if (s >= 0) s_seen[s].dirty = true;
+    }
+    portEXIT_CRITICAL(&s_mux);
+    Serial.printf("[ENOW] pair %02X:%02X:%02X:%02X:%02X:%02X %s\n", mac[0], mac[1], mac[2], mac[3], mac[4],
+                  mac[5], ok ? "ok" : "full");
+    return ok;
+}
+
+bool enowHubForget(const uint8_t mac[6]) {
+    bool found = false;
+    portENTER_CRITICAL(&s_mux);
+    for (uint8_t i = 0; i < s_allowCount; i++) {
+        if (memcmp(s_allow[i], mac, 6) != 0) continue;
+        memmove(s_allow[i], s_allow[i + 1], (size_t)(s_allowCount - i - 1) * 6);
+        s_allowCount--;
+        found = true;
+        break;
+    }
+    if (s_nodes) {
+        for (int i = 0; i < ENOW_MAX_NODES; i++) {
+            if (memcmp(s_nodes[i].mac, mac, 6) != 0) continue;
+            if (s_nodes[i].active) s_topologyDirty = true;
+            s_nodes[i].active = false;
+            s_nodes[i].encrypted = false;
+        }
+    }
+    for (int i = 0; i < ENOW_SEEN_MAX; i++) {
+        if (s_seen[i].used && memcmp(s_seen[i].mac, mac, 6) == 0) s_seen[i].dirty = true;
+    }
+    portEXIT_CRITICAL(&s_mux);
+    if (s_active && esp_now_is_peer_exist(mac)) esp_now_del_peer(mac);
+    return found;
+}
+
+void enowHubListNodes(void) {
+    for (int i = 0; i < ENOW_SEEN_MAX; i++) enowHubListOne(i);
+}
+
+void enowHubSetCapture(bool on) {
+    if (!s_active) on = false;
+    if (on == s_capture) return;
+    s_capture = on;
+    if (on) {
+        wifiCoexRegister(enowSniff, WIFI_PROMIS_FILTER_MASK_MGMT);
+        esp_wifi_set_channel(ENOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    } else {
+        wifiCoexUnregister(enowSniff);
+    }
+    Serial.printf("[ENOW] capture %s\n", on ? "on" : "off");
+}
+
+bool enowHubCaptureOn(void) { return s_capture; }
+
 void enowHubStop(void) {
     if (!s_active) return;
+    enowHubSetCapture(false);
     s_active = false;
     esp_now_unregister_recv_cb();
     esp_now_deinit();
@@ -420,14 +652,22 @@ int enowHubPortSelfTest(void) {
     pstCheck("blocks_wifi_engine", enowHubBlocksEngine(ENGINE_WARDRIVE) && enowHubBlocksEngine(ENGINE_FLOCK_WIFI));
     pstCheck("allows_ble_engine", !enowHubBlocksEngine(ENGINE_UNIPWN) && !enowHubBlocksEngine(ENGINE_FLOCK_BLE));
     pstCheck("engine_enable_refused", !engineEnable(ENGINE_WARDRIVE));
-    s_active = false;
-    pstCheck("start_refused_without_allowlist", enowHubStart("x", nullptr, 0) == ENOW_HUB_REFUSE_NOALLOW && !s_active);
-    s_active = true;
+    memset(s_seen, 0, sizeof(s_seen));
 
     const uint8_t n1[6] = {0x02, 0x00, 0x00, 0x00, 0x10, 0x01};
     const uint8_t n2[6] = {0x02, 0x00, 0x00, 0x00, 0x10, 0x02};
     const uint8_t n3[6] = {0x02, 0x00, 0x00, 0x00, 0x10, 0x03};
     EnowTextMsg m;
+    pstFrame(&m, ENOW_CORE_REQUEST, nullptr);
+    pstFeed(n1, &m, sizeof(m));
+    pstCheck("unpaired_request_seen_not_admitted",
+             enowHubNodeCount() == 0 && s_pendingReply == 0 && s_seen[0].used && memcmp(s_seen[0].mac, n1, 6) == 0);
+    pstFrame(&m, 7, "Piglet:v2.65");
+    pstFeed(n1, &m, sizeof(m));
+    pstCheck("hello_names_seen_node", strcmp(s_seen[0].name, "Piglet:v2.65") == 0, s_seen[0].name);
+    enowHubPair(n1);
+    enowHubPair(n2);
+    enowHubPair(n3);
     pstFrame(&m, ENOW_CORE_REQUEST, nullptr);
     pstFeed(n1, &m, sizeof(m));
     pstCheck("core_request_registers_node", enowHubNodeCount() == 1 && (s_pendingReply & 1u) && (s_pendingAdmin & 1u));
@@ -451,6 +691,11 @@ int enowHubPortSelfTest(void) {
     snprintf(d, sizeof(d), "ssid=%s auth=%u ch=%u rssi=%d src=%s", e.ext.wardrive.ssid,
              e.ext.wardrive.auth_mode, e.channel, e.rssi, e.source_node_id);
     pstCheck("text_wifi_comma_ssid", w, d);
+    pstCheck("record_counted_per_node", s_seen[0].records == 1);
+    pstFrame(&m, ENOW_TEXT, "AA:BB:CC:DD:EE:04,Cafe,OPEN,6,-55,W");
+    pstFeed(n1, &m, sizeof(m));
+    bool o = xQueueReceive(detectionQueue, &e, 0) == pdTRUE && e.ext.wardrive.auth_mode == 0;
+    pstCheck("jcmk_bare_open_auth", o);
     pstFrame(&m, ENOW_TEXT, "AA:BB:CC:DD:EE:02,,[BLE],0,-70,B");
     pstFeed(n1, &m, sizeof(m));
     bool b = xQueueReceive(detectionQueue, &e, 0) == pdTRUE && e.method == METHOD_BLE_ADV && e.channel == 0;
@@ -467,16 +712,18 @@ int enowHubPortSelfTest(void) {
     pstFeed(n2, &m, sizeof(m));
     pstCheck("encrypt_accepts_trusted", xQueueReceive(detectionQueue, &e, 0) == pdTRUE);
 
-    s_allowCount = 1;
-    memcpy(s_allow[0], n1, 6);
     s_encrypt = false;
+    enowHubForget(n3);
     pstFeed(n3, &m, sizeof(m));
-    pstCheck("allowlist_rejects_other", xQueueReceive(detectionQueue, &e, 0) != pdTRUE);
+    pstCheck("forgotten_node_rejected", xQueueReceive(detectionQueue, &e, 0) != pdTRUE && !allowed(n3));
+    pstFeed(n1, &m, sizeof(m));
+    pstCheck("paired_node_still_accepted", xQueueReceive(detectionQueue, &e, 0) == pdTRUE);
 
     s_active = false;
     s_allowCount = 0;
     s_encrypt = false;
     memset(s_nodes, 0, ENOW_MAX_NODES * sizeof(EnowNode));
+    memset(s_seen, 0, sizeof(s_seen));
     return pstFail;
 }
 #endif

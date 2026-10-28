@@ -362,6 +362,8 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define SYS_CMD_SET_PASSKEY       0x0D
 #define SYS_CMD_RING_TRACKER      0x0E
 #define SYS_CMD_ENOW_HUB          0x0F
+#define SYS_OP_ENOW_NODE          0x10
+#define SYS_OP_ENOW_FRAME         0x11
 
 #define PCAP_MODE_WIFI 0
 #define PCAP_MODE_BLE  1

@@ -71,6 +71,14 @@ static void notifyChr(NimBLECharacteristic* chr, const uint8_t* data, size_t len
     usbLinkNotify(chr, data, len);
 #endif
 }
+
+static void notifyChrExact(NimBLECharacteristic* chr, const uint8_t* data, size_t len) {
+    chr->setValue(data, len);
+    chr->notify(data, len);
+#ifdef OUISPY_USB_LINK
+    usbLinkNotify(chr, data, len);
+#endif
+}
 static volatile bool pcapDownloadRunning = false;
 static volatile uint32_t mgrPhoneGoneMs = 0;
 static volatile bool mgrTornDown = false;
@@ -1785,7 +1793,38 @@ static void enowHubNotify(NimBLECharacteristic* chr, uint8_t refuse) {
     uint32_t r = enowHubRecordCount();
     uint8_t b[8] = { SYS_CMD_ENOW_HUB, (uint8_t)(enowHubActive() ? 1 : 0), enowHubNodeCount(), refuse,
                      (uint8_t)r, (uint8_t)(r >> 8), (uint8_t)(r >> 16), (uint8_t)(r >> 24) };
-    notifyChr(chr, b, sizeof(b));
+    notifyChrExact(chr, b, sizeof(b));
+}
+
+static void enowNodeOut(const uint8_t mac[6], int8_t rssi, uint8_t flags, uint32_t records, const char* name) {
+    if (!chrSystemControl) return;
+    uint8_t b[38];
+    size_t n = name ? strnlen(name, 23) : 0;
+    b[0] = SYS_OP_ENOW_NODE;
+    memcpy(b + 1, mac, 6);
+    b[7] = (uint8_t)rssi;
+    b[8] = flags;
+    b[9] = (uint8_t)records;
+    b[10] = (uint8_t)(records >> 8);
+    b[11] = (uint8_t)(records >> 16);
+    b[12] = (uint8_t)(records >> 24);
+    b[13] = (uint8_t)n;
+    if (n) memcpy(b + 14, name, n);
+    notifyChrExact(chrSystemControl, b, 14 + n);
+}
+
+static void enowFrameOut(const uint8_t src[6], const uint8_t dst[6], const uint8_t* body, uint16_t captured,
+                         uint16_t total) {
+    if (!chrSystemControl) return;
+    uint8_t b[15 + 48];
+    if (captured > 48) captured = 48;
+    b[0] = SYS_OP_ENOW_FRAME;
+    memcpy(b + 1, src, 6);
+    memcpy(b + 7, dst, 6);
+    b[13] = (uint8_t)total;
+    b[14] = (uint8_t)(total >> 8);
+    memcpy(b + 15, body, captured);
+    notifyChrExact(chrSystemControl, b, 15 + captured);
 }
 
 static void trackerRingDone(const uint8_t mac[6], uint8_t status, uint8_t proto) {
@@ -1862,7 +1901,16 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 const uint8_t* d = (const uint8_t*)val.data();
                 uint8_t op = d[3];
                 uint8_t refuse = ENOW_HUB_OK;
-                if (op == 1) {
+                enowHubSetSinks(enowNodeOut, enowFrameOut);
+                if ((op == 3 || op == 4) && val.length() < 10) {
+                    refuse = ENOW_HUB_REFUSE_ARGS;
+                } else if (op == 3) {
+                    if (!enowHubPair(d + 4)) refuse = ENOW_HUB_REFUSE_ARGS;
+                } else if (op == 4) {
+                    enowHubForget(d + 4);
+                } else if (op == 5) {
+                    enowHubSetCapture(val.length() >= 5 && d[4] == 1);
+                } else if (op == 1) {
                     size_t off = 4;
                     uint8_t plen = off < val.length() ? d[off++] : 0;
                     char pass[33] = {0};
@@ -1879,6 +1927,7 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                     enowHubStop();
                 }
                 enowHubNotify(chr, refuse);
+                if (op != 0) enowHubListNodes();
                 break;
             }
 
