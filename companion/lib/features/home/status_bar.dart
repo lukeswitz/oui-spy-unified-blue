@@ -29,7 +29,6 @@ class _StatusBarState extends ConsumerState<StatusBar> {
   HwGpsState _hwGps = const HwGpsState(
       active: false, satellites: 0, source: GpsSource.phone, inUse: false);
   StreamSubscription<HwGpsState>? _hwGpsSub;
-  Timer? _uptimeTimer;
 
   @override
   void initState() {
@@ -43,19 +42,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     _hwGpsSub = gps.hwGpsStream.listen((s) {
       if (mounted) setState(() => _hwGps = s);
     });
-    _uptimeTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) {
-        if (mounted) setState(() {});
-      },
-    );
   }
 
   @override
   void dispose() {
     _gpsSub?.cancel();
     _hwGpsSub?.cancel();
-    _uptimeTimer?.cancel();
     super.dispose();
   }
 
@@ -93,9 +85,6 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                 ? AppTheme.accent
                 : t.textSecondary;
     final sep = Text(' · ', style: TextStyle(color: t.textSecondary, fontSize: 13));
-    final uptime = state.isConnected && state.sessionStartTime != null
-        ? _formatUptime(state.sessionUptime)
-        : null;
     final nameColor = state.isConnected ? t.textPrimary : t.textDim;
 
     return Padding(
@@ -109,9 +98,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                 child: Text(
                   !state.isConnected && !phoneOn && !wifiRunning && !usbPresent
                       ? ''
-                      : state.nodeId.isNotEmpty
-                          ? state.nodeId
-                          : 'OUI-APEX',
+                      : 'OUI-APEX',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: nameColor, fontSize: 28, fontWeight: FontWeight.w600),
@@ -128,6 +115,14 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                       }
                     : () => context.push('/onboarding'),
               ),
+              if (state.isConnected)
+                Padding(
+                  padding: const EdgeInsets.only(left: 2, right: 6),
+                  child: Tooltip(
+                    message: 'ESP32 connected',
+                    child: Icon(Icons.developer_board, size: 22, color: AppTheme.detector),
+                  ),
+                ),
               const _PhoneScanChip(),
               const _UsbScanChip(),
             ],
@@ -150,13 +145,6 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                           : _connectionWord(conn),
                   style: TextStyle(color: statusColor, fontSize: 13, fontWeight: FontWeight.w500),
                 ),
-                if (uptime != null) ...[
-                  sep,
-                  Text(
-                    uptime,
-                    style: TextStyle(fontFamily: AppTheme.mono, fontSize: 13, color: t.textSecondary),
-                  ),
-                ],
                 sep,
                 Flexible(
                   child: Text(
@@ -186,20 +174,12 @@ class _StatusBarState extends ConsumerState<StatusBar> {
     };
   }
 
-  String _formatUptime(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    if (h > 0) return '${h}h${m.toString().padLeft(2, '0')}min';
-    final s = d.inSeconds.remainder(60);
-    return '${m}min${s.toString().padLeft(2, '0')}s';
-  }
-
   String get _gpsLabel {
-    if (_hwGps.inUse) return 'HW ${_hwGps.satellites}sv';
+    if (_hwGps.inUse) return 'Board GPS · ${_hwGps.satellites} sats';
     final pos = _gpsPosition;
-    if (pos == null) return _hwGps.fallback ? 'PH --' : '--';
-    final acc = '${pos.accuracy.toStringAsFixed(0)}m';
-    return _hwGps.fallback ? 'PH $acc' : acc;
+    if (pos == null) return 'No GPS fix';
+    final acc = '±${pos.accuracy.toStringAsFixed(0)}m';
+    return _hwGps.fallback ? 'Phone GPS $acc' : 'GPS $acc';
   }
 }
 
