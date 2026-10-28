@@ -413,15 +413,24 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   final selfId = app.isConnected && !app.isManagerConnected
       ? (mgrId.isNotEmpty ? mgrId : 'LOCAL')
       : null;
-  if (selfId != null && phoneChoice) nodes.add(selfId);
+  final ble = ref.read(bleManagerProvider);
+  if (selfId != null) await ble.enowHubRefresh();
+  final hubId = selfId != null && ble.enowHubActive ? selfId : null;
+  final hubNodes = hubId == null
+      ? const <EnowHubNode>[]
+      : [for (final n in ble.enowHubNodeMap.values) if (n.paired) n];
+  if (selfId != null && (phoneChoice || hubId != null)) nodes.add(selfId);
   if (phoneChoice) nodes.add(BleManager.phoneNodeId);
   if (nodes.isEmpty) return true;
+  if (!context.mounted) return false;
   final wd = ref.read(wardriveProvider);
-  final result = await showDialog<Map<String, int>>(
+  final result = await showDialog<({Map<String, int> roles, Set<String> skip})>(
     context: context,
     builder: (_) => RadioRolePopup(
       nodes: nodes,
       labelFor: app.labelForNode,
+      hubId: hubId,
+      hubNodes: hubNodes,
       initial: {
         for (final n in nodes)
           n: n == BleManager.phoneNodeId
@@ -433,11 +442,13 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
     ),
   );
   if (result == null) return false;
-  final phoneMask = result.remove(BleManager.phoneNodeId);
+  final roles = result.roles;
+  final phoneMask = roles.remove(BleManager.phoneNodeId);
   if (phoneMask != null) phone.setRadioMask(phoneMask);
-  final selfMask = selfId == null ? null : result.remove(selfId);
-  if (selfMask != null) setWardriveRadio(ref, selfMask);
-  if (result.isNotEmpty) await app.applyNodeRadioRoles(result);
+  final selfMask = selfId == null ? null : roles.remove(selfId);
+  if (selfMask != null && hubId == null) setWardriveRadio(ref, selfMask);
+  if (roles.isNotEmpty) await app.applyNodeRadioRoles(roles);
+  if (result.skip.isNotEmpty) await ble.enowHubSkipForSession(result.skip);
   return true;
 }
 
@@ -537,11 +548,15 @@ class RadioRolePopup extends StatefulWidget {
     required this.nodes,
     required this.labelFor,
     required this.initial,
+    this.hubId,
+    this.hubNodes = const [],
   });
 
   final List<String> nodes;
   final String Function(String) labelFor;
   final Map<String, int> initial;
+  final String? hubId;
+  final List<EnowHubNode> hubNodes;
 
   @override
   State<RadioRolePopup> createState() => _RadioRolePopupState();
@@ -551,6 +566,66 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
   late final Map<String, int> _roles = {
     for (final n in widget.nodes) n: widget.initial[n] ?? 0x03,
   };
+  late final Map<String, bool> _include = {
+    for (final n in widget.hubNodes) n.mac: true,
+  };
+
+  Widget _hubCard(ResolvedTheme t, String id) {
+    final count = widget.hubNodes.length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      decoration: BoxDecoration(
+        color: t.background,
+        border: Border.all(color: AppTheme.wardrive.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.router, size: 16, color: AppTheme.wardrive),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.labelFor(id),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ),
+              Text(
+                'HUB · $count node${count == 1 ? '' : 's'}',
+                style: TextStyle(color: AppTheme.wardrive, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1),
+              ),
+            ],
+          ),
+          if (count == 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('No paired nodes', style: TextStyle(color: t.textDim, fontSize: 12)),
+            ),
+          for (final n in widget.hubNodes)
+            Row(
+              children: [
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Text(
+                    n.name.isNotEmpty ? n.name.replaceFirst(':', ' ') : n.mac,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: t.textSecondary, fontSize: 12.5, fontFamily: AppTheme.mono),
+                  ),
+                ),
+                Text('WiFi', style: TextStyle(color: t.textDim, fontSize: 11)),
+                Switch(
+                  value: _include[n.mac] ?? true,
+                  onChanged: (v) => setState(() => _include[n.mac] = v),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 
   static Color get _wifiColor => AppTheme.detector;
   static Color get _bleColor => AppTheme.flockBle;
@@ -608,6 +683,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
               ),
             ),
             ...widget.nodes.map((id) {
+              if (id == widget.hubId) return _hubCard(t, id);
               final mask = _roles[id] ?? 0x03;
               final selColor = _radioColor(mask);
               return Container(
@@ -721,7 +797,10 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
             backgroundColor: AppTheme.accent,
             foregroundColor: Theme.of(context).colorScheme.onPrimary,
           ),
-          onPressed: () => Navigator.pop(context, _roles),
+          onPressed: () => Navigator.pop(context, (
+            roles: _roles,
+            skip: {for (final e in _include.entries) if (!e.value) e.key},
+          )),
           child: const Text('START'),
         ),
       ],

@@ -41,6 +41,25 @@ class SpoolImportProgress {
   });
 }
 
+class EnowHubNode {
+  final String mac;
+  final int rssi;
+  final bool paired;
+  final bool online;
+  final bool encrypted;
+  final int records;
+  final String name;
+  const EnowHubNode({
+    required this.mac,
+    required this.rssi,
+    required this.paired,
+    required this.online,
+    required this.encrypted,
+    required this.records,
+    required this.name,
+  });
+}
+
 /// BLE connection state.
 enum NodeConnectionState {
   disconnected,
@@ -747,6 +766,11 @@ class BleManager {
 
   static const autoConnectWait = Duration(seconds: 20);
 
+  static bool _isStaticRandom(String mac) {
+    final first = int.tryParse(mac.length >= 2 ? mac.substring(0, 2) : '', radix: 16);
+    return first != null && (first & 0xC0) == 0xC0;
+  }
+
   // Reconnect via the bonded identity, not the scanned RPA (Android keys the bond to the identity).
   Future<BluetoothDevice> _preferBondedIdentity(BluetoothDevice device) async {
     if (!Platform.isAndroid) return device;
@@ -756,7 +780,10 @@ class BleManager {
           : (_role == 'mgr' ? 'OUI-SPY-MGR' : 'OUI-SPY');
       // Swap only on a single unambiguous name match, never with multiple same-named bonds.
       final matches = (await FlutterBluePlus.bondedDevices)
-          .where((b) => b.platformName == want && b.remoteId != device.remoteId)
+          .where((b) =>
+              b.platformName == want &&
+              b.remoteId != device.remoteId &&
+              _isStaticRandom(b.remoteId.str))
           .toList();
       if (matches.length == 1) {
         DebugLog.log('BLE: using bonded identity ${matches.first.remoteId} for RPA ${device.remoteId}');
@@ -1107,12 +1134,34 @@ class BleManager {
               seen: data[4],
             ));
           } else if (data[0] == 0x0F && data.length >= 8) {
+            enowHubActive = data[1] == 1;
+            if (!enowHubActive) {
+              enowHubNodeMap.clear();
+              _enowUnique.clear();
+            }
             _enowHubStream.add((
               active: data[1] == 1,
               nodes: data[2],
               refuse: data[3],
               records: data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24),
             ));
+          } else if (data[0] == 0x10 && data.length >= 14) {
+            final n = data[13];
+            final node = EnowHubNode(
+              mac: _macHex(data.sublist(1, 7)),
+              rssi: data[7] >= 128 ? data[7] - 256 : data[7],
+              paired: data[8] & 0x01 != 0,
+              online: data[8] & 0x02 != 0,
+              encrypted: data[8] & 0x04 != 0,
+              records: data[9] | (data[10] << 8) | (data[11] << 16) | (data[12] << 24),
+              name: data.length >= 14 + n ? utf8.decode(data.sublist(14, 14 + n), allowMalformed: true) : '',
+            );
+            enowHubNodeMap[node.mac] = node;
+            _enowNodeStream.add(node);
+          } else if (data[0] == 0x11 && data.length >= 15) {
+            final body = data.sublist(15).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+            DebugLog.log('ENOW-CAP ${_macHex(data.sublist(1, 7))}>${_macHex(data.sublist(7, 13))} '
+                'len=${data[13] | (data[14] << 8)} $body');
           } else if (data[0] == 0x0D && data.length >= 2) {
             _passkeyAckStream.add(data[1] == 0);
           } else if (data[0] == 0x0E && data.length >= 3) {
@@ -1173,17 +1222,85 @@ class BleManager {
   final _enowHubStream = StreamController<({bool active, int nodes, int refuse, int records})>.broadcast();
   Stream<({bool active, int nodes, int refuse, int records})> get enowHubStatus => _enowHubStream.stream;
 
+  final _enowNodeStream = StreamController<EnowHubNode>.broadcast();
+  Stream<EnowHubNode> get enowHubNodes => _enowNodeStream.stream;
+  bool enowHubActive = false;
+  final Map<String, EnowHubNode> enowHubNodeMap = {};
+  final Set<String> _enowSkipped = {};
+  final Map<String, Set<String>> _enowUnique = {};
+
+  static String enowSourceId(String mac) {
+    final b = _macBytes(mac);
+    if (b == null) return '';
+    return 'E${(((b[4] << 8) | b[5]) & 0xFFF).toRadixString(16).toUpperCase().padLeft(3, '0')}';
+  }
+
+  int enowNetworksFor(String mac) => _enowUnique[enowSourceId(mac)]?.length ?? 0;
+
+  int get enowNetworksTotal => {for (final s in _enowUnique.values) ...s}.length;
+
+  Future<void> enowHubRefresh() async {
+    if (_systemControl == null) return;
+    final status = enowHubStatus.first.timeout(const Duration(milliseconds: 1500));
+    await enowHubPoll();
+    try {
+      await status;
+    } on TimeoutException {
+      return;
+    }
+    while (true) {
+      try {
+        await enowHubNodes.first.timeout(const Duration(milliseconds: 250));
+      } on TimeoutException {
+        return;
+      }
+    }
+  }
+
+  Future<void> enowHubSkipForSession(Set<String> macs) async {
+    for (final m in macs) {
+      if (await enowHubPair(m, pair: false)) _enowSkipped.add(m);
+    }
+  }
+
+  Future<void> enowHubRestoreSkipped() async {
+    final macs = Set.of(_enowSkipped);
+    _enowSkipped.clear();
+    for (final m in macs) {
+      await enowHubPair(m);
+    }
+  }
+
+  static String _macHex(List<int> b) =>
+      b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(':').toUpperCase();
+
+  static List<int>? _macBytes(String mac) {
+    final hex = mac.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '');
+    if (hex.length != 12) return null;
+    return [for (var i = 0; i < 12; i += 2) int.parse(hex.substring(i, i + 2), radix: 16)];
+  }
+
+  Future<bool> enowHubPair(String mac, {bool pair = true}) async {
+    final b = _macBytes(mac);
+    if (_systemControl == null || b == null) return false;
+    await _systemControl!.write(Uint8List.fromList([0x0F, 0xC0, 0xDE, pair ? 3 : 4, ...b]), withoutResponse: false);
+    return true;
+  }
+
+  Future<void> enowHubCapture(bool on) async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(Uint8List.fromList([0x0F, 0xC0, 0xDE, 5, on ? 1 : 0]), withoutResponse: false);
+  }
+
   Future<bool> enowHub({required bool start, String passphrase = '', List<String> allowlist = const []}) async {
     if (_systemControl == null) return false;
     final pass = utf8.encode(passphrase);
-    if (pass.length > 32 || allowlist.length > 8) return false;
+    if (pass.length > 32 || allowlist.length > 16) return false;
     final macs = <int>[];
     for (final m in allowlist) {
-      final hex = m.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '');
-      if (hex.length != 12) return false;
-      for (var i = 0; i < 12; i += 2) {
-        macs.add(int.parse(hex.substring(i, i + 2), radix: 16));
-      }
+      final b = _macBytes(m);
+      if (b == null) return false;
+      macs.addAll(b);
     }
     await _systemControl!.write(
       Uint8List.fromList(start
@@ -1786,7 +1903,7 @@ class BleManager {
     }
     _subscriptions.clear();
     try {
-      await _device?.disconnect();
+      await _device?.disconnect(queue: false);
     } on FlutterBluePlusException catch (e) {
       DebugLog.log('BLE: device.disconnect failed: ${e.description}');
     }
@@ -2015,6 +2132,10 @@ class BleManager {
       satelliteCount: isAway ? null : _lastSatCount,
     );
     _detections.add(detection);
+    final src = detection.sourceNodeId;
+    if (enowHubActive && src.length == 4 && src.startsWith('E')) {
+      (_enowUnique[src] ??= {}).add(detection.macAddress.toUpperCase());
+    }
     if (isAway) {
       _noteAway(detection);
       _awayLiveDetections.add(detection);

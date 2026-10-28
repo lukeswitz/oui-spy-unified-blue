@@ -805,6 +805,7 @@ class WardriveController extends ChangeNotifier {
     _droppedWhileRunning = false;
     pendingReconnectPrompt = false;
     _ble.wardriveSessionActive = false;
+    unawaited(_ble.enowHubRestoreSkipped());
     _persistSessionOpen(false);
     _boardLostTimer?.cancel();
     _boardLostTimer = null;

@@ -1347,24 +1347,39 @@ class _EnowHubSectionState extends ConsumerState<_EnowHubSection> {
   static const _keyPass = 'enow_hub_passphrase';
   static const _keyAllow = 'enow_hub_allowlist';
   final _pass = TextEditingController();
-  final _allow = TextEditingController();
   StreamSubscription<({bool active, int nodes, int refuse, int records})>? _sub;
+  StreamSubscription<EnowHubNode>? _nodeSub;
   Timer? _poll;
   ({bool active, int nodes, int refuse, int records})? _status;
+  List<String> _paired = [];
+  final Map<String, EnowHubNode> _seen = {};
+  bool _capture = false;
+  int _refuse = 0;
 
   @override
   void initState() {
     super.initState();
     final ble = ref.read(bleManagerProvider);
     _sub = ble.enowHubStatus.listen((s) {
-      if (mounted) setState(() => _status = s);
+      if (!mounted) return;
+      setState(() {
+        if (!s.active) _seen.clear();
+        _status = s;
+        if (s.refuse != 0) _refuse = s.refuse;
+        if (s.active) _refuse = 0;
+      });
     });
-    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (_status?.active ?? false) ble.enowHubPoll();
+    _nodeSub = ble.enowHubNodes.listen((n) {
+      if (mounted) setState(() => _seen[n.mac] = n);
     });
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) => ble.enowHubPoll());
     () async {
       _pass.text = await _storage.read(key: _keyPass) ?? '';
-      _allow.text = await _storage.read(key: _keyAllow) ?? '';
+      final raw = await _storage.read(key: _keyAllow) ?? '';
+      _paired = [
+        for (final m in raw.split(RegExp(r'[\s,;]+')))
+          if (m.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '').length == 12) m.toUpperCase(),
+      ];
       if (mounted) setState(() {});
     }();
     ble.enowHubPoll();
@@ -1373,76 +1388,199 @@ class _EnowHubSectionState extends ConsumerState<_EnowHubSection> {
   @override
   void dispose() {
     _sub?.cancel();
+    _nodeSub?.cancel();
     _poll?.cancel();
     _pass.dispose();
-    _allow.dispose();
     super.dispose();
   }
 
   static String _refuseText(int r) => switch (r) {
-        1 => 'Turn the mesh off first: the hub has to sit on channel 6.',
-        2 => 'Stop the Wi-Fi engines first: the hub cannot scan and listen at once.',
-        3 => 'The board could not start ESP-NOW.',
-        4 => 'Passphrase over 32 bytes or more than 8 allowlist entries.',
-        5 => 'Add at least one node MAC to the allowlist. The hub will not accept unknown nodes.',
+        1 => 'This board is in the mesh.',
+        2 => 'Stop this board\'s Wi-Fi scanning (Flock Wi-Fi, Wardrive, Sky Spy, PCAP, Foxhunter) first. The hub listens on channel 6 and cannot scan at the same time.',
+        3 => 'The board could not start ESP-NOW. Restart the board and try again.',
+        4 => 'Passphrase is over 32 bytes, or 16 nodes are already paired.',
         _ => '',
       };
 
+  Future<void> _savePaired() => _storage.write(key: _keyAllow, value: _paired.join(','));
+
   Future<void> _toggle(bool start) async {
-    final allow = _allow.text
-        .split(RegExp(r'[\s,;]+'))
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
+    setState(() => _refuse = 0);
     await _storage.write(key: _keyPass, value: _pass.text);
-    await _storage.write(key: _keyAllow, value: _allow.text);
     final ok = await ref.read(bleManagerProvider).enowHub(
           start: start,
           passphrase: _pass.text,
-          allowlist: allow,
+          allowlist: _paired,
         );
+    if (!start) _capture = false;
     if (!ok && mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-        content: Text('Check the passphrase (max 32 bytes) and allowlist (max 8 MACs)'),
+        content: Text('Passphrase is over 32 bytes, or more than 16 nodes are paired'),
       ));
     }
+  }
+
+  Future<void> _setPaired(String mac, bool pair) async {
+    setState(() {
+      _paired.remove(mac);
+      if (pair) _paired.add(mac);
+    });
+    await _savePaired();
+    if (_status?.active ?? false) {
+      await ref.read(bleManagerProvider).enowHubPair(mac, pair: pair);
+    }
+  }
+
+  static String _nodeName(EnowHubNode? n) {
+    final raw = n?.name.trim() ?? '';
+    if (raw.isEmpty) return 'Wardriver node';
+    return raw.replaceFirst(':', ' ');
+  }
+
+  Widget _nodeRow(ResolvedTheme t, bool priv, String mac, EnowHubNode? n, {required bool paired}) {
+    final online = n?.online ?? false;
+    final detail = <String>[
+      if (paired) online ? 'Online' : 'Not connected',
+      if (paired && ref.read(bleManagerProvider).enowNetworksFor(mac) > 0)
+        '${ref.read(bleManagerProvider).enowNetworksFor(mac)} networks',
+      if (!paired && n != null && n.rssi != 0) '${n.rssi} dBm',
+      if (online && (n?.encrypted ?? false)) 'Encrypted',
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(Icons.router, size: 20, color: paired ? (online ? AppTheme.success : t.textDim) : AppTheme.accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_nodeName(n), style: TextStyle(color: t.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(maskMac(mac, priv),
+                    style: TextStyle(color: t.textDim, fontSize: 11.5, fontFamily: AppTheme.mono)),
+                if (detail.isNotEmpty)
+                  Text(detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: t.textDim, fontSize: 11.5, fontFamily: AppTheme.mono)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _setPaired(mac, !paired),
+            style: TextButton.styleFrom(foregroundColor: paired ? AppTheme.error : AppTheme.accent),
+            child: Text(paired ? 'Forget' : 'Pair'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    final s = _status;
+    final priv = ref.watch(privacyScreenProvider);
+    final connected = ref.watch(appStateProvider.select((a) => a.isConnected));
+    final s = connected ? _status : null;
     final active = s?.active ?? false;
-    final refuse = s == null ? '' : _refuseText(s.refuse);
+    final refuse = s == null ? '' : _refuseText(_refuse);
+    final nearby = [
+      for (final n in _seen.values)
+        if (!_paired.contains(n.mac)) n,
+    ]..sort((a, b) => b.rssi.compareTo(a.rssi));
+    final label = TextStyle(color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 1.2);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 2),
-          child: Text(
-            'The board parks on Wi-Fi channel 6 and collects networks from ESP32 Dual Band Wardriver nodes, '
-            'splitting the channel list between them. It does not scan while hubbing. Turn the mesh off first. '
-            'With a passphrase, links to nodes using the same passphrase are encrypted (up to 6 nodes). '
-            'Only node MACs on the allowlist are accepted, and the hub will not start with an empty list. The node protocol cannot prove a sender knows the passphrase, so the allowlist is the admission control. '
-            'Node records arrive as wardrive detections, so start a wardrive session to log them.',
-            style: TextStyle(color: t.textDim, fontSize: 11),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: connected ? () => _toggle(!active) : null,
+                child: Text(active ? 'Stop hub' : 'Start hub'),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.info_outline, color: t.textSecondary),
+              tooltip: 'About the node hub',
+              onPressed: () => showInfoSheet(context, t, 'JCMK node hub', const [
+                'Tap Start hub. This board leaves the mesh while it collects; your other boards keep meshing.',
+                'Power on a Piglet node near this board.',
+                'Tap Pair when it shows under Nearby nodes.',
+                'Start a wardrive session. Networks from paired nodes are logged with it.',
+              ], numbered: true),
+            ),
+          ],
         ),
-        ConfigTextField(icon: Icons.key, label: 'Passphrase (optional)', controller: _pass, obscure: true),
-        ConfigTextField(icon: Icons.verified_user, label: 'Allowed node MACs (required, comma separated)', controller: _allow),
         const SizedBox(height: 8),
-        ElevatedButton(
-          onPressed: () => _toggle(!active),
-          child: Text(active ? 'Stop hub' : 'Start hub'),
-        ),
-        if (s != null) ...[
-          const SizedBox(height: 8),
+        if (!connected)
+          Row(
+            children: [
+              Expanded(
+                child: Text('No OUI-SPY board connected. The board you connect becomes the hub.',
+                    style: TextStyle(color: t.textSecondary, fontSize: 12)),
+              ),
+              TextButton(
+                onPressed: () => context.push('/onboarding'),
+                child: const Text('Connect'),
+              ),
+            ],
+          )
+        else
           Text(
-            active ? 'Hub running · ${s.nodes} node${s.nodes == 1 ? '' : 's'} · ${s.records} records' : 'Hub off',
+            active
+                ? 'Hub on · ${s!.nodes} node${s.nodes == 1 ? '' : 's'} connected · ${ref.read(bleManagerProvider).enowNetworksTotal} networks'
+                : 'Hub off',
             style: TextStyle(color: t.textSecondary, fontSize: 12),
           ),
-          if (refuse.isNotEmpty)
-            Text(refuse, style: TextStyle(color: AppTheme.error, fontSize: 12)),
-        ],
+        if (refuse.isNotEmpty)
+          Row(
+            children: [
+              Expanded(child: Text(refuse, style: TextStyle(color: AppTheme.error, fontSize: 12))),
+              if (_refuse == 1)
+                TextButton(
+                  onPressed: () async {
+                    await ref.read(appStateProvider).disableMesh();
+                    await _toggle(true);
+                  },
+                  child: const Text('Leave mesh & start'),
+                ),
+            ],
+          ),
+        const SizedBox(height: 14),
+        Text('PAIRED NODES', style: label),
+        if (_paired.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text('None yet', style: TextStyle(color: t.textDim, fontSize: 12)),
+          ),
+        for (final m in _paired) _nodeRow(t, priv, m, _seen[m], paired: true),
+        const SizedBox(height: 10),
+        Text('NEARBY NODES', style: label),
+        if (nearby.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(active ? 'Searching…' : 'Start the hub to find nodes',
+                style: TextStyle(color: t.textDim, fontSize: 12)),
+          ),
+        for (final n in nearby) _nodeRow(t, priv, n.mac, n, paired: false),
+        const SizedBox(height: 10),
+        ConfigTextField(icon: Icons.key, label: 'Passphrase (optional)', controller: _pass, obscure: true),
+        ConfigToggleRow(
+          icon: Icons.bug_report_outlined,
+          label: 'Record node traffic',
+          subtitle: 'To the app log',
+          color: AppTheme.accent,
+          value: _capture,
+          onChanged: active
+              ? (v) {
+                  setState(() => _capture = v);
+                  ref.read(bleManagerProvider).enowHubCapture(v);
+                }
+              : null,
+        ),
       ],
     );
   }

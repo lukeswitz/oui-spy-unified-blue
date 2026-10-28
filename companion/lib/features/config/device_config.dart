@@ -3,7 +3,6 @@ import 'dart:math';
 
 import 'package:file_selector/file_selector.dart';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -24,7 +23,8 @@ import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/features/feed/detection_row.dart' show showDetectionDetails, DetectionRow;
-import 'package:oui_spy/core/models/detection.dart' show FlockExtension, FlockConfidence, FlockConfidenceX, FlockExtensionSignals;
+import 'package:oui_spy/core/models/detection.dart' show FlockExtension, FlockConfidence, FlockExtensionSignals;
+import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/ota/ota_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
@@ -59,6 +59,7 @@ import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 part 'config_wardrive_settings.dart';
 part 'config_wardrive_tab.dart';
@@ -311,12 +312,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       2 => 'What to watch for, notifications, your lists',
       3 => ble.currentConnectionState != NodeConnectionState.ready
           ? (ble.isConnected ? 'Connecting…' : 'Not connected')
-          : [
-              boardDisplayName(ble.board),
-              _nodeId,
+          : '${boardDisplayName(ble.board)} · $_nodeId\n${[
               'fw $_fwVersion',
               if (temp != null) formatTempC(temp, ref.read(unitSystemProvider)),
-            ].join(' · '),
+            ].join(' · ')}',
       _ => 'Accounts, capture database, captures, export',
     };
   }
@@ -369,6 +368,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Hardware', 'Sound, lights, GPS source, Flock detection, offline scan', Icons.memory, _buildHardwareTab),
             ('Mesh', 'Mode, status, key, nodes with board and temperature', Icons.hub, _buildMeshTab),
             ('Firmware', 'Device info, Wi-Fi network, updates', Icons.system_update, _buildFirmwareTab),
+            ('JCMK node hub', 'Collect from Piglet / JCMK ESP-NOW wardriver nodes', Icons.router, () => ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  children: const [_EnowHubSection()],
+                )),
           ],
         4 => [
             ('Accounts', 'WiGLE and WDGWars upload accounts', Icons.cloud_upload, () => const _WardriveConfigTab(showAccounts: true)),
@@ -592,10 +595,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const SizedBox(height: 16),
         ConfigSectionHeader(label: 'External Adapters'),
         const _WifiAdapterSection(),
-
-        const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'Wardriver node hub'),
-        const _EnowHubSection(),
       ],
     );
   }
