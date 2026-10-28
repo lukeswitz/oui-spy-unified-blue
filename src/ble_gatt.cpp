@@ -958,6 +958,21 @@ static BlePeer s_peers[BLE_MAX_PEERS];
 static uint8_t s_irk[16];
 static bool s_irkReady = false;
 
+static void bleStableBtIdentity(void) {
+    uint8_t m[6];
+    Preferences p;
+    p.begin("ouispy-ble", false);
+    size_t n = p.getBytes("btmac", m, sizeof(m));
+    if (n != sizeof(m)) {
+        esp_fill_random(m, sizeof(m));
+        m[0] = (uint8_t)((m[0] & 0xFE) | 0x02);
+        p.putBytes("btmac", m, sizeof(m));
+    }
+    p.end();
+    esp_err_t e = esp_iface_mac_addr_set(m, ESP_MAC_BT);
+    Serial.printf("[BLE] stable BT identity: %s\n", e == ESP_OK ? "ok" : esp_err_to_name(e));
+}
+
 static bool bleUseStableAddress(void) {
     uint8_t a[6];
     Preferences p;
@@ -2541,6 +2556,7 @@ void bleGattInit(void) {
 #if OUISPY_BLE_SECURE
         bleSecLoadKeys();
         ble_hs_cfg.store_gen_key_cb = bleSecGenKey;
+        bleStableBtIdentity();
 #endif
         NimBLEDevice::init(devName);
         Serial.printf("[BLE] device name: %s\n", devName);
@@ -2550,10 +2566,8 @@ void bleGattInit(void) {
         NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
         NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
         NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
-        bool rpa = bleUseStableAddress();
-#if defined(CONFIG_BT_NIMBLE_HOST_BASED_PRIVACY) && CONFIG_BT_NIMBLE_HOST_BASED_PRIVACY
-        if (rpa) rpa = NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_RANDOM_DEFAULT);
-#endif
+        bleUseStableAddress();
+        bool rpa = NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_RANDOM_DEFAULT);
         if (!rpa) NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
         ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_WRITE |
                                          BLE_ATT_F_WRITE_ENC | BLE_ATT_F_WRITE_AUTHEN);
