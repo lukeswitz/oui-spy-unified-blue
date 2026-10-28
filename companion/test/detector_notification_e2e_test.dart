@@ -7,31 +7,31 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 List<int> _hex(String s) => [for (var i = 0; i < s.length; i += 2) int.parse(s.substring(i, i + 2), radix: 16)];
 
 void main() {
-  test('S3 capture (v3_app_controlled_ie_e2e): watchlist hit notification titled by description', () {
+  test('synthetic record: watchlist hit notification titled by its rule description', () {
     final det = BleProtocol.decodeDetection(
-      _hex('0040486e8bd31aa9064a1a0000010000000000004e6f6b696120726f757465720000000000000000000000000000000000000000'),
+      _hex('00020000000001a9064a1a000001000000000000486f6d6520726f75746572000000000000000000000000000000000000000000'),
       sessionId: 's',
       nodeId: 'n',
       appTimestamp: DateTime(2026),
     );
     final (title, subtitle, body, channel) = NotificationService.detectionNotificationText(det)!;
-    expect(title, 'Nokia router');
+    expect(title, 'Watchlist: Home router');
     expect(subtitle, 'Detector · WATCHLIST');
-    expect(body, '-87 dBm · ch 6\n40:48:6E:8B:D3:1A');
+    expect(body, '-87 dBm · ch 6\n02:00:00:00:00:01');
     expect(channel, NotifChannel.detector);
   });
 
-  test('S3 capture: probe-SSID detector record titled by its description', () {
+  test('synthetic record: probe-SSID detector record titled by its description', () {
     final det = BleProtocol.decodeDetection(
-      _hex('005cfce1006a24a706212100000500000000000056696c6c6173656e6f7200000000000000000000000000000000000000000000'),
+      _hex('00020000000002a70621210000050000000000004d794e6574776f726b0000000000000000000000000000000000000000000000'),
       sessionId: 's',
       nodeId: 'n',
       appTimestamp: DateTime(2026),
     );
     final (title, subtitle, body, _) = NotificationService.detectionNotificationText(det)!;
-    expect(title, 'Probe request for "Villasenor"');
+    expect(title, 'Probe request for "MyNetwork"');
     expect(subtitle, 'Detector · PROBE');
-    expect(body, '-89 dBm · ch 6\n5C:FC:E1:00:6A:24');
+    expect(body, '-89 dBm · ch 6\n02:00:00:00:00:02');
   });
 
   test('deauth hit carries hit, engine and device data; pwnagotchi mute keys', () {

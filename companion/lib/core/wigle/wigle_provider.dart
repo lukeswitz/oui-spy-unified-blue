@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -29,6 +30,16 @@ class WigleProvider extends ChangeNotifier {
   final Set<String> _uploadedSessions = {};
   final Map<String, bool> _uploadingMap = {};
 
+  static const _keyDonate = 'wigle_donate';
+  bool _donate = true;
+  bool get donate => _donate;
+
+  Future<void> setDonate(bool v) async {
+    _donate = v;
+    notifyListeners();
+    (await SharedPreferences.getInstance()).setBool(_keyDonate, v);
+  }
+
   bool get isLoggedIn => _isLoggedIn;
   bool get isLoading => _isLoading;
   WigleUserStats? get stats => _stats;
@@ -36,10 +47,24 @@ class WigleProvider extends ChangeNotifier {
   String get apiName => _apiName;
   bool get rateLimited => _error == WigleApi.rateLimitMessage;
 
+  final _lookupCache = <String, WigleNetworkRecord?>{};
+
+  Future<WigleNetworkRecord?> lookupNetwork(String bssid) async {
+    final key = bssid.toUpperCase();
+    if (_lookupCache.containsKey(key)) return _lookupCache[key];
+    final api = _api;
+    if (api == null) throw WigleApiException('Sign in to WiGLE under Wardrive settings first');
+    final rec = await api.networkDetail(key);
+    _lookupCache[key] = rec;
+    DebugLog.log('WIGLE: lookup ${rec == null ? 'not recorded' : 'recorded'}');
+    return rec;
+  }
+
   bool isUploaded(String sessionId) => _uploadedSessions.contains(sessionId);
   bool isUploading(String sessionId) => _uploadingMap[sessionId] == true;
 
   Future<void> _loadCredentials() async {
+    _donate = (await SharedPreferences.getInstance()).getBool(_keyDonate) ?? true;
     _apiName = await _storage.read(key: _keyApiName) ?? '';
     _apiToken = await _storage.read(key: _keyApiToken) ?? '';
     if (_apiName.isNotEmpty && _apiToken.isNotEmpty) {
@@ -149,7 +174,7 @@ class WigleProvider extends ChangeNotifier {
         return null;
       }
 
-      final result = await _api!.uploadCsv(file);
+      final result = await _api!.uploadCsv(file, donate: _donate);
 
       _uploadedSessions.add(sessionId);
       _db.insertWigleUpload(WigleUploadsCompanion(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:oui_spy/features/analysis/analysis_screen.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/config/device_config.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
@@ -95,6 +96,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sdr',
         builder: (context, state) => const SdrScreen(),
+      ),
+      GoRoute(
+        path: '/analysis',
+        builder: (context, state) => const AnalysisScreen(),
       ),
     ],
   );

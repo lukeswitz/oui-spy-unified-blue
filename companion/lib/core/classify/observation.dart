@@ -43,6 +43,7 @@ class Observation {
   final String? detectorMethod;
   final String? detectorDesc;
   final String? detectorNode;
+  final int detectorConfidence;
 
   const Observation({
     required this.key,
@@ -67,6 +68,7 @@ class Observation {
     this.detectorMethod,
     this.detectorDesc,
     this.detectorNode,
+    this.detectorConfidence = 0,
   }) : rssiMin = rssiMin ?? rssi,
        rssiMax = rssiMax ?? rssi;
 
@@ -96,6 +98,7 @@ class Observation {
     detectorMethod: detectorMethod,
     detectorDesc: detectorDesc,
     detectorNode: detectorNode,
+    detectorConfidence: detectorConfidence,
   );
 
   Observation merge(Observation next) => Observation(
@@ -121,6 +124,7 @@ class Observation {
     detectorMethod: next.detectorMethod ?? detectorMethod,
     detectorDesc: next.detectorMethod != null ? next.detectorDesc : detectorDesc,
     detectorNode: next.detectorMethod != null ? next.detectorNode : detectorNode,
+    detectorConfidence: next.detectorMethod != null ? next.detectorConfidence : detectorConfidence,
   );
 }
 

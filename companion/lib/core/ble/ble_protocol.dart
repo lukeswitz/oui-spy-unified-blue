@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:oui_spy/core/models/detection.dart';
@@ -218,6 +219,7 @@ class BleProtocol {
     bool extendedOui = false,
     bool offlineScan = false,
     bool allowOuiOnly = false,
+    int? radioPolicy,
   }) {
     return Uint8List.fromList([
       buzzer ? 1 : 0,
@@ -227,8 +229,12 @@ class BleProtocol {
       extendedOui ? 1 : 0,
       offlineScan ? 1 : 0,
       allowOuiOnly ? 1 : 0,
+      if (radioPolicy != null) radioPolicy & 0xFF,
     ]);
   }
+
+  static const int radioPolicyActiveProbe = 0x01;
+  static const int radioPolicyPassiveBle = 0x02;
 
   static Uint8List get flushSpoolCmd => Uint8List.fromList([0x0B]);
   static Uint8List get spoolClearCmd => Uint8List.fromList([0x0C]);
@@ -441,7 +447,8 @@ class BleProtocol {
           'odid_ble',
           'odid_nan',
           'odid_beacon',
-        ][method.clamp(0, 2)],
+          'drone_vendor',
+        ][method.clamp(0, 3)],
       Engine.detector => const [
           'ble_watchlist',
           'wifi_watchlist',
@@ -454,7 +461,10 @@ class BleProtocol {
           'axon',
           'camera',
           'amazon',
-        ][method.clamp(0, 10)],
+          'evil_twin',
+          'karma',
+          'mesh',
+        ][method.clamp(0, 13)],
       Engine.foxhunter => const ['ble_proximity', 'wifi_proximity'][method.clamp(0, 1)],
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => const ['wifi_ap', 'ble_adv'][method.clamp(0, 1)],
@@ -533,7 +543,8 @@ class BleProtocol {
     if (ext.length > 1) {
       desc = _extractString(ext, 1, 32);
     }
-    return DetectorExtension(isFullMac: isFullMac, filterDescription: desc);
+    final confidence = ext.length > 33 ? ext[33] : 0;
+    return DetectorExtension(isFullMac: isFullMac, filterDescription: desc, confidence: confidence);
   }
 
   static WardriveExtension _decodeWardriveExtension(Uint8List ext) {
@@ -560,8 +571,9 @@ class BleProtocol {
     final slice = data.sublist(offset, end);
     final nullIndex = slice.indexOf(0);
     final trimmed = nullIndex >= 0 ? slice.sublist(0, nullIndex) : slice;
+    final text = utf8.decode(trimmed, allowMalformed: true);
     return String.fromCharCodes(
-        trimmed.where((b) => b >= 0x20 && (b < 0x7f || b > 0x9f)));
+        text.runes.where((r) => r >= 0x20 && (r < 0x7f || r > 0x9f)));
   }
 
   // -- Orchestration --

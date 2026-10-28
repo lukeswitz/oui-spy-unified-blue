@@ -125,6 +125,7 @@ Observation observationFromDetection(Detection d) {
     detectorMethod: d.engine == Engine.detector ? d.method : null,
     detectorDesc: d.engine == Engine.detector ? d.detector?.filterDescription : null,
     detectorNode: d.engine == Engine.detector && d.sourceNodeId.isNotEmpty ? d.sourceNodeId : null,
+    detectorConfidence: d.engine == Engine.detector ? d.detector?.confidence ?? 0 : 0,
     gpsTrail: d.latitude != null && d.longitude != null && !d.approxGps
         ? [GpsSample(at, d.latitude!, d.longitude!, d.rssi)]
         : const [],

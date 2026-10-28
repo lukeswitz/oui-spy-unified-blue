@@ -174,6 +174,7 @@ class VendorClass {
     VendorRule('gvi security', 'camera', 'a GVI security camera', 3),
     VendorRule('iqinvision', 'camera', 'an IQinVision camera', 3),
     VendorRule('earthcam', 'camera', 'an EarthCam camera', 3),
+    VendorRule('genetec inc', 'camera', 'a Genetec AutoVu plate reader or camera', 4),
     VendorRule('digital ally', 'bodyworn', 'a Digital Ally body or in-car camera', 4),
     VendorRule('watchguard video', 'bodyworn', 'a WatchGuard body or in-car camera', 4),
     VendorRule('axon enterprise', 'radio', 'an Axon body camera or device', 4),

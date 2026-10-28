@@ -23,6 +23,7 @@ class NotifChannel {
 
   static const flock = 'flock_alerts';
   static const detector = 'detector_alerts';
+  static const detectorQuiet = 'detector_suspected';
   static const drone = 'drone_alerts';
   static const foxhunt = 'foxhunt_alerts';
   static const wardrive = 'wardrive_status';
@@ -50,6 +51,7 @@ class NotificationService extends ChangeNotifier {
   bool droneEnabled = true;
   bool foxhuntEnabled = false; // foxhunt is high-frequency, off by default
   bool wardriveStatusEnabled = true;
+  int minDetectorConfidence = 0;
   Set<SignatureClass> classAlerts = {...defaultAlertClasses};
   Set<String> mutedAlerts = {};
   static const noisyThreshold = 10;
@@ -183,6 +185,14 @@ class NotificationService extends ChangeNotifier {
         importance: Importance.high,
       ),
       AndroidNotificationChannel(
+        NotifChannel.detectorQuiet,
+        'Suspected Detections',
+        description: 'Weak-evidence detector hits (one vendor OUI or a brief tracker sighting), delivered silently',
+        importance: Importance.low,
+        playSound: false,
+        enableVibration: false,
+      ),
+      AndroidNotificationChannel(
         NotifChannel.drone,
         'Drone Alerts',
         description: 'Alerts when FAA Remote ID drones are detected',
@@ -223,6 +233,7 @@ class NotificationService extends ChangeNotifier {
     final enabled = _isEngineEnabled(det.engine);
     if (!enabled) return;
     if (det.engine == Engine.detector && detectorMethodClass.containsKey(det.method)) return;
+    if (det.engine == Engine.detector && belowConfidence(det.detector?.confidence ?? 0)) return;
     if (mutedAlerts.contains(muteKeyOf(det))) return;
 
     if (_isRateLimited()) return;
@@ -241,6 +252,7 @@ class NotificationService extends ChangeNotifier {
     final alert = classAlertOf(d, classAlerts, flock: flockEnabled);
     if (alert == null || mutedAlerts.contains(alert.kind)) return;
     if (d.obs.detectorMethod != null && mutedAlerts.contains('det:${d.obs.detectorMethod}')) return;
+    if (d.obs.detectorMethod != null && belowConfidence(d.obs.detectorConfidence)) return;
     final key = d.obs.mac.isNotEmpty ? d.obs.mac : d.obs.key;
     final now = DateTime.now();
     if (_classAlerted.containsKey(key)) return;
@@ -261,7 +273,11 @@ class NotificationService extends ChangeNotifier {
       notifyListeners();
     }
     final (title, why, body) = classNotificationText(d, alert);
-    final channel = alert == ClassAlert.flock ? NotifChannel.flock : NotifChannel.detector;
+    final channel = alert == ClassAlert.flock
+        ? NotifChannel.flock
+        : d.obs.detectorMethod != null && d.obs.detectorConfidence == confSuspected
+            ? NotifChannel.detectorQuiet
+            : NotifChannel.detector;
     _fireNotification(
       id: _notifId(channel),
       channel: channel,
@@ -273,6 +289,25 @@ class NotificationService extends ChangeNotifier {
       alertMac: key,
       muteKey: alert.kind,
     );
+  }
+
+  static const confSuspected = 1;
+  static const confHigh = 2;
+  static const confVerified = 3;
+
+  static String? confidenceLabel(int c) => switch (c) {
+        confSuspected => 'Suspected',
+        confHigh => 'High',
+        confVerified => 'Verified',
+        _ => null,
+      };
+
+  bool belowConfidence(int c) => c > 0 && c < minDetectorConfidence;
+
+  void setMinDetectorConfidence(int v) {
+    minDetectorConfidence = v.clamp(0, confVerified);
+    notifyListeners();
+    _savePrefs();
   }
 
   static String muteKeyOf(Detection det) => switch (det.engine) {
@@ -384,12 +419,32 @@ class NotificationService extends ChangeNotifier {
     _savePrefs();
   }
 
+  static int milestoneFor(int count) {
+    const steps = [1000, 5000, 10000, 25000, 50000];
+    if (count >= 100000) return (count ~/ 100000) * 100000;
+    var m = 0;
+    for (final s in steps) {
+      if (count >= s) m = s;
+    }
+    return m;
+  }
+
+  void onWardriveEndedBoardLost({required int minutes, required int detections}) {
+    if (!_initialized || !_permissionGranted || !wardriveStatusEnabled) return;
+    _fireNotification(
+      id: _notifId(NotifChannel.wardrive),
+      channel: NotifChannel.wardrive,
+      title: 'Wardrive ended',
+      body: 'The board did not reconnect within $minutes minutes. Session saved with $detections detections.',
+    );
+  }
+
   /// Fire a wardrive milestone notification
   void onWardriveUpdate({required int uniqueCount}) {
     if (!_initialized || !_permissionGranted) return;
     if (!milestoneAlertsEnabled) return;
 
-    final milestone = (uniqueCount ~/ 1000) * 1000;
+    final milestone = milestoneFor(uniqueCount);
     if (milestone > 0 && milestone > _lastMilestone) {
       _lastMilestone = milestone;
       _fireMilestoneNotification(milestone);
@@ -520,30 +575,42 @@ class NotificationService extends ChangeNotifier {
 
   static (String, String, String, String)? detectionNotificationText(Detection det) {
     final uavId = det.odid?.uavId;
+    final conf = det.detector?.confidence ?? 0;
     final (title, channel) = switch (det.engine) {
       Engine.flockBle || Engine.flockWifi => ('Flock camera', NotifChannel.flock),
-      Engine.detector => (_detectorHeadline(det), NotifChannel.detector),
+      Engine.detector => (_detectorHeadline(det),
+          conf == confSuspected ? NotifChannel.detectorQuiet : NotifChannel.detector),
       Engine.skySpy => (uavId != null && uavId.isNotEmpty ? 'Drone: $uavId' : 'Drone', NotifChannel.drone),
       Engine.foxhunter => ('Foxhunt target', NotifChannel.foxhunt),
       _ => (null, null),
     };
     if (title == null || channel == null) return null;
-    return (title, '${det.engine.label} · ${methodLabel(det.method)}', _detectionBody(det, title), channel);
+    final tier = det.engine == Engine.detector ? confidenceLabel(conf) : null;
+    return (
+      title,
+      '${det.engine.label} · ${methodLabel(det.method)}${tier != null ? ' · $tier' : ''}',
+      _detectionBody(det, title),
+      channel,
+    );
   }
 
   static String _detectorHeadline(Detection det) {
     final why = det.detector?.filterDescription?.trim() ?? '';
+    if (why.isNotEmpty && det.method.endsWith('watchlist')) return 'Watchlist: $why';
     if (why.isNotEmpty || det.method == 'probe_ssid') return detectorTitle(det);
     return detectorMethodName(det.method) ?? detectorTitle(det);
   }
 
   static String? detectorMethodName(String method) => switch (method) {
-        'tracker' => 'Find My Tracker',
+        'tracker' => 'Tracker',
         'flipper' => 'Flipper Zero',
         'deauth_storm' => 'Deauth Attack',
         'pwnagotchi' => 'Pwnagotchi',
         'glasses' => 'Meta Smart Glasses',
         'axon' => 'Axon Device',
+        'evil_twin' => 'Evil Twin AP',
+        'karma' => 'KARMA AP',
+        'mesh' => 'Mesh Radio',
         'ble_watchlist' || 'wifi_watchlist' => 'Watchlist Hit',
         _ => null,
       };
@@ -602,22 +669,22 @@ class NotificationService extends ChangeNotifier {
       groupKey: groupKey,
       subText: subtitle,
       styleInformation: BigTextStyleInformation(body),
-      playSound: soundEnabled,
-      enableVibration: vibrationEnabled,
-      priority: Priority.high,
-      importance: Importance.high,
+      playSound: soundEnabled && channel != NotifChannel.detectorQuiet,
+      enableVibration: vibrationEnabled && channel != NotifChannel.detectorQuiet,
+      priority: channel == NotifChannel.detectorQuiet ? Priority.low : Priority.high,
+      importance: channel == NotifChannel.detectorQuiet ? Importance.low : Importance.high,
     );
 
     final darwinDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
-      presentSound: soundEnabled && !viaActivity,
+      presentSound: soundEnabled && !viaActivity && channel != NotifChannel.detectorQuiet,
       subtitle: subtitle,
       threadIdentifier: groupKey,
       categoryIdentifier: channel == NotifChannel.wardrive ? null : _detectionCategory,
       interruptionLevel: channel == NotifChannel.wardrive
           ? null
-          : viaActivity
+          : viaActivity || channel == NotifChannel.detectorQuiet
               ? InterruptionLevel.passive
               : InterruptionLevel.timeSensitive,
     );
@@ -680,6 +747,7 @@ class NotificationService extends ChangeNotifier {
     foxhuntEnabled = p.getBool('notif_foxhunt') ?? false;
     wardriveStatusEnabled = p.getBool('notif_wardrive_status') ?? true;
     milestoneAlertsEnabled = p.getBool('notif_milestones') ?? true;
+    minDetectorConfidence = p.getInt('notif_min_confidence') ?? 0;
     cooldownSeconds = p.getInt('notif_cooldown') ?? 300;
     maxPerMinute = p.getInt('notif_max_per_min') ?? 10;
     soundEnabled = p.getBool('notif_sound') ?? true;
@@ -711,6 +779,7 @@ class NotificationService extends ChangeNotifier {
     p.setBool('notif_foxhunt', foxhuntEnabled);
     p.setBool('notif_wardrive_status', wardriveStatusEnabled);
     p.setBool('notif_milestones', milestoneAlertsEnabled);
+    p.setInt('notif_min_confidence', minDetectorConfidence);
     p.setInt('notif_cooldown', cooldownSeconds);
     p.setInt('notif_max_per_min', maxPerMinute);
     p.setBool('notif_sound', soundEnabled);

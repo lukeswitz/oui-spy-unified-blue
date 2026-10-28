@@ -474,6 +474,14 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
 
         if (wigle.isLoggedIn) ...[
           _WigleStatsCard(stats: wigle.stats),
+          ConfigToggleRow(
+            icon: Icons.volunteer_activism,
+            label: 'Donate uploads to WiGLE',
+            subtitle: 'Sends WiGLE\'s "donate" flag with each upload (always sent before this setting existed). The upload itself is the same either way.',
+            color: AppTheme.accent,
+            value: wigle.donate,
+            onChanged: (v) => ref.read(wigleProvider).setDonate(v),
+          ),
           if (wigle.rateLimited) ...[
             const SizedBox(height: 8),
             Text(WigleApi.rateLimitMessage,
@@ -1324,6 +1332,119 @@ class _WdgwarsStatsCard extends StatelessWidget {
     if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
     if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
     return '$count';
+  }
+}
+
+class _EnowHubSection extends ConsumerStatefulWidget {
+  const _EnowHubSection();
+
+  @override
+  ConsumerState<_EnowHubSection> createState() => _EnowHubSectionState();
+}
+
+class _EnowHubSectionState extends ConsumerState<_EnowHubSection> {
+  static const _storage = FlutterSecureStorage();
+  static const _keyPass = 'enow_hub_passphrase';
+  static const _keyAllow = 'enow_hub_allowlist';
+  final _pass = TextEditingController();
+  final _allow = TextEditingController();
+  StreamSubscription<({bool active, int nodes, int refuse, int records})>? _sub;
+  Timer? _poll;
+  ({bool active, int nodes, int refuse, int records})? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    final ble = ref.read(bleManagerProvider);
+    _sub = ble.enowHubStatus.listen((s) {
+      if (mounted) setState(() => _status = s);
+    });
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_status?.active ?? false) ble.enowHubPoll();
+    });
+    () async {
+      _pass.text = await _storage.read(key: _keyPass) ?? '';
+      _allow.text = await _storage.read(key: _keyAllow) ?? '';
+      if (mounted) setState(() {});
+    }();
+    ble.enowHubPoll();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _poll?.cancel();
+    _pass.dispose();
+    _allow.dispose();
+    super.dispose();
+  }
+
+  static String _refuseText(int r) => switch (r) {
+        1 => 'Turn the mesh off first: the hub has to sit on channel 6.',
+        2 => 'Stop the Wi-Fi engines first: the hub cannot scan and listen at once.',
+        3 => 'The board could not start ESP-NOW.',
+        4 => 'Passphrase over 32 bytes or more than 8 allowlist entries.',
+        5 => 'Add at least one node MAC to the allowlist. The hub will not accept unknown nodes.',
+        _ => '',
+      };
+
+  Future<void> _toggle(bool start) async {
+    final allow = _allow.text
+        .split(RegExp(r'[\s,;]+'))
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+    await _storage.write(key: _keyPass, value: _pass.text);
+    await _storage.write(key: _keyAllow, value: _allow.text);
+    final ok = await ref.read(bleManagerProvider).enowHub(
+          start: start,
+          passphrase: _pass.text,
+          allowlist: allow,
+        );
+    if (!ok && mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+        content: Text('Check the passphrase (max 32 bytes) and allowlist (max 8 MACs)'),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final s = _status;
+    final active = s?.active ?? false;
+    final refuse = s == null ? '' : _refuseText(s.refuse);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8, left: 2),
+          child: Text(
+            'The board parks on Wi-Fi channel 6 and collects networks from ESP32 Dual Band Wardriver nodes, '
+            'splitting the channel list between them. It does not scan while hubbing. Turn the mesh off first. '
+            'With a passphrase, links to nodes using the same passphrase are encrypted (up to 6 nodes). '
+            'Only node MACs on the allowlist are accepted, and the hub will not start with an empty list. The node protocol cannot prove a sender knows the passphrase, so the allowlist is the admission control. '
+            'Node records arrive as wardrive detections, so start a wardrive session to log them.',
+            style: TextStyle(color: t.textDim, fontSize: 11),
+          ),
+        ),
+        ConfigTextField(icon: Icons.key, label: 'Passphrase (optional)', controller: _pass, obscure: true),
+        ConfigTextField(icon: Icons.verified_user, label: 'Allowed node MACs (required, comma separated)', controller: _allow),
+        const SizedBox(height: 8),
+        ElevatedButton(
+          onPressed: () => _toggle(!active),
+          child: Text(active ? 'Stop hub' : 'Start hub'),
+        ),
+        if (s != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            active ? 'Hub running · ${s.nodes} node${s.nodes == 1 ? '' : 's'} · ${s.records} records' : 'Hub off',
+            style: TextStyle(color: t.textSecondary, fontSize: 12),
+          ),
+          if (refuse.isNotEmpty)
+            Text(refuse, style: TextStyle(color: AppTheme.error, fontSize: 12)),
+        ],
+      ],
+    );
   }
 }
 

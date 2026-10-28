@@ -137,10 +137,28 @@ class WardriveController extends ChangeNotifier {
       if (connState == NodeConnectionState.ready) {
         SharedPreferences.getInstance().then(
             (p) => offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false);
+        _boardLostTimer?.cancel();
+        _boardLostTimer = null;
+        final lostAt = _boardLostAt;
+        _boardLostAt = null;
+        if (state == WardriveState.running &&
+            _droppedWhileRunning &&
+            !_ble.offlineScanEnabled &&
+            lostAt != null &&
+            DateTime.now().difference(lostAt) >= boardLostWindow) {
+          _droppedWhileRunning = false;
+          _endSessionBoardLost();
+          return;
+        }
         if (state == WardriveState.running &&
             _droppedWhileRunning &&
             !_ble.offlineScanEnabled) {
           _droppedWhileRunning = false;
+          if (!_ble.boardRestarted) {
+            DebugLog.log('WARDRIVE: link blip, board did not restart — continuing session');
+            continueAfterReconnect();
+            return;
+          }
           pendingReconnectPrompt = true;
           notifyListeners();
           return;
@@ -150,7 +168,18 @@ class WardriveController extends ChangeNotifier {
         _pushWifiBand();
       } else if (connState == NodeConnectionState.disconnected ||
           connState == NodeConnectionState.reconnecting) {
-        if (state == WardriveState.running) _droppedWhileRunning = true;
+        if (state == WardriveState.running) {
+          _droppedWhileRunning = true;
+          if (!_ble.offlineScanEnabled && _boardLostAt == null) {
+            _boardLostAt = DateTime.now();
+            _boardLostTimer?.cancel();
+            _boardLostTimer = Timer(boardLostWindow, () {
+              if (state == WardriveState.running && _droppedWhileRunning && _boardLostAt != null) {
+                _endSessionBoardLost();
+              }
+            });
+          }
+        }
       }
     });
     _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
@@ -166,6 +195,7 @@ class WardriveController extends ChangeNotifier {
   Future<void> _loadPrefs() async {
     final p = await SharedPreferences.getInstance();
     offlineGpsTag = p.getBool('offlineGpsTagEnabled') ?? false;
+    _sessionOpenPersisted = p.getBool('wd_session_open') ?? false;
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
     _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
@@ -687,6 +717,14 @@ class WardriveController extends ChangeNotifier {
       DebugLog.log('WARDRIVE: GPS failed to start — check permissions/services');
     }
 
+    try {
+      final m = await _ble.readCommandedEngineMask().timeout(const Duration(seconds: 2));
+      _preSessionEngineMask = m < 0 ? 0 : m;
+    } catch (_) {
+      _preSessionEngineMask = 0;
+    }
+    DebugLog.log('WARDRIVE: engines already on before session mask=0x${_preSessionEngineMask.toRadixString(16)}');
+
     startTime = DateTime.now();
     sessionId = const Uuid().v4();
     _dedupedOrdered.clear();
@@ -724,6 +762,7 @@ class WardriveController extends ChangeNotifier {
     state = WardriveState.running;
     _userStopped = false;
     _ble.wardriveSessionActive = true;
+    _persistSessionOpen(true);
     radioTransition = 'starting';
     notifyListeners();
 
@@ -766,6 +805,10 @@ class WardriveController extends ChangeNotifier {
     _droppedWhileRunning = false;
     pendingReconnectPrompt = false;
     _ble.wardriveSessionActive = false;
+    _persistSessionOpen(false);
+    _boardLostTimer?.cancel();
+    _boardLostTimer = null;
+    _boardLostAt = null;
     notifyListeners();
 
     _detSub?.cancel();
@@ -790,6 +833,27 @@ class WardriveController extends ChangeNotifier {
     await _finalizeSession();
   }
 
+  int _preSessionEngineMask = 0;
+  bool _sessionOpenPersisted = false;
+  static const boardLostWindow = Duration(minutes: 5);
+  DateTime? _boardLostAt;
+  Timer? _boardLostTimer;
+
+  Future<void> _endSessionBoardLost() async {
+    _boardLostTimer?.cancel();
+    _boardLostTimer = null;
+    _boardLostAt = null;
+    final count = detections.length;
+    DebugLog.log('WARDRIVE: board gone ${boardLostWindow.inMinutes} min — ending session');
+    await stopSession();
+    _notificationService.onWardriveEndedBoardLost(minutes: boardLostWindow.inMinutes, detections: count);
+  }
+
+  void _persistSessionOpen(bool open) {
+    _sessionOpenPersisted = open;
+    SharedPreferences.getInstance().then((p) => p.setBool('wd_session_open', open));
+  }
+
   Future<void> _teardownEngines() async {
     const wardriveEngines = [
       Engine.wardrive,
@@ -803,6 +867,10 @@ class WardriveController extends ChangeNotifier {
       await _ble.disableAllEngines();
     } else {
       for (final engine in wardriveEngines) {
+        if (engine != Engine.wardrive && (_preSessionEngineMask & engine.bitmask) != 0) {
+          DebugLog.log('WARDRIVE: leaving $engine on — it was running before the session');
+          continue;
+        }
         try {
           await _ble.disableEngine(engine);
         } catch (e) {
@@ -1231,6 +1299,11 @@ class WardriveController extends ChangeNotifier {
       } else {
         _reEnableEngines();
       }
+      return;
+    }
+
+    if (!_sessionOpenPersisted) {
+      DebugLog.log('WARDRIVE: no session was open — board engines belong to Home, not adopted');
       return;
     }
 
@@ -1757,6 +1830,7 @@ class WardriveController extends ChangeNotifier {
     _detSub?.cancel();
     _gpsSub?.cancel();
     _statsTimer?.cancel();
+    _boardLostTimer?.cancel();
     _importedDetSub?.cancel();
     _awayLiveSub?.cancel();
     _spoolImportSub?.cancel();

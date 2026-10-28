@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum Sdr433Category { tpms, meter, security, fob, environmental, weather, unknown }
 
 extension Sdr433CategoryLabel on Sdr433Category {
@@ -9,6 +11,16 @@ extension Sdr433CategoryLabel on Sdr433Category {
         Sdr433Category.environmental => 'Home',
         Sdr433Category.weather => 'Weather',
         Sdr433Category.unknown => 'Unknown',
+      };
+
+  IconData get icon => switch (this) {
+        Sdr433Category.tpms => Icons.tire_repair,
+        Sdr433Category.meter => Icons.electric_meter,
+        Sdr433Category.security => Icons.shield_outlined,
+        Sdr433Category.fob => Icons.settings_remote,
+        Sdr433Category.environmental => Icons.home_outlined,
+        Sdr433Category.weather => Icons.cloud_outlined,
+        Sdr433Category.unknown => Icons.sensors,
       };
 
   String get description => switch (this) {
@@ -97,7 +109,11 @@ const _weatherFields = [
   'light_lux', 'strike_count', 'storm_dist_km', 'pressure_hpa',
 ];
 
-bool _anySub(String model, List<String> subs) => subs.any(model.contains);
+String _norm(String s) => s.toLowerCase().replaceAll(RegExp('[^a-z0-9]'), '');
+bool _anySub(String model, List<String> subs) {
+  final m = _norm(model);
+  return subs.any((s) => m.contains(_norm(s)));
+}
 bool _anyKey(Set<String> fkeys, List<String> keys) => keys.any(fkeys.contains);
 
 Sdr433Category classify433(String model, Iterable<String> fieldKeys, {String devType = ''}) {

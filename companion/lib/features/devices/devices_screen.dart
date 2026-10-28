@@ -16,6 +16,7 @@ import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
+import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
 
@@ -480,15 +481,16 @@ class DeviceRow extends ConsumerWidget {
     final vendor = o.mac.isEmpty
         ? null
         : ref.read(ouiLookupProvider).lookup(o.mac);
+    final priv = ref.watch(privacyScreenProvider);
     final title = o.name.isNotEmpty
-        ? o.name
+        ? maskName(o.name, priv)
         : (DeviceExplain.listLabel(
               o,
               signatureNames: device.signatureNames,
               vendor: vendor,
               guessed: guess,
             ) ??
-            (o.mac.isNotEmpty ? o.mac : o.key));
+            (o.mac.isNotEmpty ? maskMac(o.mac, priv) : o.key));
     final withYou = ref.read(deviceRegistryProvider).withYou(device);
     final live = [
       for (final s in device.signatures)

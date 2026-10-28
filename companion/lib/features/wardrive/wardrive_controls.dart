@@ -729,6 +729,8 @@ class _DetListRow extends ConsumerWidget {
                 ? d.deviceName
                 : vendor ?? '';
     final hasGps = d.latitude != null && d.longitude != null;
+    final priv = ref.watch(privacyScreenProvider);
+    final shownLabel = label == vendor || label == '<hidden>' ? label : maskName(label, priv);
 
     return Listener(
       onPointerDown: (event) {
@@ -750,7 +752,7 @@ class _DetListRow extends ConsumerWidget {
               color: d.engine.color),
           ),
           const SizedBox(width: 5),
-          Text(d.macAddress.toUpperCase(),
+          Text(maskMac(d.macAddress.toUpperCase(), priv),
             style: TextStyle(
               color: t.textPrimary, fontSize: 9,
               fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,
@@ -758,7 +760,7 @@ class _DetListRow extends ConsumerWidget {
           ),
           if (label.isNotEmpty) ...[
             const SizedBox(width: 6),
-            Expanded(child: Text(label,
+            Expanded(child: Text(shownLabel,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: vendor != null && d.ssid.isEmpty && d.deviceName.isEmpty

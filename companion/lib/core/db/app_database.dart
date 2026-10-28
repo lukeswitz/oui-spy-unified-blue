@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/db/sqlite_guard.dart';
 import 'package:oui_spy/core/db/tables.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +11,48 @@ import 'package:path_provider/path_provider.dart';
 part 'app_database.g.dart';
 
 /// Aggregate stats over all collected detections (for the Wardrive config tab).
+class ArchiveOverview {
+  const ArchiveOverview({
+    required this.detections,
+    required this.devices,
+    required this.withGps,
+    required this.sessions,
+    required this.firstMs,
+    required this.lastMs,
+    required this.byEngine,
+  });
+  final int detections;
+  final int devices;
+  final int withGps;
+  final int sessions;
+  final int? firstMs;
+  final int? lastMs;
+  final List<({String engine, int detections, int devices})> byEngine;
+}
+
+class ArchiveHit {
+  const ArchiveHit({
+    required this.mac,
+    required this.engine,
+    required this.firstMs,
+    required this.lastMs,
+    required this.bestRssi,
+    required this.sightings,
+    required this.ssid,
+    required this.name,
+    required this.description,
+  });
+  final String mac;
+  final String engine;
+  final int firstMs;
+  final int lastMs;
+  final int bestRssi;
+  final int sightings;
+  final String ssid;
+  final String name;
+  final String description;
+}
+
 class CollectionStats {
   CollectionStats({
     required this.totalUnique,
@@ -309,6 +352,71 @@ class AppDatabase extends _$AppDatabase {
         bleResult.read(detections.macAddress.count(distinct: true)) ?? 0;
 
     return (wifi: wifi, ble: ble);
+  }
+
+  Future<ArchiveOverview> archiveOverview() async {
+    final t = await customSelect(
+      "SELECT COUNT(*) AS n, "
+      "COUNT(DISTINCT engine || '|' || mac_address) AS devices, "
+      "SUM(CASE WHEN latitude IS NOT NULL AND COALESCE(approx_gps, 0) = 0 THEN 1 ELSE 0 END) AS gps, "
+      "MIN(app_timestamp) AS first_ms, MAX(app_timestamp) AS last_ms, "
+      "COUNT(DISTINCT session_id) AS sessions FROM detections",
+    ).getSingle();
+    final rows = await customSelect(
+      "SELECT engine, COUNT(*) AS n, COUNT(DISTINCT mac_address) AS devices "
+      "FROM detections GROUP BY engine ORDER BY n DESC",
+    ).get();
+    return ArchiveOverview(
+      detections: t.read<int>('n'),
+      devices: t.read<int>('devices'),
+      withGps: t.readNullable<int>('gps') ?? 0,
+      sessions: t.read<int>('sessions'),
+      firstMs: t.readNullable<int>('first_ms'),
+      lastMs: t.readNullable<int>('last_ms'),
+      byEngine: [
+        for (final r in rows)
+          (engine: r.read<String>('engine'), detections: r.read<int>('n'), devices: r.read<int>('devices')),
+      ],
+    );
+  }
+
+  Future<List<ArchiveHit>> searchArchive(String query, {int limit = 200}) async {
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+    final hex = q.replaceAll(RegExp('[^0-9A-Fa-f]'), '').toUpperCase();
+    final macClause = hex.length >= 4
+        ? "REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', '') LIKE ? OR "
+        : '';
+    final like = '%${q.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%';
+    final rows = await customSelect(
+      "SELECT mac_address, engine, MIN(app_timestamp) AS first_ms, MAX(app_timestamp) AS last_ms, "
+      "MAX(rssi) AS best_rssi, COUNT(*) AS n, MAX(ssid) AS ssid, MAX(device_name) AS name, "
+      "MAX(COALESCE(filter_description, '')) AS descr "
+      "FROM detections WHERE $macClause ssid LIKE ? ESCAPE '\\' OR device_name LIKE ? ESCAPE '\\' "
+      "OR filter_description LIKE ? ESCAPE '\\' "
+      "GROUP BY mac_address, engine ORDER BY last_ms DESC LIMIT ?",
+      variables: [
+        if (hex.length >= 4) Variable.withString('%$hex%'),
+        Variable.withString(like),
+        Variable.withString(like),
+        Variable.withString(like),
+        Variable.withInt(limit),
+      ],
+    ).get();
+    return [
+      for (final r in rows)
+        ArchiveHit(
+          mac: r.read<String>('mac_address'),
+          engine: r.read<String>('engine'),
+          firstMs: r.read<int>('first_ms'),
+          lastMs: r.read<int>('last_ms'),
+          bestRssi: r.read<int>('best_rssi'),
+          sightings: r.read<int>('n'),
+          ssid: r.readNullable<String>('ssid') ?? '',
+          name: r.readNullable<String>('name') ?? '',
+          description: r.readNullable<String>('descr') ?? '',
+        ),
+    ];
   }
 
   /// Aggregate collection stats across every completed session.
@@ -707,7 +815,7 @@ LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File(p.join(dir.path, 'oui_spy.db'));
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase.createInBackground(file, sqlite3: guardedSqlite3);
   });
 }
 

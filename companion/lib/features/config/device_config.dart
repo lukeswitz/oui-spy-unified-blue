@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
@@ -17,6 +18,8 @@ import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
+import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
@@ -94,6 +97,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
   bool _flockExtendedOui = false;
   bool _flockAllowOuiOnly = false;
   bool _offlineScanEnabled = false;
+  int? _radioPolicy;
   bool _offlineGpsTag = false;
   bool _buzzerEnabled = true;
   int _buzzerVolume = 100;
@@ -186,6 +190,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             _flockExtendedOui = hw.length >= 5 && hw[4] != 0;
             _flockAllowOuiOnly = hw.length >= 7 && hw[6] != 0;
             _offlineScanEnabled = hw.length > 5 && hw[5] != 0;
+            _radioPolicy = hw.length >= 8 ? hw[7] : null;
           });
           ref.read(sharedPreferencesProvider)
               .setBool('offlineScanEnabled', _offlineScanEnabled);
@@ -587,6 +592,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const SizedBox(height: 16),
         ConfigSectionHeader(label: 'External Adapters'),
         const _WifiAdapterSection(),
+
+        const SizedBox(height: 16),
+        ConfigSectionHeader(label: 'Wardriver node hub'),
+        const _EnowHubSection(),
       ],
     );
   }
@@ -853,6 +862,37 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             _writeHardwareConfig();
           },
         ),
+
+        if (_radioPolicy != null) ...[
+          const SizedBox(height: 16),
+          ConfigSectionHeader(label: 'Radio privacy'),
+          ConfigToggleRow(
+            icon: Icons.cell_tower,
+            label: 'Active Wi-Fi probing',
+            subtitle: 'Off: the board only listens. On: wardrive and Flock Wi-Fi send wildcard probe requests (random source MAC) to find hidden and slow-beaconing APs. Any transmission makes the board detectable.',
+            color: AppTheme.error,
+            value: (_radioPolicy! & BleProtocol.radioPolicyActiveProbe) != 0,
+            onChanged: (v) {
+              setState(() => _radioPolicy = v
+                  ? (_radioPolicy! | BleProtocol.radioPolicyActiveProbe)
+                  : (_radioPolicy! & ~BleProtocol.radioPolicyActiveProbe));
+              _writeHardwareConfig();
+            },
+          ),
+          ConfigToggleRow(
+            icon: Icons.bluetooth_disabled,
+            label: 'Passive Bluetooth scanning',
+            subtitle: 'On: the board never sends scan requests, so detected devices never see its address. Fewer device names (names often arrive only in scan responses). Applies when an engine next starts.',
+            color: AppTheme.accent,
+            value: (_radioPolicy! & BleProtocol.radioPolicyPassiveBle) != 0,
+            onChanged: (v) {
+              setState(() => _radioPolicy = v
+                  ? (_radioPolicy! | BleProtocol.radioPolicyPassiveBle)
+                  : (_radioPolicy! & ~BleProtocol.radioPolicyPassiveBle));
+              _writeHardwareConfig();
+            },
+          ),
+        ],
 
         const SizedBox(height: 16),
         ConfigSectionHeader(label: 'Offline scan (experimental)'),
@@ -1307,6 +1347,30 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ConfigInfoRow(
           icon: Icons.memory, label: 'Free Heap', value: _heapFree,
         ),
+        if (ref.read(bleManagerProvider).bootCount case final boots?)
+          ConfigInfoRow(icon: Icons.restart_alt, label: 'Boot count', value: '$boots'),
+        if (ref.read(bleManagerProvider).protoVersion case final pv?
+            when pv != BleManager.supportedProtoVersion)
+          ConfigInfoRow(
+            icon: Icons.warning_amber,
+            label: 'Protocol mismatch',
+            value: 'Board v$pv, app v${BleManager.supportedProtoVersion}. Update ${pv > BleManager.supportedProtoVersion ? 'the app' : 'the firmware'}',
+          ),
+        if (!ref.read(bleManagerProvider).spoolStorageOk)
+          const ConfigInfoRow(
+            icon: Icons.sd_card_alert,
+            label: 'Offline storage',
+            value: 'Flash writes failing; detections kept in RAM only',
+          ),
+        if (ref.read(bleManagerProvider).boardPasskey case final pk?)
+          ConfigInfoRow(icon: Icons.password, label: 'Current passkey', value: pk),
+        ConfigActionRow(
+          icon: Icons.password,
+          label: 'Pairing passkey',
+          subtitle: 'Phones pair with this 6-digit passkey before they can read or control the board. Each board picks a random one on first boot; it is also printed on the USB serial console at boot. Applies to new pairings.',
+          color: AppTheme.accent,
+          onTap: _changePasskey,
+        ),
         if (_selfTempC != null)
           ConfigInfoRow(
             icon: Icons.thermostat,
@@ -1440,6 +1504,47 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     await ref.read(bleManagerProvider).factoryReset();
   }
 
+  Future<void> _changePasskey() async {
+    final ctl = TextEditingController();
+    final pk = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New pairing passkey'),
+        content: TextField(
+          controller: ctl,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(hintText: '6 digits'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              final v = int.tryParse(ctl.text);
+              if (ctl.text.length == 6 && v != null) Navigator.pop(ctx, v);
+            },
+            child: const Text('Set'),
+          ),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (pk == null || !mounted) return;
+    final ble = ref.read(bleManagerProvider);
+    final ack = ble.passkeyAcks.first.timeout(const Duration(seconds: 5), onTimeout: () => false);
+    final sent = await ble.setPasskey(pk);
+    final ok = sent && await ack;
+    if (!mounted) return;
+    if (ok) {
+      ble.noteBoardPasskey(pk.toString().padLeft(6, '0'));
+      setState(() {});
+    }
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text(ok ? 'Passkey updated. New pairings use it.' : 'Passkey change failed'),
+    ));
+  }
+
   Future<void> _writeHardwareConfig() async {
     try {
       await ref.read(bleManagerProvider).writeHardwareConfig(
@@ -1450,6 +1555,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             extendedOui: _flockExtendedOui,
             allowOuiOnly: _flockAllowOuiOnly,
             offlineScan: _offlineScanEnabled,
+            radioPolicy: _radioPolicy,
           );
       ref.read(sharedPreferencesProvider)
           .setBool('offlineScanEnabled', _offlineScanEnabled);

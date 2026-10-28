@@ -60,7 +60,7 @@ class WigleApi {
   }
 
   /// Upload a WiGLE CSV file.
-  Future<WigleUploadResult> uploadCsv(File csvFile) async {
+  Future<WigleUploadResult> uploadCsv(File csvFile, {bool donate = true}) async {
     final bytes = await csvFile.length();
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(
@@ -68,7 +68,7 @@ class WigleApi {
         filename: csvFile.uri.pathSegments.last,
         contentType: DioMediaType('text', 'csv'),
       ),
-      'donate': 'on',
+      if (donate) 'donate': 'on',
     });
 
     final resp = await _guard(() => _dio.post(
@@ -85,6 +85,25 @@ class WigleApi {
       throw WigleApiException(data['message']?.toString() ?? 'Upload failed');
     }
     return WigleUploadResult.fromJson(data);
+  }
+
+  Future<WigleNetworkRecord?> networkDetail(String bssid) async {
+    final resp = await _guard(() => _dio.get('/network/detail', queryParameters: {'netid': bssid}));
+    final data = resp.data as Map<String, dynamic>;
+    if (data['success'] != true) {
+      final msg = data['message']?.toString() ?? '';
+      if (msg.toLowerCase().contains('not found') || msg.toLowerCase().contains('no results')) return null;
+      throw WigleApiException(msg.isEmpty ? 'Lookup failed' : msg);
+    }
+    final results = (data['results'] as List?) ?? const [];
+    if (results.isEmpty) return null;
+    final r = results.first as Map<String, dynamic>;
+    return WigleNetworkRecord(
+      lat: (r['trilat'] as num?)?.toDouble(),
+      lon: (r['trilong'] as num?)?.toDouble(),
+      ssid: r['ssid']?.toString(),
+      lastUpdate: r['lastupdt']?.toString(),
+    );
   }
 
   /// Get user's rank / standings.
@@ -107,6 +126,14 @@ class WigleApi {
   void dispose() {
     _dio.close();
   }
+}
+
+class WigleNetworkRecord {
+  const WigleNetworkRecord({this.lat, this.lon, this.ssid, this.lastUpdate});
+  final double? lat;
+  final double? lon;
+  final String? ssid;
+  final String? lastUpdate;
 }
 
 class WigleApiException implements Exception {

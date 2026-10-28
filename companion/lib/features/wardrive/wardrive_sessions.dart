@@ -392,7 +392,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                 Row(
                                   children: [
                                     Text(
-                                      d.macAddress.toUpperCase(),
+                                      maskMac(d.macAddress.toUpperCase(), ref.watch(privacyScreenProvider)),
                                       style: TextStyle(
                                         color: t.textPrimary, fontSize: 10,
                                         fontFamily: AppTheme.mono,
@@ -529,7 +529,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                 Row(
                                   children: [
                                     Text(
-                                      d.macAddress.toUpperCase(),
+                                      maskMac(d.macAddress.toUpperCase(), ref.watch(privacyScreenProvider)),
                                       style: TextStyle(
                                         color: t.textPrimary, fontSize: 10,
                                         fontFamily: AppTheme.mono,

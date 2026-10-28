@@ -176,6 +176,7 @@ class DetectorExtension with _$DetectorExtension {
   const factory DetectorExtension({
     String? filterDescription,
     @Default(false) bool isFullMac,
+    @Default(0) int confidence,
   }) = _DetectorExtension;
 
   factory DetectorExtension.fromJson(Map<String, dynamic> json) =>

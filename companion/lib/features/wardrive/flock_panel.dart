@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -106,14 +108,15 @@ class _FlockPanelState extends State<FlockPanel> {
   }
 }
 
-class _Row extends StatelessWidget {
+class _Row extends ConsumerWidget {
   const _Row({required this.d, this.onTap});
   final Detection d;
   final void Function(Detection)? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
+    final priv = ref.watch(privacyScreenProvider);
     final isBle = d.engine == Engine.flockBle;
     final color = isBle ? AppTheme.flockBle : AppTheme.flockWifi;
     final isRaven = d.flock?.isRaven ?? false;
@@ -136,7 +139,7 @@ class _Row extends StatelessWidget {
           Expanded(
             child: Row(children: [
               Text(
-                d.macAddress.toUpperCase(),
+                maskMac(d.macAddress.toUpperCase(), priv),
                 style: TextStyle(
                   color: t.textPrimary, fontSize: 9,
                   fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,

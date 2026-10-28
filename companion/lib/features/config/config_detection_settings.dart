@@ -2,7 +2,7 @@ part of 'device_config.dart';
 
 class _WatchItem {
   const _WatchItem(this.label, this.desc, this.icon,
-      {this.bits = 0, this.classes = const {}, this.flock = false, this.drone = false});
+      {this.bits = 0, this.classes = const {}, this.flock = false, this.drone = false, this.methods});
   final String label;
   final String desc;
   final IconData icon;
@@ -10,6 +10,7 @@ class _WatchItem {
   final Set<SignatureClass> classes;
   final bool flock;
   final bool drone;
+  final List<String>? methods;
 }
 
 const _watchGroups = <(String, List<_WatchItem>)>[
@@ -34,7 +35,10 @@ const _watchGroups = <(String, List<_WatchItem>)>[
         bits: sigFlipper | sigPwnagotchi, classes: {SignatureClass.hacking}),
     _WatchItem('Wi-Fi deauth attacks', 'Someone knocking devices off Wi-Fi', Icons.wifi_off, bits: sigDeauth),
     _WatchItem('Probe requests', 'Phones calling out for saved Wi-Fi names. Noisy in busy areas', Icons.wifi_find,
-        bits: sigProbe),
+        bits: sigProbe, methods: ['probe_ssid']),
+    _WatchItem('Rogue access points', 'Evil twins (a network name from a second radio of another vendor) and KARMA APs (one radio answering as many networks). Shares the probe switch', Icons.wifi_tethering_error,
+        bits: sigProbe, methods: ['evil_twin', 'karma']),
+    _WatchItem('Mesh radios', 'Meshtastic and MeshCore nodes', Icons.hub, bits: sigMesh),
   ]),
 ];
 
@@ -107,7 +111,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
 
     void setOn(_WatchItem w, bool v) {
       final sig = ref.read(detectorSigMaskProvider.notifier);
-      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera]) {
+      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera, sigMesh]) {
         if (w.bits & b != 0) sig.setBit(b, v);
       }
       for (final c in w.classes) {
@@ -121,9 +125,12 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           for (final c in w.classes) c.name,
           if (w.flock) 'flock',
           if (w.drone) 'drone',
-          for (final e in detectorMethodsByBit.entries)
-            if (w.bits & e.key != 0)
-              for (final m in e.value) 'det:$m',
+          if (w.methods case final ms?)
+            for (final m in ms) 'det:$m'
+          else
+            for (final e in detectorMethodsByBit.entries)
+              if (w.bits & e.key != 0)
+                for (final m in e.value) 'det:$m',
         ];
 
     return ListView(
@@ -161,6 +168,38 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           ],
           const SizedBox(height: 12),
         ],
+        ConfigSectionHeader(label: 'Privacy screen'),
+        ConfigToggleRow(
+          icon: Icons.visibility_off,
+          label: 'Mask identifiers on screen',
+          subtitle: 'Shows only the first two MAC bytes and the first three characters of names and SSIDs in detection lists, detail sheets, map lists and Devices. Display only: the database, exports and uploads keep full values, and Copy copies the real value.',
+          color: AppTheme.detector,
+          value: ref.watch(privacyScreenProvider),
+          onChanged: (v) => ref.read(privacyScreenProvider.notifier).set(v),
+        ),
+        const SizedBox(height: 12),
+        ConfigSectionHeader(label: 'Alert threshold'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6, left: 2, right: 2),
+          child: Text(
+            'Board signatures report how strong the evidence is. Suspected = one weak signal (a vendor OUI, a tracker seen for seconds). High = one specific signal. Verified = two independent signals. Hits below the threshold are still logged; Suspected hits arrive silently.',
+            style: TextStyle(color: t.textDim, fontSize: 12, height: 1.3),
+          ),
+        ),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('All')),
+              ButtonSegment(value: NotificationService.confHigh, label: Text('High+')),
+              ButtonSegment(value: NotificationService.confVerified, label: Text('Verified')),
+            ],
+            selected: {notif.minDetectorConfidence <= NotificationService.confSuspected ? 0 : notif.minDetectorConfidence},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => notif.setMinDetectorConfidence(s.first),
+          ),
+        ),
+        const SizedBox(height: 12),
         ConfigActionRow(
           icon: Icons.tune,
           label: 'More device types',
@@ -170,6 +209,13 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
         ),
         const SizedBox(height: 20),
         ConfigSectionHeader(label: 'Your lists'),
+        ConfigActionRow(
+          icon: Icons.manage_search,
+          label: 'Search all captures',
+          subtitle: 'Counts, GPS coverage and a search over every stored session and import, on this phone only',
+          color: AppTheme.detector,
+          onTap: () => context.push('/analysis'),
+        ),
         ConfigActionRow(
           icon: Icons.list_alt,
           label: 'Watchlist',

@@ -65,7 +65,19 @@ class AppState extends ChangeNotifier {
 
   // Detection counts per engine — unique MACs, not raw event count
   final Map<Engine, Set<String>> _uniqueMacsPerEngine = {};
-  int get totalDetections => _uniqueMacsPerEngine.values.fold(0, (a, b) => a + b.length);
+  final Map<Engine, int> _evictedMacsPerEngine = {};
+  static const uniqueMacCap = 50000;
+  int get totalDetections => Engine.values.fold(0, (a, e) => a + countForEngine(e));
+
+  bool _recordUniqueMac(Engine engine, String mac) {
+    final set = _uniqueMacsPerEngine.putIfAbsent(engine, () => <String>{});
+    final isNew = set.add(mac);
+    if (isNew && set.length > uniqueMacCap) {
+      set.remove(set.first);
+      _evictedMacsPerEngine[engine] = (_evictedMacsPerEngine[engine] ?? 0) + 1;
+    }
+    return isNew;
+  }
 
   // Per-engine last detection time
   final Map<Engine, DateTime> lastDetectionTime = {};
@@ -514,8 +526,7 @@ class AppState extends ChangeNotifier {
       if (_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
         return;
       }
-      final isNewMac = !(_uniqueMacsPerEngine[det.engine]?.contains(det.macAddress) ?? false);
-      (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
+      final isNewMac = _recordUniqueMac(det.engine, det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
       (_recentSeen[det.engine] ??= {})[det.macAddress] = DateTime.now();
       _upsertDetection(det);
@@ -608,7 +619,8 @@ class AppState extends ChangeNotifier {
         : EngineState.disabled;
   }
 
-  int countForEngine(Engine engine) => _uniqueMacsPerEngine[engine]?.length ?? 0;
+  int countForEngine(Engine engine) =>
+      (_uniqueMacsPerEngine[engine]?.length ?? 0) + (_evictedMacsPerEngine[engine] ?? 0);
 
   List<Detection> detectionsForEngine(Engine engine) {
     final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
@@ -629,7 +641,7 @@ class AppState extends ChangeNotifier {
 
   void _ingestOfflineDetection(Detection det) {
     if (det.sourceNodeId.isNotEmpty) _recordSeenNode(det.sourceNodeId);
-    (_uniqueMacsPerEngine[det.engine] ??= {}).add(det.macAddress);
+    _recordUniqueMac(det.engine, det.macAddress);
     lastDetectionTime[det.engine] = DateTime.now();
     _upsertDetection(det);
     _recordDroneTrack(det);
@@ -819,6 +831,7 @@ class AppState extends ChangeNotifier {
 
   void resetCounts() {
     _uniqueMacsPerEngine.clear();
+    _evictedMacsPerEngine.clear();
     recentDetections.clear();
     _dedupeIndex.clear();
     _droneTracks.clear();

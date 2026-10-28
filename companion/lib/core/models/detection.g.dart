@@ -216,6 +216,7 @@ _$DetectorExtensionImpl _$$DetectorExtensionImplFromJson(
 ) => _$DetectorExtensionImpl(
   filterDescription: json['filterDescription'] as String?,
   isFullMac: json['isFullMac'] as bool? ?? false,
+  confidence: (json['confidence'] as num?)?.toInt() ?? 0,
 );
 
 Map<String, dynamic> _$$DetectorExtensionImplToJson(
@@ -223,4 +224,5 @@ Map<String, dynamic> _$$DetectorExtensionImplToJson(
 ) => <String, dynamic>{
   'filterDescription': instance.filterDescription,
   'isFullMac': instance.isFullMac,
+  'confidence': instance.confidence,
 };

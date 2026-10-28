@@ -352,6 +352,25 @@ class BleManager {
   NodeConnectionState get currentConnectionState => _currentState;
   String get nodeId => _nodeId;
   String get board => _board;
+
+  static const supportedProtoVersion = 2;
+  int? _protoVersion;
+  int? _bootCount;
+  bool _spoolStorageOk = true;
+  bool _boardRestarted = true;
+  final _lastEpochByNode = <String, String>{};
+  int? get protoVersion => _protoVersion;
+  int? get bootCount => _bootCount;
+  bool get spoolStorageOk => _spoolStorageOk;
+  bool get boardRestarted => _boardRestarted;
+  String? _boardPasskey;
+  String? get boardPasskey => _boardPasskey;
+  void noteBoardPasskey(String pk) => _boardPasskey = pk;
+
+  static Map<String, String> deviceInfoKeyed(List<String> parts) => {
+        for (final p in parts)
+          if (p.indexOf('=') case final i when i > 0) p.substring(0, i): p.substring(i + 1),
+      };
   bool get isC5 => _board.endsWith('c5');
   String get role => _role;
   String? get connectedDeviceId => _primaryDeviceId ?? _lastDeviceId;
@@ -603,14 +622,14 @@ class BleManager {
   // -- Connection --
 
   /// Connect to a specific device and set up GATT subscriptions.
-  Future<void> connect(BluetoothDevice device, {required String sessionId}) async {
+  Future<void> connect(BluetoothDevice device, {required String sessionId, bool autoConnect = false}) async {
     if (_connecting) {
       DebugLog.log('BLE: connect in flight — ignoring duplicate ${device.remoteId}');
       return;
     }
     _connecting = true;
     try {
-      await _doConnect(device, sessionId: sessionId);
+      await _doConnect(device, sessionId: sessionId, autoConnect: autoConnect);
     } finally {
       _connecting = false;
       _isReconnect = false;
@@ -721,7 +740,9 @@ class BleManager {
     await _finishConnect(linkName: linkName, dropLink: session.close);
   }
 
-  Future<void> _doConnect(BluetoothDevice device, {required String sessionId}) async {
+  static const autoConnectWait = Duration(seconds: 20);
+
+  Future<void> _doConnect(BluetoothDevice device, {required String sessionId, bool autoConnect = false}) async {
     // Clean up previous subscriptions to prevent reconnect storm
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -735,11 +756,24 @@ class BleManager {
     _currentState = NodeConnectionState.connecting; _connectionState.add(NodeConnectionState.connecting);
 
     _lastDeviceId = device.remoteId.toString();
-    DebugLog.log('BLE: connecting to ${device.remoteId}');
-    await device.connect(
-      autoConnect: false,
-      timeout: const Duration(seconds: 15),
-    );
+    DebugLog.log('BLE: connecting to ${device.remoteId}${autoConnect ? ' (OS autoConnect)' : ''}');
+    if (autoConnect) {
+      await device.connect(autoConnect: true, mtu: null);
+      try {
+        await device.connectionState
+            .firstWhere((s) => s == BluetoothConnectionState.connected)
+            .timeout(autoConnectWait);
+      } on TimeoutException {
+        DebugLog.log('BLE: autoConnect did not complete in ${autoConnectWait.inSeconds}s — canceling');
+        await device.disconnect();
+        rethrow;
+      }
+    } else {
+      await device.connect(
+        autoConnect: false,
+        timeout: const Duration(seconds: 15),
+      );
+    }
     DebugLog.log('BLE: connected');
     if (_userInitiatedDisconnect || _device != device) {
       DebugLog.log('BLE: disconnect requested during connect — aborting');
@@ -788,6 +822,19 @@ class BleManager {
       DebugLog.log('BLE: requested high conn priority');
     } on FlutterBluePlusException catch (e) {
       DebugLog.log('BLE: conn priority unsupported: ${e.description}');
+    }
+
+    if (Platform.isAndroid) {
+      try {
+        final bond = await device.bondState.first;
+        if (bond != BluetoothBondState.bonded) {
+          DebugLog.log('BLE: not bonded ($bond) — pairing, the board passkey is requested by the OS');
+          await device.createBond(timeout: 90);
+          DebugLog.log('BLE: bonded');
+        }
+      } on FlutterBluePlusException catch (e) {
+        DebugLog.log('BLE: createBond failed: ${e.description}');
+      }
     }
 
     // Discover services
@@ -884,7 +931,20 @@ class BleManager {
     _nodeId = parts.length > 1 ? parts[1] : '';
     _board = parts.length > 2 ? parts[2] : '';
     _role = parts.length > 3 ? parts[3] : '';
-    DebugLog.log('BLE: nodeId=$_nodeId board=$_board role=$_role');
+    final kv = deviceInfoKeyed(parts);
+    _protoVersion = int.tryParse(kv['proto'] ?? '');
+    _bootCount = int.tryParse(kv['boot'] ?? '');
+    _spoolStorageOk = kv['spool'] != '0';
+    _boardPasskey = kv['pk'];
+    final epoch = kv['epoch'];
+    final prevEpoch = _lastEpochByNode[_nodeId];
+    _boardRestarted = epoch == null || prevEpoch == null || prevEpoch != epoch;
+    if (epoch != null) _lastEpochByNode[_nodeId] = epoch;
+    DebugLog.log('BLE: nodeId=$_nodeId board=$_board role=$_role proto=$_protoVersion boot=$_bootCount '
+        'epoch=$epoch restarted=$_boardRestarted spoolOk=$_spoolStorageOk');
+    if (_protoVersion != null && _protoVersion! > supportedProtoVersion) {
+      DebugLog.log('BLE: firmware protocol $_protoVersion is newer than this app ($supportedProtoVersion) — update the app');
+    }
     final expect = _reconnectExpectNodeId;
     if (expect != null && _nodeId != expect) {
       DebugLog.log('BLE: reconnect reached $_nodeId, expected $expect — dropping it untouched');
@@ -1019,6 +1079,20 @@ class BleManager {
               done: data[3],
               seen: data[4],
             ));
+          } else if (data[0] == 0x0F && data.length >= 8) {
+            _enowHubStream.add((
+              active: data[1] == 1,
+              nodes: data[2],
+              refuse: data[3],
+              records: data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24),
+            ));
+          } else if (data[0] == 0x0D && data.length >= 2) {
+            _passkeyAckStream.add(data[1] == 0);
+          } else if (data[0] == 0x0E && data.length >= 3) {
+            final mac = data.length >= 9
+                ? data.sublist(3, 9).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':').toUpperCase()
+                : '';
+            _ringResultStream.add((mac: mac, status: data[1], protocol: data[2]));
           }
         }),
       );
@@ -1062,6 +1136,62 @@ class BleManager {
       Uint8List.fromList([0x02, 0xC0, 0xDE]),
       withoutResponse: false,
     );
+  }
+
+  final _passkeyAckStream = StreamController<bool>.broadcast();
+  Stream<bool> get passkeyAcks => _passkeyAckStream.stream;
+  final _ringResultStream = StreamController<({String mac, int status, int protocol})>.broadcast();
+  Stream<({String mac, int status, int protocol})> get ringResults => _ringResultStream.stream;
+
+  final _enowHubStream = StreamController<({bool active, int nodes, int refuse, int records})>.broadcast();
+  Stream<({bool active, int nodes, int refuse, int records})> get enowHubStatus => _enowHubStream.stream;
+
+  Future<bool> enowHub({required bool start, String passphrase = '', List<String> allowlist = const []}) async {
+    if (_systemControl == null) return false;
+    final pass = utf8.encode(passphrase);
+    if (pass.length > 32 || allowlist.length > 8) return false;
+    final macs = <int>[];
+    for (final m in allowlist) {
+      final hex = m.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '');
+      if (hex.length != 12) return false;
+      for (var i = 0; i < 12; i += 2) {
+        macs.add(int.parse(hex.substring(i, i + 2), radix: 16));
+      }
+    }
+    await _systemControl!.write(
+      Uint8List.fromList(start
+          ? [0x0F, 0xC0, 0xDE, 1, pass.length, ...pass, allowlist.length, ...macs]
+          : [0x0F, 0xC0, 0xDE, 0]),
+      withoutResponse: false,
+    );
+    return true;
+  }
+
+  Future<void> enowHubPoll() async {
+    if (_systemControl == null) return;
+    await _systemControl!.write(Uint8List.fromList([0x0F, 0xC0, 0xDE, 2]), withoutResponse: false);
+  }
+
+  Future<bool> setPasskey(int passkey) async {
+    if (_systemControl == null || passkey < 0 || passkey > 999999) return false;
+    await _systemControl!.write(
+      Uint8List.fromList([0x0D, 0xC0, 0xDE, passkey & 0xFF, (passkey >> 8) & 0xFF, (passkey >> 16) & 0xFF, (passkey >> 24) & 0xFF]),
+      withoutResponse: false,
+    );
+    return true;
+  }
+
+  Future<bool> ringTracker(String mac) async {
+    if (_systemControl == null) return false;
+    final hex = mac.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '');
+    if (hex.length != 12) return false;
+    final bytes = [for (var i = 0; i < 12; i += 2) int.parse(hex.substring(i, i + 2), radix: 16)];
+    final random = (bytes[0] & 0xC0) != 0;
+    await _systemControl!.write(
+      Uint8List.fromList([0x0E, 0xC0, 0xDE, ...bytes, random ? 1 : 0]),
+      withoutResponse: false,
+    );
+    return true;
   }
 
   Future<void> requestSpoolFlush() async {
@@ -1364,8 +1494,8 @@ class BleManager {
       return;
     }
     await _detectorConfig!
-        .write(Uint8List.fromList([0x03, mask & 0xFF]), withoutResponse: false);
-    DebugLog.log('BLE: detector sigmask=0x${(mask & 0xFF).toRadixString(16)}');
+        .write(Uint8List.fromList([0x03, mask & 0xFF, (mask >> 8) & 0xFF]), withoutResponse: false);
+    DebugLog.log('BLE: detector sigmask=0x${(mask & 0xFFFF).toRadixString(16)}');
   }
 
   static int? _parseUuid16(String s) {
@@ -1524,6 +1654,7 @@ class BleManager {
     bool extendedOui = false,
     bool offlineScan = false,
     bool allowOuiOnly = false,
+    int? radioPolicy,
   }) async {
     if (_hardwareConfig == null) return;
     await _hardwareConfig!.write(
@@ -1535,6 +1666,7 @@ class BleManager {
         extendedOui: extendedOui,
         offlineScan: offlineScan,
         allowOuiOnly: allowOuiOnly,
+        radioPolicy: radioPolicy,
       ),
     );
   }
@@ -1909,7 +2041,8 @@ class BleManager {
       final expectNodeId = _nodeId;
       final expectRole = _role;
       final expectMgr = expectRole == 'mgr';
-      var found = await _scanForRemoteId(target.remoteId.toString());
+      final useAuto = Platform.isAndroid && _reconnectAttempt.isOdd;
+      var found = useAuto ? target : await _scanForRemoteId(target.remoteId.toString());
       if (found == null && expectNodeId.isNotEmpty) {
         found = await _scanForSameRole(expectMgr, exclude: _reconnectRejected);
         if (found != null) {
@@ -1926,7 +2059,7 @@ class BleManager {
       _isReconnect = true;
       _reconnectExpectNodeId = expectNodeId.isEmpty ? null : expectNodeId;
       try {
-        await connect(found, sessionId: _sessionId);
+        await connect(found, sessionId: _sessionId, autoConnect: useAuto);
       } catch (e) {
         DebugLog.log('BLE: reconnect attempt failed: $e');
       } finally {

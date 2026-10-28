@@ -47,6 +47,7 @@ class WigleCsv {
     for (final d in detections) {
       if (d.method == 'wifi_client') continue;
       if (d.latitude == null || d.longitude == null) continue;
+      if (d.approxGps) continue;
 
       if (ignoreList != null) {
         final isBle = d.isBleDetection;

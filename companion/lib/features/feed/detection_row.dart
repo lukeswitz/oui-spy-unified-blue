@@ -14,6 +14,11 @@ import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
+import 'package:oui_spy/core/privacy.dart';
+import 'package:oui_spy/core/wigle/wigle_api.dart';
+import 'package:oui_spy/core/wigle/wigle_provider.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
@@ -44,6 +49,7 @@ class DetectionRow extends ConsumerWidget {
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
+    final priv = ref.watch(privacyScreenProvider);
 
     return Listener(
       onPointerDown: (event) {
@@ -71,12 +77,16 @@ class DetectionRow extends ConsumerWidget {
           final gap = (box.maxWidth * 0.04).clamp(12.0, 32.0);
           final clsStr = detectionAlertClass[detection];
           final sig = clsStr == null ? null : SignatureClass.parse(clsStr);
+          final sdrCat =
+              detection.engine == Engine.sdr ? _sdrCategory(detection) : null;
           final clsColor = clsStr == null ? engine.color : alertKindColor(clsStr);
           final clsLabel =
               (clsStr == null ? engine.label : alertKindLabel(clsStr)).toUpperCase();
           final icon = sig != null
               ? classIcon(sig)
-              : (detection.isWifiDetection ? Icons.wifi : Icons.bluetooth);
+              : sdrCat != null
+                  ? sdrCat.icon
+                  : (detection.isWifiDetection ? Icons.wifi : Icons.bluetooth);
           final isWifi = detection.isWifiDetection;
           final authMode = detection.wardrive?.authMode ?? 0;
           return Row(
@@ -92,7 +102,7 @@ class DetectionRow extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      headline,
+                      headlineIsMac ? maskMac(headline, priv) : maskName(headline, priv),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -113,6 +123,16 @@ class DetectionRow extends ConsumerWidget {
                           if (OuiLookupService.isLawEnforcement(detection.macAddress)) ...[
                             Icon(Icons.local_police, size: 14, color: AppTheme.warning),
                             const SizedBox(width: 6),
+                          ],
+                          if (sdrCat != null) ...[
+                            Text(sdrCat.label.toUpperCase(),
+                                style: TextStyle(
+                                    color: clsColor,
+                                    fontFamily: AppTheme.mono,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.6)),
+                            const SizedBox(width: 9),
                           ],
                           if (headlineIsMac && clsStr != null) ...[
                             Text(
@@ -157,7 +177,7 @@ class DetectionRow extends ConsumerWidget {
                             const SizedBox(width: 9),
                           ],
                           if (!headlineIsMac) ...[
-                            Text(detection.macAddress.toUpperCase(),
+                            Text(maskMac(detection.macAddress.toUpperCase(), priv),
                                 style: TextStyle(
                                     color: dim,
                                     fontFamily: AppTheme.mono,
@@ -251,6 +271,60 @@ void detectionStartFoxhunt(
   );
 }
 
+Future<void> _wigleLookup(BuildContext ctx, WidgetRef ref, Detection d) async {
+  String text;
+  try {
+    final rec = await ref.read(wigleProvider).lookupNetwork(d.macAddress);
+    if (rec == null) {
+      text = 'WiGLE has no record of this BSSID. A new AP using an established network name fits an evil twin.';
+    } else if (rec.lat == null || rec.lon == null || d.latitude == null || d.longitude == null) {
+      text = 'WiGLE has this BSSID${rec.ssid != null ? ' as "${rec.ssid}"' : ''}, last updated ${rec.lastUpdate ?? 'unknown'}. '
+          '${d.latitude == null ? 'This sighting has no GPS, so distance cannot be compared.' : 'WiGLE gave no position.'}';
+    } else {
+      final km = const Distance().as(LengthUnit.Meter, LatLng(rec.lat!, rec.lon!), LatLng(d.latitude!, d.longitude!)) / 1000;
+      text = 'WiGLE records this BSSID${rec.ssid != null ? ' as "${rec.ssid}"' : ''} ${km.toStringAsFixed(km < 10 ? 2 : 0)} km from this sighting '
+          '(last updated ${rec.lastUpdate ?? 'unknown'}). ${km < 1 ? 'Recorded here: consistent with a legitimate AP.' : 'Recorded elsewhere: the hardware moved, or it is cloning that BSSID.'}';
+    }
+  } on WigleApiException catch (e) {
+    text = e.message;
+  } catch (e) {
+    text = 'WiGLE lookup failed: $e';
+  }
+  if (!ctx.mounted) return;
+  await showDialog<void>(
+    context: ctx,
+    builder: (c) => AlertDialog(
+      title: const Text('WiGLE lookup'),
+      content: Text(text),
+      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+    ),
+  );
+}
+
+Future<void> _ringTracker(BuildContext ctx, WidgetRef ref, String mac) async {
+  final ble = ref.read(bleManagerProvider);
+  final messenger = ScaffoldMessenger.maybeOf(ctx);
+  messenger?.showSnackBar(const SnackBar(content: Text('Board is connecting to the tracker…')));
+  final result = ble.ringResults
+      .firstWhere((r) => r.mac.isEmpty || r.mac == mac.toUpperCase())
+      .timeout(const Duration(seconds: 20), onTimeout: () => (mac: mac, status: 0xFF, protocol: 0xFF));
+  if (!await ble.ringTracker(mac)) {
+    messenger?.showSnackBar(const SnackBar(content: Text('Could not send the ring command')));
+    return;
+  }
+  final r = await result;
+  messenger?.showSnackBar(SnackBar(
+    content: Text(switch (r.status) {
+      0 => 'Sound command sent. Listen for the tracker.',
+      1 => 'Board is busy with another ring',
+      2 => 'Tracker did not accept a connection (out of range, or not separated from its owner)',
+      3 => 'Tracker has no known sound service',
+      4 => 'Tracker refused the sound command',
+      _ => 'No answer from the board',
+    }),
+  ));
+}
+
 void showDetectionDetails(
     BuildContext context, WidgetRef ref, Detection detection,
     {bool showMapAction = true,
@@ -268,15 +342,25 @@ void showDetectionDetails(
           .read(deflockProvider)
           .ensureAround(detection.latitude!, detection.longitude!);
     }
-    final title = detection.deviceName.isNotEmpty
+    final priv = ref.read(privacyScreenProvider);
+    final rawTitle = detection.deviceName.isNotEmpty
         ? detection.deviceName
         : _headline(detection, vendor);
+    final title = rawTitle == detection.macAddress.toUpperCase()
+        ? maskMac(rawTitle, priv)
+        : maskName(rawTitle, priv);
+    final detTier = NotificationService.confidenceLabel(detection.detector?.confidence ?? 0);
     final confidence = detection.flock
-        ?.confidence(detection.method)
-        .label(detection.method);
+            ?.confidence(detection.method)
+            .label(detection.method) ??
+        (detTier == null ? null : '${detTier.toUpperCase()} CONFIDENCE');
+    final canRing = detection.engine == Engine.detector &&
+        detection.method == 'tracker' &&
+        ref.read(appStateProvider).isConnected;
+    final shownMac = maskMac(detection.macAddress.toUpperCase(), priv);
     final macLine = vendor != null && vendor.isNotEmpty
-        ? '${detection.macAddress.toUpperCase()} · $vendor'
-        : detection.macAddress.toUpperCase();
+        ? '$shownMac · $vendor'
+        : shownMac;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -404,6 +488,24 @@ void showDetectionDetails(
                       ],
                     ),
                   ),
+                  if (detection.method == 'evil_twin' ||
+                      detection.method == 'karma' ||
+                      detection.method == 'wifi_ap') ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.travel_explore, size: 18),
+                      label: const Text('Check this AP on WiGLE'),
+                      onPressed: () => _wigleLookup(ctx, ref, detection),
+                    ),
+                  ],
+                  if (canRing) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.volume_up, size: 18),
+                      label: const Text('Make it play a sound'),
+                      onPressed: () => _ringTracker(ctx, ref, detection.macAddress),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -540,7 +642,7 @@ class _DetailSummary extends ConsumerWidget {
         }
       }
     } else if (detection.ssid.isNotEmpty) {
-      rows.add(_detailRow(context, 'SSID', detection.ssid));
+      rows.add(_detailRow(context, 'SSID', maskName(detection.ssid, ref.watch(privacyScreenProvider))));
     }
     if (detection.wardrive != null) {
       rows.add(_detailRow(context, 'Security', _authLabel(detection.wardrive!.authMode)));
@@ -805,6 +907,23 @@ String _authShort(int mode) => switch (mode) {
       _ => 'WPA2',
     };
 
+Sdr433Category? _sdrCategory(Detection d) {
+  if (d.ssid.isEmpty) return null;
+  Map<String, dynamic>? p;
+  try {
+    final decoded = jsonDecode(d.ssid);
+    if (decoded is Map<String, dynamic>) p = decoded;
+  } on FormatException {
+    return null;
+  }
+  if (p == null) return null;
+  return classify433(
+    (p['model'] as String?) ?? '',
+    p.keys,
+    devType: (p['kind'] as String?) ?? '',
+  );
+}
+
 String _headline(Detection d, String? manufacturer) {
   if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;
   if (d.deviceName.isNotEmpty) return d.deviceName;
@@ -855,7 +974,11 @@ String methodLabel(String method) => switch (method) {
   'raven_uuid' => 'RAVEN UUID',
   'gatt_uuid' => 'FLOCK GATT',
   'nordic_dfu' => 'NORDIC DFU',
-  'tracker' => 'FIND MY',
+  'tracker' => 'TRACKER',
+  'evil_twin' => 'EVIL TWIN',
+  'karma' => 'KARMA AP',
+  'mesh' => 'MESH RADIO',
+  'drone_vendor' => 'DRONE OUI',
   'flipper' => 'FLIPPER',
   'deauth_storm' => 'DEAUTH',
   'probe_ssid' => 'PROBE',

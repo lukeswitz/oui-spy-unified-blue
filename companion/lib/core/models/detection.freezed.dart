@@ -2309,6 +2309,7 @@ DetectorExtension _$DetectorExtensionFromJson(Map<String, dynamic> json) {
 mixin _$DetectorExtension {
   String? get filterDescription => throw _privateConstructorUsedError;
   bool get isFullMac => throw _privateConstructorUsedError;
+  int get confidence => throw _privateConstructorUsedError;
 
   /// Serializes this DetectorExtension to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
@@ -2327,7 +2328,7 @@ abstract class $DetectorExtensionCopyWith<$Res> {
     $Res Function(DetectorExtension) then,
   ) = _$DetectorExtensionCopyWithImpl<$Res, DetectorExtension>;
   @useResult
-  $Res call({String? filterDescription, bool isFullMac});
+  $Res call({String? filterDescription, bool isFullMac, int confidence});
 }
 
 /// @nodoc
@@ -2344,7 +2345,11 @@ class _$DetectorExtensionCopyWithImpl<$Res, $Val extends DetectorExtension>
   /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
-  $Res call({Object? filterDescription = freezed, Object? isFullMac = null}) {
+  $Res call({
+    Object? filterDescription = freezed,
+    Object? isFullMac = null,
+    Object? confidence = null,
+  }) {
     return _then(
       _value.copyWith(
             filterDescription: freezed == filterDescription
@@ -2355,6 +2360,10 @@ class _$DetectorExtensionCopyWithImpl<$Res, $Val extends DetectorExtension>
                 ? _value.isFullMac
                 : isFullMac // ignore: cast_nullable_to_non_nullable
                       as bool,
+            confidence: null == confidence
+                ? _value.confidence
+                : confidence // ignore: cast_nullable_to_non_nullable
+                      as int,
           )
           as $Val,
     );
@@ -2370,7 +2379,7 @@ abstract class _$$DetectorExtensionImplCopyWith<$Res>
   ) = __$$DetectorExtensionImplCopyWithImpl<$Res>;
   @override
   @useResult
-  $Res call({String? filterDescription, bool isFullMac});
+  $Res call({String? filterDescription, bool isFullMac, int confidence});
 }
 
 /// @nodoc
@@ -2386,7 +2395,11 @@ class __$$DetectorExtensionImplCopyWithImpl<$Res>
   /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
-  $Res call({Object? filterDescription = freezed, Object? isFullMac = null}) {
+  $Res call({
+    Object? filterDescription = freezed,
+    Object? isFullMac = null,
+    Object? confidence = null,
+  }) {
     return _then(
       _$DetectorExtensionImpl(
         filterDescription: freezed == filterDescription
@@ -2397,6 +2410,10 @@ class __$$DetectorExtensionImplCopyWithImpl<$Res>
             ? _value.isFullMac
             : isFullMac // ignore: cast_nullable_to_non_nullable
                   as bool,
+        confidence: null == confidence
+            ? _value.confidence
+            : confidence // ignore: cast_nullable_to_non_nullable
+                  as int,
       ),
     );
   }
@@ -2408,6 +2425,7 @@ class _$DetectorExtensionImpl implements _DetectorExtension {
   const _$DetectorExtensionImpl({
     this.filterDescription,
     this.isFullMac = false,
+    this.confidence = 0,
   });
 
   factory _$DetectorExtensionImpl.fromJson(Map<String, dynamic> json) =>
@@ -2418,10 +2436,13 @@ class _$DetectorExtensionImpl implements _DetectorExtension {
   @override
   @JsonKey()
   final bool isFullMac;
+  @override
+  @JsonKey()
+  final int confidence;
 
   @override
   String toString() {
-    return 'DetectorExtension(filterDescription: $filterDescription, isFullMac: $isFullMac)';
+    return 'DetectorExtension(filterDescription: $filterDescription, isFullMac: $isFullMac, confidence: $confidence)';
   }
 
   @override
@@ -2432,12 +2453,14 @@ class _$DetectorExtensionImpl implements _DetectorExtension {
             (identical(other.filterDescription, filterDescription) ||
                 other.filterDescription == filterDescription) &&
             (identical(other.isFullMac, isFullMac) ||
-                other.isFullMac == isFullMac));
+                other.isFullMac == isFullMac) &&
+            (identical(other.confidence, confidence) ||
+                other.confidence == confidence));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(runtimeType, filterDescription, isFullMac);
+  int get hashCode => Object.hash(runtimeType, filterDescription, isFullMac, confidence);
 
   /// Create a copy of DetectorExtension
   /// with the given fields replaced by the non-null parameter values.
@@ -2460,6 +2483,7 @@ abstract class _DetectorExtension implements DetectorExtension {
   const factory _DetectorExtension({
     final String? filterDescription,
     final bool isFullMac,
+    final int confidence,
   }) = _$DetectorExtensionImpl;
 
   factory _DetectorExtension.fromJson(Map<String, dynamic> json) =
@@ -2469,6 +2493,8 @@ abstract class _DetectorExtension implements DetectorExtension {
   String? get filterDescription;
   @override
   bool get isFullMac;
+  @override
+  int get confidence;
 
   /// Create a copy of DetectorExtension
   /// with the given fields replaced by the non-null parameter values.

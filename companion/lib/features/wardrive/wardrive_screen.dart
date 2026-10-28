@@ -39,6 +39,7 @@ import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/deflock/deflock_api.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
+import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 import 'package:share_plus/share_plus.dart';
@@ -1088,7 +1089,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final zoomScale = ((zoom - 12.0) / 5.0).clamp(0.55, 1.7);
 
     final priority = <Detection>[];
-    final clusterable = <Detection>[];
+    final strongestByDevice = <String, Detection>{};
     for (final d in geoDetections) {
       final isFlock = d.engine == Engine.flockBle || d.engine == Engine.flockWifi;
       final isDrone = d.engine == Engine.skySpy;
@@ -1096,9 +1097,12 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       if (isFlock || isDrone || isDetector || isAlerted(d)) {
         priority.add(d);
       } else {
-        clusterable.add(d);
+        final k = '${d.engine.name}|${d.macAddress}';
+        final prev = strongestByDevice[k];
+        if (prev == null || d.rssi > prev.rssi) strongestByDevice[k] = d;
       }
     }
+    final clusterable = strongestByDevice.values.toList();
 
     final droneById = <String, Detection>{};
     final priorityDeduped = <Detection>[];
@@ -1139,16 +1143,32 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final engineMix = <Map<Engine, int>>[];
     final sumLat = <double>[];
     final sumLon = <double>[];
-    final cellToIdx = <int, int>{};
+    final cellClusters = <int, List<int>>{};
     final clusterIdxOf = <int>[]; // parallel to clusterable
+    int cellKey(int gx, int gy) => (gx & 0x3FFFFFF) << 26 | (gy & 0x3FFFFFF);
     for (final d in clusterable) {
-      final gx = (d.latitude! * 111320.0 / cellM).floor();
-      final gy = (d.longitude! * 111320.0 * cosMean / cellM).floor();
-      final key = (gx & 0x3FFFFFF) << 26 | (gy & 0x3FFFFFF);
-      var idx = cellToIdx[key];
+      final yM = d.latitude! * 111320.0;
+      final xM = d.longitude! * 111320.0 * cosMean;
+      final gx = (yM / cellM).floor();
+      final gy = (xM / cellM).floor();
+      int? idx;
+      var bestM2 = bucketRadiusM * bucketRadiusM;
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          for (final c in cellClusters[cellKey(gx + dx, gy + dy)] ?? const <int>[]) {
+            final cy = sumLat[c] / counts[c] * 111320.0;
+            final cx = sumLon[c] / counts[c] * 111320.0 * cosMean;
+            final d2 = (cy - yM) * (cy - yM) + (cx - xM) * (cx - xM);
+            if (d2 <= bestM2) {
+              bestM2 = d2;
+              idx = c;
+            }
+          }
+        }
+      }
       if (idx == null) {
         idx = centers.length;
-        cellToIdx[key] = idx;
+        (cellClusters[cellKey(gx, gy)] ??= <int>[]).add(idx);
         centers.add(LatLng(d.latitude!, d.longitude!));
         counts.add(0);
         engineMix.add(<Engine, int>{});
