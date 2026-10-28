@@ -350,6 +350,11 @@ class BleManager {
       (_device?.isConnected ?? false);
 
   NodeConnectionState get currentConnectionState => _currentState;
+
+  bool get isLinkSetup =>
+      _currentState == NodeConnectionState.connecting ||
+      _currentState == NodeConnectionState.negotiating ||
+      _currentState == NodeConnectionState.syncing;
   String get nodeId => _nodeId;
   String get board => _board;
 

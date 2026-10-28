@@ -207,6 +207,18 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _apply();
   }
 
+  bool _linkBusy = false;
+
+  void setLinkBusy(bool busy) {
+    if (busy == _linkBusy) return;
+    _linkBusy = busy;
+    if (busy) {
+      if (_ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
+    } else {
+      _kick();
+    }
+  }
+
   void setBoardAllows(bool allow) {
     if (allow == _boardAllows) return;
     _boardAllows = allow;
@@ -321,7 +333,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   Future<void> _kick() async {
-    if (!scanning || radioMask & 0x02 == 0 || FlutterBluePlus.isScanningNow) return;
+    if (_linkBusy || !scanning || radioMask & 0x02 == 0 || FlutterBluePlus.isScanningNow) return;
     if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
     _lastKick = DateTime.now();
     _ownScan = true;
@@ -707,6 +719,10 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;
   src.onWifi = ref.read(bleManagerProvider).addPhoneWifiDetection;
   src.onFoxRssi = ref.read(bleManagerProvider).addPhoneFoxRssi;
+  final ble = ref.read(bleManagerProvider);
+  src.setLinkBusy(ble.isLinkSetup);
+  final linkSub = ble.connectionState.listen((_) => src.setLinkBusy(ble.isLinkSetup));
+  ref.onDispose(linkSub.cancel);
   bool sessionRunning() => ref.read(wardriveProvider).state == WardriveState.running;
   bool boardAllows(AppState s) => sessionRunning() || (s.isConnected && s.activeEngines != 0);
   void sync(AppState s) {

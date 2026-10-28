@@ -88,6 +88,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   Future<void> _startScan() async {
     if (_scanning) return;
+    if (ref.read(bleManagerProvider).isLinkSetup) return;
 
     final perm = await BlePermissions.ensureForScan();
     if (!mounted) return;

@@ -1053,7 +1053,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         uint16_t h = info.getConnHandle();
         BlePeer* slot = blePeerFind(BLE_HS_CONN_HANDLE_NONE);
         if (slot) { slot->handle = h; slot->sinceMs = millis(); slot->authed = false; }
-        server->updateConnParams(h, 12, 24, 0, 600);
+        server->updateConnParams(h, 12, 24, 0, 3000);
         if (info.isEncrypted() && info.isAuthenticated()) {
             if (slot) slot->authed = true;
             onConnect(server);
@@ -1099,7 +1099,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 
 #if !OUISPY_BLE_SECURE
         uint16_t connHandle = server->getPeerInfo(0).getConnHandle();
-        server->updateConnParams(connHandle, 12, 24, 0, 600);
+        server->updateConnParams(connHandle, 12, 24, 0, 3000);
 #endif
         Serial.println("[BLE] Phone connected, requested fast conn params");
 #if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
