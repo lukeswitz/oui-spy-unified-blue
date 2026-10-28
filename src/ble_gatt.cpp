@@ -959,6 +959,7 @@ static uint8_t s_irk[16];
 static bool s_irkReady = false;
 
 static void bleStableBtIdentity(void) {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     uint8_t m[6];
     Preferences p;
     p.begin("ouispy-ble", false);
@@ -971,6 +972,7 @@ static void bleStableBtIdentity(void) {
     p.end();
     esp_err_t e = esp_iface_mac_addr_set(m, ESP_MAC_BT);
     Serial.printf("[BLE] stable BT identity: %s\n", e == ESP_OK ? "ok" : esp_err_to_name(e));
+#endif
 }
 
 static bool bleUseStableAddress(void) {
