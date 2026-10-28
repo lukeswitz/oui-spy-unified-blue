@@ -1791,6 +1791,7 @@ class BleManager {
       DebugLog.log('BLE: device.disconnect failed: ${e.description}');
     }
     _device = null;
+    _role = '';
     await _closeUsb();
     _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
   }
@@ -1821,6 +1822,7 @@ class BleManager {
       DebugLog.log('BLE: quiet disconnect failed: ${e.description}');
     }
     _device = null;
+    _role = '';
     await _closeUsb();
     _currentState = NodeConnectionState.disconnected;
     _connectionState.add(NodeConnectionState.disconnected);
