@@ -60,6 +60,7 @@
 
 - **Together:** the board keeps detecting while the phone foxhunts a device it found, or both scan into one session.
 - **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot.
+- **Private Bluetooth link**: the board advertises a rotating private address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. The XIAO C5, S3 and C3 use the chip's own address resolver; older ESP32 boards resolve it in the Bluetooth host.
 
 ## Boards
 
@@ -190,7 +191,7 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 </div>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
-- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a row to foxhunt or map it; SHOW ALL on the map shows its whole class.
+- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a hit to open its detail: a plain-English identification with the reason, the signal strength, the decoded advertisement, the services it offers, and when it was first and last seen, plus buttons to foxhunt or map it. SHOW ALL on the map shows its whole class.
 - **Classification**: OUI vendor categories, Bluetooth SIG company and service IDs, AntiHunter tables, Fieldwatch signatures. Each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …), a confidence dot, and its decoded advertisement (Apple Continuity type, manufacturer data, service UUIDs). Class alerts are on by default.
 - **Phone scan**: phone icon in the status bar, off at launch. Android scans Bluetooth and Wi-Fi, with or without a board; iPhone and Mac scan Bluetooth only. Hits show as node PHONE. iOS hides MACs, so iPhone hits skip WiGLE CSV.
 - **USB radios**: on Android, an external USB Wi-Fi adapter or an RTL-SDR plugs into the phone and scans in user space, no root needed. See [USB radios on Android](#usb-radios-on-android).

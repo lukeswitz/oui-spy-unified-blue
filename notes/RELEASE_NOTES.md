@@ -35,6 +35,7 @@
 - SDR SCAN now skips decoders that have no checksum, matching rtl_433's defaults, so ambiguous signals no longer show as false devices.
 - Detects Bluetooth adult toys as their own class.
 - USB Wi-Fi adapters on Android (MediaTek, Realtek, Atheros, Ralink) scan in monitor mode, user space, no root; the MT7921AU also scans Bluetooth LE.
+- Tap a Bluetooth or Wi-Fi detection to see a plain-English identification, why the app thinks that, the signal strength, the decoded advertisement, and when the device was first and last seen.
 
 ## Changed
 
@@ -46,7 +47,8 @@
 - WiGLE sessions start without waiting for a GPS fix.
 - Classifier: iBeacon now "Beacons", Honeywell moved to industrial.
 - Shorter notification body: RSSI, channel, name, MAC.
-- App reconnects to a rebooted board by node ID.
+- The board advertises a rotating private Bluetooth address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. On XIAO C5, S3 and C3 the chip's own address resolver does this.
+- The status bar shows a board icon while connected and a clearer GPS label. The connection timer is gone.
 
 ## Fixed
 
@@ -70,3 +72,5 @@
 - SDR no longer slows the app or hangs on exit during a scan.
 - SDR band choice (315 / 433 / 915) is kept when you leave and reopen the screen.
 - Spectrum view shows frequency labels along the bottom axis again.
+- A connected phone dropped a few seconds after its screen went idle.
+- Connecting to a board stalled when a phone scan was running at the same time.
