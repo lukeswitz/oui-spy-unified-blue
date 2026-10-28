@@ -815,7 +815,7 @@ class BleManager {
       await device.connect(autoConnect: true, mtu: null);
       try {
         await device.connectionState
-            .firstWhere((s) => s == BluetoothConnectionState.connected)
+            .firstWhere((s) => s == BluetoothConnectionState.connected || _userInitiatedDisconnect)
             .timeout(autoConnectWait);
       } on TimeoutException {
         DebugLog.log('BLE: autoConnect did not complete in ${autoConnectWait.inSeconds}s — canceling');
@@ -828,12 +828,12 @@ class BleManager {
         timeout: const Duration(seconds: 15),
       );
     }
-    DebugLog.log('BLE: connected');
     if (_userInitiatedDisconnect || _device != device) {
       DebugLog.log('BLE: disconnect requested during connect — aborting');
       await device.disconnect();
       return;
     }
+    DebugLog.log('BLE: connected');
 
     _subscriptions.add(
       device.connectionState.listen((state) {
