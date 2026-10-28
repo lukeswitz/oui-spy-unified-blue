@@ -629,6 +629,22 @@ class DeviceRegistry extends ChangeNotifier {
     _dirty = true;
   }
 
+  /// Classify one detection for the detail view; live entry if present, else on the fly. No state change.
+  ClassifiedDevice explain(Detection d) {
+    final o = observationFromDetection(d);
+    final live = _devices[o.key];
+    if (live != null) return live;
+    final engine = _engine;
+    final sigs = <Signature>[...?engine?.match(o)];
+    return _withKin(ClassifiedDevice(
+      o,
+      sigs,
+      const {},
+      vendor: o.mac.isEmpty ? null : vendorOf?.call(o.mac),
+      baseVendor: _baseVendor(o),
+    ));
+  }
+
   ClassifiedDevice _withKin(ClassifiedDevice base) {
     final o = base.obs;
     if (o.kind != RadioKind.ble) return base;

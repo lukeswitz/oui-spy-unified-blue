@@ -8,7 +8,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/classify/adv_decoder.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
+import 'package:oui_spy/core/classify/device_explain.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/core/classify/fleet_decode.dart';
+import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
@@ -444,6 +449,7 @@ void showDetectionDetails(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _DetectionInsights(detection: detection, t: t),
                     _DetailSummary(
                         detection: detection,
                         t: t,
@@ -580,6 +586,123 @@ void showDetectionDetails(
 }
 
 /// Detail summary shown in bottom sheet.
+class _DetectionInsights extends ConsumerWidget {
+  const _DetectionInsights({required this.detection, required this.t});
+  final Detection detection;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!detection.isBleDetection && !detection.isWifiDetection) {
+      return const SizedBox.shrink();
+    }
+    final dev = ref.read(deviceRegistryProvider).explain(detection);
+    final o = dev.obs;
+    final g = dev.guess;
+
+    final adv = <AdvField>[
+      for (final m in o.mfgRecords) ...AdvPayloadDecoder.decodeManufacturer(m),
+      for (final s in o.serviceData) ...AdvPayloadDecoder.decodeService(s),
+    ];
+    final decoded = <DecodedField>[
+      for (final s in dev.signatures)
+        if (s.decode case final d?) ...FleetDecode.decode(d, o),
+    ];
+
+    Widget row(String k, String v, {bool mono = false}) =>
+        DSpecRow(label: k, value: v, mono: mono);
+    Widget section(String label, List<Widget> rows) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 2),
+                child: DEyebrow(label)),
+            ...rows,
+          ],
+        );
+
+    final sections = <Widget>[];
+
+    if (g.headline.isNotEmpty) {
+      sections.add(section('WHAT THIS LOOKS LIKE', [
+        Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 4),
+          child: Text(g.headline,
+              style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600)),
+        ),
+        if (g.because.isNotEmpty)
+          Text(g.because,
+              style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.3)),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: DEyebrow('${_confWord(g.confidence)} confidence',
+              color: _confColor(g.confidence)),
+        ),
+      ]));
+    }
+
+    sections.add(section('IDENTITY', [
+      if (dev.vendor != null && dev.vendor!.isNotEmpty) row('Vendor', dev.vendor!),
+      row('Address', DeviceExplain.addressExplain(o)),
+      if (o.kind == RadioKind.wifi && o.hiddenSsid) row('SSID', 'Hidden'),
+    ]));
+
+    if (DeviceExplain.rssiMeasured(o.rssi)) {
+      sections.add(section('SIGNAL', [
+        row('Strength', DeviceExplain.rssiExplain(o.rssi)),
+        if (o.rssiMin != o.rssiMax)
+          row('Range this session', '${o.rssiMin} to ${o.rssiMax} dBm'),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text('Closer to 0 dBm is louder here, not a distance.',
+              style: TextStyle(color: t.textDim, fontSize: 11)),
+        ),
+      ]));
+    }
+
+    if (decoded.isNotEmpty) {
+      sections.add(section('DECODED', [
+        for (final f in decoded)
+          row(f.label, f.note.isEmpty ? f.display : '${f.display}\n${f.note}'),
+      ]));
+    }
+    if (adv.isNotEmpty) {
+      sections.add(section('ADVERTISEMENT', [for (final f in adv) row(f.label, f.value)]));
+    }
+    if (o.serviceUuids.isNotEmpty) {
+      sections.add(section('SERVICES', [
+        for (final u in o.serviceUuids)
+          row(u, DeviceExplain.uuidGloss(u) ?? '', mono: true),
+      ]));
+    }
+
+    sections.add(section('SESSION', [
+      row('First seen', _stamp(o.firstSeenMs)),
+      row('Last seen', _stamp(o.lastSeenMs)),
+      if (detection.count > 1) row('Hits', '${detection.count}'),
+      for (final s in dev.signatures) row('Signature', s.name),
+    ]));
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: sections);
+  }
+
+  static String _stamp(int ms) =>
+      DateFormat('MMM d, HH:mm:ss').format(DateTime.fromMillisecondsSinceEpoch(ms));
+  static String _confWord(Confidence c) => switch (c) {
+        Confidence.high => 'HIGH',
+        Confidence.medium => 'MEDIUM',
+        Confidence.low => 'LOW',
+      };
+  Color _confColor(Confidence c) => switch (c) {
+        Confidence.high => AppTheme.success,
+        Confidence.medium => AppTheme.accent,
+        Confidence.low => t.textDim,
+      };
+}
+
 class _DetailSummary extends ConsumerWidget {
   const _DetailSummary({required this.detection, required this.t, this.manufacturer, this.nodeLabel = ''});
   final Detection detection;
