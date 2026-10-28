@@ -75,3 +75,6 @@
 - A connected phone dropped a few seconds after its screen went idle.
 - Connecting to a board stalled when a phone scan was running at the same time.
 - Pairing a board asked for a PIN the board had no screen to show, so pairing could not finish. The board now pairs with no PIN.
+- A board paired but then dropped to "not connected" right after. The link now stays up after pairing.
+- The scan picker (Flock, Drone, Scan, Detect) looked like it changed your selection after you pressed START. The chips now stay on what you chose.
+- A board used on its own did not appear in the connect list after you disconnected from a manager. Solo boards show up again.
