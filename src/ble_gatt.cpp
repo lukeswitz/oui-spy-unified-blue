@@ -1015,11 +1015,26 @@ static void bleSecLoadKeys(void) {
     NimBLEDevice::setSecurityPasskey(pk);
 }
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static void bleSeedHostIrk(void) {
+    uint8_t mac[6];
+    if (!s_irkReady || esp_read_mac(mac, ESP_MAC_BT) != ESP_OK) return;
+    struct ble_store_value_local_irk v = {};
+    v.addr.type = BLE_ADDR_PUBLIC;
+    for (int i = 0; i < 6; i++) v.addr.val[i] = mac[5 - i];
+    memcpy(v.irk, s_irk, sizeof(s_irk));
+    Preferences p;
+    p.begin("nimble_bond", false);
+    p.putBytes("local_irk_1", &v, sizeof(v));
+    p.end();
+}
+#else
 static int bleSecGenKey(uint8_t key, struct ble_store_gen_key* gen, uint16_t) {
     if (key != BLE_STORE_GEN_KEY_IRK || !s_irkReady) return -1;
     memcpy(gen->irk, s_irk, sizeof(s_irk));
     return 0;
 }
+#endif
 
 static bool bleSetPasskey(uint32_t pk) {
     if (pk > 999999) return false;
@@ -2606,7 +2621,11 @@ void bleGattInit(void) {
         for (auto& pe : s_peers) { pe.handle = BLE_HS_CONN_HANDLE_NONE; pe.authed = false; }
 #if OUISPY_BLE_SECURE
         bleSecLoadKeys();
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+        bleSeedHostIrk();
+#else
         ble_hs_cfg.store_gen_key_cb = bleSecGenKey;
+#endif
         bleStableBtIdentity();
 #endif
         NimBLEDevice::init(devName);
@@ -3302,8 +3321,17 @@ int bleGattPortSelfTest(void) {
     check("own_address_is_rpa", own.getType() == BLE_ADDR_RANDOM && (v[5] & 0xC0) == 0x40, d);
     const uint8_t* hostIrk = nullptr;
     ble_hs_pvcy_our_irk(&hostIrk);
-    check("host_irk_is_persisted_irk", hostIrk && s_irkReady && memcmp(hostIrk, s_irk, 16) == 0);
-    check("rpa_resolves_with_irk", pstRpaResolves(v, s_irk));
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    struct ble_store_key_local_irk lk = {};
+    struct ble_store_value_local_irk lv = {};
+    ble_hs_id_copy_addr(BLE_ADDR_PUBLIC, lk.addr.val, nullptr);
+    lk.addr.type = BLE_ADDR_PUBLIC;
+    const uint8_t* irkRef = ble_store_read_local_irk(&lk, &lv) == 0 ? lv.irk : nullptr;
+#else
+    const uint8_t* irkRef = s_irkReady ? s_irk : nullptr;
+#endif
+    check("host_irk_is_persisted_irk", hostIrk && irkRef && memcmp(hostIrk, irkRef, 16) == 0);
+    check("rpa_resolves_with_irk", irkRef && pstRpaResolves(v, irkRef));
     uint8_t before[6];
     memcpy(before, v, 6);
     ble_hs_set_rpa_timeout(2);
