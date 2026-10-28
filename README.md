@@ -60,7 +60,7 @@
 
 - **Together:** the board keeps detecting while the phone foxhunts a device it found, or both scan into one session.
 - **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot.
-- **Private Bluetooth link**: the board advertises a rotating private address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. The XIAO C5, S3 and C3 use the chip's own address resolver; older ESP32 boards resolve it in the Bluetooth host.
+- **Private Bluetooth link**: the board advertises a rotating private address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN: the board has no screen to show one, so the phone and board agree a key without it. The XIAO C5, S3 and C3 use the chip's own address resolver; older ESP32 boards resolve it in the Bluetooth host.
 
 ## Boards
 

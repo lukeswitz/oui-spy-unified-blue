@@ -47,7 +47,7 @@
 - WiGLE sessions start without waiting for a GPS fix.
 - Classifier: iBeacon now "Beacons", Honeywell moved to industrial.
 - Shorter notification body: RSSI, channel, name, MAC.
-- The board advertises a rotating private Bluetooth address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. On XIAO C5, S3 and C3 the chip's own address resolver does this.
+- The board advertises a rotating private Bluetooth address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN, because the board has no screen to show one. On XIAO C5, S3 and C3 the chip's own address resolver does this.
 - The status bar shows a board icon while connected and a clearer GPS label. The connection timer is gone.
 
 ## Fixed
@@ -74,3 +74,4 @@
 - Spectrum view shows frequency labels along the bottom axis again.
 - A connected phone dropped a few seconds after its screen went idle.
 - Connecting to a board stalled when a phone scan was running at the same time.
+- Pairing a board asked for a PIN the board had no screen to show, so pairing could not finish. The board now pairs with no PIN.

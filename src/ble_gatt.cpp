@@ -2564,8 +2564,8 @@ void bleGattInit(void) {
         Serial.printf("[BLE] device name: %s\n", devName);
 #if OUISPY_BLE_SECURE
         Serial.printf("[BLE] pairing passkey: %06lu\n", (unsigned long)NimBLEDevice::getSecurityPasskey());
-        NimBLEDevice::setSecurityAuth(true, true, true);
-        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+        NimBLEDevice::setSecurityAuth(true, false, true);
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
         NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
         NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
         bleUseStableAddress();
@@ -2573,7 +2573,7 @@ void bleGattInit(void) {
         if (!rpa) NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
         ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_WRITE |
                                          BLE_ATT_F_WRITE_ENC | BLE_ATT_F_WRITE_AUTHEN);
-        Serial.printf("[BLE] secure: bond+MITM+SC, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
+        Serial.printf("[BLE] secure: bond+SC JustWorks, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
 #endif
     }
 #ifndef OUISPY_STRESS_NOFIX

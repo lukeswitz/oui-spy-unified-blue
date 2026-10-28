@@ -747,30 +747,20 @@ class BleManager {
 
   static const autoConnectWait = Duration(seconds: 20);
 
-  // Reconnect via the bonded identity, not the scanned RPA: Android keys the bond
-  // to the resolved identity, so connecting to the rotating RPA re-pairs instead.
+  // Reconnect via the bonded identity, not the scanned RPA (Android keys the bond to the identity).
   Future<BluetoothDevice> _preferBondedIdentity(BluetoothDevice device) async {
     if (!Platform.isAndroid) return device;
     try {
       final want = device.platformName.isNotEmpty
           ? device.platformName
           : (_role == 'mgr' ? 'OUI-SPY-MGR' : 'OUI-SPY');
-      final bonded = await FlutterBluePlus.bondedDevices;
-      for (final b in bonded) {
-        if (b.platformName == want && b.remoteId != device.remoteId) {
-          DebugLog.log('BLE: using bonded identity ${b.remoteId} for RPA ${device.remoteId}');
-          return b;
-        }
-      }
-      // Bonded devices often report an empty platformName until first connect; fall
-      // back to the sole OUI-SPY-family bond whose identity differs from the scanned RPA.
-      final candidates = bonded
-          .where((b) => b.remoteId != device.remoteId &&
-              (b.platformName.isEmpty || b.platformName.startsWith('OUI-SPY')))
+      // Swap only on a single unambiguous name match, never with multiple same-named bonds.
+      final matches = (await FlutterBluePlus.bondedDevices)
+          .where((b) => b.platformName == want && b.remoteId != device.remoteId)
           .toList();
-      if (candidates.length == 1) {
-        DebugLog.log('BLE: using sole bonded identity ${candidates.first.remoteId} for RPA ${device.remoteId}');
-        return candidates.first;
+      if (matches.length == 1) {
+        DebugLog.log('BLE: using bonded identity ${matches.first.remoteId} for RPA ${device.remoteId}');
+        return matches.first;
       }
     } catch (e) {
       DebugLog.log('BLE: bonded-identity lookup failed: $e');
