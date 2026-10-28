@@ -4,6 +4,7 @@
 #include "../radio_coex.h"
 #include "../ble_coex.h"
 #include "../engine_registry.h"
+#include "dedup_ring.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -190,9 +191,47 @@ static bool odidIsPlausible(const ODID_UAS_Data* u) {
     return false;
 }
 
+static const uint8_t DRONE_VENDOR_OUIS[][3] = { {0x38, 0x1D, 0x14} };
+static const char* const DRONE_VENDOR_NAMES[] = { "Skydio (no Remote ID)" };
+static DedupRing<16, 60000> droneVendorDedup;
+static DedupRingISR<16, 60000> droneVendorDedupISR;
+
+static int IRAM_ATTR droneVendorIndex(const uint8_t* mac) {
+    if (mac[0] & 0x02) return -1;
+    for (int i = 0; i < (int)(sizeof(DRONE_VENDOR_OUIS) / 3); i++) {
+        if (mac[0] == DRONE_VENDOR_OUIS[i][0] && mac[1] == DRONE_VENDOR_OUIS[i][1] &&
+            mac[2] == DRONE_VENDOR_OUIS[i][2]) return i;
+    }
+    return -1;
+}
+
+static void IRAM_ATTR fillDroneVendorEvt(DetectionEvent* evt, const uint8_t* mac, int rssi, int idx) {
+    evt->engine_id = ENGINE_SKYSPY;
+    memcpy(evt->mac, mac, 6);
+    evt->rssi = (int8_t)rssi;
+    evt->timestamp_ms = millis();
+    evt->method = METHOD_ODID_VENDOR;
+    strncpy(evt->ext.odid.self_id, DRONE_VENDOR_NAMES[idx], sizeof(evt->ext.odid.self_id) - 1);
+}
+
 class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
     void onResult(NimBLEAdvertisedDevice* dev) override {
         g_engRawSeen++;
+        {
+            const uint8_t* a = dev->getAddress().getNative();
+            if (a) {
+                uint8_t m[6];
+                bleAddrToMac(a, m);
+                int vi = droneVendorIndex(m);
+                if (vi >= 0 && !droneVendorDedup.check(m)) {
+                    DetectionEvent evt = {};
+                    fillDroneVendorEvt(&evt, m, dev->getRSSI(), vi);
+                    pushDetection(&evt);
+                    Serial.printf("[SKYSPY] vendor OUI drone %02x:%02x:%02x:%02x:%02x:%02x %s\n",
+                                  m[0], m[1], m[2], m[3], m[4], m[5], DRONE_VENDOR_NAMES[vi]);
+                }
+            }
+        }
         ODID_UAS_Data& UAS_data = UAS_data_ble;
 #ifdef OUISPY_NIMBLE2_API
         const std::vector<uint8_t>& _pl = dev->getPayload();
@@ -270,6 +309,16 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
     int length = pkt->rx_ctrl.sig_len;
     if (length < 24) return;
 
+    {
+        int vi = droneVendorIndex(&payload[10]);
+        if (vi >= 0 && !droneVendorDedupISR.check(&payload[10])) {
+            DetectionEvent evt = {};
+            fillDroneVendorEvt(&evt, &payload[10], pkt->rx_ctrl.rssi, vi);
+            evt.channel = pkt->rx_ctrl.channel;
+            pushDetectionFromISR(&evt);
+        }
+    }
+
     // NAN Action Frame
     static const uint8_t nanDest[6] = {0x51, 0x6f, 0x9a, 0x01, 0x00, 0x00};
     if (memcmp(nanDest, &payload[4], 6) == 0) {
@@ -328,7 +377,7 @@ static void skyspyInit(void) {
     memset(drones, 0, sizeof(drones));
     g_lastBleDrone = nullptr;
     bleScan = NimBLEDevice::getScan();
-    bleScan->setActiveScan(true);
+    bleScan->setActiveScan(bleCoexActiveScanAllowed());
     bleScan->setInterval(100);
     bleScan->setWindow(99);
     bleScan->setDuplicateFilter(false);
@@ -436,3 +485,22 @@ const EngineCallbacks skyspyCallbacks = {
     .config = skyspyConfig,
     .name   = "Sky Spy"
 };
+
+#ifdef OUISPY_PORT_SELFTEST
+int skyspyPortSelfTest(void) {
+    int fail = 0;
+    auto check = [&](const char* n, bool ok) {
+        Serial.printf("[PST] skyspy.%s %s\n", n, ok ? "PASS" : "FAIL");
+        if (!ok) fail++;
+    };
+    const uint8_t skydio[6] = {0x38, 0x1D, 0x14, 0x01, 0x02, 0x03};
+    const uint8_t la[6] = {0x3A, 0x1D, 0x14, 0x01, 0x02, 0x03};
+    check("skydio_oui", droneVendorIndex(skydio) == 0);
+    check("locally_administered_ignored", droneVendorIndex(la) < 0);
+    DetectionEvent e = {};
+    fillDroneVendorEvt(&e, skydio, -55, 0);
+    check("vendor_event_method_3", e.engine_id == ENGINE_SKYSPY && e.method == METHOD_ODID_VENDOR &&
+                                   strncmp(e.ext.odid.self_id, "Skydio", 6) == 0);
+    return fail;
+}
+#endif

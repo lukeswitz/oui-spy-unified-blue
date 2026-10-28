@@ -11,10 +11,14 @@ void c5WifiInitNetif(void);
 void c5WifiUp(void);
 #endif
 bool wifiCoexActive(void);
+bool wifiCoexReassert(WifiRxParser owner);
+bool wifiCoexCycleRadio(WifiRxParser owner, uint8_t channel);
 bool wifiRadioExternallyOwned(void);
 bool wifiCoexShouldHop(int engineId);
 
 void wifiSnifferApplyPs(void);
+void wifiSetActiveProbe(bool on);
+bool wifiActiveProbeAllowed(void);
 
 #define WIFI_BAND_24 0x01
 #define WIFI_BAND_5  0x02

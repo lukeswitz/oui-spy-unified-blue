@@ -43,6 +43,9 @@ void bleGattWdCycleTick(void);
 #endif
 
 // Apply device-wide config (callable from BLE write or relayed mesh packet)
+#define RADIO_POL_ACTIVE_PROBE 0x01
+#define RADIO_POL_PASSIVE_BLE  0x02
+void radioPolicyApply(uint8_t policy);
 void hardwareConfigApply(const uint8_t* data, size_t len);
 void alertConfigApply(const uint8_t* data, size_t len);
 void autoPcapConfigApply(const uint8_t* data, size_t len);
@@ -63,6 +66,10 @@ void bleGattSpoolE2EStart(void);
 void bleGattE2ESmokeStart(void);
 #endif
 void bleGattNodeGraceTick(void);
+void bleGattSecurityTick(void);
+#ifdef OUISPY_PORT_SELFTEST
+int bleGattPortSelfTest(void);
+#endif
 
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);

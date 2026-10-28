@@ -4,6 +4,7 @@
 #include "engines/wardrive.h"
 #include "ignore_list.h"
 #include "engines/detector.h"
+#include "engines/enow_hub.h"
 #include "wifi_ota_handler.h"
 #include "radio_coex.h"
 #include "ble_coex.h"
@@ -968,7 +969,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         else if (cp.cfg_kind == MESH_CFG_KIND_ALERT) alertConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_AUTOPCAP) autoPcapConfigApply(cp.data, n);
         else if (cp.cfg_kind == MESH_CFG_KIND_FOXHUNTER) foxhunterConfigApply(cp.data, n);
-        else if (cp.cfg_kind == MESH_CFG_KIND_SIGMASK) { if (n >= 1) detectorSetSigMask(cp.data[0]); }
+        else if (cp.cfg_kind == MESH_CFG_KIND_SIGMASK) { if (n >= 1) detectorSetSigMask(cp.data[0] | (n >= 2 ? ((uint16_t)cp.data[1] << 8) : 0)); }
         else if (cp.cfg_kind == MESH_CFG_KIND_WIFIBAND) { if (n >= 1) engineApplyWifiBand(cp.data[0]); }
         else if (cp.cfg_kind == MESH_CFG_KIND_MELODY) {
 #ifndef OUISPY_ROLE_MANAGER
@@ -1572,6 +1573,10 @@ void meshEnable(const MeshConfig* cfg) {
 }
 
 void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
+    if (enowHubActive()) {
+        Serial.println("[MESH] enable refused — ESP-NOW hub is running");
+        return;
+    }
     if (g_meshEverInit) {
         meshDisable();
     }

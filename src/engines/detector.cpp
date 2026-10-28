@@ -56,13 +56,51 @@ static DedupRingISR<32, 8000> cameraDedupISR;
 
 static const uint8_t AXON_OUI[3] = {0x00, 0x25, 0xdf};
 
+struct LeVendorOui { uint8_t b[3]; const char* desc; };
+static const LeVendorOui LE_VENDOR_OUIS[] = {
+    {{0x00, 0x00, 0xC3}, "Harris radio"},
+    {{0x00, 0x04, 0x7D}, "Motorola Solutions"},
+    {{0x00, 0x06, 0xEC}, "Harris radio"},
+    {{0x00, 0x0D, 0x4F}, "Kenwood radio"},
+    {{0x00, 0x0D, 0xCA}, "Tait radio"},
+    {{0x00, 0x17, 0xF3}, "Harris radio"},
+    {{0x00, 0x18, 0x85}, "Motorola Solutions"},
+    {{0x00, 0x1D, 0x96}, "WatchGuard Video"},
+    {{0x00, 0x1F, 0x92}, "Motorola Solutions"},
+    {{0x00, 0x23, 0xBD}, "Digital Ally"},
+    {{0x10, 0x74, 0x6F}, "Motorola Solutions"},
+    {{0x38, 0x1D, 0x14}, "Skydio drone"},
+    {{0x4C, 0xCC, 0x34}, "Motorola Solutions"},
+    {{0x64, 0x69, 0xBC}, "Hytera radio"},
+    {{0x9C, 0x06, 0x6E}, "Hytera radio"},
+    {{0x9C, 0x86, 0x2B}, "Motorola Solutions"},
+    {{0xB8, 0xE2, 0x8C}, "Motorola Solutions"},
+    {{0xE0, 0xDA, 0xDC}, "Kenwood radio"},
+};
+
+static const char* IRAM_ATTR leVendorForMac(const uint8_t* mac) {
+    for (const auto& v : LE_VENDOR_OUIS) {
+        if (mac[0] == v.b[0] && mac[1] == v.b[1] && mac[2] == v.b[2]) return v.desc;
+    }
+    return nullptr;
+}
+
 static volatile unsigned long deauthWindowStart = 0;
 static volatile uint16_t deauthCount = 0;
 static volatile unsigned long lastDeauthAlert = 0;
 static const uint16_t DEAUTH_THRESHOLD = 10;
 static const unsigned long DEAUTH_ALERT_COOLDOWN_MS = 10000;
 static volatile unsigned long lastPwnAlert = 0;
-static uint8_t sigMask = 0;
+static uint16_t sigMask = 0;
+
+struct SsidOwner { uint32_t hash; uint8_t bssid[6]; uint32_t lastMs; bool alerted; };
+struct BssidSsids { uint8_t bssid[6]; uint32_t hashes[8]; uint8_t n; uint32_t lastMs; bool alerted; };
+static const int SSID_OWNER_SLOTS = 48;
+static const int BSSID_SSID_SLOTS = 24;
+static SsidOwner* ssidOwners = nullptr;
+static BssidSsids* bssidSsids = nullptr;
+static const uint32_t AP_STALE_MS = 300000;
+static const uint8_t KARMA_MIN_SSIDS = 5;
 
 static void detectorStart(void);
 static void detectorStop(void);
@@ -89,23 +127,36 @@ static const UuidFilter* matchUuidFilter(NimBLEAdvertisedDevice* dev) {
     return nullptr;
 }
 
+static const char* const TRACKER_FAMILY[] = {"Find My", "SmartTag", "Tile", "Google Find Hub"};
+enum { TRK_APPLE = 0, TRK_SAMSUNG, TRK_TILE, TRK_GOOGLE };
+
 struct FindMyTrack {
     uint8_t  mac[6];
     uint32_t firstMs;
     uint32_t lastMs;
     uint16_t hits;
-    bool     alerted;
+    uint8_t  windows;
+    uint8_t  family;
+    uint8_t  alertedTier;
 };
-static FindMyTrack fmTracks[16];
-static const uint32_t FM_PERSIST_MS = 3000;
-static const uint16_t FM_MIN_HITS   = 3;
-static const uint32_t FM_STALE_MS   = 120000;
+static FindMyTrack fmTracks[24];
+static const uint32_t FM_PERSIST_MS      = 3000;
+static const uint16_t FM_MIN_HITS        = 3;
+static const uint32_t FM_FOLLOW_MS       = 300000;
+static const uint32_t FM_GAP_MS          = 60000;
+static const uint8_t  FM_RETURN_WINDOWS  = 3;
+static const uint32_t FM_RETURN_SPAN_MS  = 600000;
+static const uint32_t FM_STALE_MS        = 1800000;
 
-static void findMyObserve(const uint8_t* mac, int rssi) {
-    uint32_t now = millis();
+static uint32_t fmClockMillis(void) { return millis(); }
+static uint32_t (*fmClock)(void) = fmClockMillis;
+
+static void findMyObserve(const uint8_t* mac, int rssi, uint8_t family) {
+    uint32_t now = fmClock();
+    const int n = sizeof(fmTracks) / sizeof(fmTracks[0]);
     int slot = -1, freeSlot = -1, oldest = -1;
     uint32_t oldestMs = 0xFFFFFFFF;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < n; i++) {
         if (fmTracks[i].hits == 0) { if (freeSlot < 0) freeSlot = i; continue; }
         if (now - fmTracks[i].lastMs > FM_STALE_MS) {
             fmTracks[i].hits = 0;
@@ -121,27 +172,85 @@ static void findMyObserve(const uint8_t* mac, int rssi) {
         memcpy(fmTracks[slot].mac, mac, 6);
         fmTracks[slot].firstMs = now;
         fmTracks[slot].hits = 0;
-        fmTracks[slot].alerted = false;
+        fmTracks[slot].windows = 1;
+        fmTracks[slot].alertedTier = DET_CONF_NONE;
+    } else if (now - fmTracks[slot].lastMs > FM_GAP_MS && fmTracks[slot].windows < 0xFF) {
+        fmTracks[slot].windows++;
     }
-    fmTracks[slot].lastMs = now;
-    if (fmTracks[slot].hits < 0xFFFF) fmTracks[slot].hits++;
+    FindMyTrack& t = fmTracks[slot];
+    t.family = family;
+    t.lastMs = now;
+    if (t.hits < 0xFFFF) t.hits++;
+    if (t.hits < FM_MIN_HITS) return;
 
-    if (!fmTracks[slot].alerted && fmTracks[slot].hits >= FM_MIN_HITS &&
-        (now - fmTracks[slot].firstMs) >= FM_PERSIST_MS) {
-        fmTracks[slot].alerted = true;
-        uint32_t secs = (now - fmTracks[slot].firstMs) / 1000;
-        DetectionEvent evt = {};
-        evt.engine_id = ENGINE_DETECTOR;
-        memcpy(evt.mac, mac, 6);
-        evt.rssi = rssi;
-        evt.timestamp_ms = now;
-        evt.method = METHOD_DET_TRACKER;
+    uint32_t span = now - t.firstMs;
+    uint8_t tier = DET_CONF_NONE;
+    if (t.windows >= FM_RETURN_WINDOWS && span >= FM_RETURN_SPAN_MS) tier = DET_CONF_VERIFIED;
+    else if (span >= FM_FOLLOW_MS) tier = DET_CONF_HIGH;
+    else if (span >= FM_PERSIST_MS) tier = DET_CONF_SUSPECTED;
+    if (tier <= t.alertedTier) return;
+    t.alertedTier = tier;
+
+    const char* fam = TRACKER_FAMILY[family < 4 ? family : 0];
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, mac, 6);
+    evt.rssi = rssi;
+    evt.timestamp_ms = now;
+    evt.method = METHOD_DET_TRACKER;
+    evt.ext.detector.confidence = tier;
+    if (tier == DET_CONF_VERIFIED) {
         snprintf(evt.ext.detector.filter_desc, sizeof(evt.ext.detector.filter_desc),
-                 "Find My tracker following %lus", (unsigned long)secs);
-        pushDetection(&evt);
-        Serial.printf("[DETECTOR] STALKER Find My %02x:%02x:%02x:%02x:%02x:%02x following %lus\n",
-                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], (unsigned long)secs);
+                 "%s returned %ux in %lum", fam, (unsigned)t.windows, (unsigned long)(span / 60000));
+    } else if (tier == DET_CONF_HIGH) {
+        snprintf(evt.ext.detector.filter_desc, sizeof(evt.ext.detector.filter_desc),
+                 "%s following %lum", fam, (unsigned long)(span / 60000));
+    } else {
+        snprintf(evt.ext.detector.filter_desc, sizeof(evt.ext.detector.filter_desc),
+                 "%s tracker nearby %lus", fam, (unsigned long)(span / 1000));
     }
+    pushDetection(&evt);
+    Serial.printf("[DETECTOR] STALKER %s %02x:%02x:%02x:%02x:%02x:%02x tier=%u span=%lus windows=%u\n",
+                  fam, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], (unsigned)tier,
+                  (unsigned long)(span / 1000), (unsigned)t.windows);
+}
+
+static bool appleFindMySeparated(const std::string& md) {
+    if (md.size() < 4 || (uint8_t)md[0] != 0x4C || (uint8_t)md[1] != 0x00) return false;
+    size_t i = 2;
+    while (i + 2 <= md.size()) {
+        uint8_t type = (uint8_t)md[i];
+        uint8_t len = (uint8_t)md[i + 1];
+        if (i + 2 + len > md.size()) return false;
+        if (type == 0x12 && len == 0x19) return true;
+        i += 2 + len;
+    }
+    return false;
+}
+
+static int otherTrackerFamily(NimBLEAdvertisedDevice* dev) {
+    if (!dev->haveServiceData()) return -1;
+    std::string s = dev->getServiceData(NimBLEUUID((uint16_t)0xFD5A));
+    if (s.size() >= 1 && ((uint8_t)s[0] & 0xF8) == 0x10) return TRK_SAMSUNG;
+    s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEED));
+    if (s.size() >= 2 && (uint8_t)s[0] == 0x02 && (uint8_t)s[1] == 0x00) return TRK_TILE;
+    s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEAA));
+    if (s.size() >= 1 && (uint8_t)s[0] == 0x40) return TRK_GOOGLE;
+    return -1;
+}
+
+static void pushSig(const uint8_t* mac, int rssi, uint8_t method, uint8_t conf, const char* desc) {
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, mac, 6);
+    evt.rssi = rssi;
+    evt.timestamp_ms = millis();
+    evt.method = method;
+    evt.ext.detector.confidence = conf;
+    strncpy(evt.ext.detector.filter_desc, desc, sizeof(evt.ext.detector.filter_desc) - 1);
+    pushDetection(&evt);
+    Serial.printf("[DETECTOR] SIG %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d conf=%u [%s]\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi, (unsigned)conf, desc);
 }
 
 static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* mac, int rssi) {
@@ -165,7 +274,7 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
                 Serial.printf(" svc=%s", dev->getServiceUUID(i).toString().c_str());
             }
         }
-        Serial.printf(" sig=0x%02X\n", sigMask);
+        Serial.printf(" sig=0x%03X\n", (unsigned)sigMask);
     }
 #endif
     if (dev->haveManufacturerData()) {
@@ -178,11 +287,31 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
                 (uint8_t)md[2], (uint8_t)md[3], (unsigned)md.size(), rssi, sigMask);
         }
 #endif
-        if (md.size() >= 24 && (uint8_t)md[0] == 0x4C && (uint8_t)md[1] == 0x00 &&
-            (uint8_t)md[2] == 0x12 && (uint8_t)md[3] == 0x19) {
-            if (sigMask & SIG_TRACKER) findMyObserve(mac, rssi);
+        if (appleFindMySeparated(md)) {
+            if (sigMask & SIG_TRACKER) findMyObserve(mac, rssi, TRK_APPLE);
             return;
         }
+    }
+    if (sigMask & SIG_TRACKER) {
+        int fam = otherTrackerFamily(dev);
+        if (fam >= 0) {
+            findMyObserve(mac, rssi, (uint8_t)fam);
+            return;
+        }
+    }
+    if (sigMask & SIG_MESH) {
+        static const NimBLEUUID MESHTASTIC_SVC("6ba1b218-15a8-461f-9fa8-5dcae273eafd");
+        const char* kind = nullptr;
+        uint8_t conf = DET_CONF_NONE;
+        if (dev->isAdvertisingService(MESHTASTIC_SVC)) {
+            kind = "Meshtastic node";
+            conf = DET_CONF_VERIFIED;
+        } else if (dev->haveName()) {
+            std::string nm = dev->getName();
+            if (strcasestr(nm.c_str(), "meshtastic")) { kind = "Meshtastic node"; conf = DET_CONF_HIGH; }
+            else if (strcasestr(nm.c_str(), "meshcore")) { kind = "MeshCore node"; conf = DET_CONF_HIGH; }
+        }
+        if (kind && !sigDedup.check(mac)) pushSig(mac, rssi, METHOD_DET_MESH, conf, kind);
     }
     if (sigMask & SIG_FLIPPER) {
         bool flip = dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3081)) ||
@@ -195,6 +324,7 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
             evt.rssi = rssi;
             evt.timestamp_ms = millis();
             evt.method = METHOD_DET_FLIPPER;
+            evt.ext.detector.confidence = DET_CONF_HIGH;
             strncpy(evt.ext.detector.filter_desc, "Flipper Zero",
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetection(&evt);
@@ -232,6 +362,9 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
             evt.rssi = rssi;
             evt.timestamp_ms = millis();
             evt.method = METHOD_DET_GLASSES;
+            int sigs = (int)metaMfg + (int)metaSvc + (int)metaName + (int)metaMac;
+            evt.ext.detector.confidence = sigs >= 2 ? DET_CONF_VERIFIED
+                                        : metaMac ? DET_CONF_SUSPECTED : DET_CONF_HIGH;
             strncpy(evt.ext.detector.filter_desc, "Meta smart glasses",
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetection(&evt);
@@ -259,11 +392,15 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
             evt.rssi = rssi;
             evt.timestamp_ms = millis();
             evt.method = METHOD_DET_AXON;
+            evt.ext.detector.confidence = (axonMac && (axonMfg || axonSvc)) ? DET_CONF_VERIFIED : DET_CONF_HIGH;
             strncpy(evt.ext.detector.filter_desc, "Axon (Law Enforcement)",
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetection(&evt);
             Serial.printf("[DETECTOR] SIG %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [Axon LE]\n",
                           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi);
+        } else if (!(axonMac || axonMfg || axonSvc)) {
+            const char* le = leVendorForMac(mac);
+            if (le && !sigDedup.check(mac)) pushSig(mac, rssi, METHOD_DET_AXON, DET_CONF_SUSPECTED, le);
         }
     }
     if (sigMask & SIG_CAMERA) {
@@ -290,6 +427,8 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
             evt.rssi = rssi;
             evt.timestamp_ms = millis();
             evt.method = isCamera ? METHOD_DET_CAMERA : METHOD_DET_AMAZON;
+            evt.ext.detector.confidence = (isCamera && isAmazon) ? DET_CONF_VERIFIED
+                                        : isAmazon ? DET_CONF_HIGH : DET_CONF_SUSPECTED;
             const char* desc = isCamera ? CAMERA_BRANDS[brand]
                              : (sidewalkSvc || amazonMfg) ? "Amazon Sidewalk" : "Amazon";
             strncpy(evt.ext.detector.filter_desc, desc, sizeof(evt.ext.detector.filter_desc) - 1);
@@ -318,6 +457,7 @@ class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
         evt.rssi = dev->getRSSI();
         evt.timestamp_ms = millis();
         evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
+        evt.ext.detector.confidence = (hit->prefixLen == 6) ? DET_CONF_VERIFIED : DET_CONF_HIGH;
         strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
         pushDetection(&evt);
 
@@ -347,9 +487,100 @@ static void IRAM_ATTR detectorCameraFrameISR(const uint8_t* p, int rssi, uint8_t
     evt.channel = channel;
     evt.timestamp_ms = millis();
     evt.method = METHOD_DET_CAMERA;
+    evt.ext.detector.confidence = DET_CONF_SUSPECTED;
     strncpy(evt.ext.detector.filter_desc, CAMERA_BRANDS[brand],
             sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetectionFromISR(&evt);
+}
+
+static inline bool IRAM_ATTR sameApVendor(const uint8_t* a, const uint8_t* b) {
+    if ((a[0] & 0xFD) == (b[0] & 0xFD) && a[1] == b[1] && a[2] == b[2]) return true;
+    return a[3] == b[3] && a[4] == b[4];
+}
+
+static void IRAM_ATTR pushApSigISR(const uint8_t* bssid, int rssi, uint8_t channel,
+                                   uint8_t method, uint8_t conf, const char* desc) {
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, bssid, 6);
+    evt.rssi = rssi;
+    evt.channel = channel;
+    evt.timestamp_ms = millis();
+    evt.method = method;
+    evt.ext.detector.confidence = conf;
+    strncpy(evt.ext.detector.filter_desc, desc, sizeof(evt.ext.detector.filter_desc) - 1);
+    pushDetectionFromISR(&evt);
+}
+
+static void IRAM_ATTR detectorRogueApISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
+    if (!ssidOwners || !bssidSsids) return;
+    if (len < 38 || p[36] != 0x00) return;
+    uint8_t slen = p[37];
+    if (slen == 0 || slen > 32 || 38 + slen > len) return;
+    const uint8_t* ssid = &p[38];
+    bool allZero = true;
+    uint32_t h = 2166136261u;
+    for (uint8_t i = 0; i < slen; i++) {
+        if (ssid[i]) allZero = false;
+        h = (h ^ ssid[i]) * 16777619u;
+    }
+    if (allZero) return;
+    if (h == 0) h = 1;
+    const uint8_t* bssid = &p[16];
+    uint32_t now = millis();
+
+    int freeSlot = -1;
+    bool known = false;
+    for (int oi = 0; oi < SSID_OWNER_SLOTS; oi++) {
+        SsidOwner& o = ssidOwners[oi];
+        if (o.hash != 0 && now - o.lastMs > AP_STALE_MS) o.hash = 0;
+        if (o.hash == 0) { if (freeSlot < 0) freeSlot = oi; continue; }
+        if (o.hash != h) continue;
+        known = true;
+        if (memcmp(o.bssid, bssid, 6) == 0) { o.lastMs = now; break; }
+        if (!o.alerted && !sameApVendor(o.bssid, bssid)) {
+            o.alerted = true;
+            char desc[32];
+            uint8_t n = slen < 18 ? slen : 18;
+            int k = 0;
+            for (uint8_t i = 0; i < n; i++) desc[k++] = (ssid[i] >= 0x20 && ssid[i] < 0x7F) ? (char)ssid[i] : '?';
+            desc[k] = 0;
+            strncat(desc, " twin BSSID", sizeof(desc) - strlen(desc) - 1);
+            pushApSigISR(bssid, rssi, channel, METHOD_DET_EVILTWIN, DET_CONF_SUSPECTED, desc);
+        }
+        break;
+    }
+    if (!known && freeSlot >= 0) {
+        SsidOwner& o = ssidOwners[freeSlot];
+        o.hash = h;
+        memcpy(o.bssid, bssid, 6);
+        o.lastMs = now;
+        o.alerted = false;
+    }
+
+    int bFree = -1;
+    for (int bi = 0; bi < BSSID_SSID_SLOTS; bi++) {
+        BssidSsids& b = bssidSsids[bi];
+        if (b.n != 0 && now - b.lastMs > AP_STALE_MS) b.n = 0;
+        if (b.n == 0) { if (bFree < 0) bFree = bi; continue; }
+        if (memcmp(b.bssid, bssid, 6) != 0) continue;
+        b.lastMs = now;
+        for (uint8_t k = 0; k < b.n; k++) if (b.hashes[k] == h) return;
+        if (b.n < 8) b.hashes[b.n++] = h;
+        if (b.n >= KARMA_MIN_SSIDS && !b.alerted) {
+            b.alerted = true;
+            pushApSigISR(bssid, rssi, channel, METHOD_DET_KARMA, DET_CONF_HIGH, "KARMA AP: many SSIDs, 1 BSSID");
+        }
+        return;
+    }
+    if (bFree >= 0) {
+        BssidSsids& b = bssidSsids[bFree];
+        memcpy(b.bssid, bssid, 6);
+        b.hashes[0] = h;
+        b.n = 1;
+        b.lastMs = now;
+        b.alerted = false;
+    }
 }
 
 static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
@@ -368,6 +599,7 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
             evt.channel = channel;
             evt.timestamp_ms = now;
             evt.method = METHOD_DET_DEAUTH;
+            evt.ext.detector.confidence = DET_CONF_HIGH;
             strncpy(evt.ext.detector.filter_desc, "Deauth/Disassoc storm",
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetectionFromISR(&evt);
@@ -388,15 +620,22 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
                     evt.channel = channel;
                     evt.timestamp_ms = millis();
                     evt.method = METHOD_DET_PROBE;
+                    evt.ext.detector.confidence = DET_CONF_SUSPECTED;
                     uint8_t n = ssidLen < 31 ? ssidLen : 31;
-                    memcpy(evt.ext.detector.filter_desc, &p[26], n);
-                    evt.ext.detector.filter_desc[n] = 0;
-                    pushDetectionFromISR(&evt);
+                    uint8_t k = 0;
+                    for (uint8_t i = 0; i < n; i++) {
+                        uint8_t c = p[26 + i];
+                        if (c >= 0x20 && c < 0x7F) evt.ext.detector.filter_desc[k++] = (char)c;
+                    }
+                    evt.ext.detector.filter_desc[k] = 0;
+                    if (k > 0) pushDetectionFromISR(&evt);
                 }
             }
         }
         return true;
     }
+
+    if ((sigMask & SIG_PROBE) && fctl == 0x80) detectorRogueApISR(p, len, rssi, channel);
 
     static const uint8_t pwnMac[6] = {0xde, 0xad, 0xbe, 0xef, 0xde, 0xad};
     if ((sigMask & SIG_PWNAGOTCHI) && fctl == 0x80 && memcmp(&p[10], pwnMac, 6) == 0) {
@@ -410,6 +649,7 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
             evt.channel = channel;
             evt.timestamp_ms = now;
             evt.method = METHOD_DET_PWNAGOTCHI;
+            evt.ext.detector.confidence = DET_CONF_HIGH;
             strncpy(evt.ext.detector.filter_desc, "Pwnagotchi",
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetectionFromISR(&evt);
@@ -428,10 +668,16 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
                 evt.channel = channel;
                 evt.timestamp_ms = millis();
                 evt.method = METHOD_DET_AXON;
+                evt.ext.detector.confidence = DET_CONF_HIGH;
                 strncpy(evt.ext.detector.filter_desc, "Axon (Law Enforcement)",
                         sizeof(evt.ext.detector.filter_desc) - 1);
                 pushDetectionFromISR(&evt);
             }
+            return true;
+        }
+        const char* le = leVendorForMac(src);
+        if (le) {
+            if (!axonDedupISR.check(src)) pushApSigISR(src, rssi, channel, METHOD_DET_AXON, DET_CONF_SUSPECTED, le);
             return true;
         }
     }
@@ -468,7 +714,10 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     evt.rssi = pkt->rx_ctrl.rssi;
     evt.channel = pkt->rx_ctrl.channel;
     evt.timestamp_ms = millis();
-    evt.method = 1;
+    evt.method = METHOD_DET_WIFI_WATCH;
+    evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
+    evt.ext.detector.confidence = (hit->prefixLen == 6) ? DET_CONF_VERIFIED : DET_CONF_HIGH;
+    strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetectionFromISR(&evt);
 }
 
@@ -484,6 +733,7 @@ void detectorCheckBleDevice(const uint8_t* mac, int rssi) {
     evt.rssi = rssi;
     evt.timestamp_ms = millis();
     evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
+    evt.ext.detector.confidence = (hit->prefixLen == 6) ? DET_CONF_VERIFIED : DET_CONF_HIGH;
     strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetection(&evt);
 
@@ -509,6 +759,7 @@ void detectorCheckBleUuid(NimBLEAdvertisedDevice* dev, const uint8_t* mac, int r
     evt.rssi = rssi;
     evt.timestamp_ms = millis();
     evt.ext.detector.is_full_mac = 0;
+    evt.ext.detector.confidence = DET_CONF_HIGH;
     strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetection(&evt);
 
@@ -531,6 +782,7 @@ void IRAM_ATTR detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t 
     evt.timestamp_ms = millis();
     evt.method = 1;
     evt.ext.detector.is_full_mac = (hit->prefixLen == 6) ? 1 : 0;
+    evt.ext.detector.confidence = (hit->prefixLen == 6) ? DET_CONF_VERIFIED : DET_CONF_HIGH;
     strncpy(evt.ext.detector.filter_desc, hit->desc, sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetectionFromISR(&evt);
 }
@@ -623,18 +875,18 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
             off += 2;
         }
     }
-    Serial.printf("[CFG] Detector watchlist: %u mac + %u uuid filters sig=0x%02X\n",
-                  detectorFilterCount(), uuidFilterCount, sigMask);
+    Serial.printf("[CFG] Detector watchlist: %u mac + %u uuid filters sig=0x%03X\n",
+                  detectorFilterCount(), uuidFilterCount, (unsigned)sigMask);
 }
 
-static const uint8_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA;
+static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA;
 
 static uint32_t detectorWifiFilter(void) {
     return (sigMask & SIG_CAMERA) ? (WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA)
                                   : WIFI_PROMIS_FILTER_MASK_MGMT;
 }
 
-void detectorSetSigMask(uint8_t mask) {
+void detectorSetSigMask(uint16_t mask) {
     bool prevWifi = (sigMask & DETECTOR_WIFI_SIGS) != 0;
     uint32_t prevFilter = detectorWifiFilter();
     sigMask = mask;
@@ -648,7 +900,7 @@ void detectorSetSigMask(uint8_t mask) {
         }
     }
 }
-uint8_t detectorGetSigMask(void) { return sigMask; }
+uint16_t detectorGetSigMask(void) { return sigMask; }
 
 bool detectorUsesWifi(void) {
     return (detectorRadioMask & 0x01) != 0 &&
@@ -662,6 +914,8 @@ static void detectorInit(void) {
 }
 
 static void detectorStart(void) {
+    if (!ssidOwners) ssidOwners = (SsidOwner*)calloc(SSID_OWNER_SLOTS, sizeof(SsidOwner));
+    if (!bssidSsids) bssidSsids = (BssidSsids*)calloc(BSSID_SSID_SLOTS, sizeof(BssidSsids));
     scanning = true;
     dedup.setCooldownMs(engineGetRediscoverMs());
     wifiDedupISR.setCooldownMs(engineGetRediscoverMs());
@@ -673,7 +927,7 @@ static void detectorStart(void) {
     if (!wardriveOwns && wantBle) {
         bleScan = NimBLEDevice::getScan();
         bleCoexRegister(&scanCb, true);
-        bleScan->setActiveScan(true);
+        bleScan->setActiveScan(bleCoexActiveScanAllowed());
         bleScan->setInterval(100);
         bleScan->setWindow(99);
         lastScanStart = 0;
@@ -789,3 +1043,108 @@ const EngineCallbacks detectorCallbacks = {
     .applyPrefs = detectorApplyPrefs,
     .name       = "Detector"
 };
+
+#ifdef OUISPY_PORT_SELFTEST
+static uint32_t pstNow = 0;
+static uint32_t pstClock(void) { return pstNow; }
+
+static int pstFail = 0;
+static void pstCheck(const char* name, bool ok, const char* detail = "") {
+    Serial.printf("[PST] detector.%s %s %s\n", name, ok ? "PASS" : "FAIL", detail);
+    if (!ok) pstFail++;
+}
+
+static bool pstPop(DetectionEvent* e) { return xQueueReceive(detectionQueue, e, 0) == pdTRUE; }
+
+static void pstDrain(void) { DetectionEvent e; while (pstPop(&e)) {} }
+
+static int pstBeacon(uint8_t* f, const uint8_t bssid[6], const char* ssid) {
+    memset(f, 0, 80);
+    f[0] = 0x80;
+    memcpy(&f[10], bssid, 6);
+    memcpy(&f[16], bssid, 6);
+    uint8_t n = (uint8_t)strlen(ssid);
+    f[36] = 0x00;
+    f[37] = n;
+    memcpy(&f[38], ssid, n);
+    return 38 + n + 4;
+}
+
+int detectorPortSelfTest(void) {
+    pstFail = 0;
+    uint16_t savedMask = sigMask;
+    DetectionEvent e;
+
+    std::string md = std::string("\x4c\x00\x10\x02\x01\x02\x12\x19", 8) + std::string(25, '\x01');
+    pstCheck("tlv_second_record", appleFindMySeparated(md));
+    pstCheck("tlv_nearby_only", !appleFindMySeparated(std::string("\x4c\x00\x10\x02\x01\x02", 6)));
+    pstCheck("tlv_truncated", !appleFindMySeparated(std::string("\x4c\x00\x12\x19\x01\x02", 6)));
+
+    sigMask = SIG_TRACKER;
+    pstDrain();
+    fmClock = pstClock;
+    memset(fmTracks, 0, sizeof(fmTracks));
+    const uint8_t tag[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+    pstNow = 100000; findMyObserve(tag, -60, TRK_SAMSUNG);
+    pstNow = 101000; findMyObserve(tag, -60, TRK_SAMSUNG);
+    pstNow = 103500; findMyObserve(tag, -60, TRK_SAMSUNG);
+    bool s1 = pstPop(&e) && e.ext.detector.confidence == DET_CONF_SUSPECTED && strncmp(e.ext.detector.filter_desc, "SmartTag", 8) == 0;
+    pstCheck("tracker_nearby_suspected", s1, e.ext.detector.filter_desc);
+    pstNow = 401000; findMyObserve(tag, -60, TRK_SAMSUNG);
+    bool s2 = pstPop(&e) && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("tracker_following_high", s2, e.ext.detector.filter_desc);
+    pstNow = 470000; findMyObserve(tag, -60, TRK_SAMSUNG);
+    pstNow = 710000; findMyObserve(tag, -60, TRK_SAMSUNG);
+    bool s3 = pstPop(&e) && e.ext.detector.confidence == DET_CONF_VERIFIED;
+    pstCheck("tracker_returning_verified", s3, e.ext.detector.filter_desc);
+    pstCheck("tracker_one_alert_per_tier", !pstPop(&e));
+    fmClock = fmClockMillis;
+
+    const uint8_t moto[6] = {0x00, 0x04, 0x7D, 0x11, 0x22, 0x33};
+    const uint8_t rnd[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55};
+    pstCheck("le_vendor_motorola", leVendorForMac(moto) != nullptr);
+    pstCheck("le_vendor_none", leVendorForMac(rnd) == nullptr);
+
+    if (!ssidOwners) ssidOwners = (SsidOwner*)calloc(SSID_OWNER_SLOTS, sizeof(SsidOwner));
+    if (!bssidSsids) bssidSsids = (BssidSsids*)calloc(BSSID_SSID_SLOTS, sizeof(BssidSsids));
+    memset(ssidOwners, 0, SSID_OWNER_SLOTS * sizeof(SsidOwner));
+    memset(bssidSsids, 0, BSSID_SSID_SLOTS * sizeof(BssidSsids));
+    sigMask = SIG_PROBE;
+    pstDrain();
+    uint8_t f[80];
+    const uint8_t ap1[6] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01};
+    const uint8_t ap2[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    int n = pstBeacon(f, ap1, "MyNetwork"); detectorSigFrameISR(f, n, -50, 6);
+    n = pstBeacon(f, ap2, "MyNetwork"); detectorSigFrameISR(f, n, -50, 6);
+    bool twin = pstPop(&e) && e.method == METHOD_DET_EVILTWIN && e.ext.detector.confidence == DET_CONF_SUSPECTED &&
+                memcmp(e.mac, ap2, 6) == 0;
+    pstCheck("evil_twin_other_vendor", twin, e.ext.detector.filter_desc);
+    const uint8_t ap3[6] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x02};
+    const uint8_t ap4[6] = {0xAA, 0xBB, 0xCC, 0x09, 0x09, 0x09};
+    n = pstBeacon(f, ap3, "Office"); detectorSigFrameISR(f, n, -50, 6);
+    n = pstBeacon(f, ap4, "Office"); detectorSigFrameISR(f, n, -50, 6);
+    pstCheck("no_twin_same_vendor", !pstPop(&e));
+    const uint8_t karma[6] = {0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB};
+    const char* names[] = {"A1", "B2", "C3", "D4", "E5"};
+    for (const char* s : names) { n = pstBeacon(f, karma, s); detectorSigFrameISR(f, n, -50, 6); }
+    bool k = pstPop(&e) && e.method == METHOD_DET_KARMA && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("karma_five_ssids", k, e.ext.detector.filter_desc);
+
+    memset(f, 0, sizeof(f));
+    f[0] = 0x40;
+    const uint8_t prober[6] = {0x02, 0x55, 0x55, 0x55, 0x55, 0x01};
+    memcpy(&f[10], prober, 6);
+    const uint8_t raw[] = {'A', 'b', 0x01, 'c', 0xFF, 'D'};
+    f[24] = 0x00; f[25] = sizeof(raw); memcpy(&f[26], raw, sizeof(raw));
+    detectorSigFrameISR(f, 26 + sizeof(raw) + 4, -60, 1);
+    bool pr = pstPop(&e) && e.method == METHOD_DET_PROBE && strcmp(e.ext.detector.filter_desc, "AbcD") == 0;
+    pstCheck("probe_ssid_ascii_only", pr, e.ext.detector.filter_desc);
+
+    detectorSetSigMask(SIG_ALL);
+    pstCheck("sigmask_9bit", detectorGetSigMask() == 0x1FF);
+
+    pstDrain();
+    detectorSetSigMask(savedMask);
+    return pstFail;
+}
+#endif

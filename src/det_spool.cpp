@@ -72,15 +72,29 @@ static int oldestSlot() {
     return oldest;
 }
 
+static uint8_t s_persistFails = 0;
+
 static void persist() {
     File f = SPOOL_FS.open(SPOOL_PATH, "w");
-    if (!f) { s_dirty = false; return; }
-    SpoolHeader h = { SPOOL_MAGIC, s_count, s_dropped };
-    f.write((const uint8_t*)&h, sizeof(h));
-    if (s_count > 0) f.write((const uint8_t*)s_slots, (size_t)s_count * sizeof(SpoolSlot));
-    f.close();
-    s_dirty = false;
+    bool ok = false;
+    if (f) {
+        SpoolHeader h = { SPOOL_MAGIC, s_count, s_dropped };
+        size_t body = (size_t)s_count * sizeof(SpoolSlot);
+        ok = f.write((const uint8_t*)&h, sizeof(h)) == sizeof(h);
+        if (ok && body > 0) ok = f.write((const uint8_t*)s_slots, body) == body;
+        f.close();
+    }
+    if (ok) {
+        s_dirty = false;
+        s_persistFails = 0;
+        return;
+    }
+    if (s_persistFails < 0xFF) s_persistFails++;
+    Serial.printf("[SPOOL] persist failed (%u in a row), kept in RAM for retry\n", s_persistFails);
+    if (s_persistFails == 3) SPOOL_FS.remove(SPOOL_PATH);
 }
+
+bool detSpoolStorageOk() { return s_persistFails < 3; }
 
 void detSpoolInit() {
     if (!s_mutex) s_mutex = xSemaphoreCreateMutex();
@@ -178,6 +192,39 @@ void detSpoolFlushIfDirty() {
     persist();
     if (s_mutex) xSemaphoreGive(s_mutex);
 }
+
+#ifdef OUISPY_PORT_SELFTEST
+int detSpoolPortSelfTest() {
+    int fail = 0;
+    auto check = [&](const char* n, bool ok, const char* d = "") {
+        Serial.printf("[PST] spool.%s %s %s\n", n, ok ? "PASS" : "FAIL", d);
+        if (!ok) fail++;
+    };
+    if (!s_ready) { check("ready", false); return fail; }
+    detSpoolClear();
+    DetectionEvent e = {};
+    e.engine_id = ENGINE_DETECTOR;
+    e.mac[0] = 0x02; e.mac[5] = 0x42;
+    detSpoolAppend(&e);
+    persist();
+    check("persist_ok_clears_dirty", !s_dirty && s_persistFails == 0 && detSpoolStorageOk());
+    detSpoolAppend(&e);
+    LittleFS.end();
+    persist();
+    char d[48];
+    snprintf(d, sizeof(d), "dirty=%d fails=%u", (int)s_dirty, s_persistFails);
+    check("failed_open_keeps_dirty", s_dirty && s_persistFails == 1 && s_count == 1, d);
+    persist();
+    persist();
+    check("three_failures_report_unusable", !detSpoolStorageOk());
+    LittleFS.begin(true);
+    persist();
+    snprintf(d, sizeof(d), "dirty=%d fails=%u", (int)s_dirty, s_persistFails);
+    check("recovers_after_remount", !s_dirty && detSpoolStorageOk(), d);
+    detSpoolClear();
+    return fail;
+}
+#endif
 
 #ifdef OUISPY_SPOOL_SELFTEST
 static void mkMac(DetectionEvent* e, uint32_t n) {

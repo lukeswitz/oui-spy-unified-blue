@@ -19,9 +19,12 @@ int detectorFilterCount(void);
 const char* detectorLookupDesc(const uint8_t* mac);
 size_t detectorSerialize(uint8_t* out, size_t maxLen);
 void detectorSetFilters(const uint8_t* data, size_t len);
-void detectorSetSigMask(uint8_t mask);
-uint8_t detectorGetSigMask(void);
+void detectorSetSigMask(uint16_t mask);
+uint16_t detectorGetSigMask(void);
 bool detectorUsesWifi(void);
 void detectorHostSuspend(bool suspend);
+#ifdef OUISPY_PORT_SELFTEST
+int detectorPortSelfTest(void);
+#endif
 
 #endif

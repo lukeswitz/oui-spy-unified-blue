@@ -19,29 +19,53 @@ static IgnoreSlot g_tmp[IGNORE_MAX_ENTRIES];
 static StaticSemaphore_t g_tmpLockBuf;
 static SemaphoreHandle_t g_tmpLock = xSemaphoreCreateMutexStatic(&g_tmpLockBuf);
 
-void ignoreListInit(void) {
+#define IGNORE_NVS_MAX 512
+static bool g_restoring = false;
+
+static void ignoreSave(void) {
+    if (g_restoring) return;
+    uint8_t buf[IGNORE_NVS_MAX];
+    size_t n = ignoreListSerialize(buf, sizeof(buf));
     Preferences p;
-    if (p.begin("ouispy-ign", false)) {
-        p.clear();
-        p.end();
-    }
+    if (!p.begin("ouispy-ign", false)) return;
+    if (g_count == 0) p.remove("list");
+    else p.putBytes("list", buf, n);
+    p.end();
+}
+
+void ignoreListInit(void) {
     portENTER_CRITICAL(&g_mux);
     g_count = 0;
     g_version++;
     portEXIT_CRITICAL(&g_mux);
+    Preferences p;
+    if (!p.begin("ouispy-ign", true)) return;
+    size_t n = p.getBytesLength("list");
+    uint8_t buf[IGNORE_NVS_MAX];
+    bool ok = n >= 1 && n <= sizeof(buf) && p.getBytes("list", buf, n) == n;
+    p.end();
+    if (!ok) return;
+    g_restoring = true;
+    ignoreListSet(buf, n);
+    g_restoring = false;
+    Serial.printf("[IGNORE] restored %u entries from NVS\n", (unsigned)g_count);
 }
 
 void ignoreListSet(const uint8_t* buf, size_t len) {
     if (!buf || len < 1) {
+        bool had;
         portENTER_CRITICAL(&g_mux);
+        had = g_count != 0;
         g_count = 0;
         g_version++;
         portEXIT_CRITICAL(&g_mux);
+        if (had) ignoreSave();
         Serial.println("[IGNORE] list cleared");
         return;
     }
     xSemaphoreTake(g_tmpLock, portMAX_DELAY);
     IgnoreSlot* tmp = g_tmp;
+    memset(g_tmp, 0, sizeof(g_tmp));
     uint8_t cnt = 0;
     size_t i = 0;
     uint8_t declared = buf[i++];
@@ -69,6 +93,7 @@ void ignoreListSet(const uint8_t* buf, size_t len) {
     portEXIT_CRITICAL(&g_mux);
     xSemaphoreGive(g_tmpLock);
     if (same) return;
+    ignoreSave();
     Serial.printf("[IGNORE] list set: %u entries (declared %u, v%lu)\n",
                   cnt, declared, (unsigned long)g_version);
 }

@@ -7,7 +7,11 @@
 static NimBLEAdvertisedDeviceCallbacks* g_cbs[BLE_COEX_MAX];
 static volatile int g_count = 0;
 static bool g_wantActive = false;
+static volatile bool g_passiveOnly = false;
 static portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
+
+void bleCoexSetPassiveOnly(bool passive) { g_passiveOnly = passive; }
+bool bleCoexActiveScanAllowed(void) { return !g_passiveOnly; }
 volatile uint32_t g_bleRawSeen = 0;
 #ifdef OUISPY_STATUS_LOG
 static uint8_t g_uniq[64][6];
@@ -58,7 +62,7 @@ void bleCoexRegister(NimBLEAdvertisedDeviceCallbacks* cb, bool activeScan) {
 
     NimBLEScan* s = NimBLEDevice::getScan();
     s->setAdvertisedDeviceCallbacks(&g_dispatch, true);
-    if (g_wantActive) s->setActiveScan(true);
+    if (g_wantActive) s->setActiveScan(!g_passiveOnly);
     Serial.printf("[BLE-COEX] register (count=%d)\n", count);
 }
 
@@ -74,7 +78,7 @@ void bleCoexEnsureScanning(void) {
 #endif
     NimBLEScan* s = NimBLEDevice::getScan();
     if (s->isScanning()) return;
-    s->setActiveScan(g_wantActive);
+    s->setActiveScan(g_wantActive && !g_passiveOnly);
     s->setInterval(100);
     s->setWindow(99);
 #ifdef OUISPY_NIMBLE2_API

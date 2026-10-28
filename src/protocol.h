@@ -134,6 +134,7 @@ enum EngineState : uint8_t {
 #define METHOD_ODID_BLE        0
 #define METHOD_ODID_NAN        1
 #define METHOD_ODID_BEACON     2
+#define METHOD_ODID_VENDOR     3
 
 // Wardrive methods
 #define METHOD_WIFI_AP         0
@@ -151,6 +152,9 @@ enum EngineState : uint8_t {
 #define METHOD_DET_AXON        8
 #define METHOD_DET_CAMERA      9
 #define METHOD_DET_AMAZON      10
+#define METHOD_DET_EVILTWIN    11
+#define METHOD_DET_KARMA       12
+#define METHOD_DET_MESH        13
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
@@ -160,7 +164,15 @@ enum EngineState : uint8_t {
 #define SIG_GLASSES    0x20
 #define SIG_AXON       0x40
 #define SIG_CAMERA     0x80
-#define SIG_ALL        0xFF
+#define SIG_MESH       0x100
+#define SIG_ALL        0x1FF
+
+#define OUISPY_BLE_PROTO_VERSION 2
+
+#define DET_CONF_NONE      0
+#define DET_CONF_SUSPECTED 1
+#define DET_CONF_HIGH      2
+#define DET_CONF_VERIFIED  3
 
 typedef struct __attribute__((packed)) {
     uint8_t  engine_id;          // EngineId
@@ -230,6 +242,7 @@ typedef struct __attribute__((packed)) {
         struct {
             char    filter_desc[32];
             uint8_t is_full_mac;
+            uint8_t confidence;
         } detector;
 
         // Foxhunter (RSSI sent separately via dedicated characteristic)
@@ -346,6 +359,9 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define SYS_CMD_FLEET_WIFI_OTA    0x0A
 #define SYS_CMD_FLUSH_SPOOL       0x0B
 #define SYS_CMD_SPOOL_CLEAR       0x0C
+#define SYS_CMD_SET_PASSKEY       0x0D
+#define SYS_CMD_RING_TRACKER      0x0E
+#define SYS_CMD_ENOW_HUB          0x0F
 
 #define PCAP_MODE_WIFI 0
 #define PCAP_MODE_BLE  1
@@ -653,7 +669,9 @@ extern QueueHandle_t peerStatusQueue;  // MeshStatusPacket, depth 4
 extern volatile uint32_t g_diagDetCount[ENGINE_COUNT];
 #endif
 
-#define DETQ_ISR_RESERVE 24
+extern uint16_t g_detQueueDepth;
+
+static inline uint16_t detqIsrReserve(void) { return (uint16_t)(g_detQueueDepth * 3 / 16); }
 
 static inline bool pushDetection(const DetectionEvent* evt) {
     if (detectionQueue == NULL) return false;
@@ -661,7 +679,7 @@ static inline bool pushDetection(const DetectionEvent* evt) {
     if (evt && evt->engine_id < ENGINE_COUNT) g_diagDetCount[evt->engine_id]++;
 #endif
 #ifndef OUISPY_ROLE_MANAGER
-    if (uxQueueSpacesAvailable(detectionQueue) <= DETQ_ISR_RESERVE) return false;
+    if (uxQueueSpacesAvailable(detectionQueue) <= detqIsrReserve()) return false;
 #endif
     return xQueueSend(detectionQueue, evt, pdMS_TO_TICKS(2)) == pdTRUE;
 }

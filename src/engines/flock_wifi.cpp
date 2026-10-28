@@ -92,6 +92,7 @@ static uint8_t IRAM_ATTR flockParseAuth(const uint8_t* p, int len) {
 }
 
 static void sendWildcardProbe() {
+    if (!wifiActiveProbeAllowed()) return;
     uint8_t probe[sizeof(wildcardProbeTpl)];
     memcpy(probe, wildcardProbeTpl, sizeof(probe));
     probe[10] = 0x02 | (esp_random() & 0xFE);
@@ -129,7 +130,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
             int r = (bodyLen > 0) ? isWildcardProbeIE(body, bodyLen) : -1;
             if (r == -1 && bodyLen > 4) r = isWildcardProbeIE(body, bodyLen - 4);
             if (r == 1) {
-                method = flockHasLiteonVendorIE(body, bodyLen)
+                method = (flockHasLiteonVendorIE(body, bodyLen) && flockProbeIeSigMatches(body, bodyLen))
                              ? METHOD_WILDCARD_PROBE_IE_SIG
                              : METHOD_WILDCARD_PROBE;
             }
@@ -137,11 +138,14 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
         method = METHOD_OUI_ADDR1;
         matchMac = addr1;
+    } else if (frameType == 0 && !(p[16] & 0x01) && flockMatchOuiISR(&p[16])) {
+        method = METHOD_OUI_ADDR3;
+        matchMac = &p[16];
     }
 
     if (method == 0xFF || !matchMac) return;
     // bare OUI is not a flock on its own; upstream requires corroboration
-    if (method == METHOD_OUI_ADDR1 || method == METHOD_OUI_ADDR2) {
+    if (method == METHOD_OUI_ADDR1 || method == METHOD_OUI_ADDR2 || method == METHOD_OUI_ADDR3) {
         if (!flockAllowOuiOnly) { g_flockOuiSuppressed++; return; }
         g_flockOuiAllowed++;
     } else {

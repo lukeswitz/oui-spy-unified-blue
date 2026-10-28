@@ -155,7 +155,7 @@ static void flockBleStart(void) {
     if (engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
         bleCoexRegister(&scanCb, true);
     }
-    bleScan->setActiveScan(true);
+    bleScan->setActiveScan(bleCoexActiveScanAllowed());
     bleScan->setInterval(bleScanInterval);
     bleScan->setWindow(bleScanWindow);
     lastScanStart = 0;

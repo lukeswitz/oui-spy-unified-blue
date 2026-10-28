@@ -22,6 +22,11 @@
 #include "wifi_ota_handler.h"
 #include "engines/flock_ble.h"
 #include "engines/detector.h"
+#include "engines/enow_hub.h"
+#ifdef OUISPY_PORT_SELFTEST
+#include "engines/flock_oui.h"
+#include "engines/camera_oui.h"
+#endif
 #include "engines/foxhunter.h"
 #include "engines/skyspy.h"
 #include "engines/flock_wifi.h"
@@ -53,6 +58,7 @@
 #endif
 
 QueueHandle_t detectionQueue = NULL;
+uint16_t g_detQueueDepth = 0;
 QueueHandle_t engineCmdQueue = NULL;
 volatile GpsData currentGps = {};
 volatile bool gpsValid = false;
@@ -162,7 +168,9 @@ static void loadHardwareConfig(void) {
     hwNeopixelBrightness = p.getUChar("neo_brt", 50);
     bool flockExt = p.getBool("flock_ext", false);
     bool offlScan = p.getBool("offl_scan", false);
+    uint8_t radioPol = p.getUChar("radio_pol", 0);
     p.end();
+    radioPolicyApply(radioPol);
     flockSetExtendedOui(flockExt);
     {
         extern bool flockAllowOuiOnly;
@@ -713,6 +721,8 @@ static void statusHeartbeatTask(void* param) {
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
         bleGattNodeGraceTick();
+        bleGattSecurityTick();
+        enowHubTick();
 
         if (bleGattOfflineScanEnabled() && !meshManagerJoined()) {
             static uint8_t lastMask = 0xFF;
@@ -1451,12 +1461,15 @@ void setup() {
     ignoreListInit();
 
     // Create FreeRTOS queues
-#ifdef OUISPY_NIMBLE2
-    detectionQueue = xQueueCreateWithCaps(32, sizeof(DetectionEvent), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-#elif defined(OUISPY_LOWRAM)
-    detectionQueue = xQueueCreate(32, sizeof(DetectionEvent));
+#if defined(OUISPY_NIMBLE2) || defined(OUISPY_LOWRAM)
+    g_detQueueDepth = 32;
 #else
-    detectionQueue = xQueueCreate(128, sizeof(DetectionEvent));
+    g_detQueueDepth = 128;
+#endif
+#ifdef OUISPY_NIMBLE2
+    detectionQueue = xQueueCreateWithCaps(g_detQueueDepth, sizeof(DetectionEvent), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    detectionQueue = xQueueCreate(g_detQueueDepth, sizeof(DetectionEvent));
 #endif
 #ifdef OUISPY_NIMBLE2
     engineCmdQueue = xQueueCreateWithCaps(32, sizeof(EngineCommand), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -1636,6 +1649,63 @@ void setup() {
             Serial.printf("[OWN-E2E] active=0x%02X local=0x%02X phone=%d\n", engineGetActiveMask(), engineGetLocalMask(), bleGattIsConnected() ? 1 : 0);
         }
     }, "owne2e", 3072, NULL, 1, NULL, 1);
+#endif
+#ifdef OUISPY_PORT_SELFTEST
+    xTaskCreatePinnedToCore(([](void*) {
+        vTaskDelay(pdMS_TO_TICKS(8000));
+        Serial.println("[PST] === port self-test start ===");
+        int fail = 0;
+        QueueHandle_t liveQ = detectionQueue;
+        detectionQueue = xQueueCreate(g_detQueueDepth, sizeof(DetectionEvent));
+        fail += detectorPortSelfTest();
+        fail += enowHubPortSelfTest();
+        fail += skyspyPortSelfTest();
+        fail += wardrivePortSelfTest();
+        fail += detSpoolPortSelfTest();
+        {
+            auto check = [&](const char* n, bool ok) {
+                Serial.printf("[PST] misc.%s %s\n", n, ok ? "PASS" : "FAIL");
+                if (!ok) fail++;
+            };
+            const uint8_t sig[] = {0, 0, 2, 1, 0x82, 12, 1, 0x00, 127, 1, 0x00,
+                                   221, 7, 0x50, 0x6f, 0x9a, 0x16, 0x03, 0x01, 0x03,
+                                   45, 1, 0x00, 191, 1, 0x00,
+                                   221, 7, 0x00, 0x50, 0xf2, 0x08, 0x00, 0x00, 0x00};
+            check("flock_ie_exact", flockProbeIeSigMatches(sig, sizeof(sig)));
+            uint8_t extra[sizeof(sig) + 3];
+            memcpy(extra, sig, sizeof(sig));
+            extra[sizeof(sig)] = 50; extra[sizeof(sig) + 1] = 1; extra[sizeof(sig) + 2] = 0;
+            check("flock_ie_extra_tag_rejected", !flockProbeIeSigMatches(extra, sizeof(extra)));
+            uint8_t shifted[sizeof(sig) + 3] = {1, 1, 0x82};
+            memcpy(shifted + 3, sig + 11, sizeof(sig) - 11);
+            check("flock_ie_anchor_tail", flockProbeIeSigMatches(shifted, 3 + sizeof(sig) - 11));
+            const uint8_t genetec[6] = {0x00, 0xBF, 0x15, 0x01, 0x02, 0x03};
+            int gb = cameraBrandForMac(genetec);
+            check("camera_genetec", gb >= 0 && strcmp(CAMERA_BRANDS[gb], "Genetec") == 0);
+            const uint8_t ign[] = {1, 1, 0, 6, 0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
+            ignoreListSet(ign, sizeof(ign));
+            uint32_t v1 = ignoreListVersion();
+            ignoreListSet(ign, sizeof(ign));
+            check("ignore_same_list_no_version_bump", ignoreListVersion() == v1);
+            ignoreListInit();
+            const uint8_t probeMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x07};
+            check("ignore_restored_after_reload", ignoreListCount() == 1 && ignoreListMatch(probeMac, nullptr, true));
+            ignoreListSet(nullptr, 0);
+            ignoreListInit();
+            check("ignore_clear_persists", ignoreListCount() == 0);
+            uint16_t saved = g_detQueueDepth;
+            g_detQueueDepth = 128; bool r128 = detqIsrReserve() == 24;
+            g_detQueueDepth = 32;  bool r32 = detqIsrReserve() == 6;
+            g_detQueueDepth = saved;
+            check("queue_reserve_scales_with_depth", r128 && r32);
+            ignoreListSet(nullptr, 0);
+        }
+        vQueueDelete(detectionQueue);
+        detectionQueue = liveQ;
+        fail += bleGattPortSelfTest();
+        Serial.printf("[PST] === port self-test %s (%d failures) ===\n", fail == 0 ? "ALL PASS" : "FAILURES", fail);
+        vTaskDelete(NULL);
+    }), "pst", 12288, NULL, 1, NULL, 1);
 #endif
 #ifdef OUISPY_IE_E2E
     xTaskCreatePinnedToCore([](void*) {

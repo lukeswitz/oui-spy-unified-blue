@@ -7,3 +7,5 @@ NimBLEScan* bleCoexScan(void);
 bool bleCoexActive(void);
 void bleCoexEnsureScanning(void);
 void bleCoexPauseForMesh(void);
+void bleCoexSetPassiveOnly(bool passive);
+bool bleCoexActiveScanAllowed(void);

@@ -1,5 +1,6 @@
 #include "engine_registry.h"
 #include "engines/pcap.h"
+#include "engines/enow_hub.h"
 #include "mesh_espnow.h"
 #include "radio_coex.h"
 #include <Arduino.h>
@@ -150,6 +151,11 @@ static bool engineEnableImpl(EngineId id) {
 
     // Already active?
     if (states[id] != ESTATE_DISABLED) return true;
+
+    if (enowHubBlocksEngine(id)) {
+        Serial.printf("[ENGINE] enable %s refused — ESP-NOW hub holds channel 6\n", engines[id]->name);
+        return false;
+    }
 
     if (id != ENGINE_PCAP &&
         (states[ENGINE_PCAP] == ESTATE_SCANNING || autoPcapPending)) {

@@ -10,7 +10,11 @@ void detSpoolClear();
 uint16_t detSpoolDroppedCount();
 bool engineSpoolable(uint8_t engine_id);
 void detSpoolFlushIfDirty();
+bool detSpoolStorageOk();
 
 #ifdef OUISPY_SPOOL_SELFTEST
 void detSpoolSelfTest();
+#endif
+#ifdef OUISPY_PORT_SELFTEST
+int detSpoolPortSelfTest();
 #endif

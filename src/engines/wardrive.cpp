@@ -296,6 +296,7 @@ static const uint8_t wildcardProbeTemplate[] = {
 };
 
 static void sendWildcardProbe(void) {
+    if (!wifiActiveProbeAllowed()) return;
     uint8_t probe[sizeof(wildcardProbeTemplate)];
     for (int n = 0; n < 2; n++) {
         memcpy(probe, wildcardProbeTemplate, sizeof(probe));
@@ -310,8 +311,14 @@ static void sendWildcardProbe(void) {
     }
 }
 
+static volatile uint32_t wdWifiFrames = 0;
+static uint32_t wdWifiFramesAtSweep = 0;
+static uint8_t wdSilentSweeps = 0;
+static bool wdRadioCycled = false;
+
 static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     g_engRawSeen++;
+    wdWifiFrames++;
     if (!wardriveActive) return;
 
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
@@ -343,14 +350,22 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
                     if (r == -1 && bodyLen > 4) {
                         r = isWildcardProbeIE(p + bodyOff, bodyLen - 4);
                     }
-                    if (r == 1) fMethod = METHOD_WILDCARD_PROBE;
+                    if (r == 1) {
+                        const uint8_t* body = p + bodyOff;
+                        fMethod = (flockHasLiteonVendorIE(body, bodyLen) && flockProbeIeSigMatches(body, bodyLen))
+                                      ? METHOD_WILDCARD_PROBE_IE_SIG
+                                      : METHOD_WILDCARD_PROBE;
+                    }
                 }
             }
         } else if (!(addr1[0] & 0x01) && flockMatchOuiISR(addr1)) {
             fMethod = METHOD_OUI_ADDR1;
             fMac = addr1;
+        } else if (frameType == 0 && !(addr3[0] & 0x01) && flockMatchOuiISR(addr3)) {
+            fMethod = METHOD_OUI_ADDR3;
+            fMac = addr3;
         }
-        if (fMac && (fMethod == METHOD_OUI_ADDR1 || fMethod == METHOD_OUI_ADDR2)) {
+        if (fMac && (fMethod == METHOD_OUI_ADDR1 || fMethod == METHOD_OUI_ADDR2 || fMethod == METHOD_OUI_ADDR3)) {
             if (!flockAllowOuiOnly) { g_flockOuiSuppressed++; fMac = NULL; }
             else                    { g_flockOuiAllowed++; }
         } else if (fMac) {
@@ -592,6 +607,9 @@ static void wardriveInit(void) {
 static void wardriveStart(void) {
     wardriveActive = true;
     lastBleScan = 0;
+    wdWifiFramesAtSweep = wdWifiFrames;
+    wdSilentSweeps = 0;
+    wdRadioCycled = false;
     wardriveDedupRef().reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
@@ -635,7 +653,7 @@ static void wardriveStart(void) {
     if (wardriveRadio & 0x02) {
         pWardriveScan = NimBLEDevice::getScan();
         bleCoexRegister(&wardriveBleCallbacks, true);
-        pWardriveScan->setActiveScan(true);
+        pWardriveScan->setActiveScan(bleCoexActiveScanAllowed());
         pWardriveScan->setInterval(100);
         pWardriveScan->setWindow(99);
     }
@@ -692,6 +710,21 @@ static volatile uint32_t g_wdMeshSkip = 0;
 uint32_t wardriveGetHopCount(void) { return g_wdHopCount; }
 uint32_t wardriveGetMeshSkipCount(void) { return g_wdMeshSkip; }
 
+static void wardriveSnifferWatchdog(void) {
+    uint32_t frames = wdWifiFrames;
+    bool silent = (frames == wdWifiFramesAtSweep);
+    wdWifiFramesAtSweep = frames;
+    if (!silent || frames == 0) { wdSilentSweeps = 0; return; }
+    if (wdSilentSweeps < 0xFF) wdSilentSweeps++;
+    if (wdSilentSweeps == 4) {
+        Serial.println("[WARDRIVE] 4 silent sweeps, re-asserting sniffer");
+        wifiCoexReassert(wardriveWifiCb);
+    } else if (wdSilentSweeps == 8 && !wdRadioCycled && !meshIsEnabled()) {
+        Serial.println("[WARDRIVE] 8 silent sweeps, cycling radio");
+        wdRadioCycled = wifiCoexCycleRadio(wardriveWifiCb, currentChannel);
+    }
+}
+
 static void wardriveLoop(void) {
 #ifdef OUISPY_SWEEPLOG
     {
@@ -737,6 +770,7 @@ static void wardriveLoop(void) {
             g_wdHopCount++;
             hopIdx++;
             if (hopIdx >= hopScheduleLen) hopIdx = 0;
+            if (hopIdx == 0) wardriveSnifferWatchdog();
 #ifdef OUISPY_SWEEPLOG
             if (hopIdx == 0) {
                 static uint32_t g_lastSweepMs = 0;
@@ -888,3 +922,29 @@ const EngineCallbacks wardriveCallbacks = {
     .applyPrefs = wardriveApplyPrefs,
     .name       = "Wardrive",
 };
+
+#ifdef OUISPY_PORT_SELFTEST
+int wardrivePortSelfTest(void) {
+    int fail = 0;
+    auto check = [&](const char* n, bool ok, const char* d = "") {
+        Serial.printf("[PST] wardrive.%s %s %s\n", n, ok ? "PASS" : "FAIL", d);
+        if (!ok) fail++;
+    };
+    uint32_t savedFrames = wdWifiFrames;
+    wdWifiFrames = 0; wdWifiFramesAtSweep = 0; wdSilentSweeps = 0; wdRadioCycled = true;
+    for (int i = 0; i < 6; i++) wardriveSnifferWatchdog();
+    check("never_seen_frames_left_alone", wdSilentSweeps == 0);
+    wdWifiFrames = 100;
+    wardriveSnifferWatchdog();
+    for (int i = 0; i < 4; i++) wardriveSnifferWatchdog();
+    char d[32];
+    snprintf(d, sizeof(d), "silent=%u", wdSilentSweeps);
+    check("silent_sweeps_counted", wdSilentSweeps == 4, d);
+    wdWifiFrames = 150;
+    wardriveSnifferWatchdog();
+    check("traffic_resets_count", wdSilentSweeps == 0);
+    check("probe_tx_default_off", !wifiActiveProbeAllowed());
+    wdWifiFrames = savedFrames; wdWifiFramesAtSweep = savedFrames; wdSilentSweeps = 0; wdRadioCycled = false;
+    return fail;
+}
+#endif

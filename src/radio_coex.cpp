@@ -50,6 +50,10 @@ static void __attribute__((unused)) c5WifiDown(void) {
 }
 #endif
 
+static volatile bool g_activeProbe = false;
+void wifiSetActiveProbe(bool on) { g_activeProbe = on; }
+bool wifiActiveProbeAllowed(void) { return g_activeProbe; }
+
 void wifiSnifferApplyPs(void) {
     if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
@@ -180,6 +184,38 @@ void wifiCoexUnregister(WifiRxParser parser) {
 
 bool wifiCoexActive(void) {
     return g_count > 0;
+}
+
+static bool wifiCoexSoleParser(WifiRxParser owner) {
+    portENTER_CRITICAL(&g_mux);
+    bool sole = (g_count == 1 && g_parsers[0] == owner);
+    portEXIT_CRITICAL(&g_mux);
+    return sole;
+}
+
+bool wifiCoexReassert(WifiRxParser owner) {
+    if (!wifiCoexSoleParser(owner)) return false;
+    esp_wifi_set_promiscuous(false);
+    wifiCoexApplyFilter();
+    esp_wifi_set_promiscuous_rx_cb(wifiCoexDispatch);
+    esp_wifi_set_promiscuous(true);
+    Serial.println("[COEX] sniffer re-asserted");
+    return true;
+}
+
+bool wifiCoexCycleRadio(WifiRxParser owner, uint8_t channel) {
+    if (!wifiCoexSoleParser(owner)) return false;
+    esp_wifi_set_promiscuous(false);
+    esp_wifi_stop();
+    vTaskDelay(pdMS_TO_TICKS(50));
+    esp_err_t rc = esp_wifi_start();
+    wifiSnifferApplyPs();
+    wifiCoexApplyFilter();
+    esp_wifi_set_promiscuous_rx_cb(wifiCoexDispatch);
+    esp_wifi_set_promiscuous(true);
+    esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+    Serial.printf("[COEX] radio cycled rc=0x%x\n", (int)rc);
+    return rc == ESP_OK;
 }
 
 bool wifiRadioExternallyOwned(void) {

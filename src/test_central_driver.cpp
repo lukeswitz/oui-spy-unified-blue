@@ -27,6 +27,17 @@ class ScanCB : public NimBLEAdvertisedDeviceCallbacks {
 };
 static ScanCB scanCb;
 
+#ifndef OUISPY_DRV_PASSKEY
+#define OUISPY_DRV_PASSKEY 123456
+#endif
+
+class DrvClientCB : public NimBLEClientCallbacks {
+#ifdef OUISPY_NIMBLE2_API
+    void onPassKeyEntry(NimBLEConnInfo& ci) override { NimBLEDevice::injectPassKey(ci, OUISPY_DRV_PASSKEY); }
+#endif
+};
+static DrvClientCB drvClientCb;
+
 static bool findNode(uint32_t ms) {
     found = false;
     NimBLEScan* s = NimBLEDevice::getScan();
@@ -52,7 +63,10 @@ static bool writeChr(const char* chrUuid, const uint8_t* data, size_t len) {
 }
 
 static bool doConnect() {
-    if (!cli) cli = NimBLEDevice::createClient();
+    if (!cli) {
+        cli = NimBLEDevice::createClient();
+        cli->setClientCallbacks(&drvClientCb, false);
+    }
     if (cli->isConnected()) return true;
     if (!cli->connect(&target)) { Serial.println("[DRV] connect FAIL"); return false; }
     Serial.println("[DRV] connected");
@@ -98,6 +112,8 @@ void setup() {
     Serial.println("\n[DRV] === OUI-SPY offline-scan reconnect test central ===");
     NimBLEDevice::init("OUISPY-TESTDRV");
     NimBLEDevice::setMTU(247);
+    NimBLEDevice::setSecurityAuth(true, true, true);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_KEYBOARD_ONLY);
     NimBLEDevice::getScan()->setAdvertisedDeviceCallbacks(&scanCb, false);
     NimBLEDevice::getScan()->setActiveScan(true);
 }

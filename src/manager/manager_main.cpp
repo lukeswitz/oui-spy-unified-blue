@@ -21,6 +21,7 @@
 #endif
 
 QueueHandle_t detectionQueue = NULL;
+uint16_t g_detQueueDepth = 0;
 QueueHandle_t engineCmdQueue = NULL;
 QueueHandle_t peerStatusQueue = NULL;
 
@@ -58,6 +59,7 @@ static void heartbeatTask(void*) {
         bleGattMaybeResliceWardrive();
         bleGattReconcileEngines();
         bleGattMgrPersistOfflineTick();
+        bleGattSecurityTick();
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
         if (meshIsEnabled() && meshConsumeNewNodeJoined()) {
@@ -141,7 +143,8 @@ void setup() {
 
     wifiStaSetEnabled(false);
 
-    detectionQueue  = xQueueCreate(20, sizeof(DetectionEvent));
+    g_detQueueDepth = 20;
+    detectionQueue  = xQueueCreate(g_detQueueDepth, sizeof(DetectionEvent));
     engineCmdQueue  = xQueueCreate(8,  sizeof(EngineCommand));
     peerStatusQueue = xQueueCreate(MESH_PEER_STATUS_QUEUE_DEPTH, sizeof(MeshStatusPacket));
     if (!detectionQueue || !engineCmdQueue || !peerStatusQueue) {

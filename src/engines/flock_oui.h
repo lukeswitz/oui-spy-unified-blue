@@ -145,6 +145,67 @@ static inline int IRAM_ATTR isWildcardProbeIE(const uint8_t* body, int len) {
     return -1;
 }
 
+static const char FLOCK_PROBE_IE_SIG[] = "2,12,127,221:506f9a16030103,45,191,221:0050f208000000";
+static const int FLOCK_IE_SIG_ANCHOR = 9;
+
+static inline bool IRAM_ATTR flockIeSigMatchesLen(const uint8_t* body, int len, const char* want) {
+    static const char hx[] = "0123456789abcdef";
+    int w = 0;
+    bool first = true;
+    while (len >= 2) {
+        uint8_t id = body[0];
+        uint8_t elen = body[1];
+        if ((int)elen + 2 > len) return false;
+        if (id != 0) {
+            char tok[24];
+            int t = 0;
+            if (id == 221 && elen >= 4) {
+                tok[t++] = '2'; tok[t++] = '2'; tok[t++] = '1'; tok[t++] = ':';
+                int n = elen < 8 ? elen : 8;
+                for (int i = 0; i < n; i++) {
+                    tok[t++] = hx[body[2 + i] >> 4];
+                    tok[t++] = hx[body[2 + i] & 0x0F];
+                }
+            } else {
+                if (id >= 100) tok[t++] = (char)('0' + id / 100);
+                if (id >= 10) tok[t++] = (char)('0' + (id / 10) % 10);
+                tok[t++] = (char)('0' + id % 10);
+            }
+            if (!first) { if (want[w] != ',') return false; w++; }
+            first = false;
+            for (int i = 0; i < t; i++, w++) if (want[w] != tok[i]) return false;
+        }
+        body += elen + 2;
+        len -= elen + 2;
+    }
+    return want[w] == '\0';
+}
+
+static inline int IRAM_ATTR flockLiteonIeOffset(const uint8_t* body, int len) {
+    int off = 0;
+    while (len - off >= 2) {
+        uint8_t id = body[off];
+        uint8_t elen = body[off + 1];
+        if (off + (int)elen + 2 > len) return -1;
+        if (id == 221 && elen >= 3 && body[off + 2] == 0x50 && body[off + 3] == 0x6f && body[off + 4] == 0x9a)
+            return off;
+        off += elen + 2;
+    }
+    return -1;
+}
+
+static inline bool IRAM_ATTR flockIeSigMatchesBody(const uint8_t* body, int len) {
+    if (flockIeSigMatchesLen(body, len, FLOCK_PROBE_IE_SIG)) return true;
+    int a = flockLiteonIeOffset(body, len);
+    return a >= 0 && flockIeSigMatchesLen(body + a, len - a, FLOCK_PROBE_IE_SIG + FLOCK_IE_SIG_ANCHOR);
+}
+
+static inline bool IRAM_ATTR flockProbeIeSigMatches(const uint8_t* body, int len) {
+    if (!body || len < 2) return false;
+    if (flockIeSigMatchesBody(body, len)) return true;
+    return len > 4 && flockIeSigMatchesBody(body, len - 4);
+}
+
 static inline bool IRAM_ATTR flockHasLiteonVendorIE(const uint8_t* body, int len) {
     if (!body) return false;
     while (len >= 2) {

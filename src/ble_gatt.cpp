@@ -7,12 +7,28 @@
 #include "engines/flock_wifi.h"
 #include "engines/flock_ble.h"
 #include "engines/wardrive.h"
+#include "engines/tracker_ring.h"
+#include "engines/enow_hub.h"
 #include "mesh_espnow.h"
 #include "ota_handler.h"
 #include "wifi_ota_handler.h"
 #include "opsec_mac.h"
 #include "usb_link.h"
+#include "radio_coex.h"
+#include "ble_coex.h"
 #include <Arduino.h>
+
+#ifndef OUISPY_BLE_SECURE
+#define OUISPY_BLE_SECURE 1
+#endif
+#if OUISPY_BLE_SECURE
+#define SEC_R (NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN)
+#define SEC_W (NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN)
+extern "C" void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
+#else
+#define SEC_R 0
+#define SEC_W 0
+#endif
 #include <Preferences.h>
 #include <NimBLEDevice.h>
 #include <nvs_flash.h>
@@ -934,7 +950,131 @@ void bleGattUsbLinkChanged(bool up) {
     phoneLinkGone();
 }
 
+#define BLE_UNPAIRED_DROP_MS 60000
+#define BLE_MAX_PEERS 4
+
+struct BlePeer { uint16_t handle; uint32_t sinceMs; bool authed; };
+static BlePeer s_peers[BLE_MAX_PEERS];
+static uint8_t s_irk[16];
+static bool s_irkReady = false;
+
+static bool bleUseStableAddress(void) {
+    uint8_t a[6];
+    Preferences p;
+    p.begin("ouispy-ble", false);
+    size_t n = p.getBytes("addr", a, sizeof(a));
+    bool valid = n == sizeof(a) && (a[5] & 0xC0) == 0xC0;
+    if (!valid) {
+        esp_fill_random(a, sizeof(a));
+        a[5] |= 0xC0;
+        p.putBytes("addr", a, sizeof(a));
+    }
+    p.end();
+    return NimBLEDevice::setOwnAddr(a) && NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RANDOM);
+}
+
+static void bleSecLoadKeys(void) {
+    Preferences p;
+    p.begin("ouispy-ble", false);
+    if (p.getBytes("irk", s_irk, sizeof(s_irk)) != sizeof(s_irk)) {
+        esp_fill_random(s_irk, sizeof(s_irk));
+        p.putBytes("irk", s_irk, sizeof(s_irk));
+    }
+    uint32_t pk = p.getULong("passkey", 1000000);
+    if (pk > 999999) {
+        pk = 100000 + (esp_random() % 900000);
+        p.putULong("passkey", pk);
+    }
+    p.end();
+    s_irkReady = true;
+    NimBLEDevice::setSecurityPasskey(pk);
+}
+
+static int bleSecGenKey(uint8_t key, struct ble_store_gen_key* gen, uint16_t) {
+    if (key != BLE_STORE_GEN_KEY_IRK || !s_irkReady) return -1;
+    memcpy(gen->irk, s_irk, sizeof(s_irk));
+    return 0;
+}
+
+static bool bleSetPasskey(uint32_t pk) {
+    if (pk > 999999) return false;
+    Preferences p;
+    p.begin("ouispy-ble", false);
+    p.putULong("passkey", pk);
+    p.end();
+    NimBLEDevice::setSecurityPasskey(pk);
+    return true;
+}
+
+static BlePeer* blePeerFind(uint16_t h) {
+    for (auto& pe : s_peers) if (pe.handle == h) return &pe;
+    return nullptr;
+}
+
+static bool bleAnyAuthedPeer(void) {
+    for (auto& pe : s_peers) if (pe.handle != BLE_HS_CONN_HANDLE_NONE && pe.authed) return true;
+    return false;
+}
+
+void bleGattSecurityTick(void) {
+#if OUISPY_BLE_SECURE
+    if (!pServer) return;
+    uint32_t now = millis();
+    for (auto& pe : s_peers) {
+        if (pe.handle == BLE_HS_CONN_HANDLE_NONE || pe.authed) continue;
+        if (now - pe.sinceMs >= BLE_UNPAIRED_DROP_MS) {
+            Serial.printf("[BLE] dropping unpaired peer handle=%u after %us\n",
+                          (unsigned)pe.handle, (unsigned)(BLE_UNPAIRED_DROP_MS / 1000));
+            pServer->disconnect(pe.handle);
+            pe.sinceMs = now;
+        }
+    }
+#endif
+}
+
 class ServerCallbacks : public NimBLEServerCallbacks {
+#if OUISPY_BLE_SECURE
+    void onConnect(NimBLEServer* server, NimBLEConnInfo& info) override {
+        uint16_t h = info.getConnHandle();
+        BlePeer* slot = blePeerFind(BLE_HS_CONN_HANDLE_NONE);
+        if (slot) { slot->handle = h; slot->sinceMs = millis(); slot->authed = false; }
+        server->updateConnParams(h, 12, 24, 0, 600);
+        if (info.isEncrypted() && info.isAuthenticated()) {
+            if (slot) slot->authed = true;
+            onConnect(server);
+        }
+        if (!bleAnyAuthedPeer()) NimBLEDevice::startAdvertising();
+        Serial.printf("[BLE] peer connected handle=%u, awaiting pairing\n", (unsigned)h);
+    }
+
+    void onAuthenticationComplete(NimBLEConnInfo& info) override {
+        uint16_t h = info.getConnHandle();
+        BlePeer* pe = blePeerFind(h);
+        if (!info.isEncrypted() || !info.isAuthenticated()) {
+            Serial.printf("[BLE] pairing failed handle=%u, disconnecting\n", (unsigned)h);
+            if (pServer) pServer->disconnect(h);
+            return;
+        }
+        bool wasAuthed = pe && pe->authed;
+        if (pe) pe->authed = true;
+        Serial.printf("[BLE] peer authenticated handle=%u bonded=%d\n", (unsigned)h, (int)info.isBonded());
+        NimBLEDevice::stopAdvertising();
+        if (!wasAuthed && pServer) onConnect(pServer);
+    }
+
+    void onDisconnect(NimBLEServer* server, NimBLEConnInfo& info, int reason) override {
+        BlePeer* pe = blePeerFind(info.getConnHandle());
+        bool wasAuthed = pe && pe->authed;
+        if (pe) { pe->handle = BLE_HS_CONN_HANDLE_NONE; pe->authed = false; }
+        if (wasAuthed && !bleAnyAuthedPeer()) onDisconnect(server);
+        else NimBLEDevice::startAdvertising();
+    }
+
+    uint32_t onPassKeyDisplay() override {
+        return NimBLEDevice::getSecurityPasskey();
+    }
+#endif
+
     void onConnect(NimBLEServer* server) override {
         phoneLinkUp();
         NimBLEScan* scan = NimBLEDevice::getScan();
@@ -942,8 +1082,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             scan->stop();
         }
 
+#if !OUISPY_BLE_SECURE
         uint16_t connHandle = server->getPeerInfo(0).getConnHandle();
         server->updateConnParams(connHandle, 12, 24, 0, 600);
+#endif
         Serial.println("[BLE] Phone connected, requested fast conn params");
 #if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
         {
@@ -951,7 +1093,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             Serial.printf("[BLET] connected t=%ums interval=%u latency=%u timeout=%u mtu=%u\n",
                           (unsigned)millis(), (unsigned)ci.getConnInterval(),
                           (unsigned)ci.getConnLatency(), (unsigned)ci.getConnTimeout(),
-                          (unsigned)server->getPeerMTU(connHandle));
+                          (unsigned)server->getPeerMTU(ci.getConnHandle()));
         }
 #endif
     }
@@ -1145,6 +1287,14 @@ class GpsReceiveCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+void radioPolicyApply(uint8_t policy) {
+    wifiSetActiveProbe((policy & RADIO_POL_ACTIVE_PROBE) != 0);
+    bleCoexSetPassiveOnly((policy & RADIO_POL_PASSIVE_BLE) != 0);
+    Serial.printf("[CFG] Radio policy: probe=%s ble=%s\n",
+                  (policy & RADIO_POL_ACTIVE_PROBE) ? "active" : "passive",
+                  (policy & RADIO_POL_PASSIVE_BLE) ? "passive" : "active");
+}
+
 void hardwareConfigApply(const uint8_t* data, size_t len) {
     if (len < 3) return;
     static uint8_t lastCfg[8]; static size_t lastCfgLen = 0; static bool haveCfg = false;
@@ -1178,6 +1328,10 @@ void hardwareConfigApply(const uint8_t* data, size_t len) {
     if (len >= 6) {
         offlineScanEnabled = data[5] != 0;
         p.putBool("offl_scan", offlineScanEnabled);
+    }
+    if (len >= 8) {
+        p.putUChar("radio_pol", data[7]);
+        radioPolicyApply(data[7]);
     }
     p.end();
     if (len >= 7) flockSetAllowOuiOnly(data[6] != 0);
@@ -1228,7 +1382,7 @@ static uint8_t mgrHwCfg[8]    = {0}; static uint8_t mgrHwCfgLen = 0;
 static uint8_t mgrAlertCfg[8] = {0}; static uint8_t mgrAlertCfgLen = 0;
 static uint8_t mgrApCfg[5]    = {0}; static uint8_t mgrApCfgLen = 0;
 static uint8_t mgrFoxCfg[7]   = {0}; static uint8_t mgrFoxCfgLen = 0;
-static uint8_t mgrSigCfg[1]   = {0}; static uint8_t mgrSigCfgLen = 0;
+static uint8_t mgrSigCfg[2]   = {0}; static uint8_t mgrSigCfgLen = 0;
 static uint8_t mgrBandCfg[1]  = {0}; static uint8_t mgrBandCfgLen = 0;
 
 static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len) {
@@ -1293,17 +1447,18 @@ void bleGattRebroadcastConfigs(void) {
 static void mgrLoadConfigCaches(void) {
     Preferences p;
     p.begin("ouispy-hw", true);
-    uint8_t hw[7];
+    uint8_t hw[8];
     hw[0] = p.getBool("buzzer", true) ? 1 : 0;
     hw[1] = p.getBool("led", true) ? 1 : 0;
     hw[2] = p.getUChar("neo_brt", 50);
     hw[3] = p.getUChar("bz_vol", 100);
     hw[4] = p.getBool("flock_ext", false) ? 1 : 0;
     hw[5] = p.getBool("offl_scan", false) ? 1 : 0;
+    hw[7] = p.getUChar("radio_pol", 0);
     bool hwSet = p.isKey("buzzer");
     p.end();
     hw[6] = flockGetAllowOuiOnly() ? 1 : 0;
-    if (hwSet) mgrCacheConfig(MESH_CFG_KIND_HW, hw, 7);
+    if (hwSet) mgrCacheConfig(MESH_CFG_KIND_HW, hw, 8);
 
     Preferences q;
     q.begin("ouispy-alert", true);
@@ -1344,16 +1499,17 @@ class HardwareConfigCallbacks : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* chr) override {
         Preferences p;
         p.begin("ouispy-hw", true);
-        uint8_t buf[7];
+        uint8_t buf[8];
         buf[0] = p.getBool("buzzer", true) ? 1 : 0;
         buf[1] = p.getBool("led", true) ? 1 : 0;
         buf[2] = p.getUChar("neo_brt", 50);
         buf[3] = p.getUChar("bz_vol", 100);
         buf[4] = p.getBool("flock_ext", false) ? 1 : 0;
         buf[5] = p.getBool("offl_scan", false) ? 1 : 0;
+        buf[7] = p.getUChar("radio_pol", 0);
         p.end();
         buf[6] = flockGetAllowOuiOnly() ? 1 : 0;
-        chr->setValue(buf, 7);
+        chr->setValue(buf, 8);
     }
 };
 
@@ -1476,14 +1632,15 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
             }
             case 0x03:
                 if (val.length() >= 2) {
-                    detectorSetSigMask(data[1]);
-                    Serial.printf("[BLE] Detector signatures mask=0x%02x\n", data[1]);
+                    uint16_t mask = data[1] | (val.length() >= 3 ? ((uint16_t)data[2] << 8) : 0);
+                    detectorSetSigMask(mask);
+                    Serial.printf("[BLE] Detector signatures mask=0x%03x\n", (unsigned)mask);
 #ifdef OUISPY_ROLE_MANAGER
                     {
-                        uint8_t sm = data[1];
-                        mgrCacheConfig(MESH_CFG_KIND_SIGMASK, &sm, 1);
+                        uint8_t sm[2] = { (uint8_t)(mask & 0xFF), (uint8_t)(mask >> 8) };
+                        mgrCacheConfig(MESH_CFG_KIND_SIGMASK, sm, 2);
                         if (meshIsEnabled())
-                            meshBroadcastConfig(MESH_CFG_KIND_SIGMASK, &sm, 1);
+                            meshBroadcastConfig(MESH_CFG_KIND_SIGMASK, sm, 2);
                     }
 #endif
                 }
@@ -1603,6 +1760,22 @@ static volatile bool g_spoolFlushPending = false;
 #define SYS_CMD_WIFI_WIPE         0x07
 #define SYS_OP_FLEET_PROGRESS     0x08
 #define SYS_CMD_FLEET_WIFI_OTA    0x0A  // push mgr WiFi creds + node URL to nodes
+#define SYS_CMD_SET_PASSKEY       0x0D
+#define SYS_CMD_RING_TRACKER      0x0E
+#define SYS_CMD_ENOW_HUB          0x0F
+
+static void enowHubNotify(NimBLECharacteristic* chr, uint8_t refuse) {
+    uint32_t r = enowHubRecordCount();
+    uint8_t b[8] = { SYS_CMD_ENOW_HUB, (uint8_t)(enowHubActive() ? 1 : 0), enowHubNodeCount(), refuse,
+                     (uint8_t)r, (uint8_t)(r >> 8), (uint8_t)(r >> 16), (uint8_t)(r >> 24) };
+    notifyChr(chr, b, sizeof(b));
+}
+
+static void trackerRingDone(const uint8_t mac[6], uint8_t status, uint8_t proto) {
+    if (!chrSystemControl) return;
+    uint8_t b[9] = { SYS_CMD_RING_TRACKER, status, proto, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5] };
+    notifyChr(chrSystemControl, b, sizeof(b));
+}
 
 #ifdef OUISPY_ROLE_MANAGER
 static void fleetOtaNotify(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen) {
@@ -1657,11 +1830,68 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                     return;
                 }
                 Serial.println("[SYS] FACTORY RESET — erasing NVS and rebooting");
+                NimBLEDevice::deleteAllBonds();
                 nvs_flash_erase();
                 nvs_flash_init();
                 delay(200);
                 esp_restart();
                 break;
+
+            case SYS_CMD_ENOW_HUB: {
+                if (!magicOk || val.length() < 4) {
+                    Serial.println("[SYS] ENOW hub command rejected");
+                    return;
+                }
+                const uint8_t* d = (const uint8_t*)val.data();
+                uint8_t op = d[3];
+                uint8_t refuse = ENOW_HUB_OK;
+                if (op == 1) {
+                    size_t off = 4;
+                    uint8_t plen = off < val.length() ? d[off++] : 0;
+                    char pass[33] = {0};
+                    if (plen > 32 || off + plen > val.length()) { refuse = ENOW_HUB_REFUSE_ARGS; }
+                    else {
+                        memcpy(pass, d + off, plen);
+                        off += plen;
+                        uint8_t ac = off < val.length() ? d[off++] : 0;
+                        if (ac > ENOW_HUB_MAX_ALLOW || off + (size_t)ac * 6 > val.length()) refuse = ENOW_HUB_REFUSE_ARGS;
+                        else refuse = enowHubStart(pass, d + off, ac);
+                    }
+                    memset(pass, 0, sizeof(pass));
+                } else if (op == 0) {
+                    enowHubStop();
+                }
+                enowHubNotify(chr, refuse);
+                break;
+            }
+
+            case SYS_CMD_RING_TRACKER: {
+                if (!magicOk || val.length() < 10) {
+                    Serial.println("[SYS] Tracker ring rejected");
+                    return;
+                }
+                const uint8_t* m = (const uint8_t*)val.data() + 3;
+                uint8_t at = (uint8_t)val[9] ? BLE_ADDR_RANDOM : BLE_ADDR_PUBLIC;
+                if (!trackerRingStart(m, at, trackerRingDone)) {
+                    uint8_t busy[3] = { SYS_CMD_RING_TRACKER, TRACKER_RING_BUSY, 0xFF };
+                    notifyChr(chr, busy, sizeof(busy));
+                }
+                break;
+            }
+
+            case SYS_CMD_SET_PASSKEY: {
+                if (!magicOk || val.length() < 7) {
+                    Serial.println("[SYS] Passkey change rejected");
+                    return;
+                }
+                uint32_t pk = (uint8_t)val[3] | ((uint32_t)(uint8_t)val[4] << 8) |
+                              ((uint32_t)(uint8_t)val[5] << 16) | ((uint32_t)(uint8_t)val[6] << 24);
+                bool ok = bleSetPasskey(pk);
+                Serial.printf("[SYS] Passkey change %s\n", ok ? "OK" : "rejected (must be 0..999999)");
+                uint8_t ack[2] = { SYS_CMD_SET_PASSKEY, (uint8_t)(ok ? 0x00 : 0x01) };
+                notifyChr(chr, ack, sizeof(ack));
+                break;
+            }
 
             case SYS_CMD_CONFIRM_OTA: {
                 esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
@@ -2217,9 +2447,28 @@ class PcapControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override { }
 };
 
+static uint32_t s_bootEpoch = 0;
+static uint32_t s_bootCount = 0;
+
+static int deviceInfoKeyed(char* info, int len, int cap) {
+    len++;
+    len += snprintf(info + len, cap - len, "proto=%u", (unsigned)OUISPY_BLE_PROTO_VERSION);
+    len++;
+    len += snprintf(info + len, cap - len, "epoch=%08lx", (unsigned long)s_bootEpoch);
+    len++;
+    len += snprintf(info + len, cap - len, "boot=%lu", (unsigned long)s_bootCount);
+    len++;
+    len += snprintf(info + len, cap - len, "spool=%u", detSpoolStorageOk() ? 1u : 0u);
+#if OUISPY_BLE_SECURE
+    len++;
+    len += snprintf(info + len, cap - len, "pk=%06lu", (unsigned long)NimBLEDevice::getSecurityPasskey());
+#endif
+    return len;
+}
+
 class DeviceInfoCallbacks : public NimBLECharacteristicCallbacks {
     void onRead(NimBLECharacteristic* chr) override {
-        char info[96];
+        char info[160];
         int len = snprintf(info, sizeof(info), "%s", FW_VERSION);
         len++;
         uint8_t mac[6];
@@ -2242,6 +2491,7 @@ class DeviceInfoCallbacks : public NimBLECharacteristicCallbacks {
             len++;
             len += snprintf(info + len, sizeof(info) - len, "%d", (int)tc);
         }
+        len = deviceInfoKeyed(info, len, sizeof(info));
         chr->setValue((uint8_t*)info, len + 1);
     }
 };
@@ -2287,8 +2537,28 @@ void bleGattInit(void) {
 #else
         snprintf(devName, sizeof(devName), "OUI-SPY");
 #endif
+        for (auto& pe : s_peers) { pe.handle = BLE_HS_CONN_HANDLE_NONE; pe.authed = false; }
+#if OUISPY_BLE_SECURE
+        bleSecLoadKeys();
+        ble_hs_cfg.store_gen_key_cb = bleSecGenKey;
+#endif
         NimBLEDevice::init(devName);
         Serial.printf("[BLE] device name: %s\n", devName);
+#if OUISPY_BLE_SECURE
+        Serial.printf("[BLE] pairing passkey: %06lu\n", (unsigned long)NimBLEDevice::getSecurityPasskey());
+        NimBLEDevice::setSecurityAuth(true, true, true);
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+        NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+        NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+        bool rpa = bleUseStableAddress();
+#if defined(CONFIG_BT_NIMBLE_HOST_BASED_PRIVACY) && CONFIG_BT_NIMBLE_HOST_BASED_PRIVACY
+        if (rpa) rpa = NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_RANDOM_DEFAULT);
+#endif
+        if (!rpa) NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
+        ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_WRITE |
+                                         BLE_ATT_F_WRITE_ENC | BLE_ATT_F_WRITE_AUTHEN);
+        Serial.printf("[BLE] secure: bond+MITM+SC, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
+#endif
     }
 #ifndef OUISPY_STRESS_NOFIX
     NimBLEDevice::getScan()->setMaxResults(0);
@@ -2308,10 +2578,18 @@ void bleGattInit(void) {
     // -- Device Info (READ) --
     chrDeviceInfo = svc->createCharacteristic(
         CHR_DEVICE_INFO,
-        NIMBLE_PROPERTY::READ
+        NIMBLE_PROPERTY::READ | SEC_R
     );
+    s_bootEpoch = esp_random();
     {
-        char info[96];
+        Preferences bp;
+        bp.begin("ouispy-boot", false);
+        s_bootCount = bp.getULong("count", 0) + 1;
+        bp.putULong("count", s_bootCount);
+        bp.end();
+    }
+    {
+        char info[160];
         int len = snprintf(info, sizeof(info), "%s", FW_VERSION);
         len++;
         uint8_t mac[6];
@@ -2326,6 +2604,7 @@ void bleGattInit(void) {
 #else
         len += snprintf(info + len, sizeof(info) - len, "node");
 #endif
+        len = deviceInfoKeyed(info, len, sizeof(info));
         chrDeviceInfo->setValue((uint8_t*)info, len + 1);
     }
     chrDeviceInfo->setCallbacks(&deviceInfoCb);
@@ -2333,7 +2612,7 @@ void bleGattInit(void) {
     // -- Engine Control (READ, WRITE, NOTIFY) --
     chrEngineControl = svc->createCharacteristic(
         CHR_ENGINE_CONTROL,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY | SEC_R | SEC_W
     );
     chrEngineControl->setCallbacks(&engineControlCb);
 
@@ -2346,56 +2625,56 @@ void bleGattInit(void) {
     // -- Device Status (READ, NOTIFY) --
     chrDeviceStatus = svc->createCharacteristic(
         CHR_DEVICE_STATUS,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY | SEC_R
     );
 
     // -- GPS Receive (WRITE, WRITE_NR) --
     chrGpsReceive = svc->createCharacteristic(
         CHR_GPS_RECEIVE,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | SEC_R | SEC_W
     );
     chrGpsReceive->setCallbacks(&gpsReceiveCb);
 
     // -- Hardware Config (READ, WRITE) --
     chrHardwareConfig = svc->createCharacteristic(
         CHR_HARDWARE_CONFIG,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | SEC_R | SEC_W
     );
     chrHardwareConfig->setCallbacks(&hwConfigCb);
 
     // -- Alert Config (READ, WRITE) --
     chrAlertConfig = svc->createCharacteristic(
         CHR_ALERT_CONFIG,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | SEC_R | SEC_W
     );
     chrAlertConfig->setCallbacks(&alertConfigCb);
 
     // -- Ignore List (READ, WRITE) — mutes chime/auto-pcap for ignored MAC/OUI/SSID --
     chrIgnoreList = svc->createCharacteristic(
         CHR_IGNORE_LIST,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | SEC_R | SEC_W
     );
     chrIgnoreList->setCallbacks(&ignoreListCb);
 
-    svc->createCharacteristic(CHR_MELODY, NIMBLE_PROPERTY::WRITE)->setCallbacks(&melodyCb);
+    svc->createCharacteristic(CHR_MELODY, NIMBLE_PROPERTY::WRITE | SEC_W)->setCallbacks(&melodyCb);
 
     // -- Node Radio Role (WRITE) — per-node WiFi/BLE/Both for wardrive slicing --
     chrNodeRadio = svc->createCharacteristic(
         CHR_NODE_RADIO,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | SEC_R | SEC_W
     );
     chrNodeRadio->setCallbacks(&nodeRadioCb);
 
     // -- Foxhunter Config (WRITE) --
     chrFoxhunterConfig = svc->createCharacteristic(
         CHR_FOXHUNTER_CONFIG,
-        NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::WRITE | SEC_W
     );
     chrFoxhunterConfig->setCallbacks(&foxhunterConfigCb);
 
     NimBLECharacteristic* chrDetectorConfig = svc->createCharacteristic(
         CHR_DETECTOR_CONFIG,
-        NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::WRITE | SEC_W
     );
     chrDetectorConfig->setCallbacks(&detectorConfigCb);
 
@@ -2408,21 +2687,21 @@ void bleGattInit(void) {
     // -- UniPwn Command (WRITE, NOTIFY) --
     chrUnipwnCommand = svc->createCharacteristic(
         CHR_UNIPWN_COMMAND,
-        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY | SEC_W
     );
     chrUnipwnCommand->setCallbacks(&unipwnCommandCb);
 
     // -- Mesh Config (READ, WRITE) --
     chrMeshConfig = svc->createCharacteristic(
         CHR_MESH_CONFIG,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | SEC_R | SEC_W
     );
     chrMeshConfig->setCallbacks(&meshConfigCb);
 
     // -- Mesh Status (READ, NOTIFY) --
     chrMeshStatus = svc->createCharacteristic(
         CHR_MESH_STATUS,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY | SEC_R
     );
 
     chrDfuControl = svc->createCharacteristic(
@@ -2432,33 +2711,33 @@ void bleGattInit(void) {
 
     chrDfuData = svc->createCharacteristic(
         CHR_DFU_DATA,
-        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | SEC_W
     );
     chrDfuData->setCallbacks(&dfuDataCb);
 
     chrSystemControl = svc->createCharacteristic(
         CHR_SYSTEM_CONTROL,
-        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY | SEC_W
     );
     chrSystemControl->setCallbacks(&systemControlCb);
 
     chrWifiConfig = svc->createCharacteristic(
         CHR_WIFI_CONFIG,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | SEC_R | SEC_W
     );
     chrWifiConfig->setCallbacks(&wifiConfigCb);
 
     // -- PCAP Control (WRITE) --
     chrPcapControl = svc->createCharacteristic(
         CHR_PCAP_CONTROL,
-        NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::WRITE | SEC_W
     );
     chrPcapControl->setCallbacks(&pcapControlCb);
 
     // -- PCAP Stats (NOTIFY) --
     chrPcapStats = svc->createCharacteristic(
         CHR_PCAP_STATS,
-        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY | SEC_R
     );
 
     // -- PCAP Data (NOTIFY) — chunked file download --
@@ -2582,7 +2861,8 @@ static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
         case ENGINE_DETECTOR:
             buf[19] = evt->ext.detector.is_full_mac;
             memcpy(buf + 20, evt->ext.detector.filter_desc, 32);
-            len = 52;
+            buf[52] = evt->ext.detector.confidence;
+            len = 53;
             break;
         case ENGINE_WARDRIVE:
             memcpy(buf + 19, evt->ext.wardrive.ssid, 33);
@@ -2875,3 +3155,149 @@ void bleGattNotifyPcapStats(void) {
 
     notifyChr(chrPcapStats, (const uint8_t*)&st, sizeof(st));
 }
+
+#ifdef OUISPY_PORT_SELFTEST
+#include <mbedtls/aes.h>
+extern "C" int ble_hs_pvcy_our_irk(const uint8_t** out_irk);
+extern "C" int ble_hs_set_rpa_timeout(uint16_t timeout);
+
+static bool pstRpaResolves(const uint8_t a[6], const uint8_t irk[16]) {
+    uint8_t key[16], pt[16] = {0}, ct[16];
+    for (int i = 0; i < 16; i++) key[i] = irk[15 - i];
+    pt[13] = a[5]; pt[14] = a[4]; pt[15] = a[3];
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    bool ok = mbedtls_aes_setkey_enc(&aes, key, 128) == 0 &&
+              mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, pt, ct) == 0;
+    mbedtls_aes_free(&aes);
+    return ok && a[0] == ct[15] && a[1] == ct[14] && a[2] == ct[13];
+}
+
+static volatile int s_pstRingStatus = -1;
+static void pstRingDone(const uint8_t*, uint8_t status, uint8_t) { s_pstRingStatus = status; }
+
+int bleGattPortSelfTest(void) {
+    int fail = 0;
+    char d[96];
+    auto check = [&](const char* n, bool ok, const char* det = "") {
+        Serial.printf("[PST] ble.%s %s %s\n", n, ok ? "PASS" : "FAIL", det);
+        if (!ok) fail++;
+    };
+
+    char info[160] = {0};
+    int len = snprintf(info, sizeof(info), "x");
+    len = deviceInfoKeyed(info, len, sizeof(info));
+    bool hasProto = false, hasEpoch = false, hasBoot = false, hasSpool = false, hasPk = true;
+#if OUISPY_BLE_SECURE
+    hasPk = false;
+#endif
+    for (int i = 0; i < len; i += strlen(info + i) + 1) {
+        hasProto |= strcmp(info + i, "proto=2") == 0;
+        hasEpoch |= strncmp(info + i, "epoch=", 6) == 0 && strlen(info + i) == 14;
+        hasBoot |= strncmp(info + i, "boot=", 5) == 0 && s_bootCount > 0;
+        hasSpool |= strcmp(info + i, "spool=1") == 0;
+#if OUISPY_BLE_SECURE
+        if (strncmp(info + i, "pk=", 3) == 0 && strlen(info + i) == 9) {
+            bool dig = true;
+            for (int k = 3; k < 9; k++) dig &= isdigit((unsigned char)info[i + k]) != 0;
+            hasPk |= dig;
+        }
+#endif
+    }
+    snprintf(d, sizeof(d), "boot=%lu epoch=%08lx", (unsigned long)s_bootCount, (unsigned long)s_bootEpoch);
+    check("device_info_keyed_fields", hasProto && hasEpoch && hasBoot && hasSpool && hasPk, d);
+
+    DetectionEvent ev = {};
+    ev.engine_id = ENGINE_DETECTOR;
+    ev.ext.detector.confidence = DET_CONF_VERIFIED;
+    ev.ext.detector.is_full_mac = 1;
+    strcpy(ev.ext.detector.filter_desc, "AB");
+    uint8_t buf[200];
+    size_t pl = packDetection(&ev, buf);
+    check("detector_packet_carries_confidence", pl == 53 && buf[52] == DET_CONF_VERIFIED && buf[19] == 1 && buf[20] == 'A');
+
+#if OUISPY_BLE_SECURE
+    int insecure = 0, total = 0;
+    NimBLEService* svc = pServer ? pServer->getServiceByUUID(SVC_UUID) : nullptr;
+    if (svc) {
+        for (NimBLECharacteristic* c : svc->getCharacteristics()) {
+            uint16_t p = c->getProperties();
+            total++;
+            if ((p & NIMBLE_PROPERTY::READ) && !((p & NIMBLE_PROPERTY::READ_ENC) && (p & NIMBLE_PROPERTY::READ_AUTHEN))) insecure++;
+            if ((p & (NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR)) &&
+                !((p & NIMBLE_PROPERTY::WRITE_ENC) && (p & NIMBLE_PROPERTY::WRITE_AUTHEN))) insecure++;
+        }
+    }
+    snprintf(d, sizeof(d), "%d chars, %d unprotected", total, insecure);
+    check("all_characteristics_need_auth", svc && total > 20 && insecure == 0, d);
+
+    NimBLEAddress own = NimBLEDevice::getAddress();
+    const uint8_t* v = own.getBase()->val;
+    snprintf(d, sizeof(d), "type=%u msb=0x%02x", (unsigned)own.getType(), v[5]);
+    check("own_address_is_rpa", own.getType() == BLE_ADDR_RANDOM && (v[5] & 0xC0) == 0x40, d);
+    const uint8_t* hostIrk = nullptr;
+    ble_hs_pvcy_our_irk(&hostIrk);
+    check("host_irk_is_persisted_irk", hostIrk && s_irkReady && memcmp(hostIrk, s_irk, 16) == 0);
+    check("rpa_resolves_with_irk", pstRpaResolves(v, s_irk));
+    uint8_t before[6];
+    memcpy(before, v, 6);
+    ble_hs_set_rpa_timeout(2);
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    NimBLEAddress own2 = NimBLEDevice::getAddress();
+    const uint8_t* v2 = own2.getBase()->val;
+    snprintf(d, sizeof(d), "msb 0x%02x -> 0x%02x", before[5], v2[5]);
+    check("rpa_rotates_and_still_resolves", memcmp(before, v2, 6) != 0 && (v2[5] & 0xC0) == 0x40 && pstRpaResolves(v2, s_irk), d);
+    ble_hs_set_rpa_timeout(CONFIG_BT_NIMBLE_RPA_TIMEOUT);
+
+    uint32_t savedPk = NimBLEDevice::getSecurityPasskey();
+    bool rejected = !bleSetPasskey(1000000);
+    bool set = bleSetPasskey(654321) && NimBLEDevice::getSecurityPasskey() == 654321;
+    Preferences pp;
+    pp.begin("ouispy-ble", true);
+    bool stored = pp.getULong("passkey", 0) == 654321;
+    pp.end();
+    bleSetPasskey(savedPk);
+    check("passkey_validate_set_persist", rejected && set && stored);
+    check("irk_persisted", s_irkReady);
+
+    uint8_t irkBefore[16];
+    memcpy(irkBefore, s_irk, 16);
+    {
+        Preferences rp;
+        rp.begin("ouispy-ble", false);
+        rp.remove("passkey");
+        rp.end();
+    }
+    bleSecLoadKeys();
+    uint32_t gen = NimBLEDevice::getSecurityPasskey();
+    Preferences gp;
+    gp.begin("ouispy-ble", true);
+    bool genStored = gp.getULong("passkey", 0) == gen;
+    gp.end();
+    snprintf(d, sizeof(d), "in_range=%d stored=%d not_default=%d", gen >= 100000 && gen <= 999999, genStored, gen != 123456);
+    check("missing_passkey_generates_random", gen >= 100000 && gen <= 999999 && genStored && gen != 123456 &&
+                                              memcmp(irkBefore, s_irk, 16) == 0, d);
+#endif
+
+    Preferences hp;
+    hp.begin("ouispy-hw", true);
+    uint8_t savedPol = hp.getUChar("radio_pol", 0);
+    hp.end();
+    radioPolicyApply(RADIO_POL_ACTIVE_PROBE | RADIO_POL_PASSIVE_BLE);
+    bool on = wifiActiveProbeAllowed() && !bleCoexActiveScanAllowed();
+    radioPolicyApply(0);
+    bool off = !wifiActiveProbeAllowed() && bleCoexActiveScanAllowed();
+    radioPolicyApply(savedPol);
+    check("radio_policy_gates", on && off);
+
+    s_pstRingStatus = -1;
+    const uint8_t absent[6] = {0xC2, 0x00, 0x00, 0x00, 0x00, 0x01};
+    bool started = trackerRingStart(absent, BLE_ADDR_RANDOM, pstRingDone);
+    bool busy = started && !trackerRingStart(absent, BLE_ADDR_RANDOM, pstRingDone);
+    uint32_t t0 = millis();
+    while (s_pstRingStatus < 0 && millis() - t0 < 15000) vTaskDelay(pdMS_TO_TICKS(100));
+    snprintf(d, sizeof(d), "status=%d after %lums", s_pstRingStatus, (unsigned long)(millis() - t0));
+    check("tracker_ring_absent_tag_no_connect", started && busy && s_pstRingStatus == TRACKER_RING_NO_CONNECT, d);
+    return fail;
+}
+#endif
