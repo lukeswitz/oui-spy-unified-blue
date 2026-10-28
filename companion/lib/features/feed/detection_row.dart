@@ -84,16 +84,50 @@ class DetectionRow extends ConsumerWidget {
           final sig = clsStr == null ? null : SignatureClass.parse(clsStr);
           final sdrCat =
               detection.engine == Engine.sdr ? _sdrCategory(detection) : null;
-          final clsColor = clsStr == null ? engine.color : alertKindColor(clsStr);
+          final isWifi = detection.isWifiDetection;
+          final clsColor = clsStr != null
+              ? alertKindColor(clsStr)
+              : engine == Engine.wardrive && !isWifi && sdrCat == null
+                  ? AppTheme.themed(AppTheme.flockBle)
+                  : engine.color;
           final clsLabel =
               (clsStr == null ? engine.label : alertKindLabel(clsStr)).toUpperCase();
           final icon = sig != null
               ? classIcon(sig)
               : sdrCat != null
                   ? sdrCat.icon
-                  : (detection.isWifiDetection ? Icons.wifi : Icons.bluetooth);
-          final isWifi = detection.isWifiDetection;
+                  : (isWifi ? Icons.wifi : Icons.bluetooth);
           final authMode = detection.wardrive?.authMode ?? 0;
+          final dimStyle = TextStyle(color: dim, fontSize: 11.5);
+          final monoDim = dimStyle.copyWith(fontFamily: AppTheme.mono);
+          final tagStyle = TextStyle(
+              color: clsColor,
+              fontFamily: AppTheme.mono,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6);
+          final rawId = detection.macAddress.toUpperCase();
+          final shownId = engine == Engine.sdr && rawId.contains('|')
+              ? rawId.substring(rawId.indexOf('|') + 1)
+              : rawId;
+          final icons = [
+            if (engine == Engine.skySpy) Icon(Icons.flight, size: 13, color: clsColor),
+            if (OuiLookupService.isLawEnforcement(detection.macAddress))
+              Icon(Icons.local_police, size: 13, color: AppTheme.warning),
+          ];
+          final meta = <TextSpan>[
+            if (sdrCat != null) TextSpan(text: sdrCat.label.toUpperCase(), style: tagStyle),
+            if (headlineIsMac && clsStr != null) TextSpan(text: clsLabel, style: tagStyle),
+            if (detection.odid?.uavId?.isNotEmpty ?? false)
+              TextSpan(
+                  text: 'UAS ${detection.odid!.uavId}',
+                  style: tagStyle.copyWith(letterSpacing: 0, fontWeight: FontWeight.w700)),
+            if (isWifi && detection.channel > 0)
+              TextSpan(text: 'CH ${detection.channel}', style: monoDim),
+            if (!headlineIsMac) TextSpan(text: maskMac(shownId, priv), style: monoDim),
+            if (manufacturer != null && manufacturer.isNotEmpty)
+              TextSpan(text: manufacturer, style: dimStyle),
+          ];
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -106,122 +140,67 @@ class DetectionRow extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      headlineIsMac ? maskMac(headline, priv) : maskName(headline, priv),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: t.textPrimary,
-                            fontFamily: headlineIsMac ? AppTheme.mono : null,
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          if (engine == Engine.skySpy) ...[
-                            Icon(Icons.flight, size: 14, color: clsColor),
-                            const SizedBox(width: 6),
-                          ],
-                          if (OuiLookupService.isLawEnforcement(detection.macAddress)) ...[
-                            Icon(Icons.local_police, size: 14, color: AppTheme.warning),
-                            const SizedBox(width: 6),
-                          ],
-                          if (sdrCat != null) ...[
-                            Text(sdrCat.label.toUpperCase(),
-                                style: TextStyle(
-                                    color: clsColor,
-                                    fontFamily: AppTheme.mono,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.6)),
-                            const SizedBox(width: 9),
-                          ],
-                          if (headlineIsMac && clsStr != null) ...[
-                            Text(
-                              clsLabel,
-                              style: TextStyle(
-                                color: clsColor,
-                                fontFamily: AppTheme.mono,
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.6,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  headlineIsMac ? maskMac(headline, priv) : maskName(headline, priv),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: t.textPrimary,
+                                        fontFamily: headlineIsMac ? AppTheme.mono : null,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 9),
-                          ],
-                          if (detection.odid?.uavId?.isNotEmpty ?? false) ...[
-                            Text('UAS ${detection.odid!.uavId}',
-                                style: TextStyle(
-                                    color: clsColor,
-                                    fontFamily: AppTheme.mono,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700)),
-                            const SizedBox(width: 9),
-                          ],
-                          if (isWifi && authMode > 0) ...[
-                            Icon(authMode == 0 ? Icons.lock_open : Icons.lock,
-                                size: 12, color: AppTheme.success),
-                            const SizedBox(width: 3),
-                            Text(_authShort(authMode),
-                                style: TextStyle(
-                                    color: AppTheme.success,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600)),
-                            const SizedBox(width: 9),
-                          ],
-                          if (isWifi && detection.channel > 0) ...[
-                            Text('CH ${detection.channel}',
-                                style: TextStyle(
-                                    color: AppTheme.accent,
-                                    fontFamily: AppTheme.mono,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700)),
-                            const SizedBox(width: 9),
-                          ],
-                          if (!headlineIsMac) ...[
-                            Text(maskMac(detection.macAddress.toUpperCase(), priv),
-                                style: TextStyle(
-                                    color: dim,
-                                    fontFamily: AppTheme.mono,
-                                    fontSize: 11.5)),
-                            const SizedBox(width: 9),
-                          ],
-                          if (manufacturer != null && manufacturer.isNotEmpty)
-                            Text(manufacturer,
-                                style: TextStyle(color: dim, fontSize: 11.5)),
-                        ],
-                      ),
+                              if (isWifi && authMode > 0) ...[
+                                const SizedBox(width: 8),
+                                Icon(Icons.lock, size: 12, color: AppTheme.success),
+                                const SizedBox(width: 3),
+                                Text(_authShort(authMode),
+                                    style: TextStyle(
+                                        color: AppTheme.success,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: gap),
+                        Text('${detection.rssi}',
+                            style: TextStyle(
+                                color: _rssiColor(detection.rssi),
+                                fontFamily: AppTheme.mono,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        for (final i in icons) ...[i, const SizedBox(width: 5)],
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              for (var i = 0; i < meta.length; i++) ...[
+                                if (i > 0) TextSpan(text: '  ·  ', style: dimStyle),
+                                meta[i],
+                              ],
+                            ]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: gap),
+                        Text(timeStr, style: monoDim.copyWith(fontSize: 10.5)),
+                      ],
                     ),
                   ],
                 ),
-              ),
-              SizedBox(width: gap),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                        text: '${detection.rssi}',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: _rssiColor(detection.rssi),
-                              fontFamily: AppTheme.mono,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                            ),
-                      ),
-                      TextSpan(text: ' dBm', style: TextStyle(color: dim, fontSize: 10)),
-                    ]),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(timeStr,
-                      style: TextStyle(
-                          color: dim, fontSize: 10.5, fontFamily: AppTheme.mono)),
-                ],
               ),
             ],
           );
@@ -244,7 +223,8 @@ class DetectionRow extends ConsumerWidget {
     if (diff.inSeconds < 60) return '${diff.inSeconds}s';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m';
     if (diff.inHours < 24) return '${diff.inHours}h';
-    return DateFormat('MMM d yyyy').format(detection.appTimestamp);
+    return DateFormat(detection.appTimestamp.year == DateTime.now().year ? 'MMM d' : 'MMM d yy')
+        .format(detection.appTimestamp);
   }
 }
 
@@ -571,7 +551,7 @@ void showDetectionDetails(
                                 .read(wardriveProvider)
                                 .removeDetectionGroup(detection);
                           },
-                          child: Text(onDelete != null ? 'Delete' : 'Delete all MACs'),
+                          child: const Text('Delete'),
                         ),
                       ),
                     ],
@@ -627,7 +607,7 @@ class _DetectionInsights extends ConsumerWidget {
       sections.add(section('WHAT THIS LOOKS LIKE', [
         Padding(
           padding: const EdgeInsets.only(top: 2, bottom: 4),
-          child: Text(g.headline,
+          child: Text(DeviceExplain.title(g),
               style: TextStyle(
                   color: t.textPrimary,
                   fontSize: 17,
@@ -1058,9 +1038,6 @@ final _platformIdPattern = RegExp(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-');
 
 bool _isPlatformId(String id) => _platformIdPattern.hasMatch(id);
 
-String _shortId(String id) =>
-    _isPlatformId(id) ? 'ID ${id.substring(0, 8).toUpperCase()}' : id.toUpperCase();
-
 List<String> _flockSignalLabels(FlockExtension? flock) {
   if (flock == null || flock.signals == 0) return const [];
   return [
@@ -1120,32 +1097,6 @@ String methodLabel(String method) => switch (method) {
   _ => method.toUpperCase(),
 };
 
-Color _flockConfidenceColor(FlockConfidence c) => switch (c) {
-  FlockConfidence.verified => AppTheme.success,
-  FlockConfidence.high => AppTheme.success,
-  FlockConfidence.suspected => AppTheme.warning,
-};
-
-class _FlockConfidenceLine extends StatelessWidget {
-  const _FlockConfidenceLine({required this.confidence, required this.method});
-  final FlockConfidence confidence;
-  final String method;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _flockConfidenceColor(confidence);
-    return Text(
-      confidence.label(method),
-      style: TextStyle(
-        color: color,
-        fontSize: 11,
-        fontFamily: AppTheme.mono,
-        fontWeight: FontWeight.w800,
-      ),
-    );
-  }
-}
-
 class _RssiBlock extends StatelessWidget {
   const _RssiBlock({required this.rssi});
   final int rssi;
@@ -1184,204 +1135,6 @@ class _RssiBlock extends StatelessWidget {
             );
           }),
         ),
-      ],
-    );
-  }
-}
-
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({
-    required this.detection,
-    required this.engine,
-    required this.manufacturer,
-    required this.showMac,
-    required this.sec,
-    required this.dim,
-  });
-  final Detection detection;
-  final Engine engine;
-  final String? manufacturer;
-  final bool showMac;
-  final Color sec;
-  final Color dim;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = <Widget>[];
-    if (showMac) {
-      tokens.add(Text(
-        _shortId(detection.macAddress),
-        style: TextStyle(
-          color: sec,
-          fontSize: 11,
-          fontFamily: AppTheme.mono,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-        ),
-      ));
-      tokens.add(_pipe());
-    }
-    if (engine == Engine.skySpy) {
-      tokens.add(Icon(Icons.flight, size: 13, color: engine.color));
-    }
-    if (OuiLookupService.isLawEnforcement(detection.macAddress)) {
-      tokens.add(const SizedBox(width: 5));
-      tokens.add(Icon(Icons.local_police, size: 13, color: AppTheme.warning));
-    }
-    final isGenericMethod =
-        detection.method == 'wifi_ap' || detection.method == 'ble_adv';
-    final discovery = methodLabel(detection.method);
-    if (discovery.isNotEmpty && !isGenericMethod) {
-      tokens.add(const SizedBox(width: 5));
-      tokens.add(Text(discovery,
-          style: TextStyle(
-            color: engine.color,
-            fontSize: 11,
-            fontFamily: AppTheme.mono,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.3,
-          )));
-    }
-    if (detection.channel > 0) {
-      tokens.add(const SizedBox(width: 5));
-      tokens.add(_mono('${detection.channel}'));
-    }
-    if (detection.count > 1) {
-      tokens.add(_pipe());
-      tokens.add(_mono('x${detection.count}'));
-    }
-    if (detection.flock?.isRaven == true) {
-      tokens.add(_pipe());
-      tokens.add(Icon(Icons.memory, size: 12, color: AppTheme.warning));
-      tokens.add(const SizedBox(width: 3));
-      tokens.add(Text('RAVEN',
-          style: TextStyle(
-              color: AppTheme.warning,
-              fontSize: 11,
-              fontFamily: AppTheme.mono,
-              fontWeight: FontWeight.w800)));
-      final fw = detection.flock?.ravenFirmware;
-      if (fw != null && fw.isNotEmpty) {
-        tokens.add(_pipe());
-        tokens.add(_mono(fw));
-      }
-    }
-    if (detection.flock?.isValidated == true) {
-      tokens.add(_pipe());
-      tokens.add(Icon(Icons.verified_user, size: 12, color: AppTheme.success));
-      tokens.add(const SizedBox(width: 3));
-      tokens.add(Text('VALIDATED',
-          style: TextStyle(
-              color: AppTheme.success,
-              fontSize: 11,
-              fontFamily: AppTheme.mono,
-              fontWeight: FontWeight.w800)));
-    }
-    if (detection.unipwn != null) {
-      tokens.add(_pipe());
-      tokens.add(Icon(Icons.smart_toy, size: 12, color: Engine.uniPwn.color));
-      tokens.add(const SizedBox(width: 3));
-      tokens.add(Text(detection.unipwn!.robotType.toUpperCase(),
-          style: TextStyle(
-              color: Engine.uniPwn.color,
-              fontSize: 11,
-              fontFamily: AppTheme.mono,
-              fontWeight: FontWeight.w800)));
-      if (detection.unipwn!.exploited) {
-        tokens.add(_pipe());
-        tokens.add(Icon(Icons.verified, size: 12, color: AppTheme.success));
-        tokens.add(const SizedBox(width: 3));
-        tokens.add(Text('PWNED',
-            style: TextStyle(
-                color: AppTheme.success,
-                fontSize: 11,
-                fontFamily: AppTheme.mono,
-                fontWeight: FontWeight.w800)));
-      }
-    }
-    if (detection.odid?.uavId != null && detection.odid!.uavId!.isNotEmpty) {
-      tokens.add(_pipe());
-      tokens.add(Icon(Icons.flight, size: 12, color: Engine.skySpy.color));
-      tokens.add(const SizedBox(width: 3));
-      tokens.add(Text(detection.odid!.uavId!,
-          style: TextStyle(
-              color: Engine.skySpy.color,
-              fontSize: 11,
-              fontFamily: AppTheme.mono,
-              fontWeight: FontWeight.w700)));
-      if (detection.odid!.altitudeMsl != null) {
-        tokens.add(_pipe());
-        tokens.add(_mono('${detection.odid!.altitudeMsl}m'));
-      }
-    }
-    if (detection.detector != null) {
-      final d = detection.detector!;
-      if (d.filterDescription != null && d.filterDescription!.isNotEmpty) {
-        tokens.add(_pipe());
-        tokens.add(Text(d.filterDescription!,
-            style: TextStyle(
-                color: AppTheme.accent,
-                fontSize: 11,
-                fontFamily: AppTheme.mono,
-                fontWeight: FontWeight.w700)));
-      }
-      tokens.add(_pipe());
-      tokens.add(_mono(d.isFullMac ? 'FULL' : 'OUI'));
-    }
-    return Row(mainAxisSize: MainAxisSize.min, children: tokens);
-  }
-
-  Widget _mono(String s) => Text(s,
-      style: TextStyle(
-        color: dim,
-        fontSize: 11,
-        fontFamily: AppTheme.mono,
-        fontWeight: FontWeight.w600,
-      ));
-
-  Widget _pipe() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 5),
-        child: Text('·',
-            style: TextStyle(
-              color: dim,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            )),
-      );
-
-}
-
-(String, Color) _authMeta(int mode) => switch (mode) {
-      0 => ('OPEN', AppTheme.error),
-      1 => ('WEP', const Color(0xFFFF8A4C)),
-      2 => ('WPA', const Color(0xFFF5A623)),
-      3 => ('WPA2', AppTheme.success),
-      4 => ('WPA/2', const Color(0xFF4DB6AC)),
-      5 => ('ENT', AppTheme.accent),
-      6 => ('WPA3', const Color(0xFF9B7CFF)),
-      _ => ('WPA2', AppTheme.success),
-    };
-
-class _AuthPill extends StatelessWidget {
-  const _AuthPill({required this.authMode});
-  final int authMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = _authMeta(authMode);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(authMode == 0 ? Icons.lock_open : Icons.lock, size: 11, color: color),
-        const SizedBox(width: 2),
-        Text(label,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontFamily: AppTheme.mono,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
-            )),
       ],
     );
   }

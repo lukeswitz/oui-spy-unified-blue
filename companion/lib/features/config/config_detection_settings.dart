@@ -159,8 +159,8 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
             if (w.flock && isOn(w))
               ConfigToggleRow(
                 icon: Icons.fingerprint,
-                label: 'Flock OUI hits from phone and USB adapters',
-                subtitle: 'Report a Wi-Fi device from this phone or a USB adapter on a Flock OUI match alone, as Suspected. More hits, more false positives.',
+                label: 'OUI-only matches (phone/USB)',
+                subtitle: 'Flag as Suspected. More false positives.',
                 color: AppTheme.error,
                 value: notif.flockOuiOnly,
                 onChanged: notif.setFlockOuiOnly,

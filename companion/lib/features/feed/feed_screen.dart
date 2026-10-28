@@ -15,6 +15,7 @@ import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/export/detections_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
@@ -32,7 +33,8 @@ enum FeedMetric {
   count('COUNT'),
   name('NAME'),
   kind('CLASS'),
-  channel('CH');
+  channel('CH'),
+  vendor('VENDOR');
 
   const FeedMetric(this.label);
   final String label;
@@ -105,6 +107,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   bool _showStats = true;
   FeedMetric _sortMetric = FeedMetric.time;
   bool _sortAscending = false; // false = descending (newest/strongest/most first)
+  String? _vendorFirst;
   bool _searchOpen = false;
   final _searchCtrl = TextEditingController();
   Timer? _searchDebounce;
@@ -263,7 +266,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       if (!_activeFilters.contains(d.engine)) return false;
       if (!_radioMatches(d)) return false;
       if (classByMac != null &&
-          classByMac[d.macAddress.toLowerCase()] != _activeClass) return false;
+          classByMac[d.macAddress.toLowerCase()] != _activeClass) {
+        return false;
+      }
       if (_selectedNode != null) {
         if (_selectedNode == '' && d.sourceNodeId.isNotEmpty) return false;
         if (_selectedNode!.isNotEmpty && d.sourceNodeId != _selectedNode) return false;
@@ -300,6 +305,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         });
       case FeedMetric.channel:
         sorted.sort((a, b) => dir(a.channel.compareTo(b.channel)));
+      case FeedMetric.vendor:
+        final oui = ref.read(ouiLookupProvider);
+        sortByVendor(sorted, (d) => FeedStatsHeader.vendorKey(oui, d.macAddress),
+            first: _vendorFirst, ascending: asc);
     }
     return sorted;
   }
@@ -385,7 +394,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               ),
             const Divider(height: 1),
             if (_showStats && filtered.length >= 2)
-              FeedStatsHeader(detections: filtered),
+              FeedStatsHeader(
+                detections: filtered,
+                selectedVendor: _sortMetric == FeedMetric.vendor ? _vendorFirst : null,
+                onVendorTap: (v) => setState(() {
+                  _sortMetric = FeedMetric.vendor;
+                  _sortAscending = true;
+                  _vendorFirst = v;
+                }),
+              ),
             Expanded(
               child: feedItems.isEmpty
                   ? Center(child: Padding(
@@ -629,6 +646,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         ascending: () => _sortAscending,
         hint: () => _sortDirectionHint,
         onPick: (m) => setState(() {
+          _vendorFirst = null;
           if (_sortMetric == m) {
             _sortAscending = !_sortAscending;
           } else {
@@ -652,6 +670,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         (FeedMetric.kind, false) => 'Z → A',
         (FeedMetric.channel, true) => 'Lowest channel first',
         (FeedMetric.channel, false) => 'Highest channel first',
+        (FeedMetric.vendor, true) => 'A → Z',
+        (FeedMetric.vendor, false) => 'Z → A',
       };
 
   Future<void> _openActionSheet(AppState state) {

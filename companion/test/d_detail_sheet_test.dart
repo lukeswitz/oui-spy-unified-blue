@@ -159,6 +159,8 @@ void main() {
     addTearDown(() => tester.binding.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null));
     final container = await _open(tester, _det());
+    await tester.ensureVisible(find.text('Channel'));
+    await tester.pump();
     await tester.tap(find.text('Channel'));
     await tester.pump();
     expect(copied, '6');
@@ -208,7 +210,7 @@ void main() {
 
   testWidgets('delete button foreground is the error color', (tester) async {
     final container = await _open(tester, _det());
-    final btn = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Delete all MACs'));
+    final btn = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Delete'));
     expect(btn.style?.foregroundColor?.resolve(<WidgetState>{}), AppTheme.error);
     await _release(tester, container);
   });

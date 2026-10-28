@@ -203,34 +203,6 @@ class _WifiEnableToggleState extends ConsumerState<_WifiEnableToggle> {
 
 
 
-class _ConfigAuthPill extends StatelessWidget {
-  const _ConfigAuthPill({required this.authMode});
-  final int authMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = wifiAuthMeta(authMode);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(authMode == 0 ? Icons.lock_open : Icons.lock, size: 11, color: color),
-          const SizedBox(width: 3),
-          Text(label, style: TextStyle(
-            color: color, fontSize: 10,
-            fontWeight: FontWeight.w700, letterSpacing: 0.5,
-          )),
-        ],
-      ),
-    );
-  }
-}
-
 class _MeshModeTile extends StatelessWidget {
   const _MeshModeTile({
     required this.icon,

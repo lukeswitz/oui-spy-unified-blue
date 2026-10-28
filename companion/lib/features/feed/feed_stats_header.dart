@@ -5,9 +5,36 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
+void sortByVendor(List<Detection> dets, String? Function(Detection) keyOf,
+    {String? first, bool ascending = true}) {
+  final keys = Map<Detection, String?>.identity();
+  for (final d in dets) {
+    keys[d] = keyOf(d);
+  }
+  int rank(String? k) => k == null ? 2 : (k == first ? 0 : 1);
+  dets.sort((a, b) {
+    final ka = keys[a], kb = keys[b];
+    final r = rank(ka).compareTo(rank(kb));
+    if (r != 0) return r;
+    if (ka != null && kb != null) {
+      final v = ka.toLowerCase().compareTo(kb.toLowerCase());
+      if (v != 0) return ascending ? v : -v;
+    }
+    return b.appTimestamp.compareTo(a.appTimestamp);
+  });
+}
+
 class FeedStatsHeader extends ConsumerWidget {
-  const FeedStatsHeader({super.key, required this.detections});
+  const FeedStatsHeader({super.key, required this.detections, this.selectedVendor, this.onVendorTap});
   final List<Detection> detections;
+  final String? selectedVendor;
+  final ValueChanged<String>? onVendorTap;
+
+  static String? vendorKey(OuiLookupService oui, String mac) {
+    final vendor = oui.lookup(mac);
+    if (vendor == null) return null;
+    return vendor.startsWith('Flock') ? 'Flock' : _shortenVendor(vendor);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -26,6 +53,8 @@ class FeedStatsHeader extends ConsumerWidget {
         color: AppTheme.accent,
         entries: topVendors,
         t: t,
+        selected: selectedVendor,
+        onTap: onVendorTap,
       ));
     }
     if (topFlock.isNotEmpty) {
@@ -68,8 +97,7 @@ class FeedStatsHeader extends ConsumerWidget {
   ) {
     final vendorCounts = <String, int>{};
     for (final d in dets) {
-      final vendor = oui.lookup(d.macAddress) ?? 'Unknown';
-      final name = vendor.startsWith('Flock') ? 'Flock' : _shortenVendor(vendor);
+      final name = vendorKey(oui, d.macAddress) ?? 'Unknown';
       vendorCounts[name] = (vendorCounts[name] ?? 0) + d.count;
     }
     vendorCounts.remove('Unknown');
@@ -157,12 +185,16 @@ class _Section extends StatelessWidget {
     required this.color,
     required this.entries,
     required this.t,
+    this.selected,
+    this.onTap,
   });
   final String label;
   final IconData icon;
   final Color color;
   final List<_ChipEntry> entries;
   final ResolvedTheme t;
+  final String? selected;
+  final ValueChanged<String>? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -186,23 +218,33 @@ class _Section extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   )),
             ),
-          Text(
-            entries[i].label,
-            style: TextStyle(
-              color: t.textPrimary,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              fontFamily: AppTheme.mono,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '${entries[i].count}',
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              fontFamily: AppTheme.mono,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap == null ? null : () => onTap!(entries[i].label),
+            child: Row(
+              children: [
+                Text(
+                  entries[i].label,
+                  style: TextStyle(
+                    color: entries[i].label == selected ? color : t.textPrimary,
+                    fontSize: 10,
+                    fontWeight: entries[i].label == selected ? FontWeight.w700 : FontWeight.w500,
+                    fontFamily: AppTheme.mono,
+                    decoration: entries[i].label == selected ? TextDecoration.underline : null,
+                    decorationColor: color,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${entries[i].count}',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: AppTheme.mono,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

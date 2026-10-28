@@ -253,7 +253,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     'detector' => AppTheme.detector,
     'skySpy' => AppTheme.skySpy,
     'signature' => AppTheme.warning,
-    'sdr' => const Color(0xFF8B5CF6),
+    'sdr' => Engine.sdr.color,
     _ => AppTheme.accent,
   };
 
@@ -535,7 +535,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                         label: 'SDR',
                         count: _engineCount('sdr'),
                         selected: _engineFilter == 'sdr',
-                        color: const Color(0xFF8B5CF6),
+                        color: Engine.sdr.color,
                         onTap: () => apply(() => setState(() => _engineFilter =
                             _engineFilter == 'sdr' ? null : 'sdr')),
                       ),
@@ -931,7 +931,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
 
     final gap = barGap(context);
     return ListView.builder(
-      padding: EdgeInsets.symmetric(horizontal: gap * 1.5, vertical: gap * 0.5),
+      padding: EdgeInsets.symmetric(vertical: gap * 0.5),
       itemCount: items.length,
       itemBuilder: (_, i) => _DetectionRow(
         data: items[i],

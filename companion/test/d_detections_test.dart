@@ -133,18 +133,10 @@ void main() {
     await _release(tester, container);
   });
 
-  testWidgets('detection row shows auth pill, confidence, node, police icon, and square', (tester) async {
+  testWidgets('detection row shows auth next to the name, police icon, no left border', (tester) async {
     await _pumpRow(tester, _det());
     expect(find.text('WPA2'), findsOneWidget);
-    expect(find.text('High (Flock Probe Captured)'), findsOneWidget);
-    expect(find.textContaining('OUISPY'), findsOneWidget);
     expect(find.byIcon(Icons.local_police), findsOneWidget);
-    final square = find.byWidgetPredicate((w) =>
-        w is Container &&
-        w.color == Engine.flockWifi.color &&
-        w.constraints?.maxWidth == 8 &&
-        w.constraints?.maxHeight == 8);
-    expect(square, findsOneWidget);
     expect(find.byWidgetPredicate(_hasLeftBorder), findsNothing);
   });
 

@@ -55,11 +55,10 @@ void main() {
       ));
       await tester.pump();
       expect(tester.takeException(), isNull);
-      expect(find.text('CH 11'), findsOneWidget);
+      expect(find.textContaining('CH 11', findRichText: true), findsOneWidget);
       expect(find.text('WPA2'), findsOneWidget);
-      final rssiRight = tester.getTopRight(find.textContaining('-91', findRichText: true)).dx;
-      expect(tester.getTopRight(find.text('CH 11')).dx, closeTo(rssiRight, 0.5));
-      expect(find.text('02:00:00:00:00:01'), findsOneWidget);
+      expect(tester.getTopRight(find.text('-91')).dx, closeTo(340, 0.5));
+      expect(find.textContaining('02:00:00:00:00:01', findRichText: true), findsOneWidget);
     });
   }
 }

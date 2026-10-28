@@ -55,5 +55,7 @@ void main() {
     final g = DeviceExplain.guess(o, []);
     expect(g.confidence, Confidence.high);
     expect(g.headline, 'Most likely AirPods (2nd generation)');
+    expect(DeviceExplain.title(g), 'AirPods (2nd generation)');
+    expect(DeviceExplain.title(const Guess('Probably a phone', '', Confidence.medium)), 'Probably a phone');
   });
 }

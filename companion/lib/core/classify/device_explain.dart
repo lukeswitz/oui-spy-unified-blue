@@ -299,6 +299,12 @@ class DeviceExplain {
 
   static String stripHedge(String headline) => headline.replaceFirst(RegExp(r'^(Most likely|Probably|Could be) '), '');
 
+  static String title(Guess g) {
+    if (g.confidence != Confidence.high) return g.headline;
+    final s = stripHedge(g.headline);
+    return s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  }
+
   static String hedge(Confidence c) => switch (c) {
     Confidence.high => 'Most likely',
     Confidence.medium => 'Probably',

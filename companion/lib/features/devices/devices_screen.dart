@@ -503,35 +503,40 @@ class DeviceRow extends ConsumerWidget {
         : classColor(kinds.first);
     final text = Theme.of(context).textTheme;
     final iconSize = barIconSize(context) * 0.75;
-    Widget flag(String tip, IconData i, Color c) => Padding(
-          padding: EdgeInsets.only(left: gap * 0.6),
-          child: Tooltip(message: tip, child: Icon(i, size: iconSize, color: c)),
-        );
-    Widget tag(String label, Color c, {IconData? icon}) => Container(
-          padding: EdgeInsets.symmetric(horizontal: gap * 0.7, vertical: gap * 0.25),
-          decoration: BoxDecoration(
-            border: Border.all(color: c),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: barIconSize(context) * 0.6, color: c),
-                SizedBox(width: gap * 0.3),
-              ],
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: barLabelStyle(context, c).copyWith(fontSize: (text.labelSmall?.fontSize ?? 11) * 0.95),
-                ),
-              ),
-            ],
-          ),
-        );
     final auth = o.authMode;
     final authMeta = auth == null ? null : wifiAuthMeta(auth);
+    final metaStyle = text.bodySmall?.copyWith(color: t.textDim);
+    final tagSize = (text.labelSmall?.fontSize ?? 11) * 0.95;
+    final mono = TextStyle(fontFamily: AppTheme.mono);
+    final flags = [
+      if (o.hiddenSsid) Icon(Icons.visibility_off, size: iconSize, color: AppTheme.warning),
+      if (o.randomized) Icon(Icons.shuffle, size: iconSize, color: t.textDim),
+      if (withYou) Icon(Icons.directions_walk, size: iconSize, color: AppTheme.error),
+    ];
+    final classLine = <TextSpan>[
+      if (kinds.isNotEmpty)
+        TextSpan(
+          text: kinds.first.label.toUpperCase(),
+          style: barLabelStyle(context, classColor(kinds.first)).copyWith(fontSize: tagSize),
+        ),
+      for (final f in live)
+        TextSpan(
+          text: f.display.toUpperCase(),
+          style: barLabelStyle(context, f.emphasis ? AppTheme.error : AppTheme.accent).copyWith(fontSize: tagSize),
+        ),
+      if (!ble && o.channel > 0) TextSpan(text: 'CH ${o.channel}', style: mono),
+    ];
+    final shownMac = o.mac.isEmpty ? '' : maskMac(o.mac, priv);
+    final idLine = <TextSpan>[
+      if (shownMac.isNotEmpty && shownMac != title) TextSpan(text: shownMac, style: mono),
+      if (vendor != null && vendor.isNotEmpty) TextSpan(text: vendor),
+    ];
+    List<TextSpan> joined(List<TextSpan> spans) => [
+          for (final (i, s) in spans.indexed) ...[
+            if (i > 0) const TextSpan(text: ' · '),
+            s,
+          ],
+        ];
     return Padding(
       padding: EdgeInsets.zero,
       child: Material(
@@ -566,110 +571,81 @@ class DeviceRow extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.bodyMedium?.copyWith(
-                          color: t.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(height: gap * 0.5),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            if (kinds.isNotEmpty) ...[
-                              Text(
-                                kinds.first.label.toUpperCase(),
-                                style: barLabelStyle(context, classColor(kinds.first))
-                                    .copyWith(fontSize: (text.labelSmall?.fontSize ?? 11) * 0.95),
-                              ),
-                              SizedBox(width: gap * 0.6),
-                            ],
-                            if (authMeta != null) ...[
-                              Icon(auth == 0 ? Icons.lock_open : Icons.lock,
-                                  size: iconSize,
-                                  color: auth == 0 ? authMeta.$2 : AppTheme.success),
-                              SizedBox(width: gap * 0.25),
-                              Text(authMeta.$1,
-                                  style: barLabelStyle(context,
-                                      auth == 0 ? authMeta.$2 : AppTheme.success)),
-                              SizedBox(width: gap * 0.6),
-                            ],
-                            if (o.hiddenSsid) ...[
-                              Icon(Icons.visibility_off, size: iconSize, color: AppTheme.warning),
-                              SizedBox(width: gap * 0.6),
-                            ],
-                            if (o.randomized) ...[
-                              Icon(Icons.shuffle, size: iconSize, color: t.textDim),
-                              SizedBox(width: gap * 0.6),
-                            ],
-                            if (withYou) ...[
-                              Icon(Icons.directions_walk, size: iconSize, color: AppTheme.error),
-                              SizedBox(width: gap * 0.6),
-                            ],
-                            if (!ble && o.channel > 0) ...[
-                              Text(
-                                'CH ${o.channel}',
-                                style: text.labelMedium?.copyWith(
-                                  color: AppTheme.accent,
-                                  fontFamily: AppTheme.mono,
-                                  fontWeight: FontWeight.w700,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: text.bodyMedium?.copyWith(
+                                      color: t.textPrimary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              SizedBox(width: gap * 0.6),
-                            ],
-                            if (o.mac.isNotEmpty)
-                              Text(
-                                o.mac,
-                                style: text.bodySmall?.copyWith(color: t.textDim, fontFamily: AppTheme.mono),
-                              ),
-                            if (vendor != null && vendor.isNotEmpty) ...[
-                              SizedBox(width: gap * 0.6),
-                              Text(vendor,
-                                  style: text.bodySmall?.copyWith(color: t.textDim)),
-                            ],
-                            for (final f in live) ...[
-                              SizedBox(width: gap * 0.6),
-                              tag(f.display.toUpperCase(), f.emphasis ? AppTheme.error : AppTheme.accent),
-                            ],
-                          ],
-                        ),
+                                if (authMeta != null) ...[
+                                  SizedBox(width: gap * 0.6),
+                                  Icon(auth == 0 ? Icons.lock_open : Icons.lock,
+                                      size: iconSize,
+                                      color: auth == 0 ? authMeta.$2 : AppTheme.success),
+                                  SizedBox(width: gap * 0.25),
+                                  Text(authMeta.$1,
+                                      style: barLabelStyle(context,
+                                          auth == 0 ? authMeta.$2 : AppTheme.success)),
+                                ],
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: gap),
+                          Text(
+                            '${o.rssi}',
+                            style: TextStyle(
+                              color: rssiColor(o.rssi),
+                              fontFamily: AppTheme.mono,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
+                      SizedBox(height: gap * 0.3),
+                      Row(
+                        children: [
+                          for (final i in flags) ...[i, SizedBox(width: gap * 0.3)],
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(children: joined(classLine.isEmpty ? idLine : classLine)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: metaStyle,
+                            ),
+                          ),
+                          SizedBox(width: gap),
+                          _RssiSpark(
+                            samples: [for (final s in o.gpsTrail) if (s.rssi != 0) s.rssi],
+                            rssi: o.rssi,
+                            rssiMin: o.rssiMin,
+                            rssiMax: o.rssiMax,
+                            color: rssiColor(o.rssi),
+                            track: t.border,
+                          ),
+                        ],
+                      ),
+                      if (classLine.isNotEmpty && idLine.isNotEmpty) ...[
+                        SizedBox(height: gap * 0.3),
+                        Text.rich(
+                          TextSpan(children: joined(idLine)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: metaStyle,
+                        ),
+                      ],
                     ],
                   ),
-                ),
-                SizedBox(width: gap),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _RssiSpark(
-                      samples: [for (final s in o.gpsTrail) if (s.rssi != 0) s.rssi],
-                      rssi: o.rssi,
-                      rssiMin: o.rssiMin,
-                      rssiMax: o.rssiMax,
-                      color: rssiColor(o.rssi),
-                      track: t.border,
-                    ),
-                    SizedBox(height: gap * 0.3),
-                    Text.rich(
-                      TextSpan(children: [
-                        TextSpan(
-                          text: '${o.rssi}',
-                          style: text.titleLarge?.copyWith(
-                            color: rssiColor(o.rssi),
-                            fontFamily: AppTheme.mono,
-                            fontWeight: FontWeight.w700,
-                            height: 1,
-                          ),
-                        ),
-                        TextSpan(text: ' dBm', style: text.labelSmall?.copyWith(color: t.textDim)),
-                      ]),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -849,7 +825,7 @@ class DeviceDetailSheet extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: Text(
-                    g.headline,
+                    DeviceExplain.title(g),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.displaySmall?.copyWith(
