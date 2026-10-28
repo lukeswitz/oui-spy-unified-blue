@@ -28,7 +28,7 @@ void main() {
   });
 
   test('catalog parses with expected stock rows', () {
-    expect(sigs.length, 305);
+    expect(sigs.length, 306);
     final ray = byId['fleet-rayneo']!;
     expect(ray.matchAny, isFalse);
     expect(ray.rules.length, 2);

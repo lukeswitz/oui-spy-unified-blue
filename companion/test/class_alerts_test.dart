@@ -14,7 +14,8 @@ void main() {
       [_sig],
       {'esp32'},
     );
-    expect(alertClassOf(d, defaultAlertClasses), SignatureClass.surveillance);
+    expect(alertClassOf(d, defaultAlertClasses), isNull);
+    expect(alertClassOf(d, {...defaultAlertClasses, SignatureClass.surveillance}), SignatureClass.surveillance);
     expect(alertClassOf(d, {SignatureClass.finder}), isNull);
     final (title, subtitle, body) =
         NotificationService.classNotificationText(d, ClassAlert.ofClass(SignatureClass.surveillance));

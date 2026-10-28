@@ -89,13 +89,14 @@ void main() {
     expect(tester.widget<Text>(find.text('Live')).style!.color, AppTheme.accent);
   });
 
-  testWidgets('node name is the 28pt title, fallback OUI-SPY', (tester) async {
+  testWidgets('OUI-APEX is the 28pt title with or without a node name', (tester) async {
     await _pump(tester, NodeConnectionState.ready, nodeId: 'MyNode');
-    final s = tester.widget<Text>(find.text('MyNode')).style!;
+    final s = tester.widget<Text>(find.text('OUI-APEX')).style!;
     expect(s.fontSize, 28);
     expect(s.fontWeight, FontWeight.w600);
+    expect(find.text('MyNode'), findsNothing);
     await _pump(tester, NodeConnectionState.ready);
-    expect(find.text('OUI-SPY'), findsOneWidget);
+    expect(find.text('OUI-APEX'), findsOneWidget);
   });
 
   testWidgets('long node name ellipsizes at 320', (tester) async {

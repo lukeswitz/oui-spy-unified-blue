@@ -141,9 +141,9 @@ TextSpan _word(WidgetTester tester, Engine e) {
 }
 
 void main() {
-  testWidgets('home header shows the node name and no Overview title', (tester) async {
+  testWidgets('home header shows the OUI-APEX title and no Overview title', (tester) async {
     await _pump(tester, nodeId: 'MyNode');
-    final title = tester.widget<Text>(find.text('MyNode'));
+    final title = tester.widget<Text>(find.text('OUI-APEX'));
     expect(title.style!.fontSize, 28);
     expect(find.text('Overview'), findsNothing);
     expect(find.text('Live'), findsOneWidget);
@@ -177,16 +177,15 @@ void main() {
     await _release(tester);
   });
 
-  testWidgets('home shows scan targets and radios but no start button', (tester) async {
+  testWidgets('home shows scan targets, radios and the start button', (tester) async {
     await _pump(tester);
     expect(find.text('Scan'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
     expect(find.byType(SessionTargets), findsOneWidget);
-    for (final l in ['FLOCK', 'DRONE', 'WIGLE', 'DETECT', 'WiFi', 'BLE', 'WiFi+BLE']) {
+    for (final l in ['FLOCK', 'DRONE', 'SCAN', 'DETECT', 'WiFi', 'BLE', 'WiFi+BLE']) {
       expect(find.text(l), findsOneWidget, reason: l);
     }
-    expect(find.byType(SessionStartButton), findsNothing);
-    expect(find.byKey(const ValueKey('session-start')), findsNothing);
+    expect(find.byType(SessionStartButton), findsOneWidget);
     final scan = tester.getRect(find.byKey(const ValueKey('group-scan')));
     final stats = tester.getRect(find.byType(DStatsStrip));
     final safety = tester.getRect(find.byKey(const ValueKey('group-safety')));

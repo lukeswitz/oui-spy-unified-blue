@@ -71,7 +71,7 @@ void main() {
       final p = await _pump(tester, style);
       final deco = _chip(tester, WardriveTarget.wigle).decoration! as BoxDecoration;
       expect(deco.color, p.textPrimary);
-      final label = tester.widget<Text>(find.text('WIGLE'));
+      final label = tester.widget<Text>(find.text('SCAN'));
       expect(label.style!.color, p.background);
       expect(AppTheme.contrast(label.style!.color!, p.textPrimary), greaterThanOrEqualTo(4.5));
       await tester.pumpWidget(const SizedBox());
