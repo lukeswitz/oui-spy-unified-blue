@@ -97,7 +97,7 @@ class SessionTargets extends ConsumerWidget {
     final busy = wd.radioTransition != null;
 
     Widget chip(WardriveTarget m) {
-      final sel = live.contains(m) || (live.isEmpty && wd.isTargetSelected(m));
+      final sel = wd.isTargetSelected(m);
       final fg = sel ? t.background : t.textPrimary;
       final iconColor = sel ? t.background : t.textSecondary;
       return Expanded(
