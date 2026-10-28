@@ -349,6 +349,7 @@ void showDetectionDetails(
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: t.surface,
       builder: (ctx) => ConstrainedBox(
         constraints: BoxConstraints(
@@ -386,7 +387,7 @@ void showDetectionDetails(
                       Expanded(
                         child: confidence == null
                             ? const SizedBox.shrink()
-                            : DEyebrow(confidence, color: t.onFillDim),
+                            : DEyebrow(confidence, color: t.onFillDim, maxLines: 2),
                       ),
                       IconButton(
                         tooltip: 'Close',
@@ -602,8 +603,25 @@ class _DetectionInsights extends ConsumerWidget {
         );
 
     final sections = <Widget>[];
+    final isFlock = detection.engine == Engine.flockWifi || detection.engine == Engine.flockBle;
+    final flockConf = detection.flock?.confidence(detection.method);
 
-    if (g.headline.isNotEmpty) {
+    if (isFlock) {
+      sections.add(section('WHAT THIS LOOKS LIKE', [
+        Padding(
+          padding: const EdgeInsets.only(top: 2, bottom: 4),
+          child: Text('Flock Safety device',
+              style: TextStyle(color: t.textPrimary, fontSize: 17, fontWeight: FontWeight.w600)),
+        ),
+        Text('Matched by ${methodLabel(detection.method)}.',
+            style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.3)),
+        if (flockConf != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: DEyebrow(flockConf.label(detection.method), color: AppTheme.error, maxLines: 2),
+          ),
+      ]));
+    } else if (g.headline.isNotEmpty) {
       sections.add(section('WHAT THIS LOOKS LIKE', [
         Padding(
           padding: const EdgeInsets.only(top: 2, bottom: 4),
@@ -1068,6 +1086,7 @@ String methodLabel(String method) => switch (method) {
   'oui_addr3' => 'ADDR3 (BSSID)',
   'ssid' => 'SSID',
   'wildcard_probe' => 'PROBE REQ',
+  'wildcard_probe_ie_sig' => 'FLOCK IE PROBE',
   'oui_match' => 'BLE OUI',
   'name_match' => 'BLE NAME',
   'mfg_id' => 'MFG DATA',

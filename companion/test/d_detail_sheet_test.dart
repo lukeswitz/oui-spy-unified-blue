@@ -167,6 +167,14 @@ void main() {
     await _release(tester, container);
   });
 
+  testWidgets('Flock engine detection is described as a Flock Safety device', (tester) async {
+    final container = await _open(tester, _det());
+    expect(find.text('Flock Safety device'), findsOneWidget);
+    expect(find.text('Matched by PROBE REQ.'), findsOneWidget);
+    expect(find.text('Probably a Wi-Fi access point'), findsNothing);
+    await _release(tester, container);
+  });
+
   testWidgets('foxhunt present for an Axon MAC; map only with GPS', (tester) async {
     var container = await _open(tester, _det(mac: '00:25:DF:00:00:01'));
     expect(find.text('Foxhunt this device'), findsOneWidget);

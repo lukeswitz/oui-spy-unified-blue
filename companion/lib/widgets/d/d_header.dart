@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class DEyebrow extends StatelessWidget {
-  const DEyebrow(this.text, {super.key, this.color});
+  const DEyebrow(this.text, {super.key, this.color, this.maxLines = 1});
   final String text;
   final Color? color;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     return Text(
       text.toUpperCase(),
-      maxLines: 1,
+      maxLines: maxLines,
       overflow: TextOverflow.ellipsis,
       style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color ?? t.textSecondary),
     );
