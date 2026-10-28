@@ -60,7 +60,8 @@
 
 - **Together:** the board keeps detecting while the phone foxhunts a device it found, or both scan into one session.
 - **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot.
-- **Private Bluetooth link**: the board advertises a rotating private address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN: the board has no screen to show one, so the phone and board agree a key without it. The XIAO C5, S3 and C3 use the chip's own address resolver; older ESP32 boards resolve it in the Bluetooth host.
+- **Private Bluetooth link**: the board advertises a rotating private address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN: the board has no screen to show one, so the phone and board agree a key without it. The C5 boards use the chip's own address resolver. The S3, C3 and older ESP32 boards resolve it in the Bluetooth host. After you update an S3, C3 or older ESP32 board to this firmware, forget it in your phone's Bluetooth settings and pair it once more.
+- **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the connected board collects Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes and adds them to your wardrive. Tap **Start hub**, power on a Piglet node nearby, and tap **Pair** when it shows under **Nearby nodes**. The hub board leaves the mesh while it runs; your other boards keep meshing. When you start a wardrive, the radio picker lists the hub and lets you leave out any paired node.
 
 ## Boards
 
