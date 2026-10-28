@@ -22,8 +22,8 @@
 #define OUISPY_BLE_SECURE 1
 #endif
 #if OUISPY_BLE_SECURE
-#define SEC_R (NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN)
-#define SEC_W (NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN)
+#define SEC_R (NIMBLE_PROPERTY::READ_ENC)
+#define SEC_W (NIMBLE_PROPERTY::WRITE_ENC)
 extern "C" void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 #else
 #define SEC_R 0
@@ -1056,7 +1056,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         BlePeer* slot = blePeerFind(BLE_HS_CONN_HANDLE_NONE);
         if (slot) { slot->handle = h; slot->sinceMs = millis(); slot->authed = false; }
         server->updateConnParams(h, 12, 24, 0, 3000);
-        if (info.isEncrypted() && info.isAuthenticated()) {
+        if (info.isEncrypted()) {
             if (slot) slot->authed = true;
             onConnect(server);
         }
@@ -1067,7 +1067,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onAuthenticationComplete(NimBLEConnInfo& info) override {
         uint16_t h = info.getConnHandle();
         BlePeer* pe = blePeerFind(h);
-        if (!info.isEncrypted() || !info.isAuthenticated()) {
+        if (!info.isEncrypted()) {
             Serial.printf("[BLE] pairing failed handle=%u, disconnecting\n", (unsigned)h);
             if (pServer) pServer->disconnect(h);
             return;
@@ -2572,7 +2572,7 @@ void bleGattInit(void) {
         bool rpa = NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_RANDOM_DEFAULT);
         if (!rpa) NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
         ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_WRITE |
-                                         BLE_ATT_F_WRITE_ENC | BLE_ATT_F_WRITE_AUTHEN);
+                                         BLE_ATT_F_WRITE_ENC);
         Serial.printf("[BLE] secure: bond+SC JustWorks, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
 #endif
     }
@@ -3239,13 +3239,13 @@ int bleGattPortSelfTest(void) {
         for (NimBLECharacteristic* c : svc->getCharacteristics()) {
             uint16_t p = c->getProperties();
             total++;
-            if ((p & NIMBLE_PROPERTY::READ) && !((p & NIMBLE_PROPERTY::READ_ENC) && (p & NIMBLE_PROPERTY::READ_AUTHEN))) insecure++;
+            if ((p & NIMBLE_PROPERTY::READ) && !(p & NIMBLE_PROPERTY::READ_ENC)) insecure++;
             if ((p & (NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR)) &&
-                !((p & NIMBLE_PROPERTY::WRITE_ENC) && (p & NIMBLE_PROPERTY::WRITE_AUTHEN))) insecure++;
+                !(p & NIMBLE_PROPERTY::WRITE_ENC)) insecure++;
         }
     }
     snprintf(d, sizeof(d), "%d chars, %d unprotected", total, insecure);
-    check("all_characteristics_need_auth", svc && total > 20 && insecure == 0, d);
+    check("all_characteristics_need_enc", svc && total > 20 && insecure == 0, d);
 
     NimBLEAddress own = NimBLEDevice::getAddress();
     const uint8_t* v = own.getBase()->val;
