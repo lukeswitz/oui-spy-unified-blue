@@ -1572,7 +1572,6 @@ class BleManager {
       DebugLog.log('BLE: enableEngine ${engine.name} failed: $e');
       rethrow;
     }
-    unawaited(_refreshEngineState());
   }
 
   Future<void> disableEngine(Engine engine, {String? targetNodeId}) async {
@@ -1587,7 +1586,6 @@ class BleManager {
       DebugLog.log('BLE: disableEngine ${engine.name} failed: $e');
       rethrow;
     }
-    unawaited(_refreshEngineState());
   }
 
   Future<void> sendEngineConfig(Engine engine, Uint8List payload) async {
@@ -1664,7 +1662,6 @@ class BleManager {
     if (_engineControl == null) return;
     await _engineControl!.write(BleProtocol.encodeDisableAll());
     DebugLog.log('BLE: sent DISABLE_ALL');
-    await _refreshEngineState();
   }
 
   /// Read engine state directly — bypasses unreliable NOTIFY under load.
