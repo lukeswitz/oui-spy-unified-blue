@@ -3081,7 +3081,7 @@ void bleGattNotifyEngineState(void) {
         buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
     }
 #endif
-    notifyChr(chrEngineControl, buf, 2 + ENGINE_COUNT);
+    notifyChrExact(chrEngineControl, buf, 2 + ENGINE_COUNT);
 }
 
 bool bleGattIsConnected(void) {
