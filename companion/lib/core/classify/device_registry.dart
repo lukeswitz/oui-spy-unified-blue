@@ -557,9 +557,11 @@ class DeviceRegistry extends ChangeNotifier {
   final _path = <GpsSample>[];
   Timer? _tick;
   bool _dirty = false;
+  int _rev = 0;
 
   Iterable<ClassifiedDevice> get devices => _devices.values;
   int get count => _devices.length;
+  int get rev => _rev;
   bool get ready => _engine != null;
   List<GpsSample> get path => List.unmodifiable(_path);
 
@@ -627,6 +629,7 @@ class DeviceRegistry extends ChangeNotifier {
     }
     if (_devices.length > maxDevices) _evictOldest();
     _dirty = true;
+    _rev++;
   }
 
   /// Classify one detection for the detail view; live entry if present, else on the fly. No state change.
@@ -710,6 +713,7 @@ class DeviceRegistry extends ChangeNotifier {
   void clear() {
     _devices.clear();
     kinIndex.clear();
+    _rev++;
     notifyListeners();
   }
 

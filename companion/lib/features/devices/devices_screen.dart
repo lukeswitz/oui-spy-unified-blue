@@ -57,6 +57,9 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   List<String> _sectionOrder = const [];
   Set<String> _collapsed = {};
 
+  ({int rev, DeviceSort sort, bool asc, RadioKind? radio, String? source, SignatureClass? cls, bool unc})? _cacheKey;
+  ({List<ClassifiedDevice> all, Map<SignatureClass, int> counts, int unclassified, List<ClassifiedDevice> ordered, Map<String, Guess> guesses})? _cache;
+
   static const _kGrouped = 'devicesGroupedView';
   static const _kOrder = 'devicesSectionOrder';
   static const _kCollapsed = 'devicesSectionCollapsed';
@@ -439,19 +442,30 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   Widget build(BuildContext context) {
     final reg = ref.watch(deviceRegistryProvider);
     final t = AppTheme.of(context);
-    final all = reg.devices.toList();
-    final counts = <SignatureClass, int>{};
-    var unclassified = 0;
-    for (final d in all) {
-      if (d.signatures.isEmpty) unclassified++;
-      for (final k in {for (final s in d.signatures) s.kind}) {
-        counts[k] = (counts[k] ?? 0) + 1;
+    final key = (rev: reg.rev, sort: _sort, asc: _sortAscending, radio: _radio,
+        source: _source, cls: _class, unc: _unclassifiedOnly);
+    if (_cache == null || _cacheKey != key) {
+      final all = reg.devices.toList();
+      final counts = <SignatureClass, int>{};
+      var unclassified = 0;
+      for (final d in all) {
+        if (d.signatures.isEmpty) unclassified++;
+        for (final k in {for (final s in d.signatures) s.kind}) {
+          counts[k] = (counts[k] ?? 0) + 1;
+        }
       }
+      final shown = all.where(_matches).toList();
+      final guesses = {for (final d in shown) d.obs.key: d.guess};
+      shown.sort(_comparator(guesses));
+      _cache = (all: all, counts: counts, unclassified: unclassified, ordered: shown, guesses: guesses);
+      _cacheKey = key;
     }
-    final shown = all.where(_matches).toList();
-    final guesses = {for (final d in shown) d.obs.key: d.guess};
-    shown.sort(_comparator(guesses));
-    final ordered = shown;
+    final all = _cache!.all;
+    final counts = _cache!.counts;
+    final unclassified = _cache!.unclassified;
+    final guesses = _cache!.guesses;
+    final ordered = _cache!.ordered;
+    final shown = ordered;
     final flood = reg.pairingFlood.notice;
     final content = Column(
           children: [

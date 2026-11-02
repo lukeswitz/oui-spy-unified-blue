@@ -51,7 +51,7 @@ void main() {
         home: Scaffold(
           body: ValueListenableBuilder<int>(
             valueListenable: tick,
-            builder: (_, __, ___) => ListView.builder(
+            builder: (_, _, _) => ListView.builder(
               itemCount: data.length,
               itemBuilder: (c, i) =>
                   DetectionRow(key: ValueKey(data[i].id), detection: data[i]),

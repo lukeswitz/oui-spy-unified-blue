@@ -372,7 +372,8 @@ void showDetectionDetails(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         child: Text(
-                          detection.isWifiDetection
+                          detection.isWifiDetection ||
+                                  detection.engine == Engine.wardrive
                               ? methodLabel(detection.method)
                               : detection.engine.label.toUpperCase(),
                           style: Theme.of(ctx)

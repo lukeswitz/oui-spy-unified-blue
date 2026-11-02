@@ -189,9 +189,12 @@ class _LongOui {
 class SignatureEngine {
   final List<Signature> signatures;
   final _plans = <_Plan>[];
-  final _wifiPlans = <int>[];
-  final _blePlans = <int>[];
+  final _alwaysWifi = <int>[];
+  final _alwaysBle = <int>[];
+  final _uuidPlans = <String, List<int>>{};
+  final _mfgPlans = <int, List<int>>{};
   final _clusterPlans = <int>[];
+  final _clusterSet = <int>{};
   final _bssidWifi = <String, List<int>>{};
   final _bssidBle = <String, List<int>>{};
   final _vendorIe = <String, List<int>>{};
@@ -203,6 +206,8 @@ class SignatureEngine {
       final idx = _plans.length;
       final active = sig.enabled ? sig.rules.where((r) => r.enabled).toList() : <MatchRule>[];
       final other = <bool Function(Observation)>[];
+      final isCluster = sig.enabled && sig.cluster;
+      var indexableOnly = active.isNotEmpty;
       for (final r in active) {
         switch (r.kind) {
           case RuleKind.oui:
@@ -211,23 +216,36 @@ class SignatureEngine {
             _indexOui(r.text, r.radio, idx, bssid: true, vendor: false);
           case RuleKind.vendorIeOui:
             _indexOui(r.text, r.radio, idx, bssid: false, vendor: true);
+          case RuleKind.serviceUuid:
+            if (!isCluster) {
+              for (final a in uuidAliases(r.text)) {
+                (_uuidPlans[a] ??= []).add(idx);
+              }
+            }
+            if (_compileOther(r) case final f?) other.add(f);
+          case RuleKind.manufacturerId || RuleKind.manufacturerData:
+            if (!isCluster) (_mfgPlans[r.companyId] ??= []).add(idx);
+            if (_compileOther(r) case final f?) other.add(f);
           default:
+            indexableOnly = false;
             if (_compileOther(r) case final f?) other.add(f);
         }
       }
       _plans.add(_Plan(sig, active, other));
-      if (sig.enabled && sig.cluster) {
+      if (isCluster) {
         _clusterPlans.add(idx);
+        _clusterSet.add(idx);
         continue;
       }
+      if (indexableOnly) continue; // reachable via oui/uuid/mfg index
       switch (_radioScope(active)) {
         case RadioKind.wifi:
-          _wifiPlans.add(idx);
+          _alwaysWifi.add(idx);
         case RadioKind.ble:
-          _blePlans.add(idx);
+          _alwaysBle.add(idx);
         case null:
-          _wifiPlans.add(idx);
-          _blePlans.add(idx);
+          _alwaysWifi.add(idx);
+          _alwaysBle.add(idx);
       }
     }
   }
@@ -267,10 +285,32 @@ class SignatureEngine {
 
   List<Signature> match(Observation o) {
     final ouiHit = _ouiHits(o);
-    final hits = <String>[];
-    for (final idx in o.kind == RadioKind.wifi ? _wifiPlans : _blePlans) {
-      if (_fleetHits(o, _plans[idx], ouiHit.contains(idx))) hits.add(_plans[idx].sig.id);
+    final cand = <int>{...(o.kind == RadioKind.wifi ? _alwaysWifi : _alwaysBle)};
+    for (final i in ouiHit) {
+      if (!_clusterSet.contains(i)) cand.add(i);
     }
+    for (final u in o.serviceUuids) {
+      for (final a in uuidAliases(u)) {
+        final l = _uuidPlans[a];
+        if (l != null) cand.addAll(l);
+      }
+    }
+    for (final s in o.serviceData) {
+      for (final a in uuidAliases(s.uuid)) {
+        final l = _uuidPlans[a];
+        if (l != null) cand.addAll(l);
+      }
+    }
+    for (final r in o.mfgRecords) {
+      final l = _mfgPlans[r.companyId];
+      if (l != null) cand.addAll(l);
+    }
+    final matched = <int>[];
+    for (final idx in cand) {
+      if (_fleetHits(o, _plans[idx], ouiHit.contains(idx))) matched.add(idx);
+    }
+    matched.sort();
+    final hits = [for (final idx in matched) _plans[idx].sig.id];
     if (hits.contains('fleet-ibeacon') &&
         hits.any((id) => id != 'fleet-ibeacon' && byId[id]?.kind != SignatureClass.beacon)) {
       hits.remove('fleet-ibeacon');

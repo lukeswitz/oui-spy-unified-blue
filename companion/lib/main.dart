@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/app.dart';
+import 'package:oui_spy/bench_hook.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
@@ -47,7 +48,7 @@ void main() async {
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
 
-  if (needsPermissionOnboarding(prefs)) {
+  if (needsPermissionOnboarding(prefs) && !const bool.fromEnvironment('BENCH')) {
     final done = Completer<void>();
     runApp(UncontrolledProviderScope(
       container: container,
@@ -77,6 +78,8 @@ void main() async {
     container: container,
     child: const OuiSpyApp(),
   ));
+
+  runBenchIfEnabled(container);
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _forceCleanBleState().then((_) async {
