@@ -420,9 +420,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       itemBuilder: (context, index) {
                         final item = feedItems[index];
                         if (item is DroneGroup) {
-                          return DroneDetectionRow(group: item);
+                          return DroneDetectionRow(
+                            key: ValueKey('drone:${item.uavId}'),
+                            group: item,
+                          );
                         }
-                        return DetectionRow(detection: item as Detection);
+                        final d = item as Detection;
+                        return DetectionRow(
+                          key: ValueKey('${d.macAddress}|${d.engine.name}'),
+                          detection: d,
+                        );
                       },
                     ),
             ),

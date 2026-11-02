@@ -78,8 +78,7 @@ class DetectionRow extends ConsumerWidget {
         child: Builder(builder: (_) {
           final headline = _headline(detection, manufacturer);
           final headlineIsMac = headline == detection.macAddress.toUpperCase();
-          return LayoutBuilder(builder: (_, box) {
-          final gap = (box.maxWidth * 0.04).clamp(12.0, 32.0);
+          final gap = (MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0);
           final clsStr = detectionAlertClass[detection];
           final sig = clsStr == null ? null : SignatureClass.parse(clsStr);
           final sdrCat =
@@ -204,7 +203,6 @@ class DetectionRow extends ConsumerWidget {
               ),
             ],
           );
-          });
         }),
       ),
     ),

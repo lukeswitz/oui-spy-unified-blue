@@ -31,6 +31,18 @@ class AppState extends ChangeNotifier {
   final LiveActivityService _liveActivity;
   final List<StreamSubscription<dynamic>> _subs = [];
 
+  Timer? _notifyTimer;
+  bool _notifyPending = false;
+
+  void _scheduleNotify() {
+    if (_notifyPending) return;
+    _notifyPending = true;
+    _notifyTimer = Timer(const Duration(milliseconds: 16), () {
+      _notifyPending = false;
+      notifyListeners();
+    });
+  }
+
   // Connection
   NodeConnectionState connectionState = NodeConnectionState.disconnected;
   bool get isConnected => connectionState == NodeConnectionState.ready;
@@ -537,7 +549,7 @@ class AppState extends ChangeNotifier {
         _notificationService.onDetection(det);
       }
 
-      notifyListeners();
+      _scheduleNotify();
     }));
 
     _subs.add(_ble.importedDetections.listen(_ingestOfflineDetection));
@@ -645,7 +657,7 @@ class AppState extends ChangeNotifier {
     lastDetectionTime[det.engine] = DateTime.now();
     _upsertDetection(det);
     _recordDroneTrack(det);
-    notifyListeners();
+    _scheduleNotify();
   }
 
   void _upsertDetection(Detection det) {
@@ -875,6 +887,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _notifyTimer?.cancel();
     for (final sub in _subs) {
       sub.cancel();
     }

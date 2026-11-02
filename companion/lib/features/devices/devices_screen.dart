@@ -14,6 +14,7 @@ import 'package:oui_spy/core/classify/presence_class.dart';
 import 'package:oui_spy/core/db/app_database.dart' show databaseProvider;
 import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/core/privacy.dart';
@@ -51,6 +52,132 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   String? _source;
   DeviceSort _sort = DeviceSort.recent;
   bool _sortAscending = false;
+
+  bool _grouped = false;
+  List<String> _sectionOrder = const [];
+  Set<String> _collapsed = {};
+
+  static const _kGrouped = 'devicesGroupedView';
+  static const _kOrder = 'devicesSectionOrder';
+  static const _kCollapsed = 'devicesSectionCollapsed';
+  static const _unclassifiedKey = '__unclassified__';
+
+  @override
+  void initState() {
+    super.initState();
+    final prefs = ref.read(sharedPreferencesProvider);
+    _grouped = prefs.getBool(_kGrouped) ?? false;
+    _sectionOrder = prefs.getStringList(_kOrder) ?? const [];
+    _collapsed = (prefs.getStringList(_kCollapsed) ?? const []).toSet();
+  }
+
+  SignatureClass? _primaryClass(ClassifiedDevice d) =>
+      d.signatures.isEmpty ? null : d.signatures.first.kind;
+
+  static String _sectionKey(SignatureClass? c) => c?.name ?? _unclassifiedKey;
+
+  void _setGrouped(bool v) {
+    setState(() => _grouped = v);
+    ref.read(sharedPreferencesProvider).setBool(_kGrouped, v);
+  }
+
+  void _toggleCollapsed(String key) {
+    setState(() {
+      if (!_collapsed.remove(key)) _collapsed.add(key);
+    });
+    ref.read(sharedPreferencesProvider).setStringList(_kCollapsed, _collapsed.toList());
+  }
+
+  void _persistOrder(List<String> order) {
+    setState(() => _sectionOrder = order);
+    ref.read(sharedPreferencesProvider).setStringList(_kOrder, order);
+  }
+
+  Future<void> _openArrangeSheet(List<String> present, Map<String, int> counts) {
+    final order = [...present];
+    return showCommandSheet<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final t = AppTheme.of(ctx);
+          return CommandSheet(
+            title: 'ARRANGE SECTIONS',
+            child: SizedBox(
+              height: (order.length * 52.0).clamp(120.0, 440.0),
+              child: ReorderableListView.builder(
+                buildDefaultDragHandles: false,
+                itemCount: order.length,
+                onReorderItem: (oldIndex, newIndex) {
+                  final item = order.removeAt(oldIndex);
+                  order.insert(newIndex, item);
+                  setSheet(() {});
+                  _persistOrder([...order]);
+                },
+                itemBuilder: (ctx, i) {
+                  final key = order[i];
+                  final (label, icon, color) = _sectionVisual(t, key);
+                  return ListTile(
+                    key: ValueKey('arr:$key'),
+                    dense: true,
+                    leading: Icon(icon, color: color, size: barIconSize(ctx)),
+                    title: Text(label,
+                        style: barLabelStyle(ctx, t.textPrimary).copyWith(letterSpacing: 1)),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('${counts[key] ?? 0}',
+                          style: TextStyle(fontFamily: AppTheme.mono, fontSize: 12, color: t.textSecondary)),
+                      SizedBox(width: barGap(ctx)),
+                      ReorderableDragStartListener(
+                        index: i,
+                        child: Icon(Icons.drag_handle, color: t.textDim, size: barIconSize(ctx)),
+                      ),
+                    ]),
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<String> _orderedSections(List<ClassifiedDevice> devices) {
+    final counts = <String, int>{};
+    for (final d in devices) {
+      final k = _sectionKey(_primaryClass(d));
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    final present = counts.keys.toSet();
+    final result = <String>[];
+    for (final k in _sectionOrder) {
+      if (present.remove(k)) result.add(k);
+    }
+    final rest = present.toList()
+      ..sort((a, b) {
+        if (a == _unclassifiedKey) return 1;
+        if (b == _unclassifiedKey) return -1;
+        return (counts[b] ?? 0).compareTo(counts[a] ?? 0);
+      });
+    return result..addAll(rest);
+  }
+
+  Comparator<ClassifiedDevice> _comparator(Map<String, Guess> guesses) {
+    final Comparator<ClassifiedDevice> cmp = switch (_sort) {
+      DeviceSort.recent => (a, b) => b.obs.lastSeenMs.compareTo(a.obs.lastSeenMs),
+      DeviceSort.rssi => (a, b) => b.obs.rssi.compareTo(a.obs.rssi),
+      DeviceSort.confidence => (a, b) =>
+          guesses[a.obs.key]!.confidence.index.compareTo(guesses[b.obs.key]!.confidence.index),
+      DeviceSort.kind => (a, b) =>
+          _textKey(a.signatures.isEmpty ? '' : a.signatures.first.kind.label)
+              .compareTo(_textKey(b.signatures.isEmpty ? '' : b.signatures.first.kind.label)),
+      DeviceSort.name => (a, b) => _textKey(a.obs.name).compareTo(_textKey(b.obs.name)),
+      DeviceSort.vendor => (a, b) => _textKey(a.vendor ?? '').compareTo(_textKey(b.vendor ?? '')),
+      DeviceSort.channel => (a, b) => (a.obs.channel > 0 ? a.obs.channel : 1 << 30)
+          .compareTo(b.obs.channel > 0 ? b.obs.channel : 1 << 30),
+      DeviceSort.firstSeen => (a, b) => b.obs.firstSeenMs.compareTo(a.obs.firstSeenMs),
+    };
+    return _sortAscending ? (a, b) => cmp(b, a) : cmp;
+  }
 
   bool _matches(ClassifiedDevice d) {
     if (_radio != null && d.obs.kind != _radio) return false;
@@ -323,24 +450,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     }
     final shown = all.where(_matches).toList();
     final guesses = {for (final d in shown) d.obs.key: d.guess};
-    shown.sort(switch (_sort) {
-      DeviceSort.recent => (a, b) => b.obs.lastSeenMs.compareTo(
-        a.obs.lastSeenMs,
-      ),
-      DeviceSort.rssi => (a, b) => b.obs.rssi.compareTo(a.obs.rssi),
-      DeviceSort.confidence =>
-        (a, b) => guesses[a.obs.key]!.confidence.index.compareTo(
-          guesses[b.obs.key]!.confidence.index,
-        ),
-      DeviceSort.kind => (a, b) => _textKey(a.signatures.isEmpty ? '' : a.signatures.first.kind.label)
-          .compareTo(_textKey(b.signatures.isEmpty ? '' : b.signatures.first.kind.label)),
-      DeviceSort.name => (a, b) => _textKey(a.obs.name).compareTo(_textKey(b.obs.name)),
-      DeviceSort.vendor => (a, b) => _textKey(a.vendor ?? '').compareTo(_textKey(b.vendor ?? '')),
-      DeviceSort.channel => (a, b) => (a.obs.channel > 0 ? a.obs.channel : 1 << 30)
-          .compareTo(b.obs.channel > 0 ? b.obs.channel : 1 << 30),
-      DeviceSort.firstSeen => (a, b) => b.obs.firstSeenMs.compareTo(a.obs.firstSeenMs),
-    });
-    final ordered = _sortAscending ? shown.reversed.toList() : shown;
+    shown.sort(_comparator(guesses));
+    final ordered = shown;
     final flood = reg.pairingFlood.notice;
     final content = Column(
           children: [
@@ -358,6 +469,12 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                   icon: _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
                   label: 'Sort: ${_sortLabel(_sort)}',
                   onTap: _openSortSheet,
+                ),
+                CommandBarAction(
+                  icon: _grouped ? Icons.category : Icons.view_list,
+                  label: _grouped ? 'Grouped' : 'Flat',
+                  active: _grouped,
+                  onTap: () => _setGrouped(!_grouped),
                 ),
                 CommandBarAction(
                   icon: Icons.more_vert,
@@ -407,14 +524,24 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                       alignment: Alignment.topCenter,
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 860),
-                        child: ListView.builder(
-                          padding: EdgeInsets.symmetric(vertical: barGap(context)),
-                          itemCount: ordered.length,
-                          itemBuilder: (context, i) => DeviceRow(
-                            device: ordered[i],
-                            guess: guesses[ordered[i].obs.key]!,
-                          ),
-                        ),
+                        child: _grouped
+                            ? _GroupedDeviceList(
+                                devices: ordered,
+                                guesses: guesses,
+                                sectionKeyOf: (d) => _sectionKey(_primaryClass(d)),
+                                order: _orderedSections(ordered),
+                                collapsed: _collapsed,
+                                onToggle: _toggleCollapsed,
+                                onArrange: _openArrangeSheet,
+                              )
+                            : ListView.builder(
+                                padding: EdgeInsets.symmetric(vertical: barGap(context)),
+                                itemCount: ordered.length,
+                                itemBuilder: (context, i) => DeviceRow(
+                                  device: ordered[i],
+                                  guess: guesses[ordered[i].obs.key]!,
+                                ),
+                              ),
                       ),
                     ),
             ),
@@ -460,6 +587,155 @@ class _FloodBanner extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+(String, IconData, Color) _sectionVisual(ResolvedTheme t, String key) {
+  if (key == '__unclassified__') {
+    return ('UNCLASSIFIED', Icons.devices_other, t.textDim);
+  }
+  final c = SignatureClass.values
+      .firstWhere((e) => e.name == key, orElse: () => SignatureClass.other);
+  return (c.label.toUpperCase(), classIcon(c), classColor(c));
+}
+
+class _HeadRef {
+  const _HeadRef(this.sectionKey, this.count);
+  final String sectionKey;
+  final int count;
+}
+
+class _GroupedDeviceList extends StatelessWidget {
+  const _GroupedDeviceList({
+    required this.devices,
+    required this.guesses,
+    required this.sectionKeyOf,
+    required this.order,
+    required this.collapsed,
+    required this.onToggle,
+    required this.onArrange,
+  });
+
+  final List<ClassifiedDevice> devices;
+  final Map<String, Guess> guesses;
+  final String Function(ClassifiedDevice) sectionKeyOf;
+  final List<String> order;
+  final Set<String> collapsed;
+  final void Function(String key) onToggle;
+  final void Function(List<String> order, Map<String, int> counts) onArrange;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = <String, List<ClassifiedDevice>>{};
+    for (final d in devices) {
+      (groups[sectionKeyOf(d)] ??= []).add(d);
+    }
+    final counts = {for (final k in order) k: groups[k]?.length ?? 0};
+    final flat = <Object>[];
+    for (final key in order) {
+      flat.add(_HeadRef(key, counts[key] ?? 0));
+      if (!collapsed.contains(key)) flat.addAll(groups[key] ?? const <ClassifiedDevice>[]);
+    }
+    return ListView.builder(
+      padding: EdgeInsets.symmetric(vertical: barGap(context)),
+      itemCount: flat.length,
+      itemBuilder: (context, i) {
+        final item = flat[i];
+        if (item is _HeadRef) {
+          return _SectionHeader(
+            key: ValueKey('head:${item.sectionKey}'),
+            sectionKey: item.sectionKey,
+            count: item.count,
+            collapsed: collapsed.contains(item.sectionKey),
+            onToggle: () => onToggle(item.sectionKey),
+            onArrange: () => onArrange(order, counts),
+          );
+        }
+        final d = item as ClassifiedDevice;
+        return DeviceRow(
+          key: ValueKey('dev:${d.obs.key}'),
+          device: d,
+          guess: guesses[d.obs.key]!,
+        );
+      },
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    super.key,
+    required this.sectionKey,
+    required this.count,
+    required this.collapsed,
+    required this.onToggle,
+    required this.onArrange,
+  });
+
+  final String sectionKey;
+  final int count;
+  final bool collapsed;
+  final VoidCallback onToggle;
+  final VoidCallback onArrange;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final gap = barGap(context);
+    final (label, icon, color) = _sectionVisual(t, sectionKey);
+    return Material(
+      color: color.withValues(alpha: 0.10),
+      child: InkWell(
+        onTap: onToggle,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: color, width: 3),
+              bottom: BorderSide(color: t.border),
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(gap * 2, gap * 1.5, gap, gap * 1.5),
+            child: Row(
+              children: [
+                Icon(collapsed ? Icons.chevron_right : Icons.expand_more,
+                    size: barIconSize(context), color: t.textSecondary),
+                SizedBox(width: gap),
+                Icon(icon, size: barIconSize(context), color: color),
+                SizedBox(width: gap),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: barLabelStyle(context, t.textPrimary)
+                        .copyWith(letterSpacing: 1, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: gap, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
+                  ),
+                  child: Text('$count',
+                      style: TextStyle(
+                          fontFamily: AppTheme.mono,
+                          fontSize: 12,
+                          color: color,
+                          fontWeight: FontWeight.w700)),
+                ),
+                IconButton(
+                  tooltip: 'Arrange sections',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onArrange,
+                  icon: Icon(Icons.drag_handle,
+                      size: barIconSize(context), color: t.textDim),
+                ),
+              ],
+            ),
           ),
         ),
       ),
