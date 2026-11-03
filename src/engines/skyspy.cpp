@@ -191,8 +191,19 @@ static bool odidIsPlausible(const ODID_UAS_Data* u) {
     return false;
 }
 
-static const uint8_t DRONE_VENDOR_OUIS[][3] = { {0x38, 0x1D, 0x14} };
-static const char* const DRONE_VENDOR_NAMES[] = { "Skydio (no Remote ID)" };
+static const uint8_t DRONE_VENDOR_OUIS[][3] = {
+    {0x38, 0x1D, 0x14},
+    {0x04, 0xA8, 0x5A}, {0x0C, 0x9A, 0xE6}, {0x34, 0xD2, 0x62}, {0x48, 0x1C, 0xB9}, {0x4C, 0x43, 0xF6},
+    {0x58, 0xB8, 0x58}, {0x60, 0x60, 0x1F}, {0x88, 0x29, 0x85}, {0x8C, 0x58, 0x23}, {0xE4, 0x7A, 0x2C},
+};
+static const char* const DRONE_VENDOR_NAMES[] = {
+    "Skydio (no Remote ID)",
+    "DJI device (vendor OUI)", "DJI device (vendor OUI)", "DJI device (vendor OUI)", "DJI device (vendor OUI)",
+    "DJI device (vendor OUI)", "DJI device (vendor OUI)", "DJI device (vendor OUI)", "DJI device (vendor OUI)",
+    "DJI device (vendor OUI)", "DJI device (vendor OUI)",
+};
+static_assert(sizeof(DRONE_VENDOR_OUIS) / 3 == sizeof(DRONE_VENDOR_NAMES) / sizeof(DRONE_VENDOR_NAMES[0]),
+              "drone vendor tables out of sync");
 static DedupRing<16, 60000> droneVendorDedup;
 static DedupRingISR<16, 60000> droneVendorDedupISR;
 
