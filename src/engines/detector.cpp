@@ -698,7 +698,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* p = pkt->payload;
-    int len = pkt->rx_ctrl.sig_len;
+    int len = (int)pkt->rx_ctrl.sig_len - 4;
     if (len < 24) return;
 
     if (detectorSigFrameISR(p, len, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel)) return;

@@ -306,7 +306,7 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* payload = pkt->payload;
-    int length = pkt->rx_ctrl.sig_len;
+    int length = (int)pkt->rx_ctrl.sig_len - 4;
     if (length < 24) return;
 
     {

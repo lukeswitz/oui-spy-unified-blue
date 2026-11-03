@@ -278,7 +278,7 @@ static void enowSniff(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (!s_capture || type != WIFI_PKT_MGMT) return;
     const wifi_promiscuous_pkt_t* p = (const wifi_promiscuous_pkt_t*)buf;
     const uint8_t* f = p->payload;
-    int len = (int)p->rx_ctrl.sig_len;
+    int len = (int)p->rx_ctrl.sig_len - 4;
     if (len < 44 || f[0] != 0xD0 || f[24] != 0x7F) return;
     if (f[25] != 0x18 || f[26] != 0xFE || f[27] != 0x34) return;
     if (f[32] != 0xDD || f[34] != 0x18 || f[35] != 0xFE || f[36] != 0x34 || f[37] != 0x04) return;

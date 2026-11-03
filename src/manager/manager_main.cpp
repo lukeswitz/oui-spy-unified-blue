@@ -9,6 +9,7 @@
 #include "../usb_link.h"
 #include "../mesh_espnow.h"
 #include "../wifi_ota_handler.h"
+#include "../ota_handler.h"
 #include "../ignore_list.h"
 #include <Preferences.h>
 #include "../engines/detector.h"
@@ -223,6 +224,7 @@ void setup() {
 }
 
 void loop() {
+    otaTrialTick();
     delay(50);
 #ifdef OUISPY_WD_CYCLE_TEST
     bleGattWdCycleTick();

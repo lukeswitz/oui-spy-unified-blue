@@ -85,7 +85,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* p = pkt->payload;
-    int len = pkt->rx_ctrl.sig_len;
+    int len = (int)pkt->rx_ctrl.sig_len - 4;
     if (len < 24) return;
 
     const uint8_t* addr1 = &p[4];

@@ -107,7 +107,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* p = pkt->payload;
-    int len = pkt->rx_ctrl.sig_len;
+    int len = (int)pkt->rx_ctrl.sig_len - 4;
     if (len < 24) return;
     if (pkt->rx_ctrl.rssi < FLOCK_RSSI_MIN) return;
 
@@ -128,7 +128,6 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
             int bodyLen = len - bodyOff;
             const uint8_t* body = p + bodyOff;
             int r = (bodyLen > 0) ? isWildcardProbeIE(body, bodyLen) : -1;
-            if (r == -1 && bodyLen > 4) r = isWildcardProbeIE(body, bodyLen - 4);
             if (r == 1) {
                 method = (flockHasLiteonVendorIE(body, bodyLen) && flockProbeIeSigMatches(body, bodyLen))
                              ? METHOD_WILDCARD_PROBE_IE_SIG

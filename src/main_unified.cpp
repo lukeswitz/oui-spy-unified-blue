@@ -20,6 +20,7 @@
 #include "usb_link.h"
 #include "mesh_espnow.h"
 #include "wifi_ota_handler.h"
+#include "ota_handler.h"
 #include "engines/flock_ble.h"
 #include "engines/detector.h"
 #include "engines/enow_hub.h"
@@ -1790,6 +1791,7 @@ void setup() {
 }
 
 void loop() {
+    otaTrialTick();
 #ifdef OUISPY_STACKPROBE
     static int stackProbeDone = 0;
     if ((stackProbeDone == 0 && millis() > 10000) || (stackProbeDone == 1 && millis() > 45000)) {

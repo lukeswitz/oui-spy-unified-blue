@@ -325,7 +325,7 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
 
     wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     uint8_t* p = pkt->payload;
-    int len = pkt->rx_ctrl.sig_len;
+    int len = (int)pkt->rx_ctrl.sig_len - 4;
     if (len < 24) return;
 
     uint8_t frameType = (p[0] >> 2) & 0x03;
@@ -347,9 +347,6 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
                 int bodyLen = len - bodyOff;
                 if (bodyLen > 0) {
                     int r = isWildcardProbeIE(p + bodyOff, bodyLen);
-                    if (r == -1 && bodyLen > 4) {
-                        r = isWildcardProbeIE(p + bodyOff, bodyLen - 4);
-                    }
                     if (r == 1) {
                         const uint8_t* body = p + bodyOff;
                         fMethod = (flockHasLiteonVendorIE(body, bodyLen) && flockProbeIeSigMatches(body, bodyLen))

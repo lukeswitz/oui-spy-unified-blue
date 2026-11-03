@@ -66,7 +66,7 @@ static SemaphoreHandle_t chrDetMutex = nullptr;
 
 static void notifyChr(NimBLECharacteristic* chr, const uint8_t* data, size_t len) {
     chr->setValue(data, len);
-    chr->notify();
+    chr->notify(data, len);
 #ifdef OUISPY_USB_LINK
     usbLinkNotify(chr, data, len);
 #endif
@@ -2274,7 +2274,7 @@ static void flushPcapCoalesced(void) {
         pcapIndInFlight = true;
         pcapIndSentMs = millis();
         chrPcapData->setValue(tmp, chunk);
-        chrPcapData->notify(false);   // is_notification=false -> INDICATION (ACK-gated, one in flight)
+        chrPcapData->indicate(tmp, chunk);   // ACK-gated, one in flight
     }
     mgrPcapBytesToPhone += chunk;
     pcapLastFlushMs = millis();
@@ -2518,7 +2518,7 @@ void bleGattStreamPcapBytes(const uint8_t* buf, size_t len) {
         pcapIndInFlight = true;
         pcapIndSentMs = millis();
         chrPcapData->setValue((uint8_t*)buf, n);
-        chrPcapData->notify(false);
+        chrPcapData->indicate((const uint8_t*)buf, n);
         buf += n;
         len -= n;
     }

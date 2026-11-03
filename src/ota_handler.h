@@ -21,6 +21,8 @@ bool otaIsActive(void);
 typedef void (*OtaNotifyFn)(const uint8_t* data, size_t len);
 void otaSetNotifyCallback(OtaNotifyFn fn);
 
+void otaTrialTick(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -4,6 +4,23 @@
 #include <esp_partition.h>
 #include <esp_system.h>
 
+#define OTA_TRIAL_MS 60000UL
+
+extern "C" bool verifyRollbackLater() { return true; }
+
+extern "C" void otaTrialTick(void) {
+    static bool done = false;
+    if (done || millis() < OTA_TRIAL_MS) return;
+    done = true;
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    if (!running || esp_ota_get_state_partition(running, &state) != ESP_OK) return;
+    if (state != ESP_OTA_IMG_PENDING_VERIFY) return;
+    esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+    Serial.printf("[OTA] %s ran %lus: marked valid (%s)\n", running->label,
+                  (unsigned long)(OTA_TRIAL_MS / 1000), esp_err_to_name(err));
+}
+
 #define OP_START  0x01
 #define OP_DATA   0x02
 #define OP_COMMIT 0x03
@@ -224,7 +241,7 @@ extern "C" void otaInit(void) {
     esp_ota_img_states_t state;
     if (running && esp_ota_get_state_partition(running, &state) == ESP_OK) {
         if (state == ESP_OTA_IMG_PENDING_VERIFY) {
-            Serial.println("[OTA] Image PENDING_VERIFY — awaiting confirm from app");
+            Serial.println("[OTA] Image PENDING_VERIFY: marked valid after 60 s up or on app confirm");
         } else if (state == ESP_OTA_IMG_VALID) {
             Serial.println("[OTA] Image VALID");
         }
