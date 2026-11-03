@@ -55,14 +55,13 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
 
   bool _grouped = true;
   List<String> _sectionOrder = const [];
-  Set<String> _collapsed = {};
+  final Set<String> _collapsed = {};
 
   ({int rev, DeviceSort sort, bool asc, RadioKind? radio, String? source, SignatureClass? cls, bool unc})? _cacheKey;
   ({List<ClassifiedDevice> all, Map<SignatureClass, int> counts, int unclassified, List<ClassifiedDevice> ordered, Map<String, Guess> guesses})? _cache;
 
   static const _kGrouped = 'devicesGroupedView';
   static const _kOrder = 'devicesSectionOrder';
-  static const _kCollapsed = 'devicesSectionCollapsed';
   static const _unclassifiedKey = '__unclassified__';
 
   @override
@@ -71,7 +70,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final prefs = ref.read(sharedPreferencesProvider);
     _grouped = prefs.getBool(_kGrouped) ?? true;
     _sectionOrder = prefs.getStringList(_kOrder) ?? const [];
-    _collapsed = (prefs.getStringList(_kCollapsed) ?? const []).toSet();
   }
 
   SignatureClass? _primaryClass(ClassifiedDevice d) =>
@@ -88,7 +86,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     setState(() {
       if (!_collapsed.remove(key)) _collapsed.add(key);
     });
-    ref.read(sharedPreferencesProvider).setStringList(_kCollapsed, _collapsed.toList());
   }
 
   void _persistOrder(List<String> order) {
