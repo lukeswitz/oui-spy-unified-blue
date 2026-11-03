@@ -55,7 +55,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
 
   bool _grouped = true;
   List<String> _sectionOrder = const [];
-  final Set<String> _collapsed = {};
+  final Set<String> _expanded = {};
 
   ({int rev, DeviceSort sort, bool asc, RadioKind? radio, String? source, SignatureClass? cls, bool unc})? _cacheKey;
   ({List<ClassifiedDevice> all, Map<SignatureClass, int> counts, int unclassified, List<ClassifiedDevice> ordered, Map<String, Guess> guesses})? _cache;
@@ -84,7 +84,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
 
   void _toggleCollapsed(String key) {
     setState(() {
-      if (!_collapsed.remove(key)) _collapsed.add(key);
+      if (!_expanded.remove(key)) _expanded.add(key);
     });
   }
 
@@ -152,12 +152,10 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     for (final k in _sectionOrder) {
       if (present.remove(k)) result.add(k);
     }
-    final rest = present.toList()
-      ..sort((a, b) {
-        if (a == _unclassifiedKey) return 1;
-        if (b == _unclassifiedKey) return -1;
-        return (counts[b] ?? 0).compareTo(counts[a] ?? 0);
-      });
+    int rank(String k) => k == _unclassifiedKey
+        ? SignatureClass.values.length
+        : SignatureClass.values.indexWhere((c) => c.name == k);
+    final rest = present.toList()..sort((a, b) => rank(a).compareTo(rank(b)));
     return result..addAll(rest);
   }
 
@@ -541,7 +539,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                                 guesses: guesses,
                                 sectionKeyOf: (d) => _sectionKey(_primaryClass(d)),
                                 order: _orderedSections(ordered),
-                                collapsed: _collapsed,
+                                expanded: _expanded,
                                 onToggle: _toggleCollapsed,
                                 onArrange: _openArrangeSheet,
                               )
@@ -626,7 +624,7 @@ class _GroupedDeviceList extends StatelessWidget {
     required this.guesses,
     required this.sectionKeyOf,
     required this.order,
-    required this.collapsed,
+    required this.expanded,
     required this.onToggle,
     required this.onArrange,
   });
@@ -635,7 +633,7 @@ class _GroupedDeviceList extends StatelessWidget {
   final Map<String, Guess> guesses;
   final String Function(ClassifiedDevice) sectionKeyOf;
   final List<String> order;
-  final Set<String> collapsed;
+  final Set<String> expanded;
   final void Function(String key) onToggle;
   final void Function(List<String> order, Map<String, int> counts) onArrange;
 
@@ -649,7 +647,7 @@ class _GroupedDeviceList extends StatelessWidget {
     final flat = <Object>[];
     for (final key in order) {
       flat.add(_HeadRef(key, counts[key] ?? 0));
-      if (!collapsed.contains(key)) flat.addAll(groups[key] ?? const <ClassifiedDevice>[]);
+      if (expanded.contains(key)) flat.addAll(groups[key] ?? const <ClassifiedDevice>[]);
     }
     return ListView.builder(
       padding: EdgeInsets.symmetric(vertical: barGap(context)),
@@ -661,7 +659,7 @@ class _GroupedDeviceList extends StatelessWidget {
             key: ValueKey('head:${item.sectionKey}'),
             sectionKey: item.sectionKey,
             count: item.count,
-            collapsed: collapsed.contains(item.sectionKey),
+            collapsed: !expanded.contains(item.sectionKey),
             onToggle: () => onToggle(item.sectionKey),
             onArrange: () => onArrange(order, counts),
           );
