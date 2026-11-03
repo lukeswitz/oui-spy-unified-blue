@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/co_travel.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/classify/flood.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 
@@ -123,6 +125,108 @@ void main() {
         );
       }
       expect(g.notice, isNull);
+    });
+
+    test('node addresses that never return flag after confirm', () {
+      final f = PairingFlood();
+      for (var i = 0; i < 10; i++) {
+        f.consider(_prox(i), 0, confirm: true);
+      }
+      expect(f.notice, isNull);
+      f.tick(PairingFlood.confirmMs - 1);
+      expect(f.notice, isNull);
+      f.tick(PairingFlood.confirmMs);
+      expect(f.notice!.popupCount, 10);
+      f.tick(PairingFlood.confirmMs + PairingFlood.windowMs + 1);
+      expect(f.notice, isNull);
+    });
+
+    test('node addresses that return are a crowd, not a flood', () {
+      final f = PairingFlood();
+      for (var i = 0; i < 10; i++) {
+        f.consider(_prox(i), 0, confirm: true);
+      }
+      for (var i = 0; i < 10; i++) {
+        f.seenAgain(_prox(i), 10000);
+      }
+      f.tick(PairingFlood.confirmMs);
+      expect(f.notice, isNull);
+    });
+
+    test('re-heard inside the rotation time still counts as spam', () {
+      final f = PairingFlood();
+      for (var i = 0; i < 10; i++) {
+        f.consider(_prox(i), 0, confirm: true);
+        f.seenAgain(_prox(i), PairingFlood.persistMs - 1);
+      }
+      f.tick(PairingFlood.confirmMs);
+      expect(f.notice!.popupCount, 10);
+    });
+
+    test('phone scan start burst is ignored, later burst counts', () {
+      final f = PairingFlood();
+      const since = 1000;
+      for (var i = 0; i < 20; i++) {
+        f.consider(_prox(i), since + 100, ignoreBefore: since + PairingFlood.primeMs);
+      }
+      expect(f.notice, isNull);
+      final t = since + PairingFlood.primeMs;
+      for (var i = 20; i < 30; i++) {
+        f.consider(_prox(i), t, ignoreBefore: since + PairingFlood.primeMs);
+      }
+      expect(f.notice!.popupCount, 10);
+    });
+
+    test('a full window keeps its oldest hits so a fast spammer still confirms', () {
+      final f = PairingFlood();
+      String hx(int v) => (v & 0xFF).toRadixString(16).padLeft(2, '0').toUpperCase();
+      for (var i = 0; i < 600; i++) {
+        final mac = '02:00:00:00:${hx(i >> 8)}:${hx(i)}';
+        f.consider(
+          Observation(key: 'BLE:$mac', kind: RadioKind.ble, mac: mac, rssi: -48, mfgRecords: const [MfgRecord(0x004C, '070100')]),
+          i * 20,
+          confirm: true,
+        );
+      }
+      f.tick(PairingFlood.confirmMs + 600 * 20);
+      expect(f.notice, isNotNull);
+    });
+  });
+
+  group('registry flood wiring', () {
+    Observation at(Observation o, int ms) => Observation(
+          key: o.key, kind: o.kind, mac: o.mac, rssi: o.rssi, mfgRecords: o.mfgRecords, lastSeenMs: ms, firstSeenMs: ms);
+
+    test('node crowd re-reported on rediscover never flags', () {
+      final reg = DeviceRegistry(engine: SignatureEngine(const []));
+      for (var i = 0; i < 12; i++) {
+        reg.ingest(at(_prox(i), 0), source: 'esp32');
+      }
+      for (var i = 0; i < 12; i++) {
+        reg.ingest(at(_prox(i), 10000), source: 'esp32');
+      }
+      reg.pairingFlood.tick(PairingFlood.confirmMs);
+      expect(reg.pairingFlood.notice, isNull);
+    });
+
+    test('node one-shot addresses flag after confirm', () {
+      final reg = DeviceRegistry(engine: SignatureEngine(const []));
+      for (var i = 0; i < 12; i++) {
+        reg.ingest(at(_prox(i), 0), source: 'esp32');
+      }
+      expect(reg.pairingFlood.notice, isNull);
+      reg.pairingFlood.tick(PairingFlood.confirmMs);
+      expect(reg.pairingFlood.notice!.popupCount, 12);
+    });
+
+    test('phone replay of the same list does not clear node spam', () {
+      final reg = DeviceRegistry(engine: SignatureEngine(const []));
+      for (var i = 0; i < 12; i++) {
+        reg.ingest(at(_prox(i), 0), source: 'esp32');
+        reg.ingest(at(_prox(i), 15000), source: 'phone');
+      }
+      reg.pairingFlood.tick(PairingFlood.confirmMs);
+      expect(reg.pairingFlood.notice!.popupCount, 12);
     });
   });
 

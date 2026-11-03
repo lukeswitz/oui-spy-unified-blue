@@ -56,7 +56,8 @@ class _Hit {
   final int rssi;
   final bool popup;
   final int families;
-  _Hit(this.mac, this.at, this.rssi, this.popup, this.families);
+  final bool confirm;
+  _Hit(this.mac, this.at, this.rssi, this.popup, this.families, this.confirm);
 }
 
 class _Band {
@@ -71,7 +72,10 @@ class PairingFlood {
   static const popupMin = 10;
   static const nameMin = 15;
   static const rssiBandDb = 12;
-  static const _cap = 96;
+  static const confirmMs = 20000;
+  static const persistMs = 6000;
+  static const primeMs = 5000;
+  static const _cap = 512;
   static const _bitProx = 1;
   static const _bitAction = 2;
   static const _bitFast = 4;
@@ -87,21 +91,26 @@ class PairingFlood {
   bool _acknowledged = false;
   FloodNotice? notice;
 
-  void consider(Observation obs, int now) {
-    if (obs.kind != RadioKind.ble) return;
+  void consider(Observation obs, int now, {bool confirm = false, int ignoreBefore = 0}) {
+    if (obs.kind != RadioKind.ble || now < ignoreBefore) return;
     final kind = _classify(obs);
     if (kind == null) return;
-    final dropped = _evict(now);
+    _evict(now);
     final mac = MacUtil.normalize(obs.mac);
-    if (mac.isEmpty || !_macs.add(mac)) {
-      if (dropped) _publish();
-      return;
+    if (mac.isNotEmpty && _window.length < _cap && _macs.add(mac)) {
+      _window.addLast(_Hit(mac, now, obs.rssi, kind.$1, kind.$2, confirm));
     }
-    _window.addLast(_Hit(mac, now, obs.rssi, kind.$1, kind.$2));
-    while (_window.length > _cap) {
-      _macs.remove(_window.removeFirst().mac);
-    }
-    _publish();
+    _publish(now);
+  }
+
+  void seenAgain(Observation obs, int now) {
+    final mac = MacUtil.normalize(obs.mac);
+    if (mac.isEmpty || !_macs.contains(mac)) return;
+    final before = _window.length;
+    _window.removeWhere((h) => h.mac == mac && now - h.at >= persistMs);
+    if (_window.length == before) return;
+    _macs.remove(mac);
+    _publish(now);
   }
 
   void tick(int now) {
@@ -109,7 +118,8 @@ class PairingFlood {
       _finish();
       return;
     }
-    if (_evict(now)) _publish();
+    _evict(now);
+    _publish(now);
   }
 
   void dismiss() {
@@ -119,18 +129,18 @@ class PairingFlood {
     notice = cur.quiet();
   }
 
-  bool _evict(int now) {
-    var dropped = false;
-    while (_window.isNotEmpty && now - _window.first.at > windowMs) {
-      _macs.remove(_window.removeFirst().mac);
-      dropped = true;
-    }
-    return dropped;
+  void _evict(int now) {
+    _window.removeWhere((h) {
+      final gone = now - h.at > windowMs + (h.confirm ? confirmMs : 0);
+      if (gone) _macs.remove(h.mac);
+      return gone;
+    });
   }
 
-  void _publish() {
-    final pop = _band(_window.where((h) => h.popup).toList());
-    final nam = _band(_window.where((h) => !h.popup).toList());
+  void _publish(int now) {
+    final live = _window.where((h) => !h.confirm || now - h.at >= confirmMs).toList();
+    final pop = _band(live.where((h) => h.popup).toList());
+    final nam = _band(live.where((h) => !h.popup).toList());
     final popupHot = pop.count >= popupMin;
     final nameHot = nam.count >= nameMin;
     if (!popupHot && !nameHot) {

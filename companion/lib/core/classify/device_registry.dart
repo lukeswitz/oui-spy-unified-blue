@@ -200,6 +200,8 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   bool _boardAllows = true;
   bool get scanning => _active && _boardAllows;
+  int _scanningSinceMs = 0;
+  int get scanningSinceMs => _scanningSinceMs;
 
   void setActive(bool on) {
     if (on == _active) return;
@@ -231,10 +233,12 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _wifiTimer?.cancel();
     _wifiTimer = null;
     if (!scanning) {
+      _scanningSinceMs = 0;
       _lastFed.clear();
       if (_ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
     }
     if (scanning) {
+      if (_scanningSinceMs == 0) _scanningSinceMs = DateTime.now().millisecondsSinceEpoch;
       _kick();
       final duty = _duty;
       _timer = duty == null
@@ -600,7 +604,16 @@ class DeviceRegistry extends ChangeNotifier {
   void ingest(Observation o, {String source = ''}) {
     final now = o.lastSeenMs;
     final prev = _devices[o.key];
-    if (prev == null && o.kind == RadioKind.ble) pairingFlood.consider(o, now);
+    if (o.kind == RadioKind.ble) {
+      final phone = source == 'phone';
+      if (prev == null) {
+        final since = phone ? _sources.whereType<PhoneBleSource>().firstOrNull?.scanningSinceMs ?? 0 : 0;
+        pairingFlood.consider(o, now,
+            confirm: !phone, ignoreBefore: since == 0 ? 0 : since + PairingFlood.primeMs);
+      } else if (!phone) {
+        pairingFlood.seenAgain(o, now);
+      }
+    }
     var trail = prev?.obs.gpsTrail ?? const <GpsSample>[];
     for (final s in o.gpsTrail) {
       trail = appendTrail(trail, s, _trailCap);
