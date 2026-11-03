@@ -204,7 +204,7 @@ bool wifiCoexReassert(WifiRxParser owner) {
 }
 
 bool wifiCoexCycleRadio(WifiRxParser owner, uint8_t channel) {
-    if (!wifiCoexSoleParser(owner)) return false;
+    if (wifiRadioExternallyOwned() || !wifiCoexSoleParser(owner)) return false;
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
     vTaskDelay(pdMS_TO_TICKS(50));
