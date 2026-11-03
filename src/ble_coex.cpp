@@ -10,7 +10,15 @@ static bool g_wantActive = false;
 static volatile bool g_passiveOnly = false;
 static portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
 
-void bleCoexSetPassiveOnly(bool passive) { g_passiveOnly = passive; }
+static volatile bool g_passiveRestart = false;
+
+void bleCoexSetPassiveOnly(bool passive) {
+    const bool changed = g_passiveOnly != passive;
+    g_passiveOnly = passive;
+    if (!changed || !passive || !NimBLEDevice::getInitialized()) return;
+    NimBLEDevice::getScan()->setActiveScan(false);
+    g_passiveRestart = true;
+}
 bool bleCoexActiveScanAllowed(void) { return !g_passiveOnly; }
 volatile uint32_t g_bleRawSeen = 0;
 #ifdef OUISPY_STATUS_LOG
@@ -77,6 +85,10 @@ void bleCoexEnsureScanning(void) {
     if (meshIsEnabled() && meshInMeshWindow()) return;
 #endif
     NimBLEScan* s = NimBLEDevice::getScan();
+    if (g_passiveRestart) {
+        g_passiveRestart = false;
+        if (s->isScanning()) s->stop();
+    }
     if (s->isScanning()) return;
     s->setActiveScan(g_wantActive && !g_passiveOnly);
     s->setInterval(100);
