@@ -9,7 +9,7 @@ const _sig = Signature(id: 'fleet-flock', name: 'Flock Safety', kind: SignatureC
 
 void main() {
   test('Fieldwatch surveillance signature -> cameras alert titled by signature', () {
-    const d = ClassifiedDevice(
+    final d = ClassifiedDevice(
       Observation(key: 'W:1', kind: RadioKind.wifi, mac: 'B4:1E:52:11:22:33', rssi: -61),
       [_sig],
       {'esp32'},
@@ -26,7 +26,7 @@ void main() {
 
   test('Flock fleet alerts on the Flock toggle only, never as cameras', () {
     const flockSig = Signature(id: 'fleet-flock-cameras', name: 'Flock Safety Cameras', kind: SignatureClass.surveillance);
-    const d = ClassifiedDevice(
+    final d = ClassifiedDevice(
       Observation(key: 'W:5', kind: RadioKind.wifi, mac: 'B4:1E:52:11:22:34', rssi: -60),
       [flockSig],
       {'esp32'},
@@ -39,7 +39,7 @@ void main() {
   });
 
   test('vendor classification (factory MAC, Axon) -> law-enforcement alert', () {
-    const d = ClassifiedDevice(
+    final d = ClassifiedDevice(
       Observation(key: 'W:2', kind: RadioKind.wifi, mac: '00:25:DF:11:22:33', rssi: -70),
       [],
       {'esp32'},
@@ -50,14 +50,14 @@ void main() {
   });
 
   test('low-confidence vendor guess never alerts; unrelated device never alerts', () {
-    const weak = ClassifiedDevice(
+    final weak = ClassifiedDevice(
       Observation(key: 'W:3', kind: RadioKind.wifi, mac: '00:11:22:33:44:55'),
       [],
       {'esp32'},
       vendor: 'Samsung Electronics Co.,Ltd',
     );
     expect(alertClassOf(weak, alertableClasses.toSet()), isNull);
-    const randomized = ClassifiedDevice(
+    final randomized = ClassifiedDevice(
       Observation(key: 'W:4', kind: RadioKind.wifi, mac: '02:25:DF:11:22:33'),
       [],
       {'esp32'},
@@ -71,7 +71,7 @@ void main() {
     expect(detectorMethodClass['amazon'], SignatureClass.camera);
     expect(detectorMethodClass.containsKey('deauth_storm'), isFalse);
     expect(detectorMethodClass.containsKey('probe_ssid'), isFalse);
-    const d = ClassifiedDevice(
+    final d = ClassifiedDevice(
       Observation(
         key: 'BLE:02:00:00:00:00:09',
         kind: RadioKind.ble,
@@ -99,11 +99,11 @@ void main() {
       detectorMethod: 'camera',
       detectorDesc: 'Ring',
     );
-    const withSig = ClassifiedDevice(cam, [_sig], {'esp32'});
+    final withSig = ClassifiedDevice(cam, [_sig], {'esp32'});
     expect(classAlertOf(withSig, {SignatureClass.surveillance}, flock: false)!.kind, 'surveillance');
     expect(classAlertOf(withSig, {}, flock: false)!.kind, 'camera');
     const flockSig = Signature(id: 'fleet-flock-cameras', name: 'Flock Safety Cameras', kind: SignatureClass.surveillance);
-    const withFlock = ClassifiedDevice(cam, [flockSig], {'esp32'});
+    final withFlock = ClassifiedDevice(cam, [flockSig], {'esp32'});
     expect(classAlertOf(withFlock, {}, flock: true)!.kind, 'flock');
     expect(classAlertOf(withFlock, {}, flock: false)!.kind, 'camera');
   });

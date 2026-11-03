@@ -17,7 +17,7 @@ void main() {
       tester.view.physicalSize = const Size(360, 800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      const wifi = ClassifiedDevice(
+      final wifi = ClassifiedDevice(
         Observation(
           key: 'W:1',
           kind: RadioKind.wifi,
@@ -31,7 +31,7 @@ void main() {
         [_isp],
         {'esp32'},
       );
-      const ble = ClassifiedDevice(
+      final ble = ClassifiedDevice(
         Observation(key: 'B:1', kind: RadioKind.ble, mac: '02:00:00:00:00:02', rssi: -94),
         [_tag],
         {'esp32'},
@@ -44,7 +44,7 @@ void main() {
         child: MaterialApp(
           home: MediaQuery(
             data: MediaQueryData(size: const Size(360, 800), textScaler: TextScaler.linear(scale)),
-            child: const Scaffold(
+            child: Scaffold(
               body: Column(children: [
                 DeviceRow(device: wifi, guess: guess),
                 DeviceRow(device: ble, guess: guess),

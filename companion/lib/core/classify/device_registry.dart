@@ -530,15 +530,15 @@ class ClassifiedDevice {
   final String? vendor;
   final String? baseVendor;
   final Guess? kin;
-  const ClassifiedDevice(this.obs, this.signatures, this.sources, {this.vendor, this.baseVendor, this.kin});
+  ClassifiedDevice(this.obs, this.signatures, this.sources, {this.vendor, this.baseVendor, this.kin});
 
   List<String> get signatureNames => [for (final s in signatures) s.name];
-  Guess get ownGuess => DeviceExplain.guess(obs, signatureNames, vendor: vendor, baseVendor: baseVendor);
-  Guess get guess {
+  late final Guess ownGuess = DeviceExplain.guess(obs, signatureNames, vendor: vendor, baseVendor: baseVendor);
+  late final Guess guess = () {
     final own = ownGuess;
     final k = kin;
     return k != null && (own.confidence == Confidence.low || DeviceExplain.isGeneric(own)) ? k : own;
-  }
+  }();
   SignatureClass? get primaryClass => signatures.isEmpty ? null : signatures.first.kind;
 }
 

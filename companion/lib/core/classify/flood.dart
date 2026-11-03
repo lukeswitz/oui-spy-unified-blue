@@ -88,11 +88,14 @@ class PairingFlood {
 
   final _window = ListQueue<_Hit>();
   final _macs = <String>{};
+  int _heardAt = 0;
   bool _acknowledged = false;
   FloodNotice? notice;
 
   void consider(Observation obs, int now, {bool confirm = false, int ignoreBefore = 0}) {
-    if (obs.kind != RadioKind.ble || now < ignoreBefore) return;
+    if (obs.kind != RadioKind.ble) return;
+    if (confirm && now > _heardAt) _heardAt = now;
+    if (now < ignoreBefore) return;
     final kind = _classify(obs);
     if (kind == null) return;
     _evict(now);
@@ -104,6 +107,7 @@ class PairingFlood {
   }
 
   void seenAgain(Observation obs, int now) {
+    if (now > _heardAt) _heardAt = now;
     final mac = MacUtil.normalize(obs.mac);
     if (mac.isEmpty || !_macs.contains(mac)) return;
     final before = _window.length;
@@ -138,7 +142,7 @@ class PairingFlood {
   }
 
   void _publish(int now) {
-    final live = _window.where((h) => !h.confirm || now - h.at >= confirmMs).toList();
+    final live = _window.where((h) => !h.confirm || (now - h.at >= confirmMs && _heardAt - h.at >= confirmMs)).toList();
     final pop = _band(live.where((h) => h.popup).toList());
     final nam = _band(live.where((h) => !h.popup).toList());
     final popupHot = pop.count >= popupMin;

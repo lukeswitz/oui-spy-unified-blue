@@ -133,11 +133,22 @@ void main() {
         f.consider(_prox(i), 0, confirm: true);
       }
       expect(f.notice, isNull);
+      f.consider(_ble(200), PairingFlood.confirmMs, confirm: true);
       f.tick(PairingFlood.confirmMs - 1);
       expect(f.notice, isNull);
       f.tick(PairingFlood.confirmMs);
       expect(f.notice!.popupCount, 10);
       f.tick(PairingFlood.confirmMs + PairingFlood.windowMs + 1);
+      expect(f.notice, isNull);
+    });
+
+    test('listening stopped before confirm never flags', () {
+      final f = PairingFlood();
+      for (var i = 0; i < 10; i++) {
+        f.consider(_prox(i), 0, confirm: true);
+      }
+      f.consider(_ble(200), PairingFlood.confirmMs - 1, confirm: true);
+      f.tick(PairingFlood.confirmMs + 5000);
       expect(f.notice, isNull);
     });
 
@@ -159,6 +170,7 @@ void main() {
         f.consider(_prox(i), 0, confirm: true);
         f.seenAgain(_prox(i), PairingFlood.persistMs - 1);
       }
+      f.consider(_ble(200), PairingFlood.confirmMs, confirm: true);
       f.tick(PairingFlood.confirmMs);
       expect(f.notice!.popupCount, 10);
     });
@@ -188,6 +200,7 @@ void main() {
           confirm: true,
         );
       }
+      f.consider(_ble(200), PairingFlood.confirmMs + 600 * 20, confirm: true);
       f.tick(PairingFlood.confirmMs + 600 * 20);
       expect(f.notice, isNotNull);
     });
@@ -215,8 +228,18 @@ void main() {
         reg.ingest(at(_prox(i), 0), source: 'esp32');
       }
       expect(reg.pairingFlood.notice, isNull);
+      reg.ingest(at(_ble(200), PairingFlood.confirmMs), source: 'esp32');
       reg.pairingFlood.tick(PairingFlood.confirmMs);
       expect(reg.pairingFlood.notice!.popupCount, 12);
+    });
+
+    test('node disconnect leaves pending addresses unconfirmed', () {
+      final reg = DeviceRegistry(engine: SignatureEngine(const []));
+      for (var i = 0; i < 12; i++) {
+        reg.ingest(at(_prox(i), 0), source: 'esp32');
+      }
+      reg.pairingFlood.tick(PairingFlood.confirmMs + 1000);
+      expect(reg.pairingFlood.notice, isNull);
     });
 
     test('phone replay of the same list does not clear node spam', () {
@@ -225,6 +248,7 @@ void main() {
         reg.ingest(at(_prox(i), 0), source: 'esp32');
         reg.ingest(at(_prox(i), 15000), source: 'phone');
       }
+      reg.ingest(at(_ble(200), PairingFlood.confirmMs), source: 'esp32');
       reg.pairingFlood.tick(PairingFlood.confirmMs);
       expect(reg.pairingFlood.notice!.popupCount, 12);
     });
