@@ -32,5 +32,8 @@ void main() {
     expect(PhoneBleSource.wifiAuthMode('[RSN-SAE-CCMP][ESS]'), 6);
     expect(PhoneBleSource.wifiAuthMode('[WPA2-EAP-CCMP][ESS]'), 5);
     expect(PhoneBleSource.wifiAuthMode('[ESS]'), 0);
+    expect(PhoneBleSource.wifiAuthMode('[WPA2-PSK-CCMP][RSN-PSK+SAE-CCMP][ESS]'), 7);
+    expect(PhoneBleSource.wifiAuthMode('[RSN-OWE-CCMP][ESS]'), 8);
+    expect(PhoneBleSource.wifiAuthMode('[RSN-EAP-SUITE-B-192-GCMP-256][ESS]'), 9);
   });
 }

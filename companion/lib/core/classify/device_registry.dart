@@ -284,8 +284,11 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   static int wifiAuthMode(String caps) {
     final c = caps.toUpperCase();
-    if (c.contains('SAE')) return 6;
+    if (c.contains('SUITE-B') || (c.contains('EAP') && c.contains('SHA384'))) return 9;
     if (c.contains('EAP')) return 5;
+    if (c.contains('SAE') && c.contains('PSK')) return 7;
+    if (c.contains('SAE')) return 6;
+    if (c.contains('OWE')) return 8;
     if (c.contains('WPA2') && c.contains('WPA-')) return 4;
     if (c.contains('WPA2') || c.contains('RSN')) return 3;
     if (c.contains('WPA')) return 2;

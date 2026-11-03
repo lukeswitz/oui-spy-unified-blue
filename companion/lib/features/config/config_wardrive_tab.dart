@@ -315,7 +315,10 @@ class _CollectionStatsView extends ConsumerWidget {
         4 => 'WPA/WPA2',
         5 => 'WPA2-EAP',
         6 => 'WPA3',
-        _ => 'Other',
+        7 => 'WPA2/WPA3',
+        8 => 'OWE',
+        9 => 'WPA3-EAP',
+        _ => 'Unknown',
       };
 
   static Color _authColor(int a) => switch (a) {

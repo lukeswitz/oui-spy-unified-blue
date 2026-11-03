@@ -253,7 +253,7 @@ typedef struct __attribute__((packed)) {
         // Wardrive (WiGLE-style capture)
         struct {
             char    ssid[33];
-            uint8_t auth_mode;     // 0=open,1=WEP,2=WPA,3=WPA2,4=WPA_WPA2,5=WPA2_ENT,6=WPA3
+            uint8_t auth_mode;     // 0=open,1=WEP,2=WPA,3=WPA2,4=WPA_WPA2,5=WPA2_ENT,6=WPA3,7=WPA2_WPA3,8=OWE,9=WPA3_ENT,0xFF=unknown
             char    device_name[21];
             uint8_t adv_len;
             uint8_t adv[62];

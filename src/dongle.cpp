@@ -489,7 +489,10 @@ static const char* wigleAuth(const DetectionEvent* e, bool isBle) {
         case 4: return "[WPA_WPA2_PSK]";
         case 5: return "[WPA2_EAP]";
         case 6: return "[WPA3_SAE]";
-        default: return "[WPA2_PSK]";
+        case 7: return "[WPA2_PSK][WPA3_SAE]";
+        case 8: return "[OWE]";
+        case 9: return "[WPA3_EAP]";
+        default: return "[UNKNOWN]";
     }
 }
 

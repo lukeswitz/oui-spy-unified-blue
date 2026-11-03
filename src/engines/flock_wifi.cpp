@@ -9,6 +9,7 @@ extern bool flockAllowOuiOnly;
 #include "../radio_coex.h"
 #include "flock_oui.h"
 #include "flock_auth_cache.h"
+#include "wifi_auth.h"
 #include "dedup_ring.h"
 #include "../engine_registry.h"
 #include <Arduino.h>
@@ -48,47 +49,7 @@ static const uint8_t wildcardProbeTpl[] = {
 };
 
 static uint8_t IRAM_ATTR flockParseAuth(const uint8_t* p, int len) {
-    int offset = 36;
-    bool hasRSN = false, hasWPA = false, hasWPA3 = false, hasEAP = false;
-    while (offset + 2 <= len) {
-        uint8_t tagId = p[offset];
-        uint8_t tagLen = p[offset + 1];
-        if (offset + 2 + tagLen > len) break;
-        if (tagId == 48 && tagLen >= 2) {
-            hasRSN = true;
-            int rsnOff = offset + 2;
-            int rsnEnd = offset + 2 + tagLen;
-            rsnOff += 2;
-            if (rsnOff + 4 > rsnEnd) goto next_tag;
-            rsnOff += 4;
-            if (rsnOff + 2 > rsnEnd) goto next_tag;
-            uint16_t pairCount = p[rsnOff] | (p[rsnOff + 1] << 8);
-            rsnOff += 2 + pairCount * 4;
-            if (rsnOff + 2 > rsnEnd) goto next_tag;
-            uint16_t akmCount = p[rsnOff] | (p[rsnOff + 1] << 8);
-            rsnOff += 2;
-            for (uint16_t i = 0; i < akmCount && rsnOff + 4 <= rsnEnd; i++) {
-                uint8_t akmType = p[rsnOff + 3];
-                if (p[rsnOff] == 0x00 && p[rsnOff + 1] == 0x0F && p[rsnOff + 2] == 0xAC) {
-                    if (akmType == 8 || akmType == 9 || akmType == 12) hasWPA3 = true;
-                    if (akmType == 1 || akmType == 5) hasEAP = true;
-                }
-                rsnOff += 4;
-            }
-        }
-        if (tagId == 221 && tagLen >= 4) {
-            if (p[offset+2]==0x00 && p[offset+3]==0x50 &&
-                p[offset+4]==0xF2 && p[offset+5]==0x01) hasWPA = true;
-        }
-        next_tag:
-        offset += 2 + tagLen;
-    }
-    if (hasWPA3)          return 6;
-    if (hasEAP && hasRSN) return 5;
-    if (hasRSN && hasWPA) return 4;
-    if (hasRSN)           return 3;
-    if (hasWPA)           return 2;
-    return 0;
+    return wifiAuthFromMgmt(p, len);
 }
 
 static void sendWildcardProbe() {

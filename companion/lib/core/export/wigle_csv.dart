@@ -45,7 +45,7 @@ class WigleCsv {
 
     // Data rows
     for (final d in detections) {
-      if (d.method == 'wifi_client') continue;
+      if (_notSelfIdentity.contains(d.method)) continue;
       if (d.latitude == null || d.longitude == null) continue;
       if (d.approxGps) continue;
 
@@ -80,7 +80,7 @@ class WigleCsv {
       final ssid = _escapeCsv(rawSsid);
       final authMode = _capabilities(d);
       final firstSeen = _dateFormat.format(d.appTimestamp.toUtc());
-      final channel = d.channel;
+      final channel = isBleDevice || d.channel <= 0 ? '' : '${d.channel}';
       final frequency = _frequency(d);
       final rssi = d.rssi;
       final lat = d.latitude!;
@@ -101,8 +101,7 @@ class WigleCsv {
   static String _capabilities(Detection d) {
     final isBle = d.isBleDetection;
     if (isBle) return '[LE]';
-    final auth = d.wardrive?.authMode ?? 3;
-    return switch (auth) {
+    return switch (d.wardrive?.authMode) {
       0 => '[OPEN]',
       1 => '[WEP]',
       2 => '[WPA_PSK]',
@@ -110,20 +109,24 @@ class WigleCsv {
       4 => '[WPA_WPA2_PSK]',
       5 => '[WPA2_EAP]',
       6 => '[WPA3_SAE]',
-      _ => '[WPA2_PSK]',
+      7 => '[WPA2_PSK][WPA3_SAE]',
+      8 => '[OWE]',
+      9 => '[WPA3_EAP]',
+      _ => '[UNKNOWN]',
     };
   }
 
+  static const _notSelfIdentity = {'wifi_client', 'probe_ssid', 'deauth_storm', 'karma'};
 
   static String _frequency(Detection d) {
     final isBle = d.isBleDetection;
-    if (isBle) return '0';
+    if (isBle) return '';
     if (d.channel >= 1 && d.channel <= 13) return '${2407 + d.channel * 5}';
     if (d.channel == 14) return '2484';
     if (d.channel >= 36 && d.channel <= 177) {
       return '${5000 + d.channel * 5}';
     }
-    return '0';
+    return '';
   }
 
   /// WiGLE type field.

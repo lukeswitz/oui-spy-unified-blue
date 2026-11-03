@@ -206,15 +206,17 @@ static uint8_t authFromSecurity(const char* s, int n) {
     if (is("[WPA2_PSK]")) return 3;
     if (is("[WPA_WPA2_PSK]")) return 4;
     if (is("[WPA2]")) return 5;
-    if (is("[WPA3_PSK]") || is("[WPA2_WPA3_PSK]")) return 6;
+    if (is("[WPA3_PSK]")) return 6;
+    if (is("[WPA2_WPA3_PSK]")) return 7;
     if (is("OPEN")) return 0;
     if (is("WEP")) return 1;
     if (is("WPA")) return 2;
     if (is("WPA2")) return 3;
     if (is("WPAWPA2")) return 4;
     if (is("WPA2EAP") || is("[WPA2_ENTERPRISE]")) return 5;
-    if (is("WPA3") || is("WPA2WPA3")) return 6;
-    return 3;
+    if (is("WPA3")) return 6;
+    if (is("WPA2WPA3")) return 7;
+    return 0xFF;
 }
 
 static int seenSlot(const uint8_t* mac) {

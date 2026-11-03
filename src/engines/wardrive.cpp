@@ -11,6 +11,7 @@ extern volatile uint32_t g_flockCorroborated;
 #define MESH_RENDEZVOUS_CH 1
 #include "flock_match.h"
 #include "flock_auth_cache.h"
+#include "wifi_auth.h"
 #include "dedup_ring.h"
 #include "detector.h"
 #include "flock_wifi.h"
@@ -194,79 +195,8 @@ static volatile uint8_t wdFlockWifiActive = 0;
 static volatile uint8_t wdFoxhunterActive = 0;
 static volatile uint8_t wdDetectorActive = 0;
 
-#define AKM_OUI_00   0x00
-#define AKM_OUI_0F   0x0F
-#define AKM_OUI_AC   0xAC
-#define AKM_SUITE_EAP     1
-#define AKM_SUITE_PSK     2
-#define AKM_SUITE_SAE     8
-#define AKM_SUITE_FT_SAE  9
-#define AKM_SUITE_SAE_EXT 12
-
 static uint8_t IRAM_ATTR parseAuthFromFrame(const uint8_t* p, int len) {
-    int offset = 36;
-    bool hasRSN = false;
-    bool hasWPA = false;
-    bool hasWPA3 = false;
-    bool hasEAP = false;
-
-    while (offset + 2 <= len) {
-        uint8_t tagId = p[offset];
-        uint8_t tagLen = p[offset + 1];
-        if (offset + 2 + tagLen > len) break;
-
-        if (tagId == 48 && tagLen >= 2) {
-            // RSN Information Element — parse AKM suite list
-            hasRSN = true;
-            // RSN IE: version[2] + group_cipher[4] + pairwise_count[2] + pairwise_suites[n*4] + akm_count[2] + akm_suites[n*4]
-            int rsnOff = offset + 2;
-            int rsnEnd = offset + 2 + tagLen;
-            // Skip version (2 bytes)
-            rsnOff += 2;
-            if (rsnOff + 4 > rsnEnd) goto next_tag;
-            // Skip group cipher suite (4 bytes)
-            rsnOff += 4;
-            if (rsnOff + 2 > rsnEnd) goto next_tag;
-            // Pairwise cipher count + suites
-            uint16_t pairCount = p[rsnOff] | (p[rsnOff + 1] << 8);
-            rsnOff += 2 + pairCount * 4;
-            if (rsnOff + 2 > rsnEnd) goto next_tag;
-            // AKM suite count + suites
-            uint16_t akmCount = p[rsnOff] | (p[rsnOff + 1] << 8);
-            rsnOff += 2;
-            for (uint16_t i = 0; i < akmCount && rsnOff + 4 <= rsnEnd; i++) {
-                // AKM suite: OUI[3] + type[1]
-                uint8_t akmType = p[rsnOff + 3];
-                if (p[rsnOff] == 0x00 && p[rsnOff + 1] == 0x0F && p[rsnOff + 2] == 0xAC) {
-                    if (akmType == 8 || akmType == 9 || akmType == 12) {
-                        hasWPA3 = true;
-                    }
-                    if (akmType == 1 || akmType == 5) {
-                        hasEAP = true;
-                    }
-                }
-                rsnOff += 4;
-            }
-        }
-
-        if (tagId == 221 && tagLen >= 4) {     // Vendor-specific (WPA1)
-            if (p[offset+2]==0x00 && p[offset+3]==0x50 &&
-                p[offset+4]==0xF2 && p[offset+5]==0x01) {
-                hasWPA = true;
-            }
-        }
-
-        next_tag:
-        offset += 2 + tagLen;
-    }
-
-    if (hasWPA3)            return 6;  // WPA3
-    if (hasEAP && hasRSN)   return 5;  // WPA2_ENT
-    if (hasRSN && hasWPA)   return 4;  // WPA_WPA2
-    if (hasRSN)             return 3;  // WPA2
-    if (hasWPA)             return 2;  // WPA
-    if (len >= 36 && (p[34] & 0x10)) return 1;  // WEP (Privacy bit set, no RSN/WPA)
-    return 0;                           // Open
+    return wifiAuthFromMgmt(p, len);
 }
 
 static bool IRAM_ATTR isNullSsid(const uint8_t* ssidBytes, uint8_t ssidLen) {

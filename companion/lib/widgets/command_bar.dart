@@ -37,7 +37,10 @@ Color get kPillWifi => AppTheme.wardrive;
       4 => ('WPA/2', AppTheme.success),
       5 => ('ENT', AppTheme.accent),
       6 => ('WPA3', AppTheme.success),
-      _ => ('WPA2', AppTheme.success),
+      7 => ('WPA2/3', AppTheme.success),
+      8 => ('OWE', AppTheme.success),
+      9 => ('WPA3-E', AppTheme.accent),
+      _ => ('?', AppTheme.textDim),
     };
 
 TextStyle barLabelStyle(BuildContext context, Color color,

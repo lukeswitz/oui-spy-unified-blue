@@ -973,7 +973,10 @@ class _DetailSummary extends ConsumerWidget {
       4 => 'WPA/WPA2-PSK',
       5 => 'WPA2-Enterprise',
       6 => 'WPA3-SAE',
-      _ => 'WPA2-PSK',
+      7 => 'WPA2/WPA3 transition',
+      8 => 'OWE (Enhanced Open)',
+      9 => 'WPA3-Enterprise',
+      _ => 'Not observed',
     };
   }
 
@@ -1022,9 +1025,14 @@ String _authShort(int mode) => switch (mode) {
       0 => 'OPEN',
       1 => 'WEP',
       2 => 'WPA',
+      3 => 'WPA2',
+      4 => 'WPA/2',
       5 => 'WPA2-E',
       6 => 'WPA3',
-      _ => 'WPA2',
+      7 => 'WPA2/3',
+      8 => 'OWE',
+      9 => 'WPA3-E',
+      _ => '?',
     };
 
 Sdr433Category? _sdrCategory(Detection d) {
