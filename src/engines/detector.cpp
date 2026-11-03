@@ -5,6 +5,7 @@
 #include "../ble_coex.h"
 #include "dedup_ring.h"
 #include "camera_oui.h"
+#include "wifi_auth.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -85,15 +86,15 @@ static const char* IRAM_ATTR leVendorForMac(const uint8_t* mac) {
     return nullptr;
 }
 
-static volatile unsigned long deauthWindowStart = 0;
-static volatile uint16_t deauthCount = 0;
-static volatile unsigned long lastDeauthAlert = 0;
+struct DeauthSender { uint8_t mac[6]; uint32_t windowStart; uint16_t count; uint32_t lastAlert; };
+static const int DEAUTH_SENDER_SLOTS = 8;
+static DeauthSender deauthSenders[DEAUTH_SENDER_SLOTS];
 static const uint16_t DEAUTH_THRESHOLD = 10;
 static const unsigned long DEAUTH_ALERT_COOLDOWN_MS = 10000;
 static volatile unsigned long lastPwnAlert = 0;
 static uint16_t sigMask = 0;
 
-struct SsidOwner { uint32_t hash; uint8_t bssid[6]; uint32_t lastMs; bool alerted; };
+struct SsidOwner { uint32_t hash; uint8_t bssid[6]; uint32_t lastMs; bool alerted; uint8_t auth; };
 struct BssidSsids { uint8_t bssid[6]; uint32_t hashes[8]; uint8_t n; uint32_t lastMs; bool alerted; };
 static const int SSID_OWNER_SLOTS = 48;
 static const int BSSID_SSID_SLOTS = 24;
@@ -538,15 +539,21 @@ static void IRAM_ATTR detectorRogueApISR(const uint8_t* p, int len, int rssi, ui
         if (o.hash != h) continue;
         known = true;
         if (memcmp(o.bssid, bssid, 6) == 0) { o.lastMs = now; break; }
-        if (!o.alerted && !sameApVendor(o.bssid, bssid)) {
-            o.alerted = true;
-            char desc[32];
-            uint8_t n = slen < 18 ? slen : 18;
-            int k = 0;
-            for (uint8_t i = 0; i < n; i++) desc[k++] = (ssid[i] >= 0x20 && ssid[i] < 0x7F) ? (char)ssid[i] : '?';
-            desc[k] = 0;
-            strncat(desc, " twin BSSID", sizeof(desc) - strlen(desc) - 1);
-            pushApSigISR(bssid, rssi, channel, METHOD_DET_EVILTWIN, DET_CONF_SUSPECTED, desc);
+        if (!o.alerted) {
+            const uint8_t twinAuth = wifiAuthFromMgmt(p, len);
+            const bool downgrade = (o.auth >= AUTHC_WPA) != (twinAuth >= AUTHC_WPA);
+            if (downgrade || !sameApVendor(o.bssid, bssid)) {
+                o.alerted = true;
+                char desc[32];
+                uint8_t n = slen < 18 ? slen : 18;
+                int k = 0;
+                for (uint8_t i = 0; i < n; i++) desc[k++] = (ssid[i] >= 0x20 && ssid[i] < 0x7F) ? (char)ssid[i] : '?';
+                desc[k] = 0;
+                strncat(desc, downgrade ? " open twin" : " twin BSSID", sizeof(desc) - strlen(desc) - 1);
+                const uint8_t* report = downgrade && twinAuth >= AUTHC_WPA ? o.bssid : bssid;
+                pushApSigISR(report, rssi, channel, METHOD_DET_EVILTWIN,
+                             downgrade ? DET_CONF_HIGH : DET_CONF_SUSPECTED, desc);
+            }
         }
         break;
     }
@@ -556,6 +563,7 @@ static void IRAM_ATTR detectorRogueApISR(const uint8_t* p, int len, int rssi, ui
         memcpy(o.bssid, bssid, 6);
         o.lastMs = now;
         o.alerted = false;
+        o.auth = wifiAuthFromMgmt(p, len);
     }
 
     int bFree = -1;
@@ -587,14 +595,29 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
     uint8_t fctl = p[0];
     if (sigMask & SIG_CAMERA) detectorCameraFrameISR(p, rssi, channel);
     if ((sigMask & SIG_DEAUTH) && (fctl == 0xC0 || fctl == 0xA0)) {
+        if (len < 26) return true;
         unsigned long now = millis();
-        if (now - deauthWindowStart > 1000) { deauthWindowStart = now; deauthCount = 0; }
-        if (deauthCount < 0xFFFF) deauthCount++;
-        if (deauthCount >= DEAUTH_THRESHOLD && now - lastDeauthAlert > DEAUTH_ALERT_COOLDOWN_MS) {
-            lastDeauthAlert = now;
+        const uint8_t* tx = &p[10];
+        int slot = -1, oldest = 0;
+        for (int i = 0; i < DEAUTH_SENDER_SLOTS; i++) {
+            if (memcmp(deauthSenders[i].mac, tx, 6) == 0) { slot = i; break; }
+            if (deauthSenders[i].windowStart < deauthSenders[oldest].windowStart) oldest = i;
+        }
+        if (slot < 0) {
+            slot = oldest;
+            memcpy(deauthSenders[slot].mac, tx, 6);
+            deauthSenders[slot].windowStart = now;
+            deauthSenders[slot].count = 0;
+            deauthSenders[slot].lastAlert = 0;
+        }
+        DeauthSender& s = deauthSenders[slot];
+        if (now - s.windowStart > 1000) { s.windowStart = now; s.count = 0; }
+        if (s.count < 0xFFFF) s.count++;
+        if (s.count >= DEAUTH_THRESHOLD && (s.lastAlert == 0 || now - s.lastAlert > DEAUTH_ALERT_COOLDOWN_MS)) {
+            s.lastAlert = now;
             DetectionEvent evt = {};
             evt.engine_id = ENGINE_DETECTOR;
-            memcpy(evt.mac, &p[10], 6);
+            memcpy(evt.mac, tx, 6);
             evt.rssi = rssi;
             evt.channel = channel;
             evt.timestamp_ms = now;
