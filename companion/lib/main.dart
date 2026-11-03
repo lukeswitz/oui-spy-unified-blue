@@ -9,6 +9,7 @@ import 'package:oui_spy/bench_hook.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/capture_recorder.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/melody_state.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -70,6 +71,7 @@ void main() async {
   container.read(appStateProvider);
   container.read(wardriveProvider);
   container.read(deviceRegistryProvider);
+  if (const int.fromEnvironment('BENCH') == 0) container.read(captureRecorderProvider);
   container.read(melodyProvider);
   container.read(usbAutoConnectProvider);
   container.read(wifiAdapterControllerProvider);

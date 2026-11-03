@@ -63,12 +63,7 @@ class _IdleControls extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             GestureDetector(
-              onTap: () => showModalBottomSheet(
-                context: ref.context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const _SessionHistorySheet(),
-              ),
+              onTap: () => showSessionHistory(ref.context),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(

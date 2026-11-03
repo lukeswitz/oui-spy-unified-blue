@@ -191,11 +191,11 @@ class AppDatabase extends _$AppDatabase {
   Future<Session?> getSessionById(String id) =>
       (select(sessions)..where((s) => s.id.equals(id))).getSingleOrNull();
 
-  Stream<List<Session>> watchWardriveSessions() =>
-      (select(sessions)
-            ..where((s) => s.isWardrive.equals(true))
-            ..orderBy([(s) => OrderingTerm.desc(s.startedAt)]))
-          .watch();
+  Stream<List<Session>> watchAllSessions() =>
+      (select(sessions)..orderBy([(s) => OrderingTerm.desc(s.startedAt)])).watch();
+
+  Future<List<Session>> getAllSessions() =>
+      (select(sessions)..orderBy([(s) => OrderingTerm.desc(s.startedAt)])).get();
 
   Future<void> deleteSession(String id) async {
     await transaction(() async {

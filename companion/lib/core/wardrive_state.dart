@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection, Session;
 import 'package:oui_spy/core/db/detection_mapper.dart';
+import 'package:oui_spy/core/export/detections_csv.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
@@ -1157,6 +1158,21 @@ class WardriveController extends ChangeNotifier {
     return null;
   }
 
+  Future<File?> getFullCsvFile(String sid) async {
+    try {
+      final dbRows = await _db.getDetectionMapsForSession(sid);
+      if (dbRows.isEmpty) return null;
+      final dir = await _wardriveDir();
+      final name = (await _csvFilename(sid)).replaceFirst('ouispy_wardrive_', 'ouispy_all_');
+      final file = File(path.join(dir.path, name));
+      await file.writeAsString(DetectionsCsv.generate(dbRows.map(_detectionFromDb)));
+      return file;
+    } catch (e) {
+      DebugLog.log('WARDRIVE: full CSV export failed: $e');
+      return null;
+    }
+  }
+
   /// Build a human-readable CSV filename from session start time.
   Future<String> _csvFilename(String sid) async {
     final session = await _db.getSessionById(sid);
@@ -1727,40 +1743,8 @@ class WardriveController extends ChangeNotifier {
       _dedupedOrdered.insert(0, detection);
     }
 
-    _db.insertDetection(DetectionsCompanion(
-      sessionId: drift.Value(sessionId),
-      nodeId: const drift.Value('default'),
-      macAddress: drift.Value(detection.macAddress),
-      deviceName: drift.Value(detection.deviceName),
-      engine: drift.Value(detection.engine.name),
-      detectionMethod: drift.Value(detection.method),
-      rssi: drift.Value(detection.rssi),
-      channel: drift.Value(detection.channel),
-      deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
-      appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
-      latitude: drift.Value(detection.latitude),
-      longitude: drift.Value(detection.longitude),
-      accuracy: drift.Value(detection.accuracy),
-      altitude: drift.Value(detection.altitude),
-      speed: drift.Value(detection.speed),
-      heading: drift.Value(detection.heading),
-      satelliteCount: drift.Value(detection.satelliteCount),
-      ssid: drift.Value(detection.ssid),
-      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
-      uavId: drift.Value(detection.odid?.uavId),
-      operatorId: drift.Value(detection.odid?.operatorId),
-      droneLat: drift.Value(detection.odid?.droneLat),
-      droneLon: drift.Value(detection.odid?.droneLon),
-      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
-      heightAgl: drift.Value(detection.odid?.heightAgl),
-      droneSpeed: drift.Value(detection.odid?.droneSpeed),
-      droneHeading: drift.Value(detection.odid?.droneHeading),
-      pilotLat: drift.Value(detection.odid?.pilotLat),
-      pilotLon: drift.Value(detection.odid?.pilotLon),
-      isRaven: drift.Value(detection.flock?.isRaven),
-      ravenFirmware: drift.Value(detection.flock?.ravenFirmware),
-      flockSignals: drift.Value(detection.flock?.signals),
-    )).catchError((e) => DebugLog.log('WARDRIVE: insertDetection failed: $e'));
+    _db.insertDetection(detectionCompanion(detection, sessionId))
+        .catchError((e) => DebugLog.log('WARDRIVE: insertDetection failed: $e'));
 
     notifyListeners();
   }

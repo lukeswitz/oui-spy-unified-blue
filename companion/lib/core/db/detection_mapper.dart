@@ -1,5 +1,42 @@
+import 'package:drift/drift.dart' as drift;
+import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+
+DetectionsCompanion detectionCompanion(Detection detection, String sessionId) => DetectionsCompanion(
+      sessionId: drift.Value(sessionId),
+      nodeId: const drift.Value('default'),
+      macAddress: drift.Value(detection.macAddress),
+      deviceName: drift.Value(detection.deviceName),
+      engine: drift.Value(detection.engine.name),
+      detectionMethod: drift.Value(detection.method),
+      rssi: drift.Value(detection.rssi),
+      channel: drift.Value(detection.channel),
+      deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
+      appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
+      latitude: drift.Value(detection.latitude),
+      longitude: drift.Value(detection.longitude),
+      accuracy: drift.Value(detection.accuracy),
+      altitude: drift.Value(detection.altitude),
+      speed: drift.Value(detection.speed),
+      heading: drift.Value(detection.heading),
+      satelliteCount: drift.Value(detection.satelliteCount),
+      ssid: drift.Value(detection.ssid),
+      authMode: drift.Value(detection.wardrive?.authMode ?? 0),
+      uavId: drift.Value(detection.odid?.uavId),
+      operatorId: drift.Value(detection.odid?.operatorId),
+      droneLat: drift.Value(detection.odid?.droneLat),
+      droneLon: drift.Value(detection.odid?.droneLon),
+      altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
+      heightAgl: drift.Value(detection.odid?.heightAgl),
+      droneSpeed: drift.Value(detection.odid?.droneSpeed),
+      droneHeading: drift.Value(detection.odid?.droneHeading),
+      pilotLat: drift.Value(detection.odid?.pilotLat),
+      pilotLon: drift.Value(detection.odid?.pilotLon),
+      isRaven: drift.Value(detection.flock?.isRaven),
+      ravenFirmware: drift.Value(detection.flock?.ravenFirmware),
+      flockSignals: drift.Value(detection.flock?.signals),
+    );
 
 /// Maps a raw `detections` row map onto the app-side [Detection] model.
 Detection detectionFromDbRow(Map<String, dynamic> row) {

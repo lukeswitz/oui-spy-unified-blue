@@ -673,6 +673,13 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
   }
 }
 
+Future<void> showSessionHistory(BuildContext context) => showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _SessionHistorySheet(),
+    );
+
 class _SessionHistorySheet extends ConsumerStatefulWidget {
   const _SessionHistorySheet();
 
@@ -735,7 +742,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                       child: Text(
                         _selectMode
                             ? '${_selected.length} SELECTED'
-                            : 'WARDRIVE SESSIONS',
+                            : 'SESSIONS',
                         style: TextStyle(
                           color: t.textPrimary, fontSize: 12,
                           fontWeight: FontWeight.w700, letterSpacing: 1.5,
@@ -781,7 +788,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
               const SizedBox(height: 8),
               Expanded(
                 child: StreamBuilder<List<Session>>(
-                  stream: db.watchWardriveSessions(),
+                  stream: db.watchAllSessions(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return Center(child: CircularProgressIndicator(
@@ -817,8 +824,10 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                             if (_selectMode) {
                               _toggleSelect(sid);
                             } else {
+                              final router = GoRouter.of(context);
                               Navigator.pop(context);
                               ref.read(wardriveProvider).loadSession(sid);
+                              router.go('/wardrive');
                             }
                           },
                           onLongPress: () {
@@ -946,7 +955,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
   Future<void> _clearAllSessions(BuildContext context, WidgetRef ref) async {
     final t = AppTheme.of(context);
     final db = ref.read(databaseProvider);
-    final sessions = await db.getWardriveSessions();
+    final sessions = await db.getAllSessions();
     final completed = sessions.where((s) => s.endedAt != null).toList();
     if (completed.isEmpty) return;
     if (!context.mounted) return;
@@ -957,7 +966,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
         backgroundColor: t.background,
         title: Text('Clear All Sessions', style: TextStyle(color: t.textPrimary)),
         content: Text(
-          'Delete all ${completed.length} wardrive sessions and their detections? This cannot be undone.',
+          'Delete all ${completed.length} sessions and their detections? This cannot be undone.',
           style: TextStyle(color: t.textSecondary),
         ),
         actions: [
@@ -1016,16 +1025,18 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
 
   Future<void> _shareSession(BuildContext context, WidgetRef ref, String sid) async {
     final wd = ref.read(wardriveProvider);
+    final full = await wd.getFullCsvFile(sid);
     final file = await wd.getCsvFile(sid);
-    if (file != null) {
+    final files = [if (full != null) XFile(full.path), if (file != null) XFile(file.path)];
+    if (files.isNotEmpty) {
       if (!context.mounted) return;
       final box = context.findRenderObject() as RenderBox?;
       final origin = box != null
           ? box.localToGlobal(Offset.zero) & box.size
           : const Rect.fromLTWH(0, 0, 100, 100);
       await SharePlus.instance.share(ShareParams(
-        files: [XFile(file.path)],
-        subject: 'OUI-SPY WiGLE CSV',
+        files: files,
+        subject: 'OUI-SPY session CSV',
         sharePositionOrigin: origin,
       ));
     } else {

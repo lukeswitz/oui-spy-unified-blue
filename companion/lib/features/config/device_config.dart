@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:oui_spy/features/wardrive/wardrive_screen.dart' show showSessionHistory;
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';

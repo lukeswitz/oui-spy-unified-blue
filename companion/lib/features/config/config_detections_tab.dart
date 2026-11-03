@@ -793,6 +793,11 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 onTap: widget.onShowLive,
               ),
             CommandBarAction(
+              icon: Icons.folder_open,
+              label: 'Sessions',
+              onTap: () => showSessionHistory(context),
+            ),
+            CommandBarAction(
               icon: _rescanning ? Icons.hourglass_top : Icons.more_vert,
               label: 'More',
               onTap: _openActionSheet,
