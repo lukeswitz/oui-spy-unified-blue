@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:path_provider/path_provider.dart';
 
 class DebugLog {
@@ -15,7 +16,7 @@ class DebugLog {
       log('=== OUI-SPY started ===');
     } catch (e) {
       // ignore: avoid_print
-      print('[LOG] Failed to init file logger: $e');
+      if (kDebugMode) print('[LOG] Failed to init file logger: $e');
     }
   }
 
@@ -23,7 +24,7 @@ class DebugLog {
     final ts = DateTime.now().toIso8601String().substring(11, 23);
     final line = '[$ts] $msg';
     // ignore: avoid_print
-    print(line);
+    if (kDebugMode) print(line);
     if (_ready && _sink != null) {
       _sink!.writeln(line);
     }
