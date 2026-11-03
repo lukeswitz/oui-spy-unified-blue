@@ -53,7 +53,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   DeviceSort _sort = DeviceSort.recent;
   bool _sortAscending = false;
 
-  bool _grouped = false;
+  bool _grouped = true;
   List<String> _sectionOrder = const [];
   Set<String> _collapsed = {};
 
@@ -69,7 +69,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   void initState() {
     super.initState();
     final prefs = ref.read(sharedPreferencesProvider);
-    _grouped = prefs.getBool(_kGrouped) ?? false;
+    _grouped = prefs.getBool(_kGrouped) ?? true;
     _sectionOrder = prefs.getStringList(_kOrder) ?? const [];
     _collapsed = (prefs.getStringList(_kCollapsed) ?? const []).toSet();
   }

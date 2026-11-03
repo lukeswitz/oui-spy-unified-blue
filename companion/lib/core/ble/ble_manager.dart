@@ -1676,19 +1676,6 @@ class BleManager {
     }
   }
 
-  Future<int> readActiveEngineMask() async {
-    if (_engineControl == null) return -1;
-    try {
-      final data = await _engineControl!.read();
-      final status = BleProtocol.decodeEngineStatus(data);
-      _engineStates.add(status);
-      return status.active;
-    } catch (e) {
-      DebugLog.log('BLE: active-engine-mask read failed: $e');
-      return -1;
-    }
-  }
-
   Future<int> readCommandedEngineMask() async {
     if (_engineControl == null) return -1;
     try {
