@@ -189,6 +189,27 @@ void main() {
       expect(f.notice!.popupCount, 10);
     });
 
+    test('sustained spam at 100 per second stays flagged without gaps', () {
+      final f = PairingFlood();
+      String hx(int v) => (v & 0xFF).toRadixString(16).padLeft(2, '0').toUpperCase();
+      var n = 0;
+      final missed = <int>[];
+      for (var ms = 0; ms <= 60000; ms += 10) {
+        final mac = '02:00:00:${hx(n >> 16)}:${hx(n >> 8)}:${hx(n)}';
+        n++;
+        f.consider(
+          Observation(key: 'BLE:$mac', kind: RadioKind.ble, mac: mac, rssi: -52, mfgRecords: const [MfgRecord(0x004C, '070100')]),
+          ms,
+          confirm: true,
+        );
+        if (ms % 1000 == 0) {
+          f.tick(ms);
+          if (ms > PairingFlood.confirmMs && f.notice == null) missed.add(ms);
+        }
+      }
+      expect(missed, isEmpty);
+    });
+
     test('a full window keeps its oldest hits so a fast spammer still confirms', () {
       final f = PairingFlood();
       String hx(int v) => (v & 0xFF).toRadixString(16).padLeft(2, '0').toUpperCase();

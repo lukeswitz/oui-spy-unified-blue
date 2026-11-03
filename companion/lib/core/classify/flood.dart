@@ -75,7 +75,7 @@ class PairingFlood {
   static const confirmMs = 20000;
   static const persistMs = 6000;
   static const primeMs = 5000;
-  static const _cap = 512;
+  static const _cap = 4096;
   static const _bitProx = 1;
   static const _bitAction = 2;
   static const _bitFast = 4;
@@ -98,12 +98,12 @@ class PairingFlood {
     if (now < ignoreBefore) return;
     final kind = _classify(obs);
     if (kind == null) return;
-    _evict(now);
+    if (!confirm) _evict(now);
     final mac = MacUtil.normalize(obs.mac);
     if (mac.isNotEmpty && _window.length < _cap && _macs.add(mac)) {
       _window.addLast(_Hit(mac, now, obs.rssi, kind.$1, kind.$2, confirm));
     }
-    _publish(now);
+    if (!confirm) _publish(now);
   }
 
   void seenAgain(Observation obs, int now) {
@@ -114,7 +114,6 @@ class PairingFlood {
     _window.removeWhere((h) => h.mac == mac && now - h.at >= persistMs);
     if (_window.length == before) return;
     _macs.remove(mac);
-    _publish(now);
   }
 
   void tick(int now) {
