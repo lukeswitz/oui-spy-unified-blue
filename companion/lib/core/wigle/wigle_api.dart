@@ -87,6 +87,20 @@ class WigleApi {
     return WigleUploadResult.fromJson(data);
   }
 
+  Future<List<({String transId, String fileName})>> uploadedFiles({int pageEnd = 500}) async {
+    final resp = await _guard(() => _dio.get('/file/transactions',
+        queryParameters: {'pagestart': 0, 'pageend': pageEnd}));
+    final data = resp.data as Map<String, dynamic>;
+    if (data['success'] != true) {
+      throw WigleApiException(data['message']?.toString() ?? 'Upload list failed');
+    }
+    return [
+      for (final r in (data['results'] as List? ?? const []))
+        if (r is Map)
+          (transId: r['transid']?.toString() ?? '', fileName: r['fileName']?.toString() ?? ''),
+    ];
+  }
+
   Future<WigleNetworkRecord?> networkDetail(String bssid) async {
     final resp = await _guard(() => _dio.get('/network/detail', queryParameters: {'netid': bssid}));
     final data = resp.data as Map<String, dynamic>;

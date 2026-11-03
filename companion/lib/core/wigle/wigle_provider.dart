@@ -174,6 +174,29 @@ class WigleProvider extends ChangeNotifier {
         return null;
       }
 
+      final stem = file.uri.pathSegments.last.replaceAll(RegExp(r'\.csv$'), '');
+      List<({String transId, String fileName})> onServer = const [];
+      try {
+        onServer = await _api!.uploadedFiles();
+      } catch (e) {
+        DebugLog.log('WIGLE: upload list unavailable, uploading anyway: $e');
+      }
+      final match = onServer.where((u) => u.fileName.contains(stem)).firstOrNull;
+      if (match != null) {
+        _uploadedSessions.add(sessionId);
+        _db.insertWigleUpload(WigleUploadsCompanion(
+          sessionId: drift.Value(sessionId),
+          uploadedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+          transactionId: drift.Value(match.transId),
+          status: const drift.Value('already on WiGLE'),
+        )).catchError((e) => DebugLog.log('WIGLE: insertWigleUpload failed: $e'));
+        _error = 'Already on WiGLE as ${match.transId}';
+        DebugLog.log('WIGLE: $sessionId already uploaded as ${match.transId}');
+        _uploadingMap.remove(sessionId);
+        notifyListeners();
+        return null;
+      }
+
       final result = await _api!.uploadCsv(file, donate: _donate);
 
       _uploadedSessions.add(sessionId);
