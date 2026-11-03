@@ -235,8 +235,10 @@ static int otherTrackerFamily(NimBLEAdvertisedDevice* dev) {
     if (s.size() >= 1 && ((uint8_t)s[0] & 0xF8) == 0x10) return TRK_SAMSUNG;
     s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEED));
     if (s.size() >= 2 && (uint8_t)s[0] == 0x02 && (uint8_t)s[1] == 0x00) return TRK_TILE;
+    if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFEEC)).empty()) return TRK_TILE;
+    if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFD84)).empty()) return TRK_TILE;
     s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEAA));
-    if (s.size() >= 1 && (uint8_t)s[0] == 0x40) return TRK_GOOGLE;
+    if (s.size() >= 1 && ((uint8_t)s[0] == 0x40 || (uint8_t)s[0] == 0x41)) return TRK_GOOGLE;
     return -1;
 }
 

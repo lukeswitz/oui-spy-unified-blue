@@ -381,7 +381,8 @@ class DeviceExplain {
     0xFE2C => 'Google Fast Pair (often buds/speakers)',
     0xFD5A => 'Samsung SmartTag',
     0xFD44 => 'Apple Find My related',
-    0xFEED || 0xFEDD => 'Tile tracker',
+    0xFEED || 0xFEEC || 0xFD84 => 'Tile tracker',
+    0xFEDD => 'Jawbone wearable',
     0xFD50 => 'Tuya IoT',
     0xFEBE || 0xFE21 => 'Bose',
     0xFE78 => 'HP printer',
@@ -427,7 +428,7 @@ class DeviceExplain {
         ),
         0xFD5A => const _Hint('tag', 'a Samsung SmartTag', 'It sends the Bluetooth signal Samsung SmartTags use.', 7),
         0xFD44 => const _Hint('tag', 'an Apple Find My accessory', 'It sends a signal used by Apple Find My accessories.', 6),
-        0xFEED || 0xFEDD => const _Hint('tag', 'a Tile tracker', 'It sends the Bluetooth signal Tile trackers use.', 7),
+        0xFEED || 0xFEEC || 0xFD84 => const _Hint('tag', 'a Tile tracker', 'It sends the Bluetooth signal Tile trackers use.', 7),
         _ => null,
       };
       if (h != null) out.add(h);
