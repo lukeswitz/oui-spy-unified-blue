@@ -779,6 +779,27 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 ),
               ),
 
+            if (wd.radioTransition == null && wd.boardLostRemaining != null)
+              Positioned(
+                top: 0, left: 0, right: 0,
+                child: Container(
+                  color: AppTheme.error.withValues(alpha: 0.92),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  child: Text(
+                    'BOARD LOST · SESSION ENDS IN '
+                    '${wd.boardLostRemaining!.inMinutes}:${(wd.boardLostRemaining!.inSeconds % 60).toString().padLeft(2, '0')}'
+                    ' · RECONNECT TO KEEP GOING',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+
             Positioned(
               top: (wd.isActive
                       ? _statsHeight

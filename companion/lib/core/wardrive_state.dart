@@ -842,6 +842,13 @@ class WardriveController extends ChangeNotifier {
   DateTime? _boardLostAt;
   Timer? _boardLostTimer;
 
+  Duration? get boardLostRemaining {
+    final at = _boardLostAt;
+    if (at == null || state != WardriveState.running) return null;
+    final left = boardLostWindow - DateTime.now().difference(at);
+    return left.isNegative ? Duration.zero : left;
+  }
+
   Future<void> _endSessionBoardLost() async {
     _boardLostTimer?.cancel();
     _boardLostTimer = null;
