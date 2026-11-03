@@ -225,11 +225,17 @@ static const uint8_t wildcardProbeTemplate[] = {
     0x01, 0x04, 0x82, 0x84, 0x8B, 0x96,
 };
 
+static const uint8_t ofdmRatesIe[] = {0x01, 0x08, 0x8C, 0x12, 0x98, 0x24, 0xB0, 0x48, 0x60, 0x6C};
+
 static void sendWildcardProbe(void) {
     if (!wifiActiveProbeAllowed()) return;
-    uint8_t probe[sizeof(wildcardProbeTemplate)];
+    const size_t ratesOff = sizeof(wildcardProbeTemplate) - 6;
+    uint8_t probe[ratesOff + sizeof(ofdmRatesIe)];
+    const bool fiveGhz = currentChannel > 14;
+    const size_t probeLen = fiveGhz ? ratesOff + sizeof(ofdmRatesIe) : sizeof(wildcardProbeTemplate);
     for (int n = 0; n < 2; n++) {
-        memcpy(probe, wildcardProbeTemplate, sizeof(probe));
+        memcpy(probe, wildcardProbeTemplate, sizeof(wildcardProbeTemplate));
+        if (fiveGhz) memcpy(probe + ratesOff, ofdmRatesIe, sizeof(ofdmRatesIe));
         probe[10] = 0x02 | (esp_random() & 0xFE);
         for (int i = 11; i < 16; i++) {
             probe[i] = esp_random() & 0xFF;
@@ -237,8 +243,43 @@ static void sendWildcardProbe(void) {
         // Randomize sequence number too — some APs dedup by seq.
         probe[22] = esp_random() & 0xFF;
         probe[23] = esp_random() & 0xFF;
-        esp_wifi_80211_tx(WIFI_IF_STA, probe, sizeof(probe), false);
+        esp_wifi_80211_tx(WIFI_IF_STA, probe, probeLen, false);
     }
+}
+
+static uint8_t IRAM_ATTR apChannelFromIes(const uint8_t* p, int len, uint8_t fallback) {
+    uint8_t ht = 0;
+    for (int o = 36; o + 2 <= len;) {
+        uint8_t tl = p[o + 1];
+        if (o + 2 + tl > len) break;
+        if (p[o] == 3 && tl == 1 && p[o + 2] >= 1 && p[o + 2] <= 196) return p[o + 2];
+        if (p[o] == 61 && tl >= 1 && ht == 0 && p[o + 2] >= 1 && p[o + 2] <= 196) ht = p[o + 2];
+        o += 2 + tl;
+    }
+    return ht ? ht : fallback;
+}
+
+static uint8_t hiddenBssid[32][6];
+static uint8_t hiddenCount = 0;
+static uint8_t hiddenHead = 0;
+
+static void IRAM_ATTR hiddenNote(const uint8_t* mac) {
+    for (uint8_t i = 0; i < hiddenCount; i++) {
+        if (memcmp(hiddenBssid[i], mac, 6) == 0) return;
+    }
+    uint8_t idx = hiddenCount < 32 ? hiddenCount++ : hiddenHead;
+    if (hiddenCount == 32 && idx == hiddenHead) hiddenHead = (hiddenHead + 1) % 32;
+    memcpy(hiddenBssid[idx], mac, 6);
+}
+
+static bool IRAM_ATTR hiddenTake(const uint8_t* mac) {
+    for (uint8_t i = 0; i < hiddenCount; i++) {
+        if (memcmp(hiddenBssid[i], mac, 6) == 0) {
+            memset(hiddenBssid[i], 0, 6);
+            return true;
+        }
+    }
+    return false;
 }
 
 static volatile uint32_t wdWifiFrames = 0;
@@ -348,9 +389,6 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
     }
 
     {
-        if (wifiDedup.check(addr3)) return;
-        wifiLastNetMs = millis();
-
         int tagOffset = 36;
         char ssid[33] = {0};
         if (tagOffset + 2 <= len) {
@@ -364,13 +402,20 @@ static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type
             }
         }
 
+        const bool named = ssid[0] != '\0';
+        if (!(named && hiddenTake(addr3))) {
+            if (wifiDedup.check(addr3)) return;
+            if (!named) hiddenNote(addr3);
+        }
+        wifiLastNetMs = millis();
+
         uint8_t authMode = parseAuthFromFrame(p, len);
 
         DetectionEvent evt = {};
         evt.engine_id = ENGINE_WARDRIVE;
         memcpy(evt.mac, addr3, 6);
         evt.rssi = pkt->rx_ctrl.rssi;
-        evt.channel = pkt->rx_ctrl.channel;
+        evt.channel = apChannelFromIes(p, len, pkt->rx_ctrl.channel);
         evt.timestamp_ms = millis();
         evt.method = METHOD_WIFI_AP;
         memcpy(evt.ext.wardrive.ssid, ssid, 33);
@@ -540,6 +585,8 @@ static void wardriveStart(void) {
     wardriveDedupRef().reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
+    hiddenCount = 0;
+    hiddenHead = 0;
     meshResetTxDedup();
     uint32_t relog = engineGetRediscoverMs();
     wardriveDedupRef().setCooldownMs(relog);
