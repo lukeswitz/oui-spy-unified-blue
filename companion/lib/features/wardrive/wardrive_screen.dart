@@ -1019,7 +1019,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final key = '$alerted|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
         '${wd.detectorFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
         '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
-        '$_classGroupLabel|${_classGroup.length}';
+        '$_classGroupLabel|${_classGroup.length}|${wd.markerDistanceM.round()}';
     if (_cachedLayersKey == key && _cachedLayers != null) return _cachedLayers!;
     final layers = _computeDetectionLayers(wd);
     _cachedLayers = layers;
