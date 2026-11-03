@@ -839,6 +839,8 @@ class BleManager {
       device.connectionState.listen((state) {
         DebugLog.log('BLE: connectionState=$state');
         if (state == BluetoothConnectionState.disconnected) {
+          _livenessTimer?.cancel();
+          _livenessTimer = null;
           _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
           if (_importing) {
             _abortImport();
@@ -1027,6 +1029,7 @@ class BleManager {
       await _engineControl!.setNotifyValue(true);
       _subscriptions.add(
         _engineControl!.onValueReceived.listen((data) {
+          _lastRx = DateTime.now();
           _engineStates.add(BleProtocol.decodeEngineStatus(data));
         }),
       );
@@ -1095,6 +1098,9 @@ class BleManager {
     }
 
     _currentState = NodeConnectionState.ready; _connectionState.add(NodeConnectionState.ready);
+    _lastRx = DateTime.now();
+    _livenessTimer?.cancel();
+    _livenessTimer = Timer.periodic(const Duration(seconds: 10), (_) => _checkLiveness());
 
     final getter = _watchlistGetter;
     if (getter != null && _detectorConfig != null) {
@@ -1985,6 +1991,7 @@ class BleManager {
 
   void dispose() {
     disconnect();
+    _livenessTimer?.cancel();
     _importTimer?.cancel();
     _awaySettle?.cancel();
     _connectionState.close();
@@ -2088,7 +2095,34 @@ class BleManager {
 
   // -- Private --
 
+  static const linkSilenceLimit = Duration(seconds: 20);
+  DateTime _lastRx = DateTime.now();
+  Timer? _livenessTimer;
+  bool _probing = false;
+
+  Future<void> _checkLiveness() async {
+    final c = _engineControl;
+    final d = _device;
+    if (_probing || c == null || d == null || _currentState != NodeConnectionState.ready) return;
+    if (DateTime.now().difference(_lastRx) < linkSilenceLimit) return;
+    _probing = true;
+    try {
+      await c.read().timeout(const Duration(seconds: 5));
+      _lastRx = DateTime.now();
+    } catch (e) {
+      DebugLog.log('BLE: link silent ${linkSilenceLimit.inSeconds}s and probe read failed ($e), dropping link to reconnect');
+      try {
+        await d.disconnect();
+      } catch (e2) {
+        DebugLog.log('BLE: disconnect after failed probe threw: $e2');
+      }
+    } finally {
+      _probing = false;
+    }
+  }
+
   void _onDetection(List<int> data) {
+    _lastRx = DateTime.now();
     if (_importing) {
       _importTimer?.cancel();
       _importTimer = Timer(const Duration(seconds: 12), _abortImport);
