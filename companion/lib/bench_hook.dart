@@ -15,6 +15,114 @@ const _nBle = int.fromEnvironment('INJECT_BLE', defaultValue: 900);
 const _nWifi = int.fromEnvironment('INJECT_WIFI', defaultValue: 200);
 const _rate = int.fromEnvironment('INJECT_RATE', defaultValue: 400);
 const _screen = String.fromEnvironment('BENCH_SCREEN', defaultValue: 'devices');
+const _flood = String.fromEnvironment('BENCH_FLOOD');
+const _floodN = int.fromEnvironment('FLOOD_N', defaultValue: 1000);
+const _floodRate = int.fromEnvironment('FLOOD_RATE', defaultValue: 100);
+const _floodSecs = int.fromEnvironment('FLOOD_SECS', defaultValue: 60);
+
+String _hx(int v) => (v & 0xff).toRadixString(16).padLeft(2, '0').toUpperCase();
+
+Observation _crowdObs(int i, int now, {bool spam = false}) {
+  final mac = '${spam ? '5A' : '6E'}:${_hx(i >> 16)}:${_hx(i >> 8)}:${_hx(i)}:${_hx(i * 7)}:${_hx(i * 13)}';
+  final kind = spam ? 0 : i % 4;
+  return Observation(
+    key: 'BLE:$mac',
+    kind: RadioKind.ble,
+    mac: mac,
+    name: kind == 1 ? 'Phone $i' : '',
+    rssi: spam ? -52 : -40 - (i * 37 % 56),
+    firstSeenMs: now,
+    lastSeenMs: now,
+    mfgRecords: [
+      if (kind == 0) MfgRecord(0x004C, '0706010E2022F5${_hx(i)}'),
+      if (kind == 2) MfgRecord(0x004C, '1005031C${_hx(i)}A1B2'),
+    ],
+  );
+}
+
+void _runFlood(ProviderContainer container) {
+  final reg = container.read(deviceRegistryProvider);
+  final source = _flood.endsWith('_phone') ? 'phone' : 'esp32';
+  final spam = _flood.startsWith('spam');
+  var frames = 0, janky = 0;
+  var worst = 0.0, sum = 0.0, buildSum = 0.0, rasterSum = 0.0;
+  SchedulerBinding.instance.addTimingsCallback((timings) {
+    for (final t in timings) {
+      final ms = (t.buildDuration.inMicroseconds + t.rasterDuration.inMicroseconds) / 1000.0;
+      frames++;
+      sum += ms;
+      buildSum += t.buildDuration.inMicroseconds / 1000.0;
+      rasterSum += t.rasterDuration.inMicroseconds / 1000.0;
+      if (ms > worst) worst = ms;
+      if (ms > 16.7) janky++;
+    }
+  });
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await reg.loadCatalog();
+    container.read(routerProvider).go('/detections');
+    container.read(detectionsViewProvider.notifier).state =
+        _screen == 'live' ? DetectionsView.live : DetectionsView.devices;
+    final start = DateTime.now().millisecondsSinceEpoch;
+    final lastSent = <int, int>{};
+    var next = 0, spamNext = 0, flagged = -1;
+    var ingestUs = 0, ingests = 0;
+    debugPrint('BENCHF start mode=$_flood source=$source n=$_floodN rate=$_floodRate/s secs=$_floodSecs');
+    Timer.periodic(const Duration(milliseconds: 100), (t) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final sw = Stopwatch()..start();
+      final perTick = (_floodRate / 10).ceil();
+      if (spam) {
+        for (var k = 0; k < perTick; k++) {
+          reg.ingest(_crowdObs(spamNext++, now, spam: true), source: source);
+          ingests++;
+        }
+      } else {
+        for (var k = 0; k < perTick && next < _floodN; k++, next++) {
+          reg.ingest(_crowdObs(next, now), source: source);
+          lastSent[next] = now;
+          ingests++;
+        }
+        for (final e in lastSent.entries) {
+          if (now - e.value >= 10000) {
+            reg.ingest(_crowdObs(e.key, now), source: source);
+            lastSent[e.key] = now;
+            ingests++;
+          }
+        }
+      }
+      ingestUs += sw.elapsedMicroseconds;
+      final n = reg.pairingFlood.notice;
+      if (n != null && flagged < 0) flagged = now - start;
+      if ((now - start) ~/ 1000 != ((now - start - 100) ~/ 1000)) {
+        final avg = frames == 0 ? 0.0 : sum / frames;
+        final gw = Stopwatch()..start();
+        var gn = 0;
+        for (final d in reg.devices) {
+          if (d.guess.confidence.index >= 0) gn++;
+        }
+        final guessMs = gw.elapsedMicroseconds / 1000.0;
+        gw.reset();
+        final ow = Stopwatch()..start();
+        for (final d in reg.devices) {
+          if (d.ownGuess.confidence.index >= 0) gn++;
+        }
+        final ownMs = ow.elapsedMicroseconds / 1000.0;
+        debugPrint('BENCHF guessAll=${guessMs.toStringAsFixed(1)}ms ownGuessAll=${ownMs.toStringAsFixed(1)}ms n=$gn');
+        debugPrint('BENCHF t=${(now - start) ~/ 1000}s devices=${reg.count} ingests=$ingests '
+            'ingestMs=${(ingestUs / 1000).toStringAsFixed(1)} frames=$frames janky=$janky '
+            'avg=${avg.toStringAsFixed(2)} worst=${worst.toStringAsFixed(1)} '
+            'build=${(frames == 0 ? 0 : buildSum / frames).toStringAsFixed(1)} '
+            'raster=${(frames == 0 ? 0 : rasterSum / frames).toStringAsFixed(1)} '
+            'flood=${n == null ? '-' : '${n.title()} p${n.popupCount} n${n.nameCount}'}');
+        frames = 0; janky = 0; worst = 0; sum = 0; buildSum = 0; rasterSum = 0; ingestUs = 0; ingests = 0;
+      }
+      if (now - start >= _floodSecs * 1000) {
+        t.cancel();
+        debugPrint('BENCHF done mode=$_flood firstFlagMs=$flagged devices=${reg.count}');
+      }
+    });
+  });
+}
 
 String _mac(int lead, int i) =>
     '$lead:00:${(i >> 16) & 0xff}:${(i >> 8) & 0xff}:${i & 0xff}:${(i ~/ 251) & 0xff}';
@@ -35,6 +143,10 @@ Observation _wifiObs(int i, int now) {
 // No-op unless built with --dart-define=BENCH=1. Drives the real app to the Devices (or Live) tab and injects a busy-RF mix into the real feed AND device registry, logging real frame timings (steady state).
 void runBenchIfEnabled(ProviderContainer container) {
   if (!_enabled) return;
+  if (_flood.isNotEmpty) {
+    _runFlood(container);
+    return;
+  }
 
   final app = container.read(appStateProvider);
   app.connectionState = NodeConnectionState.ready;
