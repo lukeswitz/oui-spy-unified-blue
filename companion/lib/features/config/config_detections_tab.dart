@@ -146,6 +146,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     );
     if (ok != true) return;
     final n = await db.clearFlockDetectorDetections() + await db.clearClassAlerts();
+    await ref.read(bleManagerProvider).clearBoardBacklog();
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(
       backgroundColor: AppTheme.success,

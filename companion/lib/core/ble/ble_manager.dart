@@ -1189,8 +1189,27 @@ class BleManager {
     _awaySettle?.cancel();
     _awaySeen = 0;
     _awayByEngine.clear();
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_kPendingSpoolClear) ?? false) {
+      await clearBoardBacklog();
+    }
     if (_offlineScanEnabled) {
       await requestSpoolFlush();
+    }
+  }
+
+  static const _kPendingSpoolClear = 'pendingSpoolClear';
+
+  Future<void> clearBoardBacklog() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPendingSpoolClear, true);
+    if (_systemControl == null) return;
+    try {
+      await _systemControl!.write(BleProtocol.spoolClearCmd, withoutResponse: false);
+      await prefs.setBool(_kPendingSpoolClear, false);
+      DebugLog.log('BLE: board spool cleared');
+    } on Exception catch (e) {
+      DebugLog.log('BLE: board spool clear failed, retry on next connect: $e');
     }
   }
 
@@ -1351,10 +1370,11 @@ class BleManager {
     DebugLog.log('BLE: spool flush requested');
   }
 
-  Future<void> confirmSpoolImported() async {
-    if (_systemControl == null) return;
+  Future<bool> confirmSpoolImported() async {
+    if (_systemControl == null) return false;
     await _systemControl!.write(BleProtocol.spoolClearCmd, withoutResponse: false);
     DebugLog.log('BLE: spool clear sent after DB commit');
+    return true;
   }
 
   Future<void> writeWifiConfig(String ssid, String pass) async {

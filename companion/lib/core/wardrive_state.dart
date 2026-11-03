@@ -274,6 +274,7 @@ class WardriveController extends ChangeNotifier {
   int _spoolExpectedTotal = -1;
   bool _spoolDone = false;
   bool _spoolConfirmed = false;
+  final _importedKeys = <String>{};
 
   bool isImperial = false;
 
@@ -1466,6 +1467,13 @@ class WardriveController extends ChangeNotifier {
         ? DateTime.now()
         : DateTime.now().subtract(Duration(milliseconds: offsetMs));
     final g = _tagGps(detection);
+    final key = '${detection.macAddress}|${detection.engine.name}|${detection.deviceTimestampMs}|'
+        '${detection.rssi}|${detection.channel}';
+    if (_importedKeys.contains(key)) {
+      _spoolInserted++;
+      _maybeConfirmSpool();
+      return;
+    }
     try {
       await _db.insertDetection(DetectionsCompanion(
         sessionId: drift.Value(sid),
@@ -1503,8 +1511,10 @@ class WardriveController extends ChangeNotifier {
         flockSignals: drift.Value(detection.flock?.signals),
       ));
     } catch (e) {
-      DebugLog.log('SPOOL: insert failed for ${detection.macAddress}: $e');
+      DebugLog.log('SPOOL: insert failed for ${detection.macAddress}, batch stays on board: $e');
+      return;
     }
+    _importedKeys.add(key);
     _spoolInserted++;
     DebugLog.log('SPOOL: inserted ${detection.macAddress} → session $sid wallClock=${wallClock.toIso8601String()} ($_spoolInserted/$_spoolExpectedTotal)');
     _maybeConfirmSpool();
@@ -1588,7 +1598,20 @@ class WardriveController extends ChangeNotifier {
     if (_spoolDone && _spoolExpectedTotal >= 0 && _spoolInserted >= _spoolExpectedTotal && !_spoolConfirmed) {
       _spoolConfirmed = true;
       DebugLog.log('SPOOL: confirming inserted=$_spoolInserted expected=$_spoolExpectedTotal');
-      await _ble.confirmSpoolImported();
+      var sent = false;
+      for (var attempt = 0; attempt < 3 && !sent; attempt++) {
+        if (attempt > 0) await Future<void>.delayed(const Duration(seconds: 1));
+        try {
+          sent = await _ble.confirmSpoolImported();
+        } on Exception catch (e) {
+          DebugLog.log('SPOOL: confirm attempt ${attempt + 1} failed: $e');
+        }
+      }
+      if (sent) {
+        _importedKeys.clear();
+      } else {
+        DebugLog.log('SPOOL: confirm not delivered; board keeps the batch, re-sent rows will be skipped');
+      }
       _spoolDone = false;
       _spoolInserted = 0;
       _spoolExpectedTotal = -1;
