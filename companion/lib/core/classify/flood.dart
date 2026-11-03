@@ -56,8 +56,7 @@ class _Hit {
   final int rssi;
   final bool popup;
   final int families;
-  final bool confirm;
-  _Hit(this.mac, this.at, this.rssi, this.popup, this.families, this.confirm);
+  _Hit(this.mac, this.at, this.rssi, this.popup, this.families);
 }
 
 class _Band {
@@ -74,8 +73,9 @@ class PairingFlood {
   static const rssiBandDb = 12;
   static const confirmMs = 20000;
   static const persistMs = 6000;
-  static const primeMs = 5000;
+  static const seenTtlMs = 60000;
   static const _cap = 4096;
+  static const _perSecond = 128;
   static const _bitProx = 1;
   static const _bitAction = 2;
   static const _bitFast = 4;
@@ -88,22 +88,37 @@ class PairingFlood {
 
   final _window = ListQueue<_Hit>();
   final _macs = <String>{};
+  final _seen = <String, int>{};
+  final _admitted = <int, int>{};
+  final _admitPop = <int, int>{};
+  final _admitName = <int, int>{};
+  final _arrivePop = <int, int>{};
+  final _arriveName = <int, int>{};
   int _heardAt = 0;
   bool _acknowledged = false;
   FloodNotice? notice;
 
-  void consider(Observation obs, int now, {bool confirm = false, int ignoreBefore = 0}) {
+  void consider(Observation obs, int now) {
     if (obs.kind != RadioKind.ble) return;
-    if (confirm && now > _heardAt) _heardAt = now;
-    if (now < ignoreBefore) return;
+    if (now > _heardAt) _heardAt = now;
+    final mac = MacUtil.normalize(obs.mac);
+    if (mac.isEmpty) return;
+    if (_seen.containsKey(mac)) {
+      _seen[mac] = now;
+      seenAgain(obs, now);
+      return;
+    }
+    _seen[mac] = now;
     final kind = _classify(obs);
     if (kind == null) return;
-    if (!confirm) _evict(now);
-    final mac = MacUtil.normalize(obs.mac);
-    if (mac.isNotEmpty && _window.length < _cap && _macs.add(mac)) {
-      _window.addLast(_Hit(mac, now, obs.rssi, kind.$1, kind.$2, confirm));
-    }
-    if (!confirm) _publish(now);
+    final sec = now ~/ 1000;
+    final arrive = kind.$1 ? _arrivePop : _arriveName;
+    arrive[sec] = (arrive[sec] ?? 0) + 1;
+    if ((_admitted[sec] ?? 0) >= _perSecond || _window.length >= _cap || !_macs.add(mac)) return;
+    _admitted[sec] = (_admitted[sec] ?? 0) + 1;
+    final admit = kind.$1 ? _admitPop : _admitName;
+    admit[sec] = (admit[sec] ?? 0) + 1;
+    _window.addLast(_Hit(mac, now, obs.rssi, kind.$1, kind.$2));
   }
 
   void seenAgain(Observation obs, int now) {
@@ -117,6 +132,11 @@ class PairingFlood {
   }
 
   void tick(int now) {
+    _seen.removeWhere((_, t) => now - t > seenTtlMs);
+    final oldest = (now - windowMs - confirmMs) ~/ 1000;
+    for (final m in [_admitted, _admitPop, _admitName, _arrivePop, _arriveName]) {
+      m.removeWhere((s, _) => s < oldest);
+    }
     if (_window.isEmpty) {
       _finish();
       return;
@@ -134,18 +154,29 @@ class PairingFlood {
 
   void _evict(int now) {
     _window.removeWhere((h) {
-      final gone = now - h.at > windowMs + (h.confirm ? confirmMs : 0);
+      final gone = now - h.at > windowMs + confirmMs;
       if (gone) _macs.remove(h.mac);
       return gone;
     });
   }
 
   void _publish(int now) {
-    final live = _window.where((h) => !h.confirm || (now - h.at >= confirmMs && _heardAt - h.at >= confirmMs)).toList();
+    final live = _window.where((h) => now - h.at >= confirmMs && _heardAt - h.at >= confirmMs).toList();
     final pop = _band(live.where((h) => h.popup).toList());
     final nam = _band(live.where((h) => !h.popup).toList());
-    final popupHot = pop.count >= popupMin;
-    final nameHot = nam.count >= nameMin;
+    int scaled(List<_Hit> hits, Map<int, int> arrive, Map<int, int> admit) {
+      var n = 0.0;
+      for (final h in hits) {
+        final s = h.at ~/ 1000;
+        final a = admit[s] ?? 0;
+        n += a == 0 ? 1 : (arrive[s] ?? a) / a;
+      }
+      return n.round();
+    }
+    final popCount = scaled(pop.hits, _arrivePop, _admitPop);
+    final namCount = scaled(nam.hits, _arriveName, _admitName);
+    final popupHot = popCount >= popupMin;
+    final nameHot = namCount >= nameMin;
     if (!popupHot && !nameHot) {
       _finish();
       return;
@@ -157,8 +188,8 @@ class PairingFlood {
         : null;
     notice = FloodNotice(
       showDialog: !_acknowledged,
-      popupCount: pop.count,
-      nameCount: nam.count,
+      popupCount: popCount,
+      nameCount: namCount,
       families: popupHot ? _labels(pop.hits) : const [],
       medianRssi: median,
       keys: [if (popupHot) ...pop.hits.map((h) => 'BLE:${h.mac}'), if (nameHot) ...nam.hits.map((h) => 'BLE:${h.mac}')],

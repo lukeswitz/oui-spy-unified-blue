@@ -200,8 +200,6 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   bool _boardAllows = true;
   bool get scanning => _active && _boardAllows;
-  int _scanningSinceMs = 0;
-  int get scanningSinceMs => _scanningSinceMs;
 
   void setActive(bool on) {
     if (on == _active) return;
@@ -233,12 +231,11 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _wifiTimer?.cancel();
     _wifiTimer = null;
     if (!scanning) {
-      _scanningSinceMs = 0;
       _lastFed.clear();
+      _lastIngest.clear();
       if (_ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
     }
     if (scanning) {
-      if (_scanningSinceMs == 0) _scanningSinceMs = DateTime.now().millisecondsSinceEpoch;
       _kick();
       final duty = _duty;
       _timer = duty == null
@@ -347,6 +344,8 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       await FlutterBluePlus.startScan(
         timeout: duty == null ? null : Duration(milliseconds: duty.on),
         androidScanMode: AndroidScanMode.lowLatency,
+        continuousUpdates: true,
+        oneByOne: true,
       );
     } on Exception catch (e) {
       _ownScan = false;
@@ -368,6 +367,8 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   void Function(String mac, String name, int rssi, List<int> adv)? onDetection;
   final Map<String, int> _lastFed = {};
+  static const ingestEvery = Duration(seconds: 5);
+  final Map<String, int> _lastIngest = {};
 
   static List<int> advBytes(AdvertisementData a) {
     final out = <int>[];
@@ -487,6 +488,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
               r.rssi, advBytes(adv));
         }
       }
+      final lastIn = _lastIngest[id];
+      if (lastIn != null && now - lastIn < ingestEvery.inMilliseconds) continue;
+      _lastIngest[id] = now;
       _out.add(Observation(
         key: 'BLE:${isMac ? mac : id}',
         kind: RadioKind.ble,
@@ -544,7 +548,7 @@ class ClassifiedDevice {
 
 class DeviceRegistry extends ChangeNotifier {
   static const catalogAsset = 'assets/fieldwatch-signatures-v2.json';
-  static const maxDevices = 2000;
+  static const maxDevices = 10000;
   static const _trailCap = 48;
 
   DeviceRegistry({SignatureEngine? engine, this.vendorOf}) : _engine = engine;
@@ -604,16 +608,7 @@ class DeviceRegistry extends ChangeNotifier {
   void ingest(Observation o, {String source = ''}) {
     final now = o.lastSeenMs;
     final prev = _devices[o.key];
-    if (o.kind == RadioKind.ble) {
-      final phone = source == 'phone';
-      if (prev == null) {
-        final since = phone ? _sources.whereType<PhoneBleSource>().firstOrNull?.scanningSinceMs ?? 0 : 0;
-        pairingFlood.consider(o, now,
-            confirm: !phone, ignoreBefore: since == 0 ? 0 : since + PairingFlood.primeMs);
-      } else if (!phone) {
-        pairingFlood.seenAgain(o, now);
-      }
-    }
+    pairingFlood.consider(o, now);
     var trail = prev?.obs.gpsTrail ?? const <GpsSample>[];
     for (final s in o.gpsTrail) {
       trail = appendTrail(trail, s, _trailCap);
