@@ -744,7 +744,7 @@ class DeviceRegistry extends ChangeNotifier {
 final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   final gps = ref.read(gpsProvider);
   final src = PhoneBleSource(here: () {
-    final p = gps.lastPosition;
+    final p = gps.recentPosition();
     return p == null ? null : GpsSample(0, p.latitude, p.longitude);
   });
   src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;

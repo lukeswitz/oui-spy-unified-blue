@@ -1449,7 +1449,7 @@ class WardriveController extends ChangeNotifier {
 
   ({double? lat, double? lon, double? acc, bool approx}) _tagGps(Detection d) {
     if (offlineGpsTag && d.latitude == null) {
-      final p = _gps.lastPosition;
+      final p = _gps.recentPosition();
       if (p != null) {
         return (lat: p.latitude, lon: p.longitude, acc: p.accuracy, approx: true);
       }

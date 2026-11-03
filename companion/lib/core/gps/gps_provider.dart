@@ -31,6 +31,12 @@ class GpsProvider {
   Stream<GpsPosition> get positionStream => _positionController.stream;
   GpsPosition? get lastPosition => _lastPosition;
 
+  GpsPosition? recentPosition([Duration maxAge = const Duration(minutes: 3)]) {
+    final p = _lastPosition;
+    if (p == null || DateTime.now().difference(p.timestamp) > maxAge) return null;
+    return p;
+  }
+
   final _hwGpsController = StreamController<HwGpsState>.broadcast();
   GpsSource _source = GpsSource.phone;
   HwGpsState _hwGps = const HwGpsState(
@@ -99,7 +105,7 @@ class GpsProvider {
           heading: 0,
           accuracy: acc,
           satelliteCount: 0,
-          timestamp: DateTime.now(),
+          timestamp: DateTime.fromMillisecondsSinceEpoch(p.getInt('gps_last_ms') ?? 0),
         );
         DebugLog.log('GPS: restored last position');
       }
@@ -116,6 +122,7 @@ class GpsProvider {
     await p.setDouble('gps_last_lon', lon);
     await p.setDouble('gps_last_alt', alt);
     await p.setDouble('gps_last_acc', acc);
+    await p.setInt('gps_last_ms', DateTime.now().millisecondsSinceEpoch);
   }
 
   bool _hasAlwaysPermission = false;

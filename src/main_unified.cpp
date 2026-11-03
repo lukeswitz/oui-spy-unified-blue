@@ -83,6 +83,7 @@ bool hwGpsActive(void) { return hwGpsFix; }
 bool hwGpsUtc(uint32_t* epochOut) {
     if (!hwGpsStarted || epochOut == nullptr) return false;
     if (!hwGps.date.isValid() || !hwGps.time.isValid()) return false;
+    if (hwGps.time.age() > 2000) return false;
     if (hwGps.date.year() < 2020) return false;
     uint32_t m = hwGps.date.month();
     uint32_t d = hwGps.date.day();
@@ -110,14 +111,15 @@ void hwGpsPoll(void) {
         hwGpsFix = false;
         Serial.println("[HW-GPS] no data 5s — releasing to phone GPS");
     }
-    if (hwGps.location.isUpdated() && hwGps.location.isValid()) {
+    if (hwGps.location.isUpdated() && hwGps.location.isValid() &&
+        !(hwGps.hdop.isValid() && hwGps.hdop.hdop() > 20.0)) {
         GpsData g = {};
         g.latitude  = hwGps.location.lat();
         g.longitude = hwGps.location.lng();
         g.altitude  = hwGps.altitude.isValid() ? (float)hwGps.altitude.meters() : 0.0f;
         g.speed     = hwGps.speed.isValid()    ? (float)hwGps.speed.mps()        : 0.0f;
         g.heading   = hwGps.course.isValid()   ? (float)hwGps.course.deg()        : 0.0f;
-        g.accuracy  = hwGps.hdop.isValid()     ? (float)(hwGps.hdop.hdop() * 5.0) : 10.0f;
+        g.accuracy  = hwGps.hdop.isValid()     ? (float)(hwGps.hdop.hdop() * 5.0) : 0.0f;
         g.satellite_count = hwGps.satellites.isValid() ? (uint8_t)hwGps.satellites.value() : 0;
         g.timestamp_ms = millis();
         memcpy((void*)&currentGps, &g, sizeof(GpsData));
