@@ -25,6 +25,9 @@
 #define SEC_R (NIMBLE_PROPERTY::READ_ENC)
 #define SEC_W (NIMBLE_PROPERTY::WRITE_ENC)
 extern "C" void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
+extern "C" int ble_hs_set_rpa_timeout(uint16_t timeout);
+extern "C" void ble_gap_preempt(void);
+extern "C" void ble_gap_preempt_done(void);
 #else
 #define SEC_R 0
 #define SEC_W 0
@@ -858,12 +861,13 @@ void bleGattE2ESmokeStart(void) {
 }
 #endif
 
+static bool bleAdvStart(void);
+
 void bleGattReconcileEngines(void) {
 #ifdef OUISPY_ROLE_MANAGER
     if (!phoneConnected) {
         NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-        if (adv && !adv->isAdvertising()) {
-            NimBLEDevice::startAdvertising();
+        if (adv && !adv->isAdvertising() && bleAdvStart()) {
             Serial.println("[MGR] advertising was DOWN — restarted (watchdog)");
         }
     }
@@ -891,20 +895,36 @@ void bleGattReconcileEngines(void) {
 }
 
 #ifndef OUISPY_ROLE_MANAGER
+#define WD_AWAY_FIX_MAX_AGE_MS 3000UL
+#define WD_AWAY_FIX_LOST_MS 60000UL
+extern bool hwGpsActive(void);
+extern bool hwGpsUtc(uint32_t* epochOut);
+static bool s_wdAwayKept = false;
+
 static void nodePhoneDisconnected(void) {
     nodePhoneGoneMs = millis();
     if (offlineScanEnabled) {
-        engineDisable(ENGINE_WARDRIVE);
-        Serial.println("[BLE] Phone disconnected — offline scan, wigle off, targeted engines kept");
+        s_wdAwayKept = hwGpsActive() && !meshManagerJoined();
+        if (s_wdAwayKept) {
+            Serial.println("[BLE] Phone disconnected — offline scan, board GPS fix, wardrive logs to flash");
+        } else {
+            engineDisable(ENGINE_WARDRIVE);
+            Serial.println("[BLE] Phone disconnected — offline scan, wigle off, targeted engines kept");
+        }
     } else {
         Serial.println("[BLE] Phone disconnected — teardown deferred (grace)");
     }
 }
 void bleGattNodeGraceTick(void) {
+    if (s_wdAwayKept && !phoneConnected &&
+        (!hwGpsActive() || millis() - currentGps.timestamp_ms > WD_AWAY_FIX_LOST_MS)) {
+        s_wdAwayKept = false;
+        engineDisable(ENGINE_WARDRIVE);
+        Serial.println("[BLE] board GPS lost while phone away — wardrive off");
+    }
     if (!phoneConnected) {
         NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-        if (adv && !adv->isAdvertising()) {
-            NimBLEDevice::startAdvertising();
+        if (adv && !adv->isAdvertising() && bleAdvStart()) {
             Serial.println("[NODE] advertising was DOWN — restarted (watchdog)");
         }
     }
@@ -929,6 +949,7 @@ static void phoneLinkUp(void) {
     g_meshManagerActive = true;
 #else
     nodePhoneGoneMs = 0;
+    s_wdAwayKept = false;
 #endif
 }
 
@@ -960,6 +981,9 @@ void bleGattUsbLinkChanged(bool up) {
 
 #define BLE_UNPAIRED_DROP_MS 60000
 #define BLE_MAX_PEERS 4
+#define BLE_PAIR_WINDOW_MS 120000UL
+#define BLE_RPA_MIN_S 300
+#define BLE_RPA_MAX_S 890
 
 struct BlePeer { uint16_t handle; uint32_t sinceMs; bool authed; };
 static BlePeer s_peers[BLE_MAX_PEERS];
@@ -1005,14 +1029,8 @@ static void bleSecLoadKeys(void) {
         esp_fill_random(s_irk, sizeof(s_irk));
         p.putBytes("irk", s_irk, sizeof(s_irk));
     }
-    uint32_t pk = p.getULong("passkey", 1000000);
-    if (pk > 999999) {
-        pk = 100000 + (esp_random() % 900000);
-        p.putULong("passkey", pk);
-    }
     p.end();
     s_irkReady = true;
-    NimBLEDevice::setSecurityPasskey(pk);
 }
 
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -1036,14 +1054,65 @@ static int bleSecGenKey(uint8_t key, struct ble_store_gen_key* gen, uint16_t) {
 }
 #endif
 
-static bool bleSetPasskey(uint32_t pk) {
-    if (pk > 999999) return false;
-    Preferences p;
-    p.begin("ouispy-ble", false);
-    p.putULong("passkey", pk);
-    p.end();
-    NimBLEDevice::setSecurityPasskey(pk);
-    return true;
+#if OUISPY_BLE_SECURE
+static bool s_pairWindow = true;
+static uint32_t s_pairWindowEndMs = 0;
+static bool s_advOpen = false;
+static uint32_t s_pairTickMs = 0;
+static uint32_t s_rpaNextMs = 0;
+static char s_advName[24];
+
+static bool blePairingOpenFor(int bonds, bool window, uint32_t now, uint32_t endMs) {
+    return bonds == 0 || (window && (int32_t)(endMs - now) > 0);
+}
+
+static bool blePairingOpen(void) {
+    return blePairingOpenFor(NimBLEDevice::getNumBonds(), s_pairWindow, millis(), s_pairWindowEndMs);
+}
+
+static uint16_t bleRpaPickTimeout(uint32_t r) {
+    return (uint16_t)(BLE_RPA_MIN_S + r % (BLE_RPA_MAX_S - BLE_RPA_MIN_S + 1));
+}
+
+static void bleRpaReschedule(uint32_t now) {
+    uint16_t s = bleRpaPickTimeout(esp_random());
+    int rc = ble_hs_set_rpa_timeout(s);
+    if (rc != 0) Serial.printf("[BLE] RPA timeout rc=%d\n", rc);
+    s_rpaNextMs = now + s * 1000UL + 1000UL;
+}
+
+static void bleAdvApply(bool open) {
+    NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+    bool was = adv->isAdvertising();
+    if (was) adv->stop();
+    adv->clearData();
+    if (open) {
+        adv->addServiceUUID(SVC_UUID);
+        adv->enableScanResponse(true);
+        adv->setName(s_advName);
+        adv->setDiscoverableMode(BLE_GAP_DISC_MODE_GEN);
+    } else {
+        adv->enableScanResponse(false);
+        adv->setDiscoverableMode(BLE_GAP_DISC_MODE_NON);
+        int rc = ble_gap_adv_rsp_set_data(nullptr, 0);
+        if (rc != 0) Serial.printf("[BLE] clear scan response rc=%d\n", rc);
+    }
+    s_advOpen = open;
+    if (was) bleAdvStart();
+}
+
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+static bool bleOwnAddrIsRpa(void) {
+    return (NimBLEDevice::getAddress().getBase()->val[5] & 0xC0) == 0x40;
+}
+#endif
+#endif
+
+static bool bleAdvStart(void) {
+#if OUISPY_BLE_SECURE && MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    if (!bleOwnAddrIsRpa()) return false;
+#endif
+    return NimBLEDevice::startAdvertising();
 }
 
 static BlePeer* blePeerFind(uint16_t h) {
@@ -1069,13 +1138,54 @@ void bleGattSecurityTick(void) {
             pe.sinceMs = now;
         }
     }
+    if (now - s_pairTickMs < 1000UL) return;
+    s_pairTickMs = now;
+    bool open = blePairingOpen();
+    if (open != s_advOpen) {
+        bleAdvApply(open);
+        Serial.printf("[BLE] pairing %s\n", open ? "open" : "closed");
+    }
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
+    if (ble_hs_synced() && !bleOwnAddrIsRpa()) {
+        ble_gap_preempt();
+        bool ok = NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_RANDOM_DEFAULT) && bleOwnAddrIsRpa();
+        ble_gap_preempt_done();
+        Serial.printf("[BLE] own address was not an RPA, restored=%d\n", (int)ok);
+    }
+#endif
+    if ((int32_t)(now - s_rpaNextMs) >= 0) bleRpaReschedule(now);
 #endif
 }
+
+#if OUISPY_BLE_SECURE
+using BleGapEventFn = int (*)(struct ble_gap_event*, void*);
+BleGapEventFn bleServerGapHandler();
+template <BleGapEventFn Fn>
+struct BleServerGapAccess {
+    friend BleGapEventFn bleServerGapHandler() { return Fn; }
+};
+template struct BleServerGapAccess<&NimBLEServer::handleGapEvent>;
+
+static int bleConnGapGuard(struct ble_gap_event* event, void* arg) {
+    if (event->type == BLE_GAP_EVENT_REPEAT_PAIRING && !blePairingOpen()) {
+        Serial.println("[BLE] repeat pairing refused, pairing closed");
+        if (pServer) pServer->disconnect(event->repeat_pairing.conn_handle);
+        return BLE_GAP_REPEAT_PAIRING_IGNORE;
+    }
+    return bleServerGapHandler()(event, arg);
+}
+#endif
 
 class ServerCallbacks : public NimBLEServerCallbacks {
 #if OUISPY_BLE_SECURE
     void onConnect(NimBLEServer* server, NimBLEConnInfo& info) override {
         uint16_t h = info.getConnHandle();
+        if (!blePairingOpen() && !NimBLEDevice::isBonded(info.getIdAddress())) {
+            Serial.printf("[BLE] refused unbonded peer handle=%u, pairing closed\n", (unsigned)h);
+            server->disconnect(h);
+            return;
+        }
+        ble_gap_set_event_cb(h, bleConnGapGuard, NimBLEDevice::getAdvertising());
         BlePeer* slot = blePeerFind(BLE_HS_CONN_HANDLE_NONE);
         if (slot) { slot->handle = h; slot->sinceMs = millis(); slot->authed = false; }
         server->updateConnParams(h, 12, 24, 0, 3000);
@@ -1083,15 +1193,26 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             if (slot) slot->authed = true;
             onConnect(server);
         }
-        if (!bleAnyAuthedPeer()) NimBLEDevice::startAdvertising();
+        if (!bleAnyAuthedPeer()) bleAdvStart();
         Serial.printf("[BLE] peer connected handle=%u, awaiting pairing\n", (unsigned)h);
     }
 
     void onAuthenticationComplete(NimBLEConnInfo& info) override {
         uint16_t h = info.getConnHandle();
         BlePeer* pe = blePeerFind(h);
-        if (!info.isEncrypted()) {
-            Serial.printf("[BLE] pairing failed handle=%u, disconnecting\n", (unsigned)h);
+        if (!info.isEncrypted() || !info.isBonded()) {
+            Serial.printf("[BLE] pairing failed or not bonded handle=%u, disconnecting\n", (unsigned)h);
+            if (pServer) pServer->disconnect(h);
+            return;
+        }
+        struct ble_store_key_sec key = {};
+        struct ble_store_value_sec bond = {};
+        key.peer_addr = *info.getIdAddress().getBase();
+        int bondRc = ble_store_read_peer_sec(&key, &bond);
+        if (bondRc != 0 || !bond.sc || bond.key_size != 16) {
+            Serial.printf("[BLE] refused bond handle=%u rc=%d sc=%d key=%u\n", (unsigned)h, bondRc,
+                          bondRc == 0 ? (int)bond.sc : -1, bondRc == 0 ? (unsigned)bond.key_size : 0u);
+            NimBLEDevice::deleteBond(info.getIdAddress());
             if (pServer) pServer->disconnect(h);
             return;
         }
@@ -1099,6 +1220,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         if (pe) pe->authed = true;
         Serial.printf("[BLE] peer authenticated handle=%u bonded=%d\n", (unsigned)h, (int)info.isBonded());
         NimBLEDevice::stopAdvertising();
+        s_pairWindow = false;
+        bleAdvApply(blePairingOpen());
         if (!wasAuthed && pServer) onConnect(pServer);
     }
 
@@ -1107,11 +1230,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         bool wasAuthed = pe && pe->authed;
         if (pe) { pe->handle = BLE_HS_CONN_HANDLE_NONE; pe->authed = false; }
         if (wasAuthed && !bleAnyAuthedPeer()) onDisconnect(server);
-        else NimBLEDevice::startAdvertising();
-    }
-
-    uint32_t onPassKeyDisplay() override {
-        return NimBLEDevice::getSecurityPasskey();
+        else bleAdvStart();
     }
 #endif
 
@@ -1143,7 +1262,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         Serial.printf("[BLET] disconnected t=%ums\n", (unsigned)millis());
 #endif
         if (!usbPhoneUp) phoneLinkGone();
-        NimBLEDevice::startAdvertising();
+        bleAdvStart();
 #if defined(OUISPY_XIAO_C5) || defined(OUISPY_TDONGLE_C5)
         Serial.printf("[BLET] advertising restarted t=%ums\n", (unsigned)millis());
 #endif
@@ -1779,6 +1898,40 @@ class MeshConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+static volatile bool s_wdLogSending = false;
+
+static void wdLogSendTask(void*) {
+    uint32_t total = wdLogCount();
+    uint32_t dropped = wdLogDropped();
+    uint8_t buf[2 + sizeof(WdLogRecord)];
+    buf[0] = SYS_OP_WD_LOG;
+    buf[1] = WD_LOG_FRAME_HEADER;
+    memcpy(buf + 2, &total, 4);
+    memcpy(buf + 6, &dropped, 4);
+    notifyChrExact(chrSystemControl, buf, 10);
+    buf[1] = WD_LOG_FRAME_ROW;
+    for (uint32_t i = 0; i < total && phoneConnected; i++) {
+        WdLogRecord r;
+        if (!wdLogRead(i, &r)) break;
+        memcpy(buf + 2, &r, sizeof(r));
+        notifyChrExact(chrSystemControl, buf, sizeof(buf));
+        delay(8);
+    }
+    buf[1] = WD_LOG_FRAME_END;
+    if (phoneConnected) notifyChrExact(chrSystemControl, buf, 2);
+    s_wdLogSending = false;
+    vTaskDelete(NULL);
+}
+
+static void wdLogStartSend(void) {
+    if (s_wdLogSending || !chrSystemControl) return;
+    s_wdLogSending = true;
+    if (xTaskCreate(wdLogSendTask, "wd_log", 6144, nullptr, 1, nullptr) != pdPASS) {
+        s_wdLogSending = false;
+        Serial.println("[WDLOG] no heap for send task; log stays on the board");
+    }
+}
+
 class DfuDataCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
@@ -1800,7 +1953,6 @@ static volatile bool g_spoolFlushPending = false;
 #define SYS_CMD_WIFI_WIPE         0x07
 #define SYS_OP_FLEET_PROGRESS     0x08
 #define SYS_CMD_FLEET_WIFI_OTA    0x0A  // push mgr WiFi creds + node URL to nodes
-#define SYS_CMD_SET_PASSKEY       0x0D
 #define SYS_CMD_RING_TRACKER      0x0E
 #define SYS_CMD_ENOW_HUB          0x0F
 
@@ -1960,20 +2112,6 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 break;
             }
 
-            case SYS_CMD_SET_PASSKEY: {
-                if (!magicOk || val.length() < 7) {
-                    Serial.println("[SYS] Passkey change rejected");
-                    return;
-                }
-                uint32_t pk = (uint8_t)val[3] | ((uint32_t)(uint8_t)val[4] << 8) |
-                              ((uint32_t)(uint8_t)val[5] << 16) | ((uint32_t)(uint8_t)val[6] << 24);
-                bool ok = bleSetPasskey(pk);
-                Serial.printf("[SYS] Passkey change %s\n", ok ? "OK" : "rejected (must be 0..999999)");
-                uint8_t ack[2] = { SYS_CMD_SET_PASSKEY, (uint8_t)(ok ? 0x00 : 0x01) };
-                notifyChr(chr, ack, sizeof(ack));
-                break;
-            }
-
             case SYS_CMD_CONFIRM_OTA: {
                 esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
                 Serial.printf("[SYS] OTA confirm: %s\n",
@@ -2078,6 +2216,14 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
 
             case SYS_CMD_SPOOL_CLEAR:
                 detSpoolClear();
+                break;
+
+            case SYS_CMD_WD_LOG_SEND:
+                wdLogStartSend();
+                break;
+
+            case SYS_CMD_WD_LOG_CLEAR:
+                wdLogClear();
                 break;
 
             default:
@@ -2540,10 +2686,6 @@ static int deviceInfoKeyed(char* info, int len, int cap) {
     len += snprintf(info + len, cap - len, "boot=%lu", (unsigned long)s_bootCount);
     len++;
     len += snprintf(info + len, cap - len, "spool=%u", detSpoolStorageOk() ? 1u : 0u);
-#if OUISPY_BLE_SECURE
-    len++;
-    len += snprintf(info + len, cap - len, "pk=%06lu", (unsigned long)NimBLEDevice::getSecurityPasskey());
-#endif
     return len;
 }
 
@@ -2631,7 +2773,6 @@ void bleGattInit(void) {
         NimBLEDevice::init(devName);
         Serial.printf("[BLE] device name: %s\n", devName);
 #if OUISPY_BLE_SECURE
-        Serial.printf("[BLE] pairing passkey: %06lu\n", (unsigned long)NimBLEDevice::getSecurityPasskey());
         NimBLEDevice::setSecurityAuth(true, false, true);
         NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
         NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
@@ -2639,9 +2780,11 @@ void bleGattInit(void) {
         bleUseStableAddress();
         bool rpa = NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_RANDOM_DEFAULT);
         if (!rpa) NimBLEDevice::setOwnAddrType(BLE_OWN_ADDR_RPA_PUBLIC_DEFAULT);
+        bleRpaReschedule(millis());
+        s_pairWindowEndMs = millis() + BLE_PAIR_WINDOW_MS;
         ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_WRITE |
                                          BLE_ATT_F_WRITE_ENC);
-        Serial.printf("[BLE] secure: bond+SC JustWorks, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
+        Serial.printf("[BLE] secure: bonded SC only, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
 #endif
     }
 #ifndef OUISPY_STRESS_NOFIX
@@ -2865,6 +3008,11 @@ void bleGattInit(void) {
     svc->start();
 #endif
 
+#if OUISPY_BLE_SECURE
+    strlcpy(s_advName, devName, sizeof(s_advName));
+    bleAdvApply(blePairingOpen());
+    Serial.printf("[BLE] pairing %s\n", s_advOpen ? "open" : "closed");
+#else
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
     adv->addServiceUUID(SVC_UUID);
 #ifndef OUISPY_NIMBLE2_API
@@ -2873,10 +3021,11 @@ void bleGattInit(void) {
     adv->enableScanResponse(true);
     adv->setName(devName);
 #endif
-    if (!adv->start()) {
+#endif
+    if (!bleAdvStart()) {
         Serial.println("[BLE] WARNING: advertising failed to start");
     }
-    Serial.println("[BLE] GATT server started, advertising as OUI-SPY");
+    Serial.println("[BLE] GATT server started");
 #ifdef OUISPY_USB_LINK
     usbLinkInit();
 #endif
@@ -3037,6 +3186,11 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
         if (offlineScanEnabled && evt && engineSpoolable(evt->engine_id) &&
             (!meshManagerJoined() || !meshMgrPhoneConnected())) {
             detSpoolAppend(evt);
+        }
+        uint32_t wdUtc = 0;
+        if (s_wdAwayKept && evt && evt->engine_id == ENGINE_WARDRIVE && hwGpsActive() &&
+            millis() - currentGps.timestamp_ms <= WD_AWAY_FIX_MAX_AGE_MS && hwGpsUtc(&wdUtc)) {
+            wdLogAppend(evt, wdUtc);
         }
 #endif
         return;
@@ -3245,6 +3399,7 @@ void bleGattNotifyPcapStats(void) {
 extern "C" int ble_hs_pvcy_our_irk(const uint8_t** out_irk);
 extern "C" int ble_hs_set_rpa_timeout(uint16_t timeout);
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
 static bool pstRpaResolves(const uint8_t a[6], const uint8_t irk[16]) {
     uint8_t key[16], pt[16] = {0}, ct[16];
     for (int i = 0; i < 16; i++) key[i] = irk[15 - i];
@@ -3256,6 +3411,7 @@ static bool pstRpaResolves(const uint8_t a[6], const uint8_t irk[16]) {
     mbedtls_aes_free(&aes);
     return ok && a[0] == ct[15] && a[1] == ct[14] && a[2] == ct[13];
 }
+#endif
 
 static volatile int s_pstRingStatus = -1;
 static void pstRingDone(const uint8_t*, uint8_t status, uint8_t) { s_pstRingStatus = status; }
@@ -3271,25 +3427,16 @@ int bleGattPortSelfTest(void) {
     char info[160] = {0};
     int len = snprintf(info, sizeof(info), "x");
     len = deviceInfoKeyed(info, len, sizeof(info));
-    bool hasProto = false, hasEpoch = false, hasBoot = false, hasSpool = false, hasPk = true;
-#if OUISPY_BLE_SECURE
-    hasPk = false;
-#endif
+    bool hasProto = false, hasEpoch = false, hasBoot = false, hasSpool = false, hasPk = false;
     for (int i = 0; i < len; i += strlen(info + i) + 1) {
         hasProto |= strcmp(info + i, "proto=2") == 0;
         hasEpoch |= strncmp(info + i, "epoch=", 6) == 0 && strlen(info + i) == 14;
         hasBoot |= strncmp(info + i, "boot=", 5) == 0 && s_bootCount > 0;
         hasSpool |= strcmp(info + i, "spool=1") == 0;
-#if OUISPY_BLE_SECURE
-        if (strncmp(info + i, "pk=", 3) == 0 && strlen(info + i) == 9) {
-            bool dig = true;
-            for (int k = 3; k < 9; k++) dig &= isdigit((unsigned char)info[i + k]) != 0;
-            hasPk |= dig;
-        }
-#endif
+        hasPk |= strncmp(info + i, "pk=", 3) == 0;
     }
     snprintf(d, sizeof(d), "boot=%lu epoch=%08lx", (unsigned long)s_bootCount, (unsigned long)s_bootEpoch);
-    check("device_info_keyed_fields", hasProto && hasEpoch && hasBoot && hasSpool && hasPk, d);
+    check("device_info_keyed_fields", hasProto && hasEpoch && hasBoot && hasSpool && !hasPk, d);
 
     DetectionEvent ev = {};
     ev.engine_id = ENGINE_DETECTOR;
@@ -3315,10 +3462,12 @@ int bleGattPortSelfTest(void) {
     snprintf(d, sizeof(d), "%d chars, %d unprotected", total, insecure);
     check("all_characteristics_need_enc", svc && total > 20 && insecure == 0, d);
 
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     NimBLEAddress own = NimBLEDevice::getAddress();
     const uint8_t* v = own.getBase()->val;
     snprintf(d, sizeof(d), "type=%u msb=0x%02x", (unsigned)own.getType(), v[5]);
     check("own_address_is_rpa", own.getType() == BLE_ADDR_RANDOM && (v[5] & 0xC0) == 0x40, d);
+#endif
     const uint8_t* hostIrk = nullptr;
     ble_hs_pvcy_our_irk(&hostIrk);
 #if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
@@ -3331,6 +3480,7 @@ int bleGattPortSelfTest(void) {
     const uint8_t* irkRef = s_irkReady ? s_irk : nullptr;
 #endif
     check("host_irk_is_persisted_irk", hostIrk && irkRef && memcmp(hostIrk, irkRef, 16) == 0);
+#if MYNEWT_VAL(BLE_HOST_BASED_PRIVACY)
     check("rpa_resolves_with_irk", irkRef && pstRpaResolves(v, irkRef));
     uint8_t before[6];
     memcpy(before, v, 6);
@@ -3341,35 +3491,35 @@ int bleGattPortSelfTest(void) {
     snprintf(d, sizeof(d), "msb 0x%02x -> 0x%02x", before[5], v2[5]);
     check("rpa_rotates_and_still_resolves", memcmp(before, v2, 6) != 0 && (v2[5] & 0xC0) == 0x40 && pstRpaResolves(v2, s_irk), d);
     ble_hs_set_rpa_timeout(CONFIG_BT_NIMBLE_RPA_TIMEOUT);
+#endif
 
-    uint32_t savedPk = NimBLEDevice::getSecurityPasskey();
-    bool rejected = !bleSetPasskey(1000000);
-    bool set = bleSetPasskey(654321) && NimBLEDevice::getSecurityPasskey() == 654321;
-    Preferences pp;
-    pp.begin("ouispy-ble", true);
-    bool stored = pp.getULong("passkey", 0) == 654321;
-    pp.end();
-    bleSetPasskey(savedPk);
-    check("passkey_validate_set_persist", rejected && set && stored);
     check("irk_persisted", s_irkReady);
 
     uint8_t irkBefore[16];
     memcpy(irkBefore, s_irk, 16);
-    {
-        Preferences rp;
-        rp.begin("ouispy-ble", false);
-        rp.remove("passkey");
-        rp.end();
-    }
     bleSecLoadKeys();
-    uint32_t gen = NimBLEDevice::getSecurityPasskey();
-    Preferences gp;
-    gp.begin("ouispy-ble", true);
-    bool genStored = gp.getULong("passkey", 0) == gen;
-    gp.end();
-    snprintf(d, sizeof(d), "in_range=%d stored=%d not_default=%d", gen >= 100000 && gen <= 999999, genStored, gen != 123456);
-    check("missing_passkey_generates_random", gen >= 100000 && gen <= 999999 && genStored && gen != 123456 &&
-                                              memcmp(irkBefore, s_irk, 16) == 0, d);
+    check("irk_stable_across_load", memcmp(irkBefore, s_irk, 16) == 0);
+
+    check("sc_bonded_pairing_config", ble_hs_cfg.sm_sc_only == 0 && ble_hs_cfg.sm_sc == 1 && ble_hs_cfg.sm_bonding == 1);
+    check("pairing_open_rules",
+          blePairingOpenFor(0, false, 1000, 0) &&
+          blePairingOpenFor(1, true, 1000, 1001) &&
+          !blePairingOpenFor(1, true, 1001, 1001) &&
+          !blePairingOpenFor(1, false, 1000, 2000) &&
+          blePairingOpenFor(1, true, 0xFFFFFFF0UL, 10) &&
+          !blePairingOpenFor(1, true, 11, 10));
+    check("rpa_timeout_range",
+          bleRpaPickTimeout(0) == BLE_RPA_MIN_S &&
+          bleRpaPickTimeout(BLE_RPA_MAX_S - BLE_RPA_MIN_S) == BLE_RPA_MAX_S &&
+          bleRpaPickTimeout(BLE_RPA_MAX_S - BLE_RPA_MIN_S + 1) == BLE_RPA_MIN_S &&
+          bleRpaPickTimeout(0xFFFFFFFFUL) >= BLE_RPA_MIN_S &&
+          bleRpaPickTimeout(0xFFFFFFFFUL) <= BLE_RPA_MAX_S);
+    bool wasOpen = s_advOpen;
+    bleAdvApply(false);
+    const std::vector<uint8_t>& closedAdv = NimBLEDevice::getAdvertising()->getAdvertisementData().getPayload();
+    snprintf(d, sizeof(d), "adv_len=%u", (unsigned)closedAdv.size());
+    check("closed_advert_is_flags_only", closedAdv.size() == 3 && closedAdv[1] == BLE_HS_ADV_TYPE_FLAGS, d);
+    bleAdvApply(wasOpen);
 #endif
 
     Preferences hp;
@@ -3382,6 +3532,35 @@ int bleGattPortSelfTest(void) {
     bool off = !wifiActiveProbeAllowed() && bleCoexActiveScanAllowed();
     radioPolicyApply(savedPol);
     check("radio_policy_gates", on && off);
+
+    static const uint8_t otaVec[102] = {
+        0xe9, 0x4f, 0x55, 0x49, 0x2d, 0x53, 0x50, 0x59, 0x20, 0x4f, 0x54, 0x41, 0x20, 0x73, 0x69, 0x67,
+        0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x20, 0x74, 0x65, 0x73, 0x74, 0x20, 0x76, 0x65, 0x63, 0x74,
+        0x6f, 0x72, 0x4f, 0x53, 0x47, 0x31, 0xea, 0xe9, 0xe4, 0xfb, 0x1a, 0xef, 0x65, 0x68, 0x59, 0x86,
+        0x40, 0x90, 0x63, 0x20, 0x86, 0x37, 0x48, 0x5a, 0x81, 0x55, 0x06, 0x1d, 0xc7, 0xe6, 0x91, 0x0d,
+        0x9e, 0x9e, 0x32, 0x5f, 0xd2, 0x34, 0x2c, 0x60, 0xeb, 0x86, 0x89, 0x5c, 0x1f, 0x4e, 0x91, 0xc9,
+        0x25, 0xc5, 0x29, 0x44, 0xaa, 0xac, 0x12, 0x09, 0xbe, 0xdb, 0xd5, 0x6b, 0xb8, 0x2a, 0x1a, 0x2d,
+        0x1c, 0x18, 0xe8, 0x9a, 0x8b, 0xd0,
+    };
+    const esp_partition_t* otaPart = esp_ota_get_next_update_partition(NULL);
+    auto otaVecAccepted = [&](int flipIndex, uint32_t claimedLen) {
+        uint8_t blob[sizeof(otaVec)];
+        memcpy(blob, otaVec, sizeof(blob));
+        if (flipIndex >= 0) blob[flipIndex] ^= 0x01;
+        if (esp_partition_erase_range(otaPart, 0, 4096) != ESP_OK) return false;
+        if (esp_partition_write(otaPart, 0, blob, sizeof(blob)) != ESP_OK) return false;
+        return otaSigVerifyPartition(otaPart, claimedLen);
+    };
+    const uint32_t otaVecLen = sizeof(otaVec);
+    const bool otaSigok = otaPart && otaVecAccepted(-1, otaVecLen);
+    check("ota_sig_accepts_signed", otaSigok);
+    check("ota_sig_rejects_changed_image", otaSigok && !otaVecAccepted(5, otaVecLen));
+    check("ota_sig_rejects_changed_signature", otaSigok && !otaVecAccepted(otaVecLen - 1, otaVecLen));
+    check("ota_sig_rejects_no_trailer", otaSigok && !otaVecAccepted(-1, otaVecLen - 68));
+    check("ota_sig_rejects_bad_magic", otaSigok && !otaVecAccepted(34, otaVecLen));
+    check("ota_sig_rejects_short_length", otaSigok && !otaVecAccepted(-1, otaVecLen - 1));
+    check("ota_sig_rejects_oversize_length", otaSigok && !otaVecAccepted(-1, otaPart->size + 1));
+    if (otaPart) esp_partition_erase_range(otaPart, 0, 4096);
 
     s_pstRingStatus = -1;
     const uint8_t absent[6] = {0xC2, 0x00, 0x00, 0x00, 0x00, 0x01};

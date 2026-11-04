@@ -302,10 +302,46 @@ class _AppShellState extends ConsumerState<AppShell> {
     notif.resolveNoisy(mute ?? false);
   }
 
+  Future<void> _showReconnectPrompt(WardriveController wd) async {
+    final t = AppTheme.of(context);
+    final cont = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: t.surface,
+        title: Text('Connection Restored',
+          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+        content: Text(
+          'The node reconnected during a wardrive. Continue the session?',
+          style: TextStyle(color: t.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('STOP & SAVE', style: TextStyle(color: t.textDim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('CONTINUE', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (cont == true) {
+      await wd.continueAfterReconnect();
+    } else {
+      await wd.stopAfterReconnect();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(notificationServiceProvider.select((n) => n.noisyPrompt), (prev, p) {
       if (p != null && prev == null) _askMuteNoisy(p);
+    });
+    ref.listen(wardriveProvider.select((w) => w.pendingReconnectPrompt), (prev, pending) {
+      if (pending && prev != true) _showReconnectPrompt(ref.read(wardriveProvider));
     });
     ref.listen(sdrPresentProvider, (prev, next) {
       final now = next.valueOrNull ?? false;
@@ -330,7 +366,18 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
     final location = GoRouterState.of(context).uri.path;
     final index = _routes.indexOf(location);
-    return Scaffold(
+    return PopScope(
+      canPop: location == '/home',
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final subPage = configNavKey.currentState?.canPop() ?? false;
+        if (location == '/config' && subPage) {
+          ref.read(configMenuWantedProvider.notifier).state = true;
+        } else {
+          context.go('/home');
+        }
+      },
+      child: Scaffold(
       body: widget.child,
       bottomNavigationBar: Stack(
         children: [
@@ -377,6 +424,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

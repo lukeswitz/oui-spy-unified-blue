@@ -1,10 +1,10 @@
 #include "wifi_ota_handler.h"
+#include "ota_handler.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <HTTPUpdate.h>
 #include <esp_wifi.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
@@ -135,15 +135,6 @@ bool joinStation(const char* ssid, const char* pass) {
     return true;
 }
 
-void onProgress(int sent, int total) {
-    static uint32_t lastNotify = 0;
-    if ((uint32_t)sent - lastNotify > 16384 || sent == total) {
-        Serial.printf("[WIFI-OTA] %d/%d\n", sent, total);
-        notify(WIFI_OTA_DOWNLOADING, (uint32_t)sent);
-        lastNotify = sent;
-    }
-}
-
 bool runOta(const char* url) {
     if (!wifiStaIsConnected()) {
         notify(WIFI_OTA_CONNECTING, 0);
@@ -159,46 +150,27 @@ bool runOta(const char* url) {
     Serial.printf("[WIFI-OTA] download %s\n", url);
     notify(WIFI_OTA_DOWNLOADING, 0);
 
-    httpUpdate.rebootOnUpdate(false);
-    httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    httpUpdate.onProgress(onProgress);
-
-    t_httpUpdate_return ret;
-    if (strncmp(url, "https", 5) == 0) {
-        WiFiClientSecure sc;
-        sc.setInsecure();
-        sc.setTimeout(30);
-        ret = httpUpdate.update(sc, url);
-    } else {
-#ifdef OUISPY_ALLOW_HTTP_OTA
-        WiFiClient pc;
-        pc.setTimeout(30);
-        ret = httpUpdate.update(pc, url);
-#else
-        Serial.println("[WIFI-OTA] refusing non-HTTPS OTA URL");
+    uint32_t size = 0, crc = 0;
+    if (!wifiOtaStageToPartition(url, &size, &crc)) {
         notify(WIFI_OTA_ERR_HTTP, 0);
         return false;
-#endif
     }
-    switch (ret) {
-        case HTTP_UPDATE_FAILED:
-            Serial.printf("[WIFI-OTA] FAILED %d: %s\n",
-                          httpUpdate.getLastError(),
-                          httpUpdate.getLastErrorString().c_str());
-            notify(WIFI_OTA_ERR_HTTP, 0);
-            return false;
-        case HTTP_UPDATE_NO_UPDATES:
-            Serial.println("[WIFI-OTA] no update returned");
-            notify(WIFI_OTA_ERR_HTTP, 0);
-            return false;
-        case HTTP_UPDATE_OK:
-            Serial.println("[WIFI-OTA] OK, rebooting into new image");
-            notify(WIFI_OTA_REBOOTING, 0);
-            delay(500);
-            esp_restart();
-            return true;
+    const esp_partition_t* part = esp_ota_get_next_update_partition(NULL);
+    if (!otaSigVerifyPartition(part, size)) {
+        notify(WIFI_OTA_ERR_VALIDATE, 0);
+        return false;
     }
-    return false;
+    esp_err_t err = esp_ota_set_boot_partition(part);
+    if (err != ESP_OK) {
+        Serial.printf("[WIFI-OTA] set boot failed: %s\n", esp_err_to_name(err));
+        notify(WIFI_OTA_ERR_VALIDATE, 0);
+        return false;
+    }
+    Serial.println("[WIFI-OTA] OK, rebooting into new image");
+    notify(WIFI_OTA_REBOOTING, 0);
+    delay(500);
+    esp_restart();
+    return true;
 }
 
 void otaTaskLoop(void* arg) {
@@ -408,7 +380,7 @@ extern "C" bool wifiOtaStageToPartition(const char* url, uint32_t* outSize, uint
             Serial.println("[STAGE] erase fail"); goto cleanup;
         }
         WiFiClient* st = https.getStreamPtr();
-        uint32_t sfill = 0, lastLog = 0, t0 = millis();
+        uint32_t sfill = 0, lastLog = 0, lastNotify = 0, t0 = millis();
         uint8_t rd[512];
         bool failed = false;
         while (written + sfill < (uint32_t)total && !failed) {
@@ -428,6 +400,7 @@ extern "C" bool wifiOtaStageToPartition(const char* url, uint32_t* outSize, uint
                     }
                     written += sfill; sfill = 0;
                     if (written - lastLog >= 65536) { lastLog = written; Serial.printf("[STAGE] %u/%d\n", (unsigned)written, total); }
+                    if (written - lastNotify >= 16384) { lastNotify = written; notify(WIFI_OTA_DOWNLOADING, written); }
                 }
             }
         }
@@ -531,7 +504,8 @@ extern "C" bool wifiOtaRunPendingBlocking(void) {
 
     if (mode == 1) {
         uint32_t sz = 0, crc = 0;
-        if (wifiOtaStageToPartition(url, &sz, &crc)) {
+        if (wifiOtaStageToPartition(url, &sz, &crc) &&
+            otaSigVerifyPartition(esp_ota_get_next_update_partition(NULL), sz)) {
             Preferences p;
             if (p.begin(NS, false)) {
                 p.putBool(K_RELAY_PEND, true);

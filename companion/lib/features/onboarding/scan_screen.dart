@@ -13,6 +13,7 @@ import 'package:oui_spy/core/link/usb_autoconnect.dart';
 import 'package:oui_spy/core/link/usb_serial.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -36,6 +37,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   List<UsbSerialDevice> _usb = const [];
   NetLinkTarget? _net;
   String? _rememberedMgrId;
+  List<({String id, String name})> _paired = const [];
+
+  Future<void> _loadPaired() async {
+    try {
+      final paired = await BleManager.pairedBoards();
+      if (mounted) setState(() => _paired = paired);
+    } on Exception catch (e) {
+      DebugLog.log('SCAN: paired boards: $e');
+    }
+  }
 
   Future<void> _loadRememberedManager() async {
     final p = await SharedPreferences.getInstance();
@@ -56,6 +67,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       return;
     }
     _loadRememberedManager();
+    _loadPaired();
     final usb = ref.read(usbAutoConnectProvider);
     _usb = usb.attached;
     _usbSub = usb.devices.listen((d) {
@@ -193,6 +205,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     try {
       await ble.connect(result.device, sessionId: const Uuid().v4());
+      if (!ble.isConnected) return;
       DebugLog.log('SCAN: connected to ${result.device.platformName}');
       if (mounted) context.go('/home');
     } on FlutterBluePlusException catch (e) {
@@ -201,6 +214,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Connection failed: ${e.description}'), backgroundColor: AppTheme.error),
         );
+        unawaited(_startScan());
       }
     } finally {
       if (mounted) {
@@ -218,7 +232,34 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   Future<void> _connectNet(NetLinkTarget target) => _connectLink(target.label, target.label,
       () => ref.read(usbAutoConnectProvider).connectNet(target, replaceBle: true));
 
-  Future<void> _connectLink(String id, String what, Future<bool> Function() connect) async {
+  Future<void> _confirmForget(({String id, String name}) b) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Forget ${b.name}?'),
+        content: const Text('This phone must pair again. Restart the board first, because it only accepts a new pairing for 2 minutes after power-on.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Forget')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await BleManager.forgetPaired(b.id);
+    } on Exception catch (e) {
+      DebugLog.log('SCAN: forget paired: $e');
+    }
+    await _loadPaired();
+  }
+
+  Future<void> _connectPaired(({String id, String name}) b) => _connectLink(
+      b.id,
+      b.name,
+      () => ref.read(bleManagerProvider).connectByIdAndReady(b.id, autoConnect: true),
+      failure: '${b.name} did not connect. Restart the board and try again.');
+
+  Future<void> _connectLink(String id, String what, Future<bool> Function() connect, {String? failure}) async {
     if (_connecting) return;
     setState(() {
       _connecting = true;
@@ -241,7 +282,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       context.go('/home');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('USB connection to $what failed. Check the board runs OUI-SPY firmware with USB support.'),
+        content: Text(failure ?? 'USB connection to $what failed. Check the board runs OUI-SPY firmware with USB support.'),
         backgroundColor: AppTheme.error,
       ));
     }
@@ -263,10 +304,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       {required String id,
       required String title,
       required String subtitle,
-      required VoidCallback onTap}) {
+      required VoidCallback onTap,
+      VoidCallback? onLongPress,
+      IconData icon = Icons.usb,
+      String busyLabel = 'CONNECTING OVER USB...'}) {
     final busy = _connecting && _connectingId == id;
     return GestureDetector(
       onTap: _connecting ? null : onTap,
+      onLongPress: _connecting ? null : onLongPress,
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.all(12),
@@ -284,7 +329,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               ),
               child: busy
                   ? Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
-                  : Icon(Icons.usb, color: AppTheme.accent, size: 18),
+                  : Icon(icon, color: AppTheme.accent, size: 18),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -297,7 +342,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    busy ? 'CONNECTING OVER USB...' : subtitle,
+                    busy ? busyLabel : subtitle,
                     style: TextStyle(color: busy ? AppTheme.accent : t.textDim, fontSize: 10, fontFamily: AppTheme.mono),
                   ),
                 ],
@@ -383,7 +428,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final hasManager =
         all.any(isMgr) || ref.read(bleManagerProvider).isManagerConnected;
     final filtered = hasManager ? all.where(isMgr).toList() : all;
-    final sorted = filtered
+    final pairedIds = {for (final b in _paired) b.id};
+    final sorted = filtered.where((r) => !pairedIds.contains(r.device.remoteId.toString())).toList()
       ..sort((a, b) => displayName(a).compareTo(displayName(b)));
 
     return Scaffold(
@@ -391,6 +437,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       appBar: AppBar(
         title: const Text('CONNECT'),
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/home')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About',
+            onPressed: () => showInfoSheet(context, t, 'Pairing', const [
+              'A new board is listed under Found until a phone pairs with it. Tap it and accept the pairing prompt from your phone.',
+              'A paired board is listed under Paired. It then advertises no name or service, only a private address that keeps changing, and refuses phones it does not know.',
+              'To pair another phone, restart the board. It accepts a new phone for 2 minutes after power-on, or until a phone connects.',
+              'Press and hold a paired board to forget it.',
+            ]),
+          ),
+        ],
       ),
       body: SizedBox(
         width: double.infinity,
@@ -419,6 +477,27 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   const SizedBox(height: 8),
                   for (final d in _usb) _usbTile(d, t),
                   if (_net != null) _netTile(_net!, t),
+                ],
+              ),
+            ),
+
+          if (_paired.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('PAIRED', style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
+                  const SizedBox(height: 8),
+                  for (final b in _paired)
+                    _linkTile(t,
+                        id: b.id,
+                        title: b.name,
+                        subtitle: b.id,
+                        icon: Icons.bluetooth_connected,
+                        busyLabel: 'CONNECTING...',
+                        onTap: () => _connectPaired(b),
+                        onLongPress: () => _confirmForget(b)),
                 ],
               ),
             ),

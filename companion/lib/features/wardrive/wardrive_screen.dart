@@ -79,7 +79,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   String _classGroupLabel = '';
   String _cachedLayersKey = '';
   List<Geofence> _exclusionZones = [];
-  bool _reconnectPromptOpen = false;
 
   @override
   void initState() {
@@ -115,40 +114,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
   Future<bool> _primeLocationPermission() => primeLocationPermission(context);
-
-  Future<void> _showReconnectPrompt(WardriveController wd) async {
-    final t = AppTheme.of(context);
-    final cont = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: t.surface,
-        title: Text('Connection Restored',
-          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
-        content: Text(
-          'The node reconnected during a wardrive. Continue the session?',
-          style: TextStyle(color: t.textSecondary, fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('STOP & SAVE', style: TextStyle(color: t.textDim)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text('CONTINUE', style: TextStyle(color: AppTheme.accent)),
-          ),
-        ],
-      ),
-    );
-    _reconnectPromptOpen = false;
-    if (!mounted) return;
-    if (cont == true) {
-      await wd.continueAfterReconnect();
-    } else {
-      await wd.stopAfterReconnect();
-    }
-  }
 
   void _onMapReady() {
     if (_initialFitDone) return;
@@ -507,16 +472,6 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final t = AppTheme.of(context);
     final mapStyle = ref.watch(mapStyleProvider);
     final wd = ref.watch(wardriveProvider);
-    if (wd.pendingReconnectPrompt && !_reconnectPromptOpen) {
-      _reconnectPromptOpen = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && wd.pendingReconnectPrompt) {
-          _showReconnectPrompt(wd);
-        } else {
-          _reconnectPromptOpen = false;
-        }
-      });
-    }
     final appEngines = ref.watch(appStateProvider);
     final gpsPos = ref.watch(gpsProvider).lastPosition;
     final selfPos = wd.currentPosition ?? gpsPos;

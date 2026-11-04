@@ -91,6 +91,35 @@ static const int DEAUTH_SENDER_SLOTS = 8;
 static DeauthSender deauthSenders[DEAUTH_SENDER_SLOTS];
 static const uint16_t DEAUTH_THRESHOLD = 10;
 static const unsigned long DEAUTH_ALERT_COOLDOWN_MS = 10000;
+struct JoinTarget {
+    uint8_t bssid[6];
+    uint8_t sources;
+    uint16_t count;
+    uint16_t sourceTails[8];
+    uint32_t windowStart;
+    uint32_t lastAlert;
+};
+static const int JOIN_TARGET_SLOTS = 8;
+static const uint16_t JOIN_FLOOD_FRAMES = 30;
+static const uint32_t JOIN_FLOOD_WINDOW_MS = 10000;
+static const uint8_t JOIN_FLOOD_MANY_SOURCES = 8;
+static const uint32_t JOIN_ALERT_COOLDOWN_MS = 60000;
+static JoinTarget* joinTargets = nullptr;
+static const int TAG_CHURN_SLOTS = 64;
+static const uint16_t TAG_CHURN_NEW_ADDRS = 24;
+static const uint32_t TAG_CHURN_WINDOW_MS = 10000;
+static const uint32_t TAG_CHURN_COOLDOWN_MS = 60000;
+struct TagChurn {
+    uint32_t prev[TAG_CHURN_SLOTS];
+    uint32_t cur[TAG_CHURN_SLOTS];
+    uint8_t prevN;
+    uint8_t curN;
+    uint16_t curNew;
+    bool prevHot;
+    uint32_t windowStart;
+    uint32_t lastAlert;
+};
+static TagChurn* tagChurn = nullptr;
 static volatile unsigned long lastPwnAlert = 0;
 static uint16_t sigMask = 0;
 
@@ -152,7 +181,44 @@ static const uint32_t FM_STALE_MS        = 1800000;
 static uint32_t fmClockMillis(void) { return millis(); }
 static uint32_t (*fmClock)(void) = fmClockMillis;
 
+static void tagChurnObserve(const uint8_t* mac, int rssi) {
+    TagChurn* c = tagChurn;
+    if (!c) return;
+    uint32_t now = fmClock();
+    uint32_t elapsed = now - c->windowStart;
+    if (elapsed >= TAG_CHURN_WINDOW_MS) {
+        c->prevHot = elapsed < 2 * TAG_CHURN_WINDOW_MS && c->curNew >= TAG_CHURN_NEW_ADDRS;
+        memcpy(c->prev, c->cur, sizeof(c->prev));
+        c->prevN = c->curN;
+        c->curN = 0;
+        c->curNew = 0;
+        c->windowStart = now;
+    }
+    uint32_t key = ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
+    for (uint8_t i = 0; i < c->curN; i++) if (c->cur[i] == key) return;
+    if (c->curN >= TAG_CHURN_SLOTS) return;
+    c->cur[c->curN++] = key;
+    for (uint8_t i = 0; i < c->prevN; i++) if (c->prev[i] == key) return;
+    c->curNew++;
+    if (!c->prevHot || c->curNew < TAG_CHURN_NEW_ADDRS) return;
+    if (c->lastAlert != 0 && now - c->lastAlert < TAG_CHURN_COOLDOWN_MS) return;
+    c->lastAlert = now;
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_DETECTOR;
+    memcpy(evt.mac, mac, 6);
+    evt.rssi = rssi;
+    evt.timestamp_ms = now;
+    evt.method = METHOD_DET_TAGFLOOD;
+    evt.ext.detector.confidence = DET_CONF_SUSPECTED;
+    strncpy(evt.ext.detector.filter_desc, "Tag address flood, 24+ in 10 s",
+            sizeof(evt.ext.detector.filter_desc) - 1);
+    pushDetection(&evt);
+    Serial.printf("[DETECTOR] tag address flood: %u new this window, %u seen last window\n",
+                  (unsigned)c->curNew, (unsigned)c->prevN);
+}
+
 static void findMyObserve(const uint8_t* mac, int rssi, uint8_t family) {
+    tagChurnObserve(mac, rssi);
     uint32_t now = fmClock();
     const int n = sizeof(fmTracks) / sizeof(fmTracks[0]);
     int slot = -1, freeSlot = -1, oldest = -1;
@@ -423,16 +489,23 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
                          dev->isAdvertisingService(NimBLEUUID((uint16_t)0xFD41));
         bool isCamera = brand >= 0 && brand < CAMERA_BRAND_COUNT;
         bool isAmazon = amazonMfg || sidewalkSvc || amazonSvc;
-        if ((isCamera || isAmazon) && !sigDedup.check(mac)) {
+        const char* nameBrand = nullptr;
+        if (dev->haveName()) {
+            std::string camName = dev->getName();
+            nameBrand = cameraBrandForName(camName.data(), camName.size());
+        }
+        if ((isCamera || isAmazon || nameBrand) && !sigDedup.check(mac)) {
             DetectionEvent evt = {};
             evt.engine_id = ENGINE_DETECTOR;
             memcpy(evt.mac, mac, 6);
             evt.rssi = rssi;
             evt.timestamp_ms = millis();
-            evt.method = isCamera ? METHOD_DET_CAMERA : METHOD_DET_AMAZON;
+            evt.method = (isCamera || nameBrand) ? METHOD_DET_CAMERA : METHOD_DET_AMAZON;
             evt.ext.detector.confidence = (isCamera && isAmazon) ? DET_CONF_VERIFIED
+                                        : nameBrand ? cameraConfidence(brand, nameBrand)
                                         : isAmazon ? DET_CONF_HIGH : DET_CONF_SUSPECTED;
-            const char* desc = isCamera ? CAMERA_BRANDS[brand]
+            const char* desc = nameBrand ? nameBrand
+                             : isCamera ? CAMERA_BRANDS[brand]
                              : (sidewalkSvc || amazonMfg) ? "Amazon Sidewalk" : "Amazon";
             strncpy(evt.ext.detector.filter_desc, desc, sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetection(&evt);
@@ -473,16 +546,21 @@ class DetectorCallback : public NimBLEAdvertisedDeviceCallbacks {
 
 static DetectorCallback scanCb;
 
-static void IRAM_ATTR detectorCameraFrameISR(const uint8_t* p, int rssi, uint8_t channel) {
+static void IRAM_ATTR detectorCameraFrameISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
     const uint8_t* a1 = &p[4];
     const uint8_t* a2 = &p[10];
     const uint8_t* cam = a2;
     int brand = cameraBrandForMac(a2);
-    if (brand < 0 && !(a1[0] & 0x01)) {
+    const char* nameBrand = nullptr;
+    if ((p[0] == 0x80 || p[0] == 0x50) && len >= 38 && p[36] == 0x00 && p[37] > 0 && p[37] <= 32 && 38 + p[37] <= len) {
+        nameBrand = cameraBrandForName((const char*)&p[38], p[37]);
+    }
+    if (brand < 0 && !nameBrand && !(a1[0] & 0x01)) {
         cam = a1;
         brand = cameraBrandForMac(a1);
     }
-    if (brand < 0 || brand >= CAMERA_BRAND_COUNT || cameraDedupISR.check(cam)) return;
+    bool ouiKnown = brand >= 0 && brand < CAMERA_BRAND_COUNT;
+    if ((!ouiKnown && !nameBrand) || cameraDedupISR.check(cam)) return;
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_DETECTOR;
     memcpy(evt.mac, cam, 6);
@@ -490,8 +568,8 @@ static void IRAM_ATTR detectorCameraFrameISR(const uint8_t* p, int rssi, uint8_t
     evt.channel = channel;
     evt.timestamp_ms = millis();
     evt.method = METHOD_DET_CAMERA;
-    evt.ext.detector.confidence = DET_CONF_SUSPECTED;
-    strncpy(evt.ext.detector.filter_desc, CAMERA_BRANDS[brand],
+    evt.ext.detector.confidence = cameraConfidence(brand, nameBrand);
+    strncpy(evt.ext.detector.filter_desc, nameBrand ? nameBrand : CAMERA_BRANDS[brand],
             sizeof(evt.ext.detector.filter_desc) - 1);
     pushDetectionFromISR(&evt);
 }
@@ -593,9 +671,47 @@ static void IRAM_ATTR detectorRogueApISR(const uint8_t* p, int len, int rssi, ui
     }
 }
 
+static void detectorJoinFrame(const uint8_t* p, int len, int rssi, uint8_t channel) {
+    if (!joinTargets || len < 24 || (p[1] & 0x08)) return;
+    const uint8_t* bssid = &p[16];
+    if (memcmp(&p[4], bssid, 6) != 0 || (bssid[0] & 0x01)) return;
+    uint32_t now = millis();
+    int slot = -1, oldest = 0;
+    for (int i = 0; i < JOIN_TARGET_SLOTS; i++) {
+        if (memcmp(joinTargets[i].bssid, bssid, 6) == 0) { slot = i; break; }
+        if (joinTargets[i].windowStart < joinTargets[oldest].windowStart) oldest = i;
+    }
+    if (slot < 0) {
+        slot = oldest;
+        memset(&joinTargets[slot], 0, sizeof(JoinTarget));
+        memcpy(joinTargets[slot].bssid, bssid, 6);
+        joinTargets[slot].windowStart = now;
+    }
+    JoinTarget& t = joinTargets[slot];
+    if (now - t.windowStart > JOIN_FLOOD_WINDOW_MS) {
+        t.windowStart = now;
+        t.count = 0;
+        t.sources = 0;
+    }
+    if (t.count < 0xFFFF) t.count++;
+    uint16_t tail = ((uint16_t)p[14] << 8) | p[15];
+    bool known = false;
+    for (uint8_t i = 0; i < t.sources; i++) if (t.sourceTails[i] == tail) { known = true; break; }
+    if (!known && t.sources < sizeof(t.sourceTails) / sizeof(t.sourceTails[0])) t.sourceTails[t.sources++] = tail;
+    if (t.count < JOIN_FLOOD_FRAMES) return;
+    if (t.lastAlert != 0 && now - t.lastAlert <= JOIN_ALERT_COOLDOWN_MS) return;
+    t.lastAlert = now;
+    pushApSigISR(bssid, rssi, channel, METHOD_DET_JOINFLOOD,
+                 t.sources >= JOIN_FLOOD_MANY_SOURCES ? DET_CONF_HIGH : DET_CONF_SUSPECTED,
+                 "Join flood at this AP");
+}
+
 static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
     uint8_t fctl = p[0];
-    if (sigMask & SIG_CAMERA) detectorCameraFrameISR(p, rssi, channel);
+    if (sigMask & SIG_CAMERA) detectorCameraFrameISR(p, len, rssi, channel);
+    if ((sigMask & SIG_DEAUTH) && (fctl == 0xB0 || fctl == 0x00 || fctl == 0x20)) {
+        detectorJoinFrame(p, len, rssi, channel);
+    }
     if ((sigMask & SIG_DEAUTH) && (fctl == 0xC0 || fctl == 0xA0)) {
         if (len < 26) return true;
         unsigned long now = millis();
@@ -941,6 +1057,8 @@ static void detectorInit(void) {
 static void detectorStart(void) {
     if (!ssidOwners) ssidOwners = (SsidOwner*)calloc(SSID_OWNER_SLOTS, sizeof(SsidOwner));
     if (!bssidSsids) bssidSsids = (BssidSsids*)calloc(BSSID_SSID_SLOTS, sizeof(BssidSsids));
+    if (!joinTargets) joinTargets = (JoinTarget*)calloc(JOIN_TARGET_SLOTS, sizeof(JoinTarget));
+    if (!tagChurn) tagChurn = (TagChurn*)calloc(1, sizeof(TagChurn));
     scanning = true;
     dedup.setCooldownMs(engineGetRediscoverMs());
     wifiDedupISR.setCooldownMs(engineGetRediscoverMs());
@@ -1123,6 +1241,31 @@ int detectorPortSelfTest(void) {
     bool s3 = pstPop(&e) && e.ext.detector.confidence == DET_CONF_VERIFIED;
     pstCheck("tracker_returning_verified", s3, e.ext.detector.filter_desc);
     pstCheck("tracker_one_alert_per_tier", !pstPop(&e));
+    if (!tagChurn) tagChurn = (TagChurn*)calloc(1, sizeof(TagChurn));
+    uint8_t churnMac[6] = {0xC2, 0x00, 0x00, 0x00, 0x00, 0x00};
+    auto churnWindow = [&](uint32_t at, uint8_t group, int count) {
+        pstNow = at;
+        churnMac[4] = group;
+        for (int i = 0; i < count; i++) { churnMac[5] = (uint8_t)i; tagChurnObserve(churnMac, -60); }
+    };
+    memset(tagChurn, 0, sizeof(TagChurn));
+    pstDrain();
+    churnWindow(1000000, 1, 40);
+    pstCheck("tag_flood_one_window_quiet", !pstPop(&e));
+    churnWindow(1010000, 2, 23);
+    pstCheck("tag_flood_below_threshold_quiet", !pstPop(&e));
+    churnWindow(1010001, 3, 1);
+    bool tf = pstPop(&e) && e.method == METHOD_DET_TAGFLOOD && e.ext.detector.confidence == DET_CONF_SUSPECTED;
+    pstCheck("tag_flood_two_windows_alert", tf, e.ext.detector.filter_desc);
+    memset(tagChurn, 0, sizeof(TagChurn));
+    churnWindow(2000000, 4, 40);
+    churnWindow(2010000, 4, 40);
+    churnWindow(2020000, 4, 40);
+    pstCheck("tag_flood_same_tags_quiet", !pstPop(&e));
+    memset(tagChurn, 0, sizeof(TagChurn));
+    churnWindow(3000000, 5, 40);
+    churnWindow(3030000, 6, 40);
+    pstCheck("tag_flood_gap_quiet", !pstPop(&e));
     fmClock = fmClockMillis;
 
     const uint8_t moto[6] = {0x00, 0x04, 0x7D, 0x11, 0x22, 0x33};
@@ -1154,6 +1297,69 @@ int detectorPortSelfTest(void) {
     for (const char* s : names) { n = pstBeacon(f, karma, s); detectorSigFrameISR(f, n, -50, 6); }
     bool k = pstPop(&e) && e.method == METHOD_DET_KARMA && e.ext.detector.confidence == DET_CONF_HIGH;
     pstCheck("karma_five_ssids", k, e.ext.detector.filter_desc);
+
+    if (!joinTargets) joinTargets = (JoinTarget*)calloc(JOIN_TARGET_SLOTS, sizeof(JoinTarget));
+    memset(joinTargets, 0, JOIN_TARGET_SLOTS * sizeof(JoinTarget));
+    uint16_t maskBeforeJoin = sigMask;
+    sigMask = SIG_DEAUTH;
+    pstDrain();
+    const uint8_t joinAp[6] = {0x02, 0x10, 0x00, 0x00, 0x00, 0x01};
+    uint8_t joinSrc[6] = {0x02, 0x20, 0x00, 0x00, 0x00, 0x00};
+    auto joinFrames = [&](const uint8_t* ap, uint8_t subtype, uint8_t flags, int count, bool toAp, bool spoofed) {
+        for (int i = 0; i < count; i++) {
+            memset(f, 0, sizeof(f));
+            f[0] = subtype;
+            f[1] = flags;
+            if (spoofed) joinSrc[5] = (uint8_t)i;
+            memcpy(&f[4], toAp ? ap : joinSrc, 6);
+            memcpy(&f[10], toAp ? joinSrc : ap, 6);
+            memcpy(&f[16], ap, 6);
+            detectorSigFrameISR(f, 30, -50, 6);
+        }
+    };
+    joinFrames(joinAp, 0xB0, 0, 29, true, false);
+    pstCheck("join_flood_below_threshold_quiet", !pstPop(&e));
+    joinFrames(joinAp, 0x00, 0, 1, true, false);
+    bool jf = pstPop(&e) && e.method == METHOD_DET_JOINFLOOD && e.ext.detector.confidence == DET_CONF_SUSPECTED &&
+              memcmp(e.mac, joinAp, 6) == 0;
+    pstCheck("join_flood_one_source_suspected", jf, e.ext.detector.filter_desc);
+    joinFrames(joinAp, 0xB0, 0, 40, true, false);
+    pstCheck("join_flood_cooldown", !pstPop(&e));
+    const uint8_t joinAp2[6] = {0x02, 0x10, 0x00, 0x00, 0x00, 0x02};
+    joinFrames(joinAp2, 0x20, 0, 30, true, true);
+    jf = pstPop(&e) && e.method == METHOD_DET_JOINFLOOD && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("join_flood_many_sources_high", jf, e.ext.detector.filter_desc);
+    const uint8_t joinAp3[6] = {0x02, 0x10, 0x00, 0x00, 0x00, 0x03};
+    joinFrames(joinAp3, 0xB0, 0x08, 40, true, true);
+    pstCheck("join_flood_ignores_retries", !pstPop(&e));
+    joinFrames(joinAp3, 0xB0, 0, 40, false, true);
+    pstCheck("join_flood_ignores_ap_replies", !pstPop(&e));
+    sigMask = maskBeforeJoin;
+
+    uint16_t maskBeforeCam = sigMask;
+    sigMask = SIG_CAMERA;
+    pstDrain();
+    pstCheck("camera_token_prefix", cameraBrandForName("RING-abc123", 11) != nullptr);
+    pstCheck("camera_token_not_mid_prefix", cameraBrandForName("Spring-abc", 10) == nullptr);
+    pstCheck("camera_token_contains", cameraBrandForName("Front WyzeCam", 13) != nullptr);
+    pstCheck("camera_token_none", cameraBrandForName("MyNetwork", 9) == nullptr);
+    const uint8_t ringOui[6] = {0x54, 0xE0, 0x19, 0x00, 0x00, 0x01};
+    const uint8_t ringOui2[6] = {0x54, 0xE0, 0x19, 0x00, 0x00, 0x02};
+    const uint8_t ringOui3[6] = {0x54, 0xE0, 0x19, 0x00, 0x00, 0x03};
+    const uint8_t plainMac[6] = {0x02, 0x30, 0x00, 0x00, 0x00, 0x01};
+    n = pstBeacon(f, ringOui, "MyNetwork"); detectorSigFrameISR(f, n, -50, 6);
+    bool camTier = pstPop(&e) && e.method == METHOD_DET_CAMERA && e.ext.detector.confidence == DET_CONF_SUSPECTED;
+    pstCheck("camera_oui_only_suspected", camTier, e.ext.detector.filter_desc);
+    n = pstBeacon(f, plainMac, "Reolink-Yard"); detectorSigFrameISR(f, n, -50, 6);
+    camTier = pstPop(&e) && e.method == METHOD_DET_CAMERA && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("camera_name_only_high", camTier, e.ext.detector.filter_desc);
+    n = pstBeacon(f, ringOui2, "Ring Setup"); detectorSigFrameISR(f, n, -50, 6);
+    camTier = pstPop(&e) && e.ext.detector.confidence == DET_CONF_VERIFIED;
+    pstCheck("camera_oui_and_name_verified", camTier, e.ext.detector.filter_desc);
+    n = pstBeacon(f, ringOui3, "Reolink-Yard"); detectorSigFrameISR(f, n, -50, 6);
+    camTier = pstPop(&e) && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("camera_brands_disagree_high", camTier, e.ext.detector.filter_desc);
+    sigMask = maskBeforeCam;
 
     memset(f, 0, sizeof(f));
     f[0] = 0x40;

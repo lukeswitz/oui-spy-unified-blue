@@ -167,7 +167,7 @@ static uint16_t currentSlotDwellMs(void) {
 static uint16_t bleScanDurationMs  = 800;
 static uint16_t bleScanIntervalMs  = 3000;
 
-#ifdef OUISPY_TINYRAM
+#if defined(OUISPY_TINYRAM) || (defined(OUISPY_ROLE_MANAGER) && defined(OUISPY_LOWRAM))
 #define WD_DEDUP_SLOTS 256
 #else
 #define WD_DEDUP_SLOTS 1024
@@ -287,7 +287,12 @@ static uint32_t wdWifiFramesAtSweep = 0;
 static uint8_t wdSilentSweeps = 0;
 static bool wdRadioCycled = false;
 
-static void IRAM_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
+#ifdef CONFIG_IDF_TARGET_ESP32
+#define WD_WIFI_CB_ATTR
+#else
+#define WD_WIFI_CB_ATTR IRAM_ATTR
+#endif
+static void WD_WIFI_CB_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     g_engRawSeen++;
     wdWifiFrames++;
     if (!wardriveActive) return;

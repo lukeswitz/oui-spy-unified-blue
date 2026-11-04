@@ -4,10 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <esp_partition.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+bool otaSigVerifyPartition(const esp_partition_t* partition, uint32_t totalLen);
 
 void otaInit(void);
 

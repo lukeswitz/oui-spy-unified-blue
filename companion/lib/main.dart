@@ -151,6 +151,18 @@ Future<void> _autoConnect(ProviderContainer container) async {
       return;
     }
 
+    final paired = await BleManager.pairedBoards();
+    if (paired.isNotEmpty) {
+      final pick = paired.firstWhere((b) => b.id == lastPrimaryId,
+          orElse: () => paired.firstWhere((b) => b.name.contains('MGR'), orElse: () => paired.first));
+      DebugLog.log('AUTO: connecting to paired ${pick.name} without a scan');
+      if (await container.read(bleManagerProvider).connectByIdAndReady(pick.id, autoConnect: true)) {
+        await _onConnected(container, pick.id);
+        return;
+      }
+      DebugLog.log('AUTO: paired board not reachable — scanning for boards open to pairing');
+    }
+
     final lastPrimaryIsManager = prefs.getBool('lastPrimaryIsManager') ?? false;
 
     DebugLog.log('AUTO: scanning (OUI-SPY service filter, 8s)...');

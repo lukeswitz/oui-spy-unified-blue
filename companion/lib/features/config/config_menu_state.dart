@@ -1,4 +1,7 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+final configNavKey = GlobalKey<NavigatorState>();
 
 final configMenuWantedProvider = StateProvider<bool>((ref) => false);
 

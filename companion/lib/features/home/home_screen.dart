@@ -437,9 +437,9 @@ class _ConnectedView extends ConsumerWidget {
                           ),
                         ),
                         _panel(context, 'recent', [
-                          for (final d in recent)
+                          for (final (i, d) in recent.indexed)
                             DetectionRow(
-                              key: ValueKey(d.id),
+                              key: ValueKey('$i|${d.id}'),
                               detection: d,
                               divider: false,
                               horizontal: 14,

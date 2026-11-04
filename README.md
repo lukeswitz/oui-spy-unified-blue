@@ -59,8 +59,8 @@
 | **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 433 / 315 / 915 MHz and ADS-B; a USB Wi-Fi adapter scans Wi-Fi (the MT7921AU also Bluetooth LE). Run them together or on their own, alongside the phone's own radios |
 
 - **Together:** the board keeps detecting while the phone foxhunts a device it found, or both scan into one session.
-- **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot.
-- **Private Bluetooth link**: the board advertises a rotating private address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN: the board has no screen to show one, so the phone and board agree a key without it. The C5 boards use the chip's own address resolver. The S3, C3 and older ESP32 boards resolve it in the Bluetooth host. After you update an S3, C3 or older ESP32 board to this firmware, forget it in your phone's Bluetooth settings and pair it once more.
+- **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot. A directly connected board with a GPS module fix also keeps wardriving and saves each network with its location, one row per device every 5 minutes, up to 1 MB. The app imports those rows on reconnect, and they can upload to WiGLE. Without a GPS fix for 60 s, the board stops wardriving.
+- **Private Bluetooth link**: the board advertises a private address that it changes at a random interval of 5 to 15 minutes. After a phone pairs, the board advertises no name or service and refuses phones it does not know. A paired phone resolves the new address and reconnects, including after the board reboots, with no new pairing. Pairing uses bonded LE Secure Connections with no PIN, and you accept it in your phone's pairing prompt. To pair another phone, restart the board. It accepts a new phone for 2 minutes after power-on or until a phone connects. The C5 boards use the chip's own address resolver. The S3, C3 and older ESP32 boards resolve it in the Bluetooth host. After you update an S3, C3 or older ESP32 board to this firmware, forget it in your phone's Bluetooth settings and pair it once more.
 - **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the connected board collects Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes and adds them to your wardrive. Tap **Start hub**, power on a Piglet node nearby, and tap **Pair** when it shows under **Nearby nodes**. The hub board leaves the mesh while it runs; your other boards keep meshing. When you start a wardrive, the radio picker lists the hub and lets you leave out any paired node.
 
 ## Boards
@@ -154,7 +154,7 @@ On the **ADS-B** tab:
 
 | Engine | Finds |
 |---|---|
-| **Detector** | Your watchlist (MAC, OUI prefix, name, 16-bit BLE service UUID), plus built-in signatures, all off by default: Find My / AirTag following you, Flipper Zero, Wi-Fi deauth floods, directed probes, Pwnagotchi, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, security / doorbell / dash cameras by vendor OUI (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE |
+| **Detector** | Your watchlist (MAC, OUI prefix, name, 16-bit BLE service UUID), plus built-in signatures, all off by default: Find My / AirTag following you, floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, directed probes, Pwnagotchi, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE |
 | **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras and Raven gunshot sensors. Optional OUI-only Wi-Fi hits |
 | **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
 | **Foxhunter** | One target device. Beep rate (or the RSSI meter on boards without a buzzer) rises as you get closer |
@@ -309,6 +309,24 @@ C5 builds use the pioarduino platform in a separate core dir (`~/.platformio-c5`
 ```bash
 cd companion && flutter pub get && flutter build apk --release   # or ipa / macos
 ```
+
+### Signed updates
+
+Boards accept an over-the-air update only if the image carries a valid ECDSA P-256 signature from the release key. The app checks the signature before it sends an image over Bluetooth, including a local `.bin` you pick. The board checks it again on Bluetooth, Wi-Fi and mesh updates, and it does not mark an image bootable until the check passes.
+
+USB flashing does not check signatures. A board accepts any image signed with the key, including an older release.
+
+The release workflow builds unsigned images, because the private key stays on your computer. Sign the images before you publish the draft release:
+
+```bash
+python3 sign_ota.py keygen                                # once; writes ~/.config/oui-spy/ota_signing_key.pem
+gh release download v1.2.3 -p 'oui-spy-*.bin' -D dist/v1.2.3
+python3 sign_ota.py sign dist/v1.2.3/*.bin                # appends the signature in place
+python3 sign_ota.py verify dist/v1.2.3/*.bin
+gh release upload v1.2.3 dist/v1.2.3/*.bin --clobber
+```
+
+`keygen` prints the public key. Put it in `src/ota_pubkey.h` and `companion/lib/core/ota/ota_signature.dart`. Back up the private key and never commit it. If you lose it, boards can only move to a new key by USB flashing.
 
 **Firmware libraries:** [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus), [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library); ESP-IDF ESP-NOW and mbedTLS.
 

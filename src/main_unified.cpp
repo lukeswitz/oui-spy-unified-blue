@@ -79,7 +79,6 @@ void hwGpsInit(void) {
 
 bool hwGpsActive(void) { return hwGpsFix; }
 
-#ifdef OUISPY_DONGLE
 bool hwGpsUtc(uint32_t* epochOut) {
     if (!hwGpsStarted || epochOut == nullptr) return false;
     if (!hwGps.date.isValid() || !hwGps.time.isValid()) return false;
@@ -99,7 +98,6 @@ bool hwGpsUtc(uint32_t* epochOut) {
                            hwGps.time.second());
     return true;
 }
-#endif
 
 void hwGpsPoll(void) {
     if (!hwGpsStarted) return;
@@ -1659,7 +1657,11 @@ void setup() {
         Serial.println("[PST] === port self-test start ===");
         int fail = 0;
         QueueHandle_t liveQ = detectionQueue;
+#ifdef OUISPY_NIMBLE2
+        detectionQueue = xQueueCreateWithCaps(g_detQueueDepth, sizeof(DetectionEvent), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
         detectionQueue = xQueueCreate(g_detQueueDepth, sizeof(DetectionEvent));
+#endif
         fail += detectorPortSelfTest();
         fail += enowHubPortSelfTest();
         fail += skyspyPortSelfTest();
@@ -1703,7 +1705,11 @@ void setup() {
             check("queue_reserve_scales_with_depth", r128 && r32);
             ignoreListSet(nullptr, 0);
         }
+#ifdef OUISPY_NIMBLE2
+        vQueueDeleteWithCaps(detectionQueue);
+#else
         vQueueDelete(detectionQueue);
+#endif
         detectionQueue = liveQ;
         fail += bleGattPortSelfTest();
         Serial.printf("[PST] === port self-test %s (%d failures) ===\n", fail == 0 ? "ALL PASS" : "FAILURES", fail);

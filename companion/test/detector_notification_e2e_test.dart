@@ -7,6 +7,20 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 List<int> _hex(String s) => [for (var i = 0; i < s.length; i += 2) int.parse(s.substring(i, i + 2), radix: 16)];
 
 void main() {
+  test('synthetic records: join flood and tag flood methods decode and are named', () {
+    Detection decode(String methodHex) => BleProtocol.decodeDetection(
+          _hex('00020000000002a70621210000$methodHex'
+              '0000000000004d794e6574776f726b0000000000000000000000000000000000000000000000'),
+          sessionId: 's',
+          nodeId: 'n',
+          appTimestamp: DateTime(2026),
+        );
+    expect(decode('0e').method, 'join_flood');
+    expect(decode('0f').method, 'tag_flood');
+    expect(NotificationService.detectorMethodName('join_flood'), 'Wi-Fi Join Flood');
+    expect(NotificationService.detectorMethodName('tag_flood'), 'Tracker Tag Flood');
+  });
+
   test('synthetic record: watchlist hit notification titled by its rule description', () {
     final det = BleProtocol.decodeDetection(
       _hex('00020000000001a9064a1a000001000000000000486f6d6520726f75746572000000000000000000000000000000000000000000'),

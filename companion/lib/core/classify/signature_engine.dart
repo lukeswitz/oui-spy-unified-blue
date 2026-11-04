@@ -165,6 +165,17 @@ bool isAppleContinuity(Observation o) =>
 bool isFindMyPayload(Observation o) =>
     !isAppleContinuity(o) && o.mfgRecords.any((r) => r.companyId == 0x004C && _take2(r.dataHex) == '12');
 
+String _lowerNameFor = '';
+String _lowerNameValue = '';
+
+String _lowerName(String name) {
+  if (!identical(name, _lowerNameFor)) {
+    _lowerNameFor = name;
+    _lowerNameValue = name.toLowerCase();
+  }
+  return _lowerNameValue;
+}
+
 String _take2(String hex) {
   final h = hexOnly(hex);
   return h.length >= 2 ? h.substring(0, 2) : h;
@@ -191,6 +202,8 @@ class SignatureEngine {
   final _plans = <_Plan>[];
   final _alwaysWifi = <int>[];
   final _alwaysBle = <int>[];
+  final _namedWifi = <int>[];
+  final _namedBle = <int>[];
   final _uuidPlans = <String, List<int>>{};
   final _mfgPlans = <int, List<int>>{};
   final _clusterPlans = <int>[];
@@ -238,17 +251,32 @@ class SignatureEngine {
         continue;
       }
       if (indexableOnly) continue; // reachable via oui/uuid/mfg index
+      final needsName = sig.matchAny && active.every(_indexableOrName);
+      final wifiList = needsName ? _namedWifi : _alwaysWifi;
+      final bleList = needsName ? _namedBle : _alwaysBle;
       switch (_radioScope(active)) {
         case RadioKind.wifi:
-          _alwaysWifi.add(idx);
+          wifiList.add(idx);
         case RadioKind.ble:
-          _alwaysBle.add(idx);
+          bleList.add(idx);
         case null:
-          _alwaysWifi.add(idx);
-          _alwaysBle.add(idx);
+          wifiList.add(idx);
+          bleList.add(idx);
       }
     }
   }
+
+  static bool _indexableOrName(MatchRule r) => switch (r.kind) {
+    RuleKind.oui ||
+    RuleKind.macPrefix ||
+    RuleKind.vendorIeOui ||
+    RuleKind.serviceUuid ||
+    RuleKind.manufacturerId ||
+    RuleKind.manufacturerData ||
+    RuleKind.nameContains ||
+    RuleKind.nameGlob => true,
+    _ => false,
+  };
 
   bool get hasClusters => _clusterPlans.isNotEmpty;
 
@@ -285,7 +313,9 @@ class SignatureEngine {
 
   List<Signature> match(Observation o) {
     final ouiHit = _ouiHits(o);
-    final cand = <int>{...(o.kind == RadioKind.wifi ? _alwaysWifi : _alwaysBle)};
+    final wifi = o.kind == RadioKind.wifi;
+    final cand = <int>{...(wifi ? _alwaysWifi : _alwaysBle)};
+    if (o.name.isNotEmpty) cand.addAll(wifi ? _namedWifi : _namedBle);
     for (final i in ouiHit) {
       if (!_clusterSet.contains(i)) cand.add(i);
     }
@@ -389,6 +419,12 @@ class SignatureEngine {
     return RegExp(b.toString(), caseSensitive: false);
   }
 
+  static String _asciiGlobPrefix(String pattern) {
+    final end = pattern.indexOf(RegExp(r'[*?]'));
+    final head = end < 0 ? pattern : pattern.substring(0, end);
+    return head.codeUnits.every((c) => c < 0x80) ? head.toLowerCase() : '';
+  }
+
   static bool _hasUuid(Observation o, Set<String> want) =>
       [...o.serviceUuids, ...o.serviceData.map((s) => s.uuid)].any((u) => uuidAliases(u).any(want.contains));
 
@@ -397,11 +433,16 @@ class SignatureEngine {
       case RuleKind.nameContains:
         if (r.text.trim().isEmpty) return null;
         final needle = r.text.toLowerCase();
-        return (o) => _radioOk(o, r.radio) && o.name.isNotEmpty && o.name.toLowerCase().contains(needle);
+        return (o) => _radioOk(o, r.radio) && o.name.isNotEmpty && _lowerName(o.name).contains(needle);
       case RuleKind.nameGlob:
         if (r.text.trim().isEmpty) return null;
         final re = _glob(r.text);
-        return (o) => _radioOk(o, r.radio) && o.name.isNotEmpty && re.hasMatch(o.name);
+        final literal = _asciiGlobPrefix(r.text);
+        return (o) =>
+            _radioOk(o, r.radio) &&
+            o.name.isNotEmpty &&
+            _lowerName(o.name).startsWith(literal) &&
+            re.hasMatch(o.name);
       case RuleKind.serviceUuid:
         if (r.text.trim().isEmpty) return null;
         final want = uuidAliases(r.text);

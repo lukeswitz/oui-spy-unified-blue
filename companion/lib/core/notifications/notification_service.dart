@@ -605,6 +605,8 @@ class NotificationService extends ChangeNotifier {
         'tracker' => 'Tracker',
         'flipper' => 'Flipper Zero',
         'deauth_storm' => 'Deauth Attack',
+        'join_flood' => 'Wi-Fi Join Flood',
+        'tag_flood' => 'Tracker Tag Flood',
         'pwnagotchi' => 'Pwnagotchi',
         'glasses' => 'Meta Smart Glasses',
         'axon' => 'Axon Device',

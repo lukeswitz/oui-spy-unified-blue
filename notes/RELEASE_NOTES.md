@@ -2,6 +2,7 @@
 
 ## New
 
+- Over-the-air updates must carry a release signature; boards and the app refuse others.
 - Device classifier: DETECTIONS → DEVICES lists and classifies every nearby device.
 - 20 classes including cameras, surveillance, public safety, drones, finder tags.
 - Also glasses, wearables, vehicles, pentest tools, locks, health, home IoT.

@@ -14,9 +14,9 @@ const int sigMesh = 0x100;
 const int sigAll = 0x1FF;
 
 const detectorMethodsByBit = {
-  sigTracker: ['tracker'],
+  sigTracker: ['tracker', 'tag_flood'],
   sigFlipper: ['flipper'],
-  sigDeauth: ['deauth_storm'],
+  sigDeauth: ['deauth_storm', 'join_flood'],
   sigProbe: ['probe_ssid', 'evil_twin', 'karma'],
   sigPwnagotchi: ['pwnagotchi'],
   sigGlasses: ['glasses'],
@@ -36,11 +36,11 @@ class DetectorSignature {
 
 const List<DetectorSignature> detectorSignatures = [
   DetectorSignature(sigTracker, 'Trackers', 'Trackers', Icons.track_changes,
-      'Apple Find My (AirTag), Samsung SmartTag, Tile and Google Find Hub tags away from their owner. Alerts as nearby (3 s), following (5 min) and returning (3 sightings over 10 min)'),
+      'Apple Find My (AirTag), Samsung SmartTag, Tile and Google Find Hub tags away from their owner. Alerts as nearby (3 s), following (5 min) and returning (3 sightings over 10 min), and when new tag addresses keep appearing too fast to be real tags'),
   DetectorSignature(sigFlipper, 'Flipper Zero', 'Flipper', Icons.developer_board,
       'Flipper Zero BLE advertisements'),
   DetectorSignature(sigDeauth, 'Deauth attack', 'Deauth', Icons.wifi_off,
-      'WiFi deauth / disassociation attack frames'),
+      'WiFi deauth / disassociation attack frames, and floods of join requests at one access point'),
   DetectorSignature(sigProbe, 'Probe requests & rogue APs', 'Probe', Icons.wifi_find,
       'Devices probing for saved WiFi networks, evil-twin APs (one SSID from a second BSSID of another vendor) and KARMA APs (one BSSID beaconing 5+ SSIDs)'),
   DetectorSignature(sigPwnagotchi, 'Pwnagotchi', 'Pwna-\ngotchi', Icons.smart_toy,
@@ -50,7 +50,7 @@ const List<DetectorSignature> detectorSignatures = [
   DetectorSignature(sigAxon, 'Axon & duty equipment', 'Axon', Icons.local_police,
       'Axon Enterprise hardware (BLE CID 0x034D, service 0xFC81/0xFE6B/0xFE6C, OUI 00:25:DF). Also Motorola Solutions, Harris, Kenwood, Tait, Hytera, WatchGuard, Digital Ally and Skydio OUIs, reported as suspected because those vendors also sell non-police gear'),
   DetectorSignature(sigCamera, 'Security cameras & Amazon', 'Cameras', Icons.videocam,
-      'Security, doorbell, plate-reader and dash cameras by vendor OUI on any Wi-Fi frame or BLE address (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and more); Amazon Sidewalk BLE (CID 0x0171, service 0xFE03) and Amazon BLE services 0xFE00/0xFE15/0xFCDC/0xFD41'),
+      'Security, doorbell, plate-reader and dash cameras by vendor OUI on any Wi-Fi frame or BLE address (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and more), or by a camera brand in the network or device name. A matching vendor and name is rated verified, a name alone high, and a vendor alone suspected; Amazon Sidewalk BLE (CID 0x0171, service 0xFE03) and Amazon BLE services 0xFE00/0xFE15/0xFCDC/0xFD41'),
   DetectorSignature(sigMesh, 'Mesh radios', 'Mesh', Icons.hub,
       'Meshtastic nodes (service 6ba1b218-…-eafd, or name) and MeshCore nodes (name)'),
 ];

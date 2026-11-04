@@ -3,8 +3,24 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+#include <esp_heap_caps.h>
+#ifdef OUISPY_NIMBLE2
+#include <freertos/idf_additions.h>
+#endif
+#include <mbedtls/ecdsa.h>
+#include <mbedtls/md.h>
+#include <string.h>
+#include "ota_pubkey.h"
 
 #define OTA_TRIAL_MS 60000UL
+#define OTA_SIG_LEN 64
+#define OTA_SIG_TRAILER_LEN (4 + OTA_SIG_LEN)
+#define OTA_SIG_READ_LEN 4096
+#define OTA_SIG_YIELD_LEN 65536
+#define OTA_SIG_TASK_STACK 8192
 
 extern "C" bool verifyRollbackLater() { return true; }
 
@@ -40,6 +56,95 @@ uint16_t                g_expectedSeq = 0;
 uint32_t                g_lastProgressKb = 0;
 
 OtaNotifyFn             g_notifyFn = nullptr;
+
+const uint8_t OTA_SIG_MAGIC[4] = {'O', 'S', 'G', '1'};
+
+struct OtaSigJob {
+    const uint8_t* digest;
+    const uint8_t* rs;
+    bool valid;
+    UBaseType_t stackFree;
+    SemaphoreHandle_t done;
+};
+
+bool sigDigestValid(const uint8_t digest[32], const uint8_t rs[OTA_SIG_LEN]) {
+    mbedtls_ecp_group grp;
+    mbedtls_ecp_point q;
+    mbedtls_mpi r, s;
+    mbedtls_ecp_group_init(&grp);
+    mbedtls_ecp_point_init(&q);
+    mbedtls_mpi_init(&r);
+    mbedtls_mpi_init(&s);
+    bool valid = mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1) == 0 &&
+                 mbedtls_ecp_point_read_binary(&grp, &q, OTA_SIG_PUBKEY, sizeof(OTA_SIG_PUBKEY)) == 0 &&
+                 mbedtls_mpi_read_binary(&r, rs, OTA_SIG_LEN / 2) == 0 &&
+                 mbedtls_mpi_read_binary(&s, rs + OTA_SIG_LEN / 2, OTA_SIG_LEN / 2) == 0 &&
+                 mbedtls_ecdsa_verify(&grp, digest, 32, &q, &r, &s) == 0;
+    mbedtls_mpi_free(&s);
+    mbedtls_mpi_free(&r);
+    mbedtls_ecp_point_free(&q);
+    mbedtls_ecp_group_free(&grp);
+    return valid;
+}
+
+bool sigPartitionHash(const esp_partition_t* part, uint32_t totalLen, uint8_t digest[32],
+                      uint8_t trailer[OTA_SIG_TRAILER_LEN]) {
+    if (!part || totalLen <= OTA_SIG_TRAILER_LEN || totalLen > part->size) {
+        Serial.printf("[OTA-SIG] refused: length %u\n", (unsigned)totalLen);
+        return false;
+    }
+    const uint32_t imageLen = totalLen - OTA_SIG_TRAILER_LEN;
+    if (esp_partition_read(part, imageLen, trailer, OTA_SIG_TRAILER_LEN) != ESP_OK) {
+        Serial.println("[OTA-SIG] refused: trailer read failed");
+        return false;
+    }
+    if (memcmp(trailer, OTA_SIG_MAGIC, sizeof(OTA_SIG_MAGIC)) != 0) {
+        Serial.println("[OTA-SIG] refused: image is not signed");
+        return false;
+    }
+    uint8_t* buf = (uint8_t*)malloc(OTA_SIG_READ_LEN);
+    if (!buf) {
+        Serial.println("[OTA-SIG] refused: no heap for read buffer");
+        return false;
+    }
+    mbedtls_md_context_t sha;
+    mbedtls_md_init(&sha);
+    bool readOk = mbedtls_md_setup(&sha, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0) == 0 &&
+                  mbedtls_md_starts(&sha) == 0;
+    uint32_t off = 0, sinceYield = 0;
+    while (readOk && off < imageLen) {
+        uint32_t n = imageLen - off;
+        if (n > OTA_SIG_READ_LEN) n = OTA_SIG_READ_LEN;
+        readOk = esp_partition_read(part, off, buf, n) == ESP_OK &&
+                 mbedtls_md_update(&sha, buf, n) == 0;
+        off += n;
+        sinceYield += n;
+        if (sinceYield >= OTA_SIG_YIELD_LEN) {
+            sinceYield = 0;
+            vTaskDelay(1);
+        }
+    }
+    if (readOk) readOk = mbedtls_md_finish(&sha, digest) == 0;
+    mbedtls_md_free(&sha);
+    free(buf);
+    if (!readOk) {
+        Serial.println("[OTA-SIG] refused: hash failed");
+        return false;
+    }
+    return true;
+}
+
+void sigTask(void* arg) {
+    OtaSigJob* job = (OtaSigJob*)arg;
+    job->valid = sigDigestValid(job->digest, job->rs);
+    job->stackFree = uxTaskGetStackHighWaterMark(NULL);
+    xSemaphoreGive(job->done);
+#ifdef OUISPY_NIMBLE2
+    vTaskDelay(portMAX_DELAY);
+#else
+    vTaskDelete(NULL);
+#endif
+}
 
 void notifyStatus(uint16_t seq, uint8_t status) {
     if (!g_notifyFn) return;
@@ -201,6 +306,12 @@ bool handleCommit() {
         return false;
     }
 
+    if (!otaSigVerifyPartition(g_partition, g_expectedLength)) {
+        notifyStatus(0, 0x09);
+        resetState();
+        return false;
+    }
+
     err = esp_ota_set_boot_partition(g_partition);
     if (err != ESP_OK) {
         Serial.printf("[OTA] esp_ota_set_boot_partition failed: %s\n",
@@ -228,6 +339,41 @@ void handleAbort() {
 }
 
 } // namespace
+
+extern "C" bool otaSigVerifyPartition(const esp_partition_t* partition, uint32_t totalLen) {
+    uint32_t t0 = millis();
+    uint8_t digest[32];
+    uint8_t trailer[OTA_SIG_TRAILER_LEN];
+    if (!sigPartitionHash(partition, totalLen, digest, trailer)) return false;
+    OtaSigJob job = {digest, trailer + sizeof(OTA_SIG_MAGIC), false, 0, xSemaphoreCreateBinary()};
+    if (!job.done) {
+        Serial.println("[OTA-SIG] refused: no heap for semaphore");
+        return false;
+    }
+#ifdef OUISPY_NIMBLE2
+    TaskHandle_t task = NULL;
+    BaseType_t rc = xTaskCreateWithCaps(sigTask, "ota_sig", OTA_SIG_TASK_STACK, &job,
+                                        uxTaskPriorityGet(NULL), &task, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    BaseType_t rc = xTaskCreate(sigTask, "ota_sig", OTA_SIG_TASK_STACK, &job,
+                                uxTaskPriorityGet(NULL), NULL);
+#endif
+    if (rc != pdPASS) {
+        Serial.printf("[OTA-SIG] refused: no heap for task, internal largest=%u\n",
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+        vSemaphoreDelete(job.done);
+        return false;
+    }
+    xSemaphoreTake(job.done, portMAX_DELAY);
+#ifdef OUISPY_NIMBLE2
+    vTaskDeleteWithCaps(task);
+#endif
+    vSemaphoreDelete(job.done);
+    Serial.printf("[OTA-SIG] %s len=%u %ums stack_free=%u internal_free=%u\n", job.valid ? "valid" : "bad signature",
+                  (unsigned)totalLen, (unsigned)(millis() - t0), (unsigned)job.stackFree,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    return job.valid;
+}
 
 extern "C" void otaInit(void) {
     resetState();

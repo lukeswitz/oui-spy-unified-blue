@@ -1,7 +1,10 @@
 // ignore_for_file: avoid_print
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/observation.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 
 String _mac(int i) =>
     '02:00:${(i >> 16) & 0xff}:${(i >> 8) & 0xff}:${i & 0xff}:${(i ~/ 251) & 0xff}'
@@ -31,6 +34,29 @@ Observation _classifiable(int i, int now) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('signature match cost by observation shape', () {
+    final engine = SignatureEngine(
+        Signature.parseCatalog(File('assets/fieldwatch-signatures-v2.json').readAsStringSync()));
+    final shapes = <String, Observation Function(int)>{
+      'unnamed ble': (i) => Observation(key: 'k$i', kind: RadioKind.ble, mac: _mac(i)),
+      'named ble': (i) => Observation(key: 'k$i', kind: RadioKind.ble, mac: _mac(i), name: 'Living Room Speaker $i'),
+      'apple mfg': (i) => Observation(
+          key: 'k$i', kind: RadioKind.ble, mac: _mac(i), mfgRecords: [MfgRecord(76, '1005${i & 0xff}')]),
+      'wifi ap': (i) =>
+          Observation(key: 'k$i', kind: RadioKind.wifi, mac: _mac(i), name: 'MyNetwork$i', isAp: true),
+    };
+    for (final e in shapes.entries) {
+      for (var i = 0; i < 2000; i++) {
+        engine.match(e.value(i));
+      }
+      final sw = Stopwatch()..start();
+      for (var i = 0; i < 5000; i++) {
+        engine.match(e.value(i));
+      }
+      print('MATCH ${e.key}: ${(sw.elapsedMicroseconds / 5000).toStringAsFixed(1)}us/obs');
+    }
+  });
 
   test('registry ingest scaling with CLASSIFIABLE devices', () async {
     for (final n in const [500, 1000, 2000]) {

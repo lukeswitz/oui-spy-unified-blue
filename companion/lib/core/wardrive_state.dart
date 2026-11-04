@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection, Session;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/export/detections_csv.dart';
@@ -184,6 +185,9 @@ class WardriveController extends ChangeNotifier {
       }
     });
     _importedDetSub = _ble.importedDetections.listen(_onImportedDetection);
+    _wdLogSub = _ble.wdLogFrames.listen((frame) {
+      _wdLogChain = _wdLogChain.then((_) => _onWdLogFrame(frame));
+    });
     _awayLiveSub = _ble.awayLiveDetections.listen(_onAwayLiveDetection);
     _spoolImportSub = _ble.spoolImport.listen(_onSpoolProgress);
     _prefsLoaded = _loadPrefs();
@@ -266,6 +270,12 @@ class WardriveController extends ChangeNotifier {
   final LiveActivityService _liveActivity;
   StreamSubscription<NodeConnectionState>? _connSub;
   StreamSubscription<Detection>? _importedDetSub;
+  StreamSubscription<WdLogFrame>? _wdLogSub;
+  Future<void> _wdLogChain = Future<void>.value();
+  final _wdLogKeys = <String>{};
+  int _wdLogExpected = -1;
+  int _wdLogInserted = 0;
+  String? _wdLogSessionId;
   StreamSubscription<Detection>? _awayLiveSub;
   StreamSubscription<SpoolImportProgress>? _spoolImportSub;
   String? _spoolSessionId;
@@ -1527,6 +1537,61 @@ class WardriveController extends ChangeNotifier {
     _maybeConfirmSpool();
   }
 
+  Future<void> _onWdLogFrame(WdLogFrame frame) async {
+    if (frame.total != null) {
+      _wdLogExpected = frame.total!;
+      _wdLogInserted = 0;
+      _wdLogSessionId = null;
+      DebugLog.log('WDLOG: board holds ${frame.total} rows, dropped ${frame.dropped}');
+      return;
+    }
+    final row = frame.row;
+    if (row != null) {
+      final key = '${row.mac}|${row.seenAt.millisecondsSinceEpoch}';
+      if (!_wdLogKeys.contains(key)) {
+        final sid = _wdLogSessionId ??= await (_spoolSessionIdFuture ??= _resolveSpoolSessionId());
+        try {
+          await _db.insertDetection(DetectionsCompanion(
+            sessionId: drift.Value(sid),
+            nodeId: const drift.Value('default'),
+            macAddress: drift.Value(row.mac),
+            deviceName: drift.Value(row.isBle ? row.name : ''),
+            engine: drift.Value(Engine.wardrive.name),
+            detectionMethod: drift.Value(row.isBle ? 'ble_adv' : 'wifi_ap'),
+            rssi: drift.Value(row.rssi),
+            channel: drift.Value(row.channel),
+            deviceTimestampMs: const drift.Value(0),
+            appTimestamp: drift.Value(row.seenAt.millisecondsSinceEpoch),
+            latitude: drift.Value(row.latitude),
+            longitude: drift.Value(row.longitude),
+            accuracy: drift.Value(row.accuracy),
+            altitude: drift.Value(row.altitude),
+            ssid: drift.Value(row.isBle ? '' : row.name),
+            authMode: drift.Value(row.authMode),
+          ));
+        } catch (e) {
+          DebugLog.log('WDLOG: insert failed for ${row.mac}, log stays on board: $e');
+          return;
+        }
+        _wdLogKeys.add(key);
+      }
+      _wdLogInserted++;
+      return;
+    }
+    if (!frame.isEnd) return;
+    final complete = _wdLogExpected > 0 && _wdLogInserted == _wdLogExpected;
+    DebugLog.log('WDLOG: end inserted=$_wdLogInserted expected=$_wdLogExpected');
+    _wdLogExpected = -1;
+    _wdLogInserted = 0;
+    _wdLogSessionId = null;
+    if (!complete) return;
+    try {
+      if (await _ble.confirmWdLogImported()) _wdLogKeys.clear();
+    } on Exception catch (e) {
+      DebugLog.log('WDLOG: clear not delivered, board keeps the log: $e');
+    }
+  }
+
   Future<void> _onAwayLiveDetection(Detection detection) async {
     if (state == WardriveState.running) return;
     final sid = _spoolSessionId ??= await (_spoolSessionIdFuture ??= _resolveSpoolSessionId());
@@ -1847,6 +1912,7 @@ class WardriveController extends ChangeNotifier {
     _statsTimer?.cancel();
     _boardLostTimer?.cancel();
     _importedDetSub?.cancel();
+    _wdLogSub?.cancel();
     _awayLiveSub?.cancel();
     _spoolImportSub?.cancel();
     super.dispose();

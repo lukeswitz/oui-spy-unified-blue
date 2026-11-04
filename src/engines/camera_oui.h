@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include <esp_attr.h>
+#include <stddef.h>
+#include <string.h>
+#include "../protocol.h"
 
 static const char* const CAMERA_BRANDS[] = {
     "70mai", "Amcrest", "Arecont", "Arlo", "Avigilon", "Axis", "Blink", "CP Plus", "Canary",
@@ -13,6 +16,55 @@ static const char* const CAMERA_BRANDS[] = {
     "Wyze", "Y-cam", "Yi", "Zmodo", "Genetec",
 };
 static const int CAMERA_BRAND_COUNT = sizeof(CAMERA_BRANDS) / sizeof(CAMERA_BRANDS[0]);
+
+struct CameraNameToken { const char* text; bool prefixOnly; const char* brand; };
+
+static const CameraNameToken CAMERA_NAME_TOKENS[] = {
+    {"arlo_vmb_", true, "Arlo"},
+    {"reolink", false, "Reolink"},
+    {"wyze", false, "Wyze"},
+    {"eufy", false, "eufy"},
+    {"tapo", true, "Tapo"},
+    {"ring-", true, "Ring"},
+    {"ring setup", false, "Ring"},
+    {"ring doorbell", false, "Ring"},
+    {"ring camera", false, "Ring"},
+    {"nestcam", false, "Nest"},
+    {"nest cam", false, "Nest"},
+    {"nest-hello", false, "Nest"},
+    {"hikvision", false, "Hikvision"},
+    {"dahua", false, "Dahua"},
+    {"axis-", true, "Axis"},
+    {"axis camera", false, "Axis"},
+    {"wisenet", false, "Hanwha"},
+    {"hanwha", false, "Hanwha"},
+    {"uniview", false, "Uniview"},
+    {"verkada", false, "Verkada"},
+    {"avigilon", false, "Avigilon"},
+    {"rhombus", false, "Rhombus"},
+};
+
+static inline char cameraAsciiLower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c; }
+
+static inline const char* cameraBrandForName(const char* name, size_t len) {
+    for (const CameraNameToken& t : CAMERA_NAME_TOKENS) {
+        size_t tl = strlen(t.text);
+        if (tl > len) continue;
+        size_t lastStart = t.prefixOnly ? 0 : len - tl;
+        for (size_t s = 0; s <= lastStart; s++) {
+            size_t i = 0;
+            while (i < tl && cameraAsciiLower(name[s + i]) == t.text[i]) i++;
+            if (i == tl) return t.brand;
+        }
+    }
+    return nullptr;
+}
+
+static inline uint8_t cameraConfidence(int ouiBrand, const char* nameBrand) {
+    if (!nameBrand) return DET_CONF_SUSPECTED;
+    bool agree = ouiBrand >= 0 && ouiBrand < CAMERA_BRAND_COUNT && strcmp(CAMERA_BRANDS[ouiBrand], nameBrand) == 0;
+    return agree ? DET_CONF_VERIFIED : DET_CONF_HIGH;
+}
 
 static const uint32_t CAMERA_OUI_TABLE[] = {
     0x0000A524, 0x0002D128, 0x0003C519, 0x00047E23, 0x00066827, 0x00091812, 0x0013560F, 0x0013E211,

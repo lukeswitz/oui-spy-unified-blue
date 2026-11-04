@@ -5,6 +5,8 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <new>
+#include "engines/dedup_ring.h"
 
 #ifdef OUISPY_DONGLE
 #include "dongle.h"
@@ -183,7 +185,133 @@ void detSpoolClear() {
     if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
+#define WD_LOG_PATH "/wdlog.bin"
+#define WD_LOG_BUF_ROWS 64
+#define WD_LOG_MAX_BYTES 1048576u
+#define WD_LOG_FLUSH_MS 5000u
+
+typedef DedupRing<512, 300000> WdLogSeen;
+
+static WdLogRecord* s_wdBuf = nullptr;
+static WdLogSeen* s_wdSeen = nullptr;
+static uint16_t s_wdBuffered = 0;
+static uint32_t s_wdFileRows = 0;
+static uint32_t s_wdDropped = 0;
+static uint32_t s_wdLastFlushMs = 0;
+static bool s_wdScanned = false;
+
+static void wdLogScanLocked() {
+    if (s_wdScanned) return;
+    s_wdScanned = true;
+    File f = SPOOL_FS.open(WD_LOG_PATH, "r");
+    if (f) {
+        s_wdFileRows = (uint32_t)f.size() / sizeof(WdLogRecord);
+        f.close();
+    }
+}
+
+static uint32_t wdLogCapBytes() {
+#ifdef OUISPY_DONGLE
+    return WD_LOG_MAX_BYTES;
+#else
+    uint32_t have = s_wdFileRows * sizeof(WdLogRecord);
+    uint32_t room = have + (uint32_t)(LittleFS.totalBytes() - LittleFS.usedBytes()) / 2;
+    return room < WD_LOG_MAX_BYTES ? room : WD_LOG_MAX_BYTES;
+#endif
+}
+
+static void wdLogFlushLocked() {
+    if (s_wdBuffered == 0) return;
+    wdLogScanLocked();
+    uint32_t cap = wdLogCapBytes() / sizeof(WdLogRecord);
+    uint32_t fit = s_wdFileRows >= cap ? 0 : cap - s_wdFileRows;
+    uint32_t n = s_wdBuffered < fit ? s_wdBuffered : fit;
+    uint32_t written = 0;
+    if (n > 0) {
+        File f = SPOOL_FS.open(WD_LOG_PATH, "a");
+        if (f) {
+            written = (uint32_t)f.write((const uint8_t*)s_wdBuf, n * sizeof(WdLogRecord)) / sizeof(WdLogRecord);
+            f.close();
+        }
+    }
+    s_wdFileRows += written;
+    s_wdDropped += s_wdBuffered - written;
+    s_wdBuffered = 0;
+    s_wdLastFlushMs = millis();
+}
+
+bool wdLogAppend(const DetectionEvent* evt, uint32_t utcEpoch) {
+    if (!s_ready || !evt) return false;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (!s_wdBuf) s_wdBuf = (WdLogRecord*)calloc(WD_LOG_BUF_ROWS, sizeof(WdLogRecord));
+    if (!s_wdSeen) s_wdSeen = new (std::nothrow) WdLogSeen();
+    bool added = false;
+    if (s_wdBuf && s_wdSeen && !s_wdSeen->check(evt->mac)) {
+        const bool isBle = evt->method == METHOD_BLE_ADV;
+        WdLogRecord& r = s_wdBuf[s_wdBuffered++];
+        memset(&r, 0, sizeof(r));
+        memcpy(r.mac, evt->mac, 6);
+        r.rssi = (int8_t)evt->rssi;
+        r.channel = evt->channel;
+        r.auth_mode = evt->ext.wardrive.auth_mode;
+        r.is_ble = isBle ? 1 : 0;
+        strncpy(r.name, isBle ? evt->ext.wardrive.device_name : evt->ext.wardrive.ssid, sizeof(r.name) - 1);
+        r.lat_e7 = (int32_t)(currentGps.latitude * 1e7);
+        r.lon_e7 = (int32_t)(currentGps.longitude * 1e7);
+        r.altitude_m = (int16_t)currentGps.altitude;
+        r.accuracy_dm = (uint16_t)(currentGps.accuracy * 10.0f);
+        r.utc_epoch = utcEpoch;
+        added = true;
+        if (s_wdBuffered >= WD_LOG_BUF_ROWS) wdLogFlushLocked();
+    }
+    if (s_mutex) xSemaphoreGive(s_mutex);
+    return added;
+}
+
+uint32_t wdLogCount() {
+    if (!s_ready) return 0;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
+    wdLogFlushLocked();
+    wdLogScanLocked();
+    uint32_t n = s_wdFileRows;
+    if (s_mutex) xSemaphoreGive(s_mutex);
+    return n;
+}
+
+uint32_t wdLogDropped() { return s_wdDropped; }
+
+bool wdLogRead(uint32_t index, WdLogRecord* out) {
+    if (!s_ready || !out) return false;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
+    bool ok = false;
+    File f = SPOOL_FS.open(WD_LOG_PATH, "r");
+    if (f) {
+        ok = f.seek(index * sizeof(WdLogRecord)) &&
+             f.read((uint8_t*)out, sizeof(WdLogRecord)) == sizeof(WdLogRecord);
+        f.close();
+    }
+    if (s_mutex) xSemaphoreGive(s_mutex);
+    return ok;
+}
+
+void wdLogClear() {
+    if (!s_ready) return;
+    if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
+    SPOOL_FS.remove(WD_LOG_PATH);
+    s_wdBuffered = 0;
+    s_wdFileRows = 0;
+    s_wdDropped = 0;
+    s_wdScanned = true;
+    if (s_wdSeen) s_wdSeen->reset();
+    if (s_mutex) xSemaphoreGive(s_mutex);
+}
+
 void detSpoolFlushIfDirty() {
+    if (s_ready && s_wdBuffered > 0 && millis() - s_wdLastFlushMs >= WD_LOG_FLUSH_MS) {
+        if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
+        wdLogFlushLocked();
+        if (s_mutex) xSemaphoreGive(s_mutex);
+    }
     if (!s_ready || !s_dirty) return;
     uint32_t now = millis();
     if (now - s_lastFlushMs < SPOOL_FLUSH_MS) return;
@@ -201,6 +329,33 @@ int detSpoolPortSelfTest() {
         if (!ok) fail++;
     };
     if (!s_ready) { check("ready", false); return fail; }
+    wdLogClear();
+    DetectionEvent wd = {};
+    wd.engine_id = ENGINE_WARDRIVE;
+    wd.method = METHOD_WIFI_AP;
+    wd.mac[0] = 0x02; wd.mac[5] = 0x51;
+    wd.rssi = -61;
+    wd.channel = 6;
+    wd.ext.wardrive.auth_mode = 3;
+    strcpy(wd.ext.wardrive.ssid, "MyNetwork");
+    bool wdAdded = wdLogAppend(&wd, 1700000000u);
+    bool wdDeduped = !wdLogAppend(&wd, 1700000001u);
+    wd.mac[5] = 0x52;
+    wd.method = METHOD_BLE_ADV;
+    strcpy(wd.ext.wardrive.device_name, "Tag");
+    wdLogAppend(&wd, 1700000002u);
+    check("wd_log_append_dedup", wdAdded && wdDeduped);
+    check("wd_log_count", wdLogCount() == 2);
+    WdLogRecord wr = {};
+    bool wr0 = wdLogRead(0, &wr) && wr.mac[5] == 0x51 && wr.rssi == -61 && wr.channel == 6 && wr.auth_mode == 3 &&
+               wr.is_ble == 0 && strcmp(wr.name, "MyNetwork") == 0 && wr.utc_epoch == 1700000000u;
+    check("wd_log_row_wifi", wr0);
+    bool wr1 = wdLogRead(1, &wr) && wr.mac[5] == 0x52 && wr.is_ble == 1 && strcmp(wr.name, "Tag") == 0;
+    check("wd_log_row_ble", wr1);
+    check("wd_log_read_past_end", !wdLogRead(2, &wr));
+    check("wd_log_record_size", sizeof(WdLogRecord) == 59);
+    wdLogClear();
+    check("wd_log_clear", wdLogCount() == 0);
     detSpoolClear();
     DetectionEvent e = {};
     e.engine_id = ENGINE_DETECTOR;

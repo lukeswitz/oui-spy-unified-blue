@@ -116,7 +116,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
   String _nodeId = '--';
   String _heapFree = '--';
   int? _selfTempC;
-  final _navKey = GlobalKey<NavigatorState>();
 
   StreamSubscription<NodeConnectionState>? _connStateSub;
   StreamSubscription<HwGpsState>? _hwGpsSub;
@@ -268,7 +267,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           child: ColoredBox(color: t.background, child: child),
         );
     return NavigatorPopHandler<void>(
-      onPopWithResult: (_) => _navKey.currentState?.maybePop(),
+      onPopWithResult: (_) => configNavKey.currentState?.maybePop(),
       child: Scaffold(
         backgroundColor: t.background,
         body: GestureDetector(
@@ -277,7 +276,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           child: SafeArea(
             bottom: false,
             child: Navigator(
-              key: _navKey,
+              key: configNavKey,
               pages: [
                 page('overview', _overview(t)),
                 if (open != null) page('section$open', _sectionPage(t, open, null)),
@@ -899,7 +898,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ConfigToggleRow(
           icon: Icons.cloud_off,
           label: 'Keep scanning while disconnected (EXPERIMENTAL)',
-          subtitle: 'EXPERIMENTAL — may be unstable. Node keeps scanning when the app is closed; detections import on reconnect.',
+          subtitle: 'EXPERIMENTAL — may be unstable. Node keeps scanning when the app is closed; detections import on reconnect. A board with a GPS module fix also keeps wardriving and saves networks with their location.',
           color: AppTheme.accent,
           value: _offlineScanEnabled,
           onChanged: (v) {
@@ -1362,15 +1361,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             label: 'Offline storage',
             value: 'Flash writes failing; detections kept in RAM only',
           ),
-        if (ref.read(bleManagerProvider).boardPasskey case final pk?)
-          ConfigInfoRow(icon: Icons.password, label: 'Current passkey', value: pk),
-        ConfigActionRow(
-          icon: Icons.password,
-          label: 'Pairing passkey',
-          subtitle: 'Phones pair with this 6-digit passkey before they can read or control the board. Each board picks a random one on first boot; it is also printed on the USB serial console at boot. Applies to new pairings.',
-          color: AppTheme.accent,
-          onTap: _changePasskey,
-        ),
         if (_selfTempC != null)
           ConfigInfoRow(
             icon: Icons.thermostat,
@@ -1502,47 +1492,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     );
     if (ok != true) return;
     await ref.read(bleManagerProvider).factoryReset();
-  }
-
-  Future<void> _changePasskey() async {
-    final ctl = TextEditingController();
-    final pk = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New pairing passkey'),
-        content: TextField(
-          controller: ctl,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(hintText: '6 digits'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              final v = int.tryParse(ctl.text);
-              if (ctl.text.length == 6 && v != null) Navigator.pop(ctx, v);
-            },
-            child: const Text('Set'),
-          ),
-        ],
-      ),
-    );
-    ctl.dispose();
-    if (pk == null || !mounted) return;
-    final ble = ref.read(bleManagerProvider);
-    final ack = ble.passkeyAcks.first.timeout(const Duration(seconds: 5), onTimeout: () => false);
-    final sent = await ble.setPasskey(pk);
-    final ok = sent && await ack;
-    if (!mounted) return;
-    if (ok) {
-      ble.noteBoardPasskey(pk.toString().padLeft(6, '0'));
-      setState(() {});
-    }
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-      content: Text(ok ? 'Passkey updated. New pairings use it.' : 'Passkey change failed'),
-    ));
   }
 
   Future<void> _writeHardwareConfig() async {

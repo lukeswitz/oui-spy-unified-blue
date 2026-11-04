@@ -6,6 +6,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/ota/ota_signature.dart';
 
 class OtaRelease {
   OtaRelease({
@@ -446,8 +447,25 @@ class OtaService {
       ));
       return false;
     }
+    if (!await compute(OtaSignature.verify, image)) {
+      DebugLog.log('OTA: image signature missing or invalid');
+      _progress.add(const OtaProgress(
+        phase: OtaPhase.error,
+        error: 'This firmware is not signed by OUI-SPY. The update was not sent.',
+      ));
+      return false;
+    }
 
-    await dfuControl.setNotifyValue(true);
+    try {
+      await dfuControl.setNotifyValue(true);
+    } on Exception catch (e) {
+      DebugLog.log('OTA: subscribe to update status failed: $e');
+      _progress.add(const OtaProgress(
+        phase: OtaPhase.error,
+        error: 'The board refused the update connection. Reconnect and try again.',
+      ));
+      return false;
+    }
     final statusCompleter = Completer<bool>();
     final statusSub = dfuControl.onValueReceived.listen((data) {
       if (data.length < 4) return;
@@ -524,7 +542,13 @@ class OtaService {
       ));
 
       // COMMIT: response required so we know firmware reached CRC check.
-      await dfuData.write(Uint8List.fromList([0x03]), withoutResponse: false);
+      unawaited(dfuData.write(Uint8List.fromList([0x03]), withoutResponse: false).then<void>(
+        (_) {},
+        onError: (Object e) {
+          DebugLog.log('OTA: COMMIT write ended: $e');
+          if (!statusCompleter.isCompleted) statusCompleter.complete(false);
+        },
+      ));
 
       final ok = await statusCompleter.future
           .timeout(const Duration(seconds: 30), onTimeout: () {

@@ -155,6 +155,8 @@ enum EngineState : uint8_t {
 #define METHOD_DET_EVILTWIN    11
 #define METHOD_DET_KARMA       12
 #define METHOD_DET_MESH        13
+#define METHOD_DET_JOINFLOOD   14
+#define METHOD_DET_TAGFLOOD    15
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
@@ -359,11 +361,16 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define SYS_CMD_FLEET_WIFI_OTA    0x0A
 #define SYS_CMD_FLUSH_SPOOL       0x0B
 #define SYS_CMD_SPOOL_CLEAR       0x0C
-#define SYS_CMD_SET_PASSKEY       0x0D
 #define SYS_CMD_RING_TRACKER      0x0E
 #define SYS_CMD_ENOW_HUB          0x0F
 #define SYS_OP_ENOW_NODE          0x10
 #define SYS_OP_ENOW_FRAME         0x11
+#define SYS_CMD_WD_LOG_SEND       0x12
+#define SYS_OP_WD_LOG             0x12
+#define SYS_CMD_WD_LOG_CLEAR      0x13
+#define WD_LOG_FRAME_HEADER       0x00
+#define WD_LOG_FRAME_ROW          0x01
+#define WD_LOG_FRAME_END          0x02
 
 #define PCAP_MODE_WIFI 0
 #define PCAP_MODE_BLE  1

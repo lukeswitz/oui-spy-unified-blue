@@ -6,6 +6,7 @@
 #include "engines/detector.h"
 #include "engines/enow_hub.h"
 #include "wifi_ota_handler.h"
+#include "ota_handler.h"
 #include "radio_coex.h"
 #include "ble_coex.h"
 #include <stddef.h>
@@ -525,6 +526,11 @@ static void otaRxEnd(const MeshOtaEndPacket* e) {
     esp_err_t er = esp_ota_end(g_otaRx.handle);
     if (er != ESP_OK) {
         Serial.printf("[MESH-OTA-RX] esp_ota_end fail %s\n", esp_err_to_name(er));
+        g_otaRx.active = false;
+        otaRxSendAck(MESH_OTA_ST_ERR, 0, g_otaRx.recv_count);
+        return;
+    }
+    if (!otaSigVerifyPartition(g_otaRx.part, g_otaRx.total_size)) {
         g_otaRx.active = false;
         otaRxSendAck(MESH_OTA_ST_ERR, 0, g_otaRx.recv_count);
         return;

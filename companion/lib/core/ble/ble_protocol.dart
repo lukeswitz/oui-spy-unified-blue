@@ -238,6 +238,43 @@ class BleProtocol {
 
   static Uint8List get flushSpoolCmd => Uint8List.fromList([0x0B]);
   static Uint8List get spoolClearCmd => Uint8List.fromList([0x0C]);
+  static Uint8List get wdLogSendCmd => Uint8List.fromList([0x12]);
+  static Uint8List get wdLogClearCmd => Uint8List.fromList([0x13]);
+
+  static WdLogFrame? decodeWdLogFrame(List<int> data) {
+    if (data.length < 2 || data[0] != 0x12) return null;
+    final bytes = Uint8List.fromList(data);
+    final view = ByteData.sublistView(bytes);
+    switch (data[1]) {
+      case 0x00:
+        if (data.length < 10) return null;
+        return WdLogFrame.header(
+          view.getUint32(2, Endian.little),
+          view.getUint32(6, Endian.little),
+        );
+      case 0x01:
+        if (data.length < 61) return null;
+        final nameBytes = bytes.sublist(12, 45);
+        final nul = nameBytes.indexOf(0);
+        return WdLogFrame.row(WdLogRow(
+          mac: _decodeMac(bytes, 2),
+          rssi: view.getInt8(8),
+          channel: bytes[9],
+          authMode: bytes[10],
+          isBle: bytes[11] != 0,
+          name: utf8.decode(nul < 0 ? nameBytes : nameBytes.sublist(0, nul), allowMalformed: true),
+          latitude: view.getInt32(45, Endian.little) / 1e7,
+          longitude: view.getInt32(49, Endian.little) / 1e7,
+          altitude: view.getInt16(53, Endian.little).toDouble(),
+          accuracy: view.getUint16(55, Endian.little) / 10.0,
+          seenAt: DateTime.fromMillisecondsSinceEpoch(view.getUint32(57, Endian.little) * 1000, isUtc: true),
+        ));
+      case 0x02:
+        return const WdLogFrame.end();
+      default:
+        return null;
+    }
+  }
 
   static bool isSpoolHeader(List<int> d) => d.length == 9 && d[0] == 0xFF;
   static bool isSpoolDone(List<int> d) => d.length == 1 && d[0] == 0xFE;
@@ -464,7 +501,9 @@ class BleProtocol {
           'evil_twin',
           'karma',
           'mesh',
-        ][method.clamp(0, 13)],
+          'join_flood',
+          'tag_flood',
+        ][method.clamp(0, 15)],
       Engine.foxhunter => const ['ble_proximity', 'wifi_proximity'][method.clamp(0, 1)],
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => const ['wifi_ap', 'ble_adv'][method.clamp(0, 1)],
@@ -595,6 +634,45 @@ class BleProtocol {
     return buf;
   }
 
+}
+
+class WdLogRow {
+  const WdLogRow({
+    required this.mac,
+    required this.rssi,
+    required this.channel,
+    required this.authMode,
+    required this.isBle,
+    required this.name,
+    required this.latitude,
+    required this.longitude,
+    required this.altitude,
+    required this.accuracy,
+    required this.seenAt,
+  });
+
+  final String mac;
+  final int rssi;
+  final int channel;
+  final int authMode;
+  final bool isBle;
+  final String name;
+  final double latitude;
+  final double longitude;
+  final double altitude;
+  final double accuracy;
+  final DateTime seenAt;
+}
+
+class WdLogFrame {
+  const WdLogFrame.header(int this.total, int this.dropped) : row = null, isEnd = false;
+  const WdLogFrame.row(WdLogRow this.row) : total = null, dropped = null, isEnd = false;
+  const WdLogFrame.end() : row = null, total = null, dropped = null, isEnd = true;
+
+  final int? total;
+  final int? dropped;
+  final WdLogRow? row;
+  final bool isEnd;
 }
 
 class SpoolHeader {
