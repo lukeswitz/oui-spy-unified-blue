@@ -95,13 +95,13 @@ class NotificationService extends ChangeNotifier {
   // Rate limiter: timestamps of recent notifications
   final List<DateTime> _recentNotifications = [];
 
-  Future<void> init() async {
+  Future<void> init({bool ask = true}) async {
     if (!_initialized) {
       const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
       const darwinSettings = DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
         notificationCategories: [
           DarwinNotificationCategory(
             _detectionCategory,
@@ -126,38 +126,40 @@ class NotificationService extends ChangeNotifier {
       _initialized = true;
     }
 
-    await _refreshPermission();
+    await _refreshPermission(ask: ask);
     DebugLog.log('NOTIF: initialized=$_initialized permission=$_permissionGranted');
     notifyListeners();
   }
 
   Future<void> refreshPermission() async {
     if (!_initialized) return;
-    await _refreshPermission();
+    await _refreshPermission(ask: false);
   }
 
-  Future<void> _refreshPermission() async {
+  Future<void> _refreshPermission({required bool ask}) async {
     if (Platform.isIOS) {
       final ios = _plugin.resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin>();
-      _permissionGranted = await ios
-              ?.requestPermissions(alert: true, badge: true, sound: true) ??
-          false;
+      _permissionGranted = ask
+          ? await ios?.requestPermissions(alert: true, badge: true, sound: true) ?? false
+          : (await ios?.checkPermissions())?.isEnabled ?? false;
     } else if (Platform.isMacOS) {
       final mac = _plugin.resolvePlatformSpecificImplementation<
           MacOSFlutterLocalNotificationsPlugin>();
-      _permissionGranted = await mac
-              ?.requestPermissions(alert: true, badge: true, sound: true) ??
-          false;
+      _permissionGranted = ask
+          ? await mac?.requestPermissions(alert: true, badge: true, sound: true) ?? false
+          : (await mac?.checkPermissions())?.isEnabled ?? false;
     } else if (Platform.isAndroid) {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
       final enabled = await android?.areNotificationsEnabled();
       if (enabled == true) {
         _permissionGranted = true;
-      } else {
+      } else if (ask) {
         _permissionGranted =
             await android?.requestNotificationsPermission() ?? false;
+      } else {
+        _permissionGranted = false;
       }
     } else {
       _permissionGranted = true;

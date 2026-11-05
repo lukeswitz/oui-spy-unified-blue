@@ -84,7 +84,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   bool _alwaysLocationMissing = false;
 
   Future<void> _checkAlwaysLocation() async {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
     final missing = !await BlePermissions.alwaysLocationGranted();
     if (mounted && missing != _alwaysLocationMissing) {
       setState(() => _alwaysLocationMissing = missing);
@@ -850,8 +850,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    'Location is not set to ${Platform.isAndroid ? 'Allow all the time' : 'Always'}. '
-                                    'The map stops when the screen turns off.',
+                                    Platform.isMacOS
+                                        ? 'Location is off for OUI-APEX. The map needs it.'
+                                        : 'Location is not set to ${Platform.isAndroid ? 'Allow all the time' : 'Always'}. '
+                                            'The map stops when the screen turns off.',
                                     style: TextStyle(color: t.textPrimary, fontSize: 13),
                                   ),
                                 ),

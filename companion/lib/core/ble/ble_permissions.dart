@@ -57,6 +57,13 @@ class BlePermissions {
     return BlePermResult.ready;
   }
 
+  static Future<void> requestBluetoothOnly() async {
+    if (await androidSdkInt() < 31) return;
+    final res = await [ph.Permission.bluetoothScan, ph.Permission.bluetoothConnect].request();
+    DebugLog.log('BLEPERM: onboarding scan=${res[ph.Permission.bluetoothScan]} '
+        'connect=${res[ph.Permission.bluetoothConnect]}');
+  }
+
   static Future<bool> alwaysLocationGranted() async =>
       await Geolocator.checkPermission() == LocationPermission.always;
 

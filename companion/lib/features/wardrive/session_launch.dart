@@ -289,7 +289,7 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (ref.read(wardriveProvider).selectedTargets.isEmpty) {
     DebugLog.log('WARDRIVE: start aborted — no targets');
-    messenger?.showSnackBar(const SnackBar(content: Text('Select at least one target to scan')));
+    messenger?.showSnackBar(const SnackBar(content: Text('Nothing selected to scan. Tap one of the buttons above START first.')));
     return false;
   }
   ref.read(gpsProvider).onMessage = (msg) => messenger?.showSnackBar(
@@ -304,11 +304,6 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
     return false;
   }
   if (requireLocation) await _askAlwaysLocation(context);
-  if (!context.mounted) {
-    DebugLog.log('WARDRIVE: start aborted — screen gone');
-    return false;
-  }
-  await _askBackgroundRun(context);
   if (!context.mounted) {
     DebugLog.log('WARDRIVE: start aborted — screen gone');
     return false;
@@ -363,8 +358,8 @@ Future<bool> _primeLocationPermission(BuildContext context) async {
         context,
         title: 'Location Permission Required',
         body:
-            'OUI-APEX needs location access to tag wardrive detections.\n\n'
-            'Open Settings → OUI-APEX → Location and choose "While Using" or "Always".',
+            'The map and wardrive sessions need location all the time.\n\n'
+            '${Platform.isMacOS ? 'Open System Settings → Privacy & Security → Location Services and turn on OUI-APEX.' : Platform.isIOS ? 'Open Settings → Apps → OUI-APEX → Location and choose Always.' : 'Open Settings → Permissions → Location and choose Allow all the time.'}',
         action: 'OPEN SETTINGS',
         onAction: Geolocator.openAppSettings,
       );
@@ -393,21 +388,9 @@ Future<void> _askAlwaysLocation(BuildContext context) async {
     title: 'Enable "Always" Location',
     body: 'Location stops reaching the app when the screen turns off, so the map and distance '
         'stop too.\n\n'
-        '${Platform.isAndroid ? 'Location → Allow all the time' : 'Location → Always'}',
+        '${Platform.isAndroid ? 'Location → Allow all the time' : 'If Settings opens: Apps → OUI-APEX → Location → Always'}',
     action: 'TURN ON',
     onAction: openAlwaysLocationSettings,
-  );
-}
-
-Future<void> _askBackgroundRun(BuildContext context) async {
-  if (!Platform.isAndroid || await backgroundRunAllowed() || !context.mounted) return;
-  await _settingsDialog(
-    context,
-    title: 'Allow background running',
-    body: 'With battery optimization on, Android puts the phone to sleep about a minute after the '
-        'screen turns off. Scanning, GPS and the board link freeze until you unlock it.',
-    action: 'ALLOW',
-    onAction: requestBackgroundRun,
   );
 }
 

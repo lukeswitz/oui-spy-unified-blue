@@ -66,7 +66,7 @@ void main() async {
   container.read(ouiLookupProvider).init();
 
   // Initialize notification service (async, non-blocking)
-  container.read(notificationServiceProvider).init();
+  container.read(notificationServiceProvider).init(ask: false);
 
   // Initialize Live Activity service (iOS Dynamic Island, non-blocking)
   container.read(liveActivityServiceProvider).init();

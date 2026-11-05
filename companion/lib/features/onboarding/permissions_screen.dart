@@ -23,6 +23,7 @@ class PermissionStep {
     required this.body,
     required this.request,
     this.done,
+    this.hint,
   });
 
   final IconData icon;
@@ -30,6 +31,7 @@ class PermissionStep {
   final String body;
   final Future<void> Function(WidgetRef ref) request;
   final Future<bool> Function()? done;
+  final String? hint;
 }
 
 Future<List<PermissionStep>> pendingPermissionSteps(
@@ -47,7 +49,7 @@ Future<List<PermissionStep>> pendingPermissionSteps(
 
 Future<void> _requestBluetooth(WidgetRef ref) async {
   if (Platform.isAndroid) {
-    await BlePermissions.ensureForScan();
+    await BlePermissions.requestBluetoothOnly();
     return;
   }
   await FlutterBluePlus.adapterState
@@ -61,12 +63,56 @@ Future<void> _requestLocation(WidgetRef ref) async {
   }
 }
 
-Future<void> openAlwaysLocationSettings() async {
+bool _alwaysRequestIgnored = false;
+
+Future<bool> _askAlwaysIos() async {
   if (await Geolocator.checkPermission() == LocationPermission.denied) {
     await Geolocator.requestPermission();
   }
-  if ((await ph.Permission.locationAlways.request()).isGranted) return;
+  final shown = Completer<void>();
+  final answered = Completer<void>();
+  final listener = AppLifecycleListener(
+    onInactive: () {
+      if (!shown.isCompleted) shown.complete();
+    },
+    onResume: () {
+      if (shown.isCompleted && !answered.isCompleted) answered.complete();
+    },
+  );
+  try {
+    unawaited(ph.Permission.locationAlways.request().catchError((Object e) {
+      DebugLog.log('ONBOARD: Always request failed: $e');
+      return ph.PermissionStatus.denied;
+    }));
+    await shown.future.timeout(const Duration(seconds: 5), onTimeout: () {});
+    DebugLog.log('ONBOARD: Always prompt shown=${shown.isCompleted}');
+    if (!shown.isCompleted) return false;
+    await answered.future;
+    return true;
+  } finally {
+    listener.dispose();
+  }
+}
+
+Future<bool> openAlwaysLocationSettings() async {
+  if (Platform.isIOS &&
+      !_alwaysRequestIgnored &&
+      await Geolocator.checkPermission() != LocationPermission.deniedForever) {
+    final answered = await _askAlwaysIos();
+    _alwaysRequestIgnored = true;
+    if (answered) return false;
+  } else if (Platform.isAndroid) {
+    var prompted = false;
+    final listener = AppLifecycleListener(onInactive: () => prompted = true);
+    try {
+      final status = await ph.Permission.locationAlways.request();
+      if (status.isGranted || prompted) return false;
+    } finally {
+      listener.dispose();
+    }
+  }
   await Geolocator.openAppSettings();
+  return true;
 }
 
 Future<void> _requestLocationAlways(WidgetRef ref) async {
@@ -76,18 +122,12 @@ Future<void> _requestLocationAlways(WidgetRef ref) async {
     if (!back.isCompleted) back.complete();
   });
   try {
-    await openAlwaysLocationSettings();
-    if (!await BlePermissions.alwaysLocationGranted()) await back.future;
+    final inSettings = await openAlwaysLocationSettings();
+    if (inSettings && !await BlePermissions.alwaysLocationGranted()) await back.future;
   } finally {
     listener.dispose();
   }
 }
-
-Future<bool> backgroundRunAllowed() => ph.Permission.ignoreBatteryOptimizations.isGranted;
-
-Future<void> requestBackgroundRun() => ph.Permission.ignoreBatteryOptimizations.request();
-
-Future<void> _requestBackgroundRun(WidgetRef ref) => requestBackgroundRun();
 
 Future<void> _requestNotifications(WidgetRef ref) =>
     ref.read(notificationServiceProvider).init();
@@ -97,17 +137,20 @@ List<PermissionStep> defaultPermissionSteps() => [
         icon: Icons.bluetooth,
         title: 'Bluetooth',
         body: 'OUI-APEX uses Bluetooth to find your board and receive what it '
-            'detects. Your phone can also scan for Bluetooth devices around you '
+            'detects. This device can also scan for Bluetooth devices around you '
             'on its own.${Platform.isAndroid ? '\n\nOn Android 12 and newer this '
                 'permission is called "Nearby devices".' : ''}',
         request: _requestBluetooth,
       ),
-      const PermissionStep(
+      PermissionStep(
         icon: Icons.location_on_outlined,
         title: 'Location',
         body: 'Location puts each detection on the map and records where your '
             'wardrive sessions went. It also lets the app turn the radios off '
-            'inside your exclusion zones.',
+            'inside your exclusion zones.\n\n'
+            '${Platform.isMacOS ? 'Choose Allow. macOS has one location setting, so this also keeps the map '
+                'running in the background.' : 'Choose While Using the App, not Only This Time. The next screen '
+                'changes it to all the time, which the map needs.'}',
         request: _requestLocation,
       ),
       if (Platform.isAndroid || Platform.isIOS)
@@ -117,21 +160,12 @@ List<PermissionStep> defaultPermissionSteps() => [
           body: 'Wardriving with the screen off needs location set to '
               '${Platform.isAndroid ? '"Allow all the time"' : '"Always"'}. Without it, location '
               'stops reaching the app when the screen turns off, so the map and distance stop too.'
-              '\n\n${Platform.isAndroid ? 'This can only be set in Settings. Continue opens it. Choose '
-                  'Permissions if it shows, then Location, then Allow all the time, then come back.' : 'Continue shows the prompt. Choose Change to Always Allow. If Settings opens '
-                  'instead, choose Location, then Always, then come back.'}',
+              '\n\n${Platform.isAndroid ? 'Continue opens the location page in Settings. Choose Allow all the time, then go back. '
+                  'If the app info page opens instead, tap Permissions, then Location first.' : 'Continue shows the prompt. Choose Change to Always Allow. iOS only shows it once, so if Settings '
+                  'opens instead, choose Apps, OUI-APEX, Location, then Always, then come back.'}',
+          hint: Platform.isAndroid ? 'Settings opens next.' : null,
           request: _requestLocationAlways,
           done: BlePermissions.alwaysLocationGranted,
-        ),
-      if (Platform.isAndroid)
-        const PermissionStep(
-          icon: Icons.battery_charging_full,
-          title: 'Run in the background',
-          body: 'With battery optimization on, Android puts the phone to sleep about a minute after '
-              'the screen turns off, even with Always location. Scanning, GPS and the board link all '
-              'freeze until you unlock it.\n\nChoose Allow on the next prompt.',
-          request: _requestBackgroundRun,
-          done: backgroundRunAllowed,
         ),
       const PermissionStep(
         icon: Icons.notifications_outlined,
@@ -263,7 +297,7 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
               Text(
                 _notSet
                     ? 'Not set yet. Wardriving stops when the screen turns off until this is set.'
-                    : 'Your phone asks you next. You can change this later in Settings.',
+                    : step.hint ?? 'Your device asks you next. You can change this later in Settings.',
                 style: TextStyle(color: _notSet ? AppTheme.error : t.textDim, fontSize: 13),
               ),
               const SizedBox(height: 12),
