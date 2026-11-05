@@ -11,7 +11,6 @@ class FloodNotice {
   final int nameCount;
   final List<String> families;
   final int? medianRssi;
-  final bool wifi;
   final List<String> keys;
 
   const FloodNotice({
@@ -20,7 +19,6 @@ class FloodNotice {
     required this.nameCount,
     this.families = const [],
     this.medianRssi,
-    this.wifi = false,
     this.keys = const [],
   });
 
@@ -30,23 +28,14 @@ class FloodNotice {
     nameCount: nameCount,
     families: families,
     medianRssi: medianRssi,
-    wifi: wifi,
     keys: keys,
   );
 
-  String title() => wifi
-      ? 'Wi-Fi beacon flood'
-      : popupCount >= PairingFlood.popupMin
-      ? 'Pairing flood'
-      : 'Name flood';
+  String title() => 'Pairing flood';
 
   String line() {
     final loud = medianRssi != null ? ' · about $medianRssi dBm' : '';
-    if (wifi) return 'Wi-Fi beacon flood · $popupCount new names$loud';
-    final popupHot = popupCount >= PairingFlood.popupMin;
-    final count = popupHot ? popupCount : nameCount;
-    final extra = popupHot && nameCount >= PairingFlood.nameMin ? ' · $nameCount named' : '';
-    return '${title()} · $count new addresses$extra$loud';
+    return '${title()} · $popupCount new addresses$loud';
   }
 }
 
@@ -54,9 +43,8 @@ class _Hit {
   final String mac;
   final int at;
   final int rssi;
-  final bool popup;
   final int families;
-  _Hit(this.mac, this.at, this.rssi, this.popup, this.families);
+  _Hit(this.mac, this.at, this.rssi, this.families);
 }
 
 class _Band {
@@ -68,9 +56,9 @@ class _Band {
 
 class PairingFlood {
   static const windowMs = 10000;
-  static const popupMin = 10;
-  static const nameMin = 15;
-  static const rssiBandDb = 12;
+  static const popupMin = 100;
+  static const rssiBandDb = 4;
+  static const oneTransmitterShare = 0.8;
   static const confirmMs = 20000;
   static const persistMs = 6000;
   static const seenTtlMs = 60000;
@@ -90,10 +78,7 @@ class PairingFlood {
   final _macs = <String>{};
   final _seen = <String, int>{};
   final _admitted = <int, int>{};
-  final _admitPop = <int, int>{};
-  final _admitName = <int, int>{};
-  final _arrivePop = <int, int>{};
-  final _arriveName = <int, int>{};
+  final _arrived = <int, int>{};
   int _heardAt = 0;
   bool _acknowledged = false;
   FloodNotice? notice;
@@ -109,16 +94,13 @@ class PairingFlood {
       return;
     }
     _seen[mac] = now;
-    final kind = _classify(obs);
-    if (kind == null) return;
+    final families = _classify(obs);
+    if (families == 0) return;
     final sec = now ~/ 1000;
-    final arrive = kind.$1 ? _arrivePop : _arriveName;
-    arrive[sec] = (arrive[sec] ?? 0) + 1;
+    _arrived[sec] = (_arrived[sec] ?? 0) + 1;
     if ((_admitted[sec] ?? 0) >= _perSecond || _window.length >= _cap || !_macs.add(mac)) return;
     _admitted[sec] = (_admitted[sec] ?? 0) + 1;
-    final admit = kind.$1 ? _admitPop : _admitName;
-    admit[sec] = (admit[sec] ?? 0) + 1;
-    _window.addLast(_Hit(mac, now, obs.rssi, kind.$1, kind.$2));
+    _window.addLast(_Hit(mac, now, obs.rssi, families));
   }
 
   void seenAgain(Observation obs, int now) {
@@ -134,7 +116,7 @@ class PairingFlood {
   void tick(int now) {
     _seen.removeWhere((_, t) => now - t > seenTtlMs);
     final oldest = (now - windowMs - confirmMs) ~/ 1000;
-    for (final m in [_admitted, _admitPop, _admitName, _arrivePop, _arriveName]) {
+    for (final m in [_admitted, _arrived]) {
       m.removeWhere((s, _) => s < oldest);
     }
     if (_window.isEmpty) {
@@ -162,37 +144,28 @@ class PairingFlood {
 
   void _publish(int now) {
     final live = _window.where((h) => now - h.at >= confirmMs && _heardAt - h.at >= confirmMs).toList();
-    final pop = _band(live.where((h) => h.popup).toList());
-    final nam = _band(live.where((h) => !h.popup).toList());
-    int scaled(List<_Hit> hits, Map<int, int> arrive, Map<int, int> admit) {
+    final pop = _band(live);
+    int scaled(List<_Hit> hits) {
       var n = 0.0;
       for (final h in hits) {
         final s = h.at ~/ 1000;
-        final a = admit[s] ?? 0;
-        n += a == 0 ? 1 : (arrive[s] ?? a) / a;
+        final a = _admitted[s] ?? 0;
+        n += a == 0 ? 1 : (_arrived[s] ?? a) / a;
       }
       return n.round();
     }
-    final popCount = scaled(pop.hits, _arrivePop, _admitPop);
-    final namCount = scaled(nam.hits, _arriveName, _admitName);
-    final popupHot = popCount >= popupMin;
-    final nameHot = namCount >= nameMin;
-    if (!popupHot && !nameHot) {
+    final popCount = scaled(pop.hits);
+    if (popCount < popupMin) {
       _finish();
       return;
     }
-    final median = popupHot && pop.median != null
-        ? pop.median
-        : nameHot
-        ? nam.median
-        : null;
     notice = FloodNotice(
       showDialog: !_acknowledged,
       popupCount: popCount,
-      nameCount: namCount,
-      families: popupHot ? _labels(pop.hits) : const [],
-      medianRssi: median,
-      keys: [if (popupHot) ...pop.hits.map((h) => 'BLE:${h.mac}'), if (nameHot) ...nam.hits.map((h) => 'BLE:${h.mac}')],
+      nameCount: 0,
+      families: _labels(pop.hits),
+      medianRssi: pop.median,
+      keys: [for (final h in pop.hits) 'BLE:${h.mac}'],
     );
   }
 
@@ -204,10 +177,11 @@ class PairingFlood {
   static _Band _band(List<_Hit> hits) {
     if (hits.isEmpty) return _Band(0, null, const []);
     final measured = hits.where((h) => _rssiMeasured(h.rssi)).toList();
-    if (measured.length * 2 <= hits.length) return _Band(hits.length, null, hits);
+    if (measured.length * 2 <= hits.length) return _Band(0, null, const []);
     final values = measured.map((h) => h.rssi).toList()..sort();
     final median = values[values.length ~/ 2];
     final kept = measured.where((h) => (h.rssi - median).abs() <= rssiBandDb).toList();
+    if (kept.length < measured.length * oneTransmitterShare) return _Band(0, median, const []);
     return _Band(kept.length, median, kept);
   }
 
@@ -223,7 +197,7 @@ class PairingFlood {
     ];
   }
 
-  static (bool, int)? _classify(Observation obs) {
+  static int _classify(Observation obs) {
     var bits = 0;
     for (final rec in obs.mfgRecords) {
       final bytes = hexToBytes(rec.dataHex);
@@ -240,9 +214,7 @@ class PairingFlood {
       }
     }
     if (obs.serviceData.any((s) => uuid16(s.uuid) == 0xFE2C && hexOnly(s.dataHex).length == 6)) bits |= _bitFast;
-    if (bits != 0) return (true, bits);
-    if (obs.name.trim().isNotEmpty && MacUtil.isRandomized(obs.mac)) return (false, 0);
-    return null;
+    return bits;
   }
 
   static int _appleBits(List<int> bytes) {
@@ -271,193 +243,5 @@ class PairingFlood {
       if (b[i] != p[i]) return false;
     }
     return true;
-  }
-}
-
-class _Row {
-  final String mac;
-  final String base;
-  final int rssi;
-  final int channel;
-  _Row(this.mac, this.base, this.rssi, this.channel);
-}
-
-class _Pending {
-  final Set<String> macs;
-  final List<String> keys;
-  final int median;
-  _Pending(this.macs, this.keys, this.median);
-}
-
-class WifiBeaconFlood {
-  static const minNames = 15;
-  static const rssiBandDb = 6;
-  static const scanGapMs = 3000;
-  static const _suffixes = {'guest', 'guests', 'extender', 'ext', '2.4ghz', '5ghz', '6ghz', '2.4g', '5g', '6g', '2.4'};
-
-  final _seenMacs = <String>{};
-  final _seenNames = <String>{};
-  final _reportKeys = <String>{};
-  _Pending? _pending;
-  bool _primed = false;
-  int _lastAcceptedAt = 0;
-  bool _episode = false;
-  bool _acknowledged = false;
-  int? _median;
-  FloodNotice? notice;
-
-  void scan(List<Observation> observations, int now) {
-    final rows = _parse(observations);
-    if (rows.isEmpty) return;
-    if (_lastAcceptedAt != 0 && now - _lastAcceptedAt < scanGapMs) return;
-    _lastAcceptedAt = now;
-    if (!_primed) {
-      _absorb(rows);
-      _primed = true;
-      return;
-    }
-    final open = _pending;
-    var confirmed = false;
-    if (open != null) {
-      final here = rows.map((r) => r.mac).toSet();
-      final anchor = rows.any((r) => _seenMacs.contains(r.mac) && !open.macs.contains(r.mac));
-      if (!anchor) {
-        _seenMacs.clear();
-        _seenNames.clear();
-        _absorb(rows);
-        _finish();
-        return;
-      }
-      _pending = null;
-      if (!open.macs.any(here.contains)) {
-        _confirm(open);
-        confirmed = true;
-      }
-    }
-    final next = _cluster(rows);
-    if (next != null) {
-      _pending = next;
-    } else if (!confirmed) {
-      _finish();
-    }
-    _absorb(rows);
-  }
-
-  void dismiss() {
-    final cur = notice;
-    if (cur == null) return;
-    _acknowledged = true;
-    notice = cur.quiet();
-  }
-
-  void _confirm(_Pending open) {
-    if (!_episode) {
-      _reportKeys.clear();
-      _median = open.median;
-      _episode = true;
-    }
-    final before = _reportKeys.length;
-    _reportKeys.addAll(open.keys);
-    if (_reportKeys.length > before) _median = open.median;
-    notice = FloodNotice(
-      showDialog: !_acknowledged,
-      popupCount: _reportKeys.length,
-      nameCount: 0,
-      medianRssi: _median,
-      wifi: true,
-      keys: _reportKeys.toList(),
-    );
-  }
-
-  void _finish() {
-    _episode = false;
-    _acknowledged = false;
-    _reportKeys.clear();
-    _median = null;
-    _pending = null;
-    notice = null;
-  }
-
-  _Pending? _cluster(List<_Row> rows) {
-    final fresh = rows
-        .where(
-          (r) =>
-              !_seenMacs.contains(r.mac) &&
-              r.base.isNotEmpty &&
-              !_seenNames.contains(r.base) &&
-              r.channel > 0 &&
-              _rssiMeasured(r.rssi),
-        )
-        .toList();
-    if (fresh.length < minNames) return null;
-    final byBase = <String, List<_Row>>{};
-    for (final r in fresh) {
-      byBase.putIfAbsent(r.base, () => []).add(r);
-    }
-    final singles = [
-      for (final g in byBase.values)
-        if (g.length == 1) g.first,
-    ];
-    if (singles.length < minNames) return null;
-    final byChannel = <int, List<_Row>>{};
-    for (final r in singles) {
-      byChannel.putIfAbsent(r.channel, () => []).add(r);
-    }
-    List<_Row>? best;
-    var bestChannel = 1 << 30;
-    byChannel.forEach((ch, g) {
-      if (best == null || g.length > best!.length || (g.length == best!.length && ch < bestChannel)) {
-        best = g;
-        bestChannel = ch;
-      }
-    });
-    final group = best!;
-    final values = group.map((r) => r.rssi).toList()..sort();
-    final median = values[values.length ~/ 2];
-    final kept = group.where((r) => (r.rssi - median).abs() <= rssiBandDb).toList();
-    if (kept.length < minNames) return null;
-    return _Pending(kept.map((r) => r.mac).toSet(), kept.map((r) => 'WIFI:${r.mac}').toList(), median);
-  }
-
-  void _absorb(List<_Row> rows) {
-    for (final r in rows) {
-      _seenMacs.add(r.mac);
-      if (r.base.isNotEmpty) _seenNames.add(r.base);
-    }
-  }
-
-  static List<_Row> _parse(List<Observation> obs) {
-    final byMac = <String, _Row>{};
-    for (final o in obs) {
-      if (o.kind != RadioKind.wifi) continue;
-      final mac = MacUtil.normalize(o.mac);
-      if (!mac.contains(':')) continue;
-      final row = _Row(mac, _baseName(o.name), o.rssi, o.channel);
-      final prev = byMac[mac];
-      if (prev == null || _prefer(row, prev)) byMac[mac] = row;
-    }
-    return byMac.values.toList();
-  }
-
-  static bool _prefer(_Row next, _Row prev) {
-    final a = _rssiMeasured(next.rssi);
-    final b = _rssiMeasured(prev.rssi);
-    if (a != b) return a;
-    return next.rssi > prev.rssi;
-  }
-
-  static String _baseName(String raw) {
-    final lower = raw.trim().toLowerCase();
-    if (lower.isEmpty || lower == '<unknown ssid>') return '';
-    final cut = [
-      lower.lastIndexOf('-'),
-      lower.lastIndexOf('_'),
-      lower.lastIndexOf(' '),
-    ].reduce((a, b) => a > b ? a : b);
-    if (cut <= 0 || cut >= lower.length - 1) return lower;
-    final head = lower.substring(0, cut).trim();
-    final tail = lower.substring(cut + 1).trim();
-    if (head.isNotEmpty && _suffixes.contains(tail)) return head;
-    return lower;
   }
 }

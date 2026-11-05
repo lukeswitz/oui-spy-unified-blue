@@ -7,13 +7,33 @@ import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 void main() {
-  test('only a fresh install with no saved settings sees the permission steps', () async {
-    SharedPreferences.setMockInitialValues({});
-    expect(needsPermissionOnboarding(await SharedPreferences.getInstance()), isTrue);
-    SharedPreferences.setMockInitialValues({kPermissionsOnboardedKey: true});
-    expect(needsPermissionOnboarding(await SharedPreferences.getInstance()), isFalse);
-    SharedPreferences.setMockInitialValues({'map_style': 'dark'});
-    expect(needsPermissionOnboarding(await SharedPreferences.getInstance()), isFalse);
+  group('pendingPermissionSteps', () {
+    PermissionStep step(String name, [bool? granted]) => PermissionStep(
+          icon: Icons.check,
+          title: name,
+          body: '$name body',
+          request: (_) async {},
+          done: granted == null ? null : () async => granted,
+        );
+    final steps = [step('Bluetooth'), step('Always', false), step('Battery', true)];
+    Future<List<String>> pending(Map<String, Object> saved) async {
+      SharedPreferences.setMockInitialValues(saved);
+      final prefs = await SharedPreferences.getInstance();
+      return (await pendingPermissionSteps(prefs, steps)).map((s) => s.title).toList();
+    }
+
+    test('fresh install gets every step', () async {
+      expect(await pending({}), ['Bluetooth', 'Always', 'Battery']);
+    });
+
+    test('existing install gets only the steps not granted yet', () async {
+      expect(await pending({'map_style': 'dark'}), ['Always']);
+      expect(await pending({'permissions_onboarded': true}), ['Always']);
+    });
+
+    test('nothing again after this flow has run', () async {
+      expect(await pending({kPermissionsOnboardedKey: true}), isEmpty);
+    });
   });
 
   testWidgets('each Continue asks for one permission, in order, then finishes', (tester) async {

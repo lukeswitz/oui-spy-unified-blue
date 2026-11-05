@@ -77,19 +77,10 @@ class AppState extends ChangeNotifier {
 
   // Detection counts per engine — unique MACs, not raw event count
   final Map<Engine, Set<String>> _uniqueMacsPerEngine = {};
-  final Map<Engine, int> _evictedMacsPerEngine = {};
-  static const uniqueMacCap = 50000;
   int get totalDetections => Engine.values.fold(0, (a, e) => a + countForEngine(e));
 
-  bool _recordUniqueMac(Engine engine, String mac) {
-    final set = _uniqueMacsPerEngine.putIfAbsent(engine, () => <String>{});
-    final isNew = set.add(mac);
-    if (isNew && set.length > uniqueMacCap) {
-      set.remove(set.first);
-      _evictedMacsPerEngine[engine] = (_evictedMacsPerEngine[engine] ?? 0) + 1;
-    }
-    return isNew;
-  }
+  bool _recordUniqueMac(Engine engine, String mac) =>
+      _uniqueMacsPerEngine.putIfAbsent(engine, () => <String>{}).add(mac);
 
   // Per-engine last detection time
   final Map<Engine, DateTime> lastDetectionTime = {};
@@ -631,8 +622,7 @@ class AppState extends ChangeNotifier {
         : EngineState.disabled;
   }
 
-  int countForEngine(Engine engine) =>
-      (_uniqueMacsPerEngine[engine]?.length ?? 0) + (_evictedMacsPerEngine[engine] ?? 0);
+  int countForEngine(Engine engine) => _uniqueMacsPerEngine[engine]?.length ?? 0;
 
   List<Detection> detectionsForEngine(Engine engine) {
     final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
@@ -843,7 +833,6 @@ class AppState extends ChangeNotifier {
 
   void resetCounts() {
     _uniqueMacsPerEngine.clear();
-    _evictedMacsPerEngine.clear();
     recentDetections.clear();
     _dedupeIndex.clear();
     _droneTracks.clear();

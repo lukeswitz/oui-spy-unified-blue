@@ -10,6 +10,8 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
+import 'package:oui_spy/core/link/phone_scan.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -156,7 +158,16 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   PhoneBleSource({this.here}) {
     _sub = FlutterBluePlus.onScanResults.listen(_onResults);
+    if (Platform.isAndroid) {
+      _nativeSub = NativePhoneScan.results.listen((r) => _onResults([r]), onError: (Object e) {
+        DebugLog.log('CLASSIFY: native phone scan error: $e');
+        _nativeOn = false;
+        _ownScan = false;
+        notifyListeners();
+      });
+    }
     _adapterSub = FlutterBluePlus.adapterState.listen((s) {
+      if (s != BluetoothAdapterState.on) _nativeOn = false;
       if (s == BluetoothAdapterState.on) {
         if (_foxTarget != null) {
           _foxScan();
@@ -172,14 +183,38 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         _foxScan();
         return;
       }
-      if (_ownScan) {
+      if (_ownScan && !_nativeOn) {
         _ownScan = false;
         notifyListeners();
       }
-      if (scanning && _duty == null) {
+      if (scanning) {
         Future<void>.delayed(const Duration(milliseconds: 1500), _kick);
       }
     });
+  }
+
+  StreamSubscription<ScanResult>? _nativeSub;
+  bool _nativeOn = false;
+  bool _nativeSupported = Platform.isAndroid;
+  bool _boardLinked = false;
+
+  void _stopOwn() {
+    if (_nativeOn) {
+      _nativeOn = false;
+      _ownScan = false;
+      NativePhoneScan.stop();
+    } else if (_ownScan && _foxTarget == null) {
+      FlutterBluePlus.stopScan();
+    }
+  }
+
+  void setBoardLinked(bool linked) {
+    if (linked == _boardLinked) return;
+    _boardLinked = linked;
+    if (!scanning) return;
+    final wasNative = _nativeOn;
+    _stopOwn();
+    if (wasNative) _kick();
   }
 
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
@@ -213,7 +248,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     if (busy == _linkBusy) return;
     _linkBusy = busy;
     if (busy) {
-      if (_ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
+      _stopOwn();
     } else {
       _kick();
     }
@@ -233,14 +268,11 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     if (!scanning) {
       _lastFed.clear();
       _lastIngest.clear();
-      if (_ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
+      _stopOwn();
     }
     if (scanning) {
       _kick();
-      final duty = _duty;
-      _timer = duty == null
-          ? Timer.periodic(scanEvery, (_) => _refreshScan())
-          : Timer.periodic(Duration(milliseconds: duty.every), (_) => _kick());
+      _timer = Timer.periodic(scanEvery, (_) => _refreshScan());
       if (canScanWifi && radioMask & 0x01 != 0) {
         _wifiKick();
         _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
@@ -254,18 +286,10 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   int radioMask = 0x03;
 
-  ({int on, int every})? _duty;
-
-  void setDuty(({int on, int every})? duty) {
-    if (duty == _duty) return;
-    _duty = duty;
-    if (scanning) _apply();
-  }
-
   void setRadioMask(int mask) {
     if (mask == radioMask) return;
     radioMask = mask;
-    if (mask & 0x02 == 0 && _ownScan && _foxTarget == null) FlutterBluePlus.stopScan();
+    if (mask & 0x02 == 0) _stopOwn();
     _apply();
   }
 
@@ -337,16 +361,34 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   Future<void> _kick() async {
-    if (_linkBusy || !scanning || radioMask & 0x02 == 0 || FlutterBluePlus.isScanningNow) return;
+    if (_linkBusy || !scanning || radioMask & 0x02 == 0 || _nativeOn) return;
     if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) return;
+    if (_nativeSupported) {
+      _nativeOn = true;
+      try {
+        final started = await NativePhoneScan.start(
+            _boardLinked ? NativePhoneScan.modeBalanced : NativePhoneScan.modeLowLatency);
+        if (started) {
+          _lastKick = DateTime.now();
+          _ownScan = true;
+          notifyListeners();
+          return;
+        }
+        _nativeOn = false;
+        _nativeSupported = false;
+      } on Exception catch (e) {
+        _nativeOn = false;
+        DebugLog.log('CLASSIFY: native phone scan start failed: $e');
+        return;
+      }
+    }
+    if (FlutterBluePlus.isScanningNow) return;
     _lastKick = DateTime.now();
     _ownScan = true;
     notifyListeners();
     try {
-      final duty = _duty;
       await FlutterBluePlus.startScan(
-        timeout: duty == null ? null : Duration(milliseconds: duty.on),
-        androidScanMode: AndroidScanMode.lowLatency,
+        androidScanMode: _boardLinked ? AndroidScanMode.balanced : AndroidScanMode.lowLatency,
         continuousUpdates: true,
         oneByOne: true,
       );
@@ -357,13 +399,19 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     }
   }
 
-  static const scanRestartAfter = Duration(minutes: 25);
+  static const scanRestartAfter = Duration(minutes: 9);
 
   void _refreshScan() {
     if (!scanning || _foxTarget != null) return;
-    if (!FlutterBluePlus.isScanningNow) {
+    final stale = DateTime.now().difference(_lastKick) >= scanRestartAfter;
+    if (_nativeOn) {
+      if (stale) {
+        _stopOwn();
+        _kick();
+      }
+    } else if (!FlutterBluePlus.isScanningNow) {
       _kick();
-    } else if (_ownScan && DateTime.now().difference(_lastKick) >= scanRestartAfter) {
+    } else if (_ownScan && stale) {
       FlutterBluePlus.stopScan();
     }
   }
@@ -523,6 +571,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _wifiTimer?.cancel();
     _foxLostTimer?.cancel();
     _sub?.cancel();
+    _nativeSub?.cancel();
     _adapterSub?.cancel();
     _busySub?.cancel();
     _out.close();
@@ -551,7 +600,6 @@ class ClassifiedDevice {
 
 class DeviceRegistry extends ChangeNotifier {
   static const catalogAsset = 'assets/fieldwatch-signatures-v2.json';
-  static const maxDevices = 10000;
   static const _trailCap = 48;
 
   DeviceRegistry({SignatureEngine? engine, this.vendorOf}) : _engine = engine;
@@ -561,7 +609,8 @@ class DeviceRegistry extends ChangeNotifier {
 
   SignatureEngine? _engine;
   final _devices = <String, ClassifiedDevice>{};
-  final _subs = <StreamSubscription<Observation>>[];
+  final _recent = <String, Observation>{};
+  final _subs =<StreamSubscription<Observation>>[];
   final _sources = <ObservationSource>[];
   final pairingFlood = PairingFlood();
   final kinIndex = KinIndex();
@@ -621,8 +670,16 @@ class DeviceRegistry extends ChangeNotifier {
     final sigs = [
       ...?engine?.match(merged),
       if (engine != null && engine.hasClusters)
-        ...engine.clusterMatch(merged, [for (final d in _devices.values) d.obs], now),
+        ...engine.clusterMatch(merged, _recent.values, now),
     ];
+    if (engine != null && engine.hasClusters) {
+      _recent.remove(o.key);
+      _recent[o.key] = merged;
+      final cutoff = now - engine.clusterWindowMs;
+      while (_recent.isNotEmpty && _recent.values.first.lastSeenMs < cutoff) {
+        _recent.remove(_recent.keys.first);
+      }
+    }
     final dev = _withKin(ClassifiedDevice(
       merged,
       sigs,
@@ -638,7 +695,6 @@ class DeviceRegistry extends ChangeNotifier {
         prev.obs.detectorMethod != merged.detectorMethod) {
       onClassified?.call(dev);
     }
-    if (_devices.length > maxDevices) _evictOldest();
     _dirty = true;
     _rev++;
   }
@@ -695,18 +751,6 @@ class DeviceRegistry extends ChangeNotifier {
     return out;
   }
 
-  void _evictOldest() {
-    String? oldest;
-    var at = 1 << 62;
-    _devices.forEach((k, v) {
-      if (v.obs.lastSeenMs < at) {
-        at = v.obs.lastSeenMs;
-        oldest = k;
-      }
-    });
-    if (oldest != null) _devices.remove(oldest);
-  }
-
   void _onTick() {
     final had = pairingFlood.notice;
     pairingFlood.tick(DateTime.now().millisecondsSinceEpoch);
@@ -723,6 +767,7 @@ class DeviceRegistry extends ChangeNotifier {
 
   void clear() {
     _devices.clear();
+    _recent.clear();
     kinIndex.clear();
     _rev++;
     notifyListeners();
@@ -751,14 +796,15 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   src.onWifi = ref.read(bleManagerProvider).addPhoneWifiDetection;
   src.onFoxRssi = ref.read(bleManagerProvider).addPhoneFoxRssi;
   final ble = ref.read(bleManagerProvider);
-  src.setLinkBusy(ble.isLinkSetup);
-  final linkSub = ble.connectionState.listen((_) => src.setLinkBusy(ble.isLinkSetup));
+  src.setLinkBusy(ble.phoneScanMustYield);
+  final linkSub = ble.connectionState.listen((_) => src.setLinkBusy(ble.phoneScanMustYield));
   ref.onDispose(linkSub.cancel);
+  ref.read(wardriveProvider).recordsWithoutBoard = () =>
+      src.scanning || ref.read(wifiAdapterControllerProvider).state == WifiAdapterState.running;
   bool sessionRunning() => ref.read(wardriveProvider).state == WardriveState.running;
   bool boardAllows(AppState s) => sessionRunning() || (s.isConnected && s.activeEngines != 0);
   void sync(AppState s) {
-    final wd = ref.read(wardriveProvider);
-    src.setDuty(s.isConnected ? (on: wd.bleScanDuration, every: wd.bleScanInterval) : null);
+    src.setBoardLinked(s.isConnected);
     src.setBoardAllows(boardAllows(s));
     src.setFoxTarget(s.foxhuntViaPhone ? s.foxhunterTarget : null);
   }

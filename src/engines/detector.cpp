@@ -101,12 +101,15 @@ struct JoinTarget {
 };
 static const int JOIN_TARGET_SLOTS = 8;
 static const uint16_t JOIN_FLOOD_FRAMES = 30;
+static const uint16_t JOIN_FLOOD_CROWD_FRAMES = 300;
+static const uint8_t JOIN_FLOOD_FEW_SOURCES = 2;
 static const uint32_t JOIN_FLOOD_WINDOW_MS = 10000;
 static const uint8_t JOIN_FLOOD_MANY_SOURCES = 8;
 static const uint32_t JOIN_ALERT_COOLDOWN_MS = 60000;
 static JoinTarget* joinTargets = nullptr;
 static const int TAG_CHURN_SLOTS = 64;
 static const uint16_t TAG_CHURN_NEW_ADDRS = 24;
+static const int TAG_CHURN_RSSI_BAND_DB = 4;
 static const uint32_t TAG_CHURN_WINDOW_MS = 10000;
 static const uint32_t TAG_CHURN_COOLDOWN_MS = 60000;
 struct TagChurn {
@@ -115,6 +118,7 @@ struct TagChurn {
     uint8_t prevN;
     uint8_t curN;
     uint16_t curNew;
+    int8_t anchorRssi;
     bool prevHot;
     uint32_t windowStart;
     uint32_t lastAlert;
@@ -199,6 +203,8 @@ static void tagChurnObserve(const uint8_t* mac, int rssi) {
     if (c->curN >= TAG_CHURN_SLOTS) return;
     c->cur[c->curN++] = key;
     for (uint8_t i = 0; i < c->prevN; i++) if (c->prev[i] == key) return;
+    if (c->curNew == 0) c->anchorRssi = (int8_t)rssi;
+    if (abs(rssi - c->anchorRssi) > TAG_CHURN_RSSI_BAND_DB) return;
     c->curNew++;
     if (!c->prevHot || c->curNew < TAG_CHURN_NEW_ADDRS) return;
     if (c->lastAlert != 0 && now - c->lastAlert < TAG_CHURN_COOLDOWN_MS) return;
@@ -698,7 +704,7 @@ static void detectorJoinFrame(const uint8_t* p, int len, int rssi, uint8_t chann
     bool known = false;
     for (uint8_t i = 0; i < t.sources; i++) if (t.sourceTails[i] == tail) { known = true; break; }
     if (!known && t.sources < sizeof(t.sourceTails) / sizeof(t.sourceTails[0])) t.sourceTails[t.sources++] = tail;
-    if (t.count < JOIN_FLOOD_FRAMES) return;
+    if (t.count < (t.sources <= JOIN_FLOOD_FEW_SOURCES ? JOIN_FLOOD_FRAMES : JOIN_FLOOD_CROWD_FRAMES)) return;
     if (t.lastAlert != 0 && now - t.lastAlert <= JOIN_ALERT_COOLDOWN_MS) return;
     t.lastAlert = now;
     pushApSigISR(bssid, rssi, channel, METHOD_DET_JOINFLOOD,
@@ -1266,6 +1272,13 @@ int detectorPortSelfTest(void) {
     churnWindow(3000000, 5, 40);
     churnWindow(3030000, 6, 40);
     pstCheck("tag_flood_gap_quiet", !pstPop(&e));
+    memset(tagChurn, 0, sizeof(TagChurn));
+    for (int w = 0; w < 3; w++) {
+        pstNow = 4000000 + w * 10000;
+        churnMac[4] = (uint8_t)(7 + w);
+        for (int i = 0; i < 40; i++) { churnMac[5] = (uint8_t)i; tagChurnObserve(churnMac, -50 - (i % 40)); }
+    }
+    pstCheck("tag_flood_spread_crowd_quiet", !pstPop(&e));
     fmClock = fmClockMillis;
 
     const uint8_t moto[6] = {0x00, 0x04, 0x7D, 0x11, 0x22, 0x33};
@@ -1326,7 +1339,9 @@ int detectorPortSelfTest(void) {
     joinFrames(joinAp, 0xB0, 0, 40, true, false);
     pstCheck("join_flood_cooldown", !pstPop(&e));
     const uint8_t joinAp2[6] = {0x02, 0x10, 0x00, 0x00, 0x00, 0x02};
-    joinFrames(joinAp2, 0x20, 0, 30, true, true);
+    joinFrames(joinAp2, 0x20, 0, JOIN_FLOOD_FRAMES, true, true);
+    pstCheck("join_flood_busy_ap_quiet", !pstPop(&e));
+    joinFrames(joinAp2, 0x20, 0, JOIN_FLOOD_CROWD_FRAMES - JOIN_FLOOD_FRAMES, true, true);
     jf = pstPop(&e) && e.method == METHOD_DET_JOINFLOOD && e.ext.detector.confidence == DET_CONF_HIGH;
     pstCheck("join_flood_many_sources_high", jf, e.ext.detector.filter_desc);
     const uint8_t joinAp3[6] = {0x02, 0x10, 0x00, 0x00, 0x00, 0x03};

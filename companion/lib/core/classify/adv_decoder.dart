@@ -107,16 +107,9 @@ class AdvPayloadDecoder {
           case 0x09:
             out.add(const RoleHint('audio-speaker', 'an AirPlay speaker or Apple TV', 'It announces itself as an AirPlay target.', 5));
           case 0x0B:
-            out.add(const RoleHint('phone', 'an Apple device doing Handoff', 'It sends Apple Handoff signals, which an iPhone, iPad or Mac in use does.', 4));
+            out.add(const RoleHint('wearable', 'an Apple Watch', 'It sends Magic Switch, which only a worn Apple Watch sends after losing its iPhone link.', 8));
           case 0x0C:
-            out.add(
-              const RoleHint(
-                'phone',
-                'an Apple device looking for Instant Hotspot',
-                'Tethering-target advertisement.',
-                5,
-              ),
-            );
+            out.add(const RoleHint('phone', 'an Apple device doing Handoff', 'It sends Apple Handoff signals, which an iPhone, iPad or Mac in use does.', 4));
           case 0x0D:
           case 0x0E:
             out.add(
@@ -200,8 +193,8 @@ class AdvPayloadDecoder {
         0x07 => _decodeAirPods(tlv.data),
         0x08 => _decodeHeySiri(tlv.data),
         0x09 => const [AdvField('AirPlay', 'This device is advertising as an AirPlay source or target.')],
-        0x0A => const [AdvField('Magic Switch', 'Apple Watch wrist / unlock related.')],
-        0x0B => _decodeHandoff(),
+        0x0A => const [AdvField('AirPlay', 'This device is advertising as an AirPlay source.')],
+        0x0B => const [AdvField('Magic Switch', 'Apple Watch on a wrist that lost its iPhone link.')],
         0x0C =>
           tlv.data.length >= 14
               ? _decodeHandoff()
@@ -239,9 +232,9 @@ class AdvPayloadDecoder {
     0x07 => 'Proximity Pairing (AirPods / Beats)',
     0x08 => 'Hey Siri',
     0x09 => 'AirPlay',
-    0x0A => 'Magic Switch (Watch)',
-    0x0B => 'Handoff',
-    0x0C => 'Handoff or Instant Hotspot (target)',
+    0x0A => 'AirPlay source',
+    0x0B => 'Magic Switch (Watch)',
+    0x0C => 'Handoff',
     0x0D || 0x0E => 'Instant Hotspot (source)',
     0x0F => 'Nearby Action',
     0x10 || 0x16 => 'Nearby Info',

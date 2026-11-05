@@ -338,7 +338,8 @@ static void WD_WIFI_CB_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_
             fMethod = METHOD_OUI_ADDR3;
             fMac = addr3;
         }
-        if (fMac && (fMethod == METHOD_OUI_ADDR1 || fMethod == METHOD_OUI_ADDR2 || fMethod == METHOD_OUI_ADDR3)) {
+        if (fMac && (fMethod == METHOD_OUI_ADDR1 || fMethod == METHOD_OUI_ADDR2 || fMethod == METHOD_OUI_ADDR3 ||
+                     fMethod == METHOD_WILDCARD_PROBE)) {
             if (!flockAllowOuiOnly) { g_flockOuiSuppressed++; fMac = NULL; }
             else                    { g_flockOuiAllowed++; }
         } else if (fMac) {
@@ -923,6 +924,18 @@ int wardrivePortSelfTest(void) {
     wardriveSnifferWatchdog();
     check("traffic_resets_count", wdSilentSweeps == 0);
     check("probe_tx_default_off", !wifiActiveProbeAllowed());
+    check("flock_name_penguin_prefix", flockMatchNameStr("Penguin-1234567890") && flockMatchNameStr("penguin-x"));
+    check("flock_name_ignores_contains", !flockMatchNameStr("Emperor Penguin") && !flockMatchNameStr("Penguin") &&
+                                             !flockMatchNameStr("Flock of Seagulls") && !flockMatchNameStr("TWS-FS-01"));
+    check("flock_name_keeps_known", flockMatchNameStr("FS Ext Battery") && flockMatchNameStr("Flock-123456") &&
+                                        flockMatchNameStr("Pigvision"));
+    const uint8_t laOui[6] = {0x82, 0x6b, 0xf2, 0x00, 0x00, 0x01};
+    const uint8_t apple[6] = {0x00, 0x23, 0x6c, 0x00, 0x00, 0x01};
+    bool savedExt = g_flockExtendedOui;
+    g_flockExtendedOui = true;
+    check("flock_oui_accepts_locally_administered", flockMatchOui(laOui) && flockMatchOuiISR(laOui));
+    check("flock_oui_sierra_rows_gone", !flockMatchOui(apple) && !flockMatchOuiISR(apple));
+    g_flockExtendedOui = savedExt;
     wdWifiFrames = savedFrames; wdWifiFramesAtSweep = savedFrames; wdSilentSweeps = 0; wdRadioCycled = false;
     return fail;
 }

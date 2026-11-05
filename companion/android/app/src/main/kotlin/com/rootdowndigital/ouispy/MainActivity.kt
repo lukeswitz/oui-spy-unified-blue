@@ -8,6 +8,7 @@ import com.rootdowndigital.ouispy.wifiadapter.WifiAdapterChannel
 class MainActivity : FlutterActivity() {
     private var usbLink: UsbLinkChannel? = null
     private var wifiAdapter: WifiAdapterChannel? = null
+    private var phoneScan: PhoneScanChannel? = null
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -19,6 +20,7 @@ class MainActivity : FlutterActivity() {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         usbLink = UsbLinkChannel(applicationContext, messenger)
         wifiAdapter = WifiAdapterChannel(applicationContext, messenger)
+        phoneScan = PhoneScanChannel(applicationContext, messenger)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -32,6 +34,8 @@ class MainActivity : FlutterActivity() {
         usbLink = null
         wifiAdapter?.dispose()
         wifiAdapter = null
+        phoneScan?.dispose()
+        phoneScan = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 }

@@ -147,6 +147,7 @@ class WardriveController extends ChangeNotifier {
             _droppedWhileRunning &&
             !_ble.offlineScanEnabled &&
             lostAt != null &&
+            _boardNeeded &&
             DateTime.now().difference(lostAt) >= boardLostWindow) {
           _droppedWhileRunning = false;
           _endSessionBoardLost();
@@ -161,6 +162,8 @@ class WardriveController extends ChangeNotifier {
             continueAfterReconnect();
             return;
           }
+          DebugLog.log('WARDRIVE: board restarted mid session — engines back on, asking whether to keep going');
+          unawaited(continueAfterReconnect());
           pendingReconnectPrompt = true;
           notifyListeners();
           return;
@@ -176,8 +179,13 @@ class WardriveController extends ChangeNotifier {
             _boardLostAt = DateTime.now();
             _boardLostTimer?.cancel();
             _boardLostTimer = Timer(boardLostWindow, () {
-              if (state == WardriveState.running && _droppedWhileRunning && _boardLostAt != null) {
+              if (state != WardriveState.running || !_droppedWhileRunning || _boardLostAt == null) return;
+              if (_boardNeeded) {
                 _endSessionBoardLost();
+              } else {
+                DebugLog.log('WARDRIVE: board gone ${boardLostWindow.inMinutes} min — session continues on the other radios');
+                _boardLostAt = null;
+                notifyListeners();
               }
             });
           }
@@ -470,8 +478,9 @@ class WardriveController extends ChangeNotifier {
 
   DateTime? startTime;
   final Map<String, Detection> _dedupedByMac = {};
-  final List<Detection> _dedupedOrdered = [];
-  List<Detection> get detections => _dedupedOrdered;
+  List<Detection>? _newestFirst;
+  List<Detection> get detections =>
+      _newestFirst ??= _dedupedByMac.values.toList().reversed.toList();
   int rawDetectionCount = 0;
   final Set<String> uniqueMacs = {};
   final Set<String> _wifiNetworkMacs = {};
@@ -487,6 +496,7 @@ class WardriveController extends ChangeNotifier {
   double _sessionOutlierKm = 200.0;
   GpsPosition? lastGpsForDistance;
   GpsPosition? currentPosition;
+  final List<GpsPosition> _track = [];
   int get droneCount => droneDetections.length;
 
   List<WatchlistEntry> Function()? _watchlistGetter;
@@ -505,7 +515,7 @@ class WardriveController extends ChangeNotifier {
   int get rescanNewDetector => _rescanNewDetector;
   int get rescanNewFlock => _rescanNewFlock;
 
-  List<Detection> get dedupedDetections => _dedupedOrdered;
+  List<Detection> get dedupedDetections => detections;
 
   StreamSubscription<Detection>? _detSub;
   StreamSubscription<GpsPosition>? _gpsSub;
@@ -542,7 +552,7 @@ class WardriveController extends ChangeNotifier {
 
   List<Detection> get droneDetections {
     final byKey = <String, Detection>{};
-    for (final d in _dedupedOrdered) {
+    for (final d in detections) {
       if (d.engine != Engine.skySpy) continue;
       final id = (d.odid?.uavId?.isNotEmpty ?? false)
           ? d.odid!.uavId!
@@ -692,9 +702,9 @@ class WardriveController extends ChangeNotifier {
       }
     });
     for (final k in keys) {
-      final det = _dedupedByMac.remove(k);
-      if (det != null) _dedupedOrdered.remove(det);
+      _dedupedByMac.remove(k);
     }
+    _newestFirst = null;
     for (final m in macs) {
       _flockByMac.remove(m);
       _detectorByMac.remove(m);
@@ -739,8 +749,9 @@ class WardriveController extends ChangeNotifier {
 
     startTime = DateTime.now();
     sessionId = const Uuid().v4();
-    _dedupedOrdered.clear();
     _dedupedByMac.clear();
+    _newestFirst = null;
+    _track.clear();
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
@@ -852,9 +863,12 @@ class WardriveController extends ChangeNotifier {
   DateTime? _boardLostAt;
   Timer? _boardLostTimer;
 
+  bool Function()? recordsWithoutBoard;
+  bool get _boardNeeded => !(recordsWithoutBoard?.call() ?? false);
+
   Duration? get boardLostRemaining {
     final at = _boardLostAt;
-    if (at == null || state != WardriveState.running) return null;
+    if (at == null || state != WardriveState.running || !_boardNeeded) return null;
     final left = boardLostWindow - DateTime.now().difference(at);
     return left.isNegative ? Duration.zero : left;
   }
@@ -1002,8 +1016,8 @@ class WardriveController extends ChangeNotifier {
 
   /// Clear map overlay from a completed/loaded session.
   void clearMapData() {
-    _dedupedOrdered.clear();
     _dedupedByMac.clear();
+    _newestFirst = null;
     routePoints.clear();
     uniqueMacs.clear();
     _flockMacs.clear();
@@ -1034,7 +1048,6 @@ class WardriveController extends ChangeNotifier {
     if (isActive) return;
 
     final dbRows = await _db.getDetectionMapsForSession(sid);
-    _dedupedOrdered.clear();
     _dedupedByMac.clear();
     _flockByMac.clear();
     _cachedFlockDetections = null;
@@ -1102,9 +1115,7 @@ class WardriveController extends ChangeNotifier {
         _haversineKm(anchor.latitude, anchor.longitude, lat, lon) <= outlierKm;
 
     // Pass 2: build ordered detection list (no shifts) + downsampled route.
-    _dedupedOrdered
-      ..clear()
-      ..addAll(_dedupedByMac.values.toList().reversed);
+    _newestFirst = null;
 
     double? lastRouteLat;
     double? lastRouteLon;
@@ -1251,6 +1262,7 @@ class WardriveController extends ChangeNotifier {
 
   void resumeSession() {
     state = WardriveState.running;
+    lastGpsForDistance = null;
     notifyListeners();
     _reEnableEngines();
   }
@@ -1315,7 +1327,7 @@ class WardriveController extends ChangeNotifier {
 
   Future<void> _adoptFirmwareState() async {
     await _prefsLoaded;
-    if (_ble.offlineScanEnabled) {
+    if (_ble.offlineScanEnabled && state != WardriveState.running) {
       if (selectedTargets.remove(WardriveTarget.wigle)) {
         DebugLog.log('WARDRIVE: keep-running on — wigle chip deselected (wigle not running)');
         _savePrefs();
@@ -1329,11 +1341,7 @@ class WardriveController extends ChangeNotifier {
     }
     if (state == WardriveState.paused) return;
     if (state == WardriveState.running) {
-      if (_ble.offlineScanEnabled) {
-        await _reconcileTargetsToFirmware();
-      } else {
-        _reEnableEngines();
-      }
+      _reEnableEngines();
       return;
     }
 
@@ -1374,27 +1382,6 @@ class WardriveController extends ChangeNotifier {
     _ble.wardriveSessionActive = true;
     notifyListeners();
     DebugLog.log('WARDRIVE: adopted firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
-  }
-
-  Future<void> _reconcileTargetsToFirmware() async {
-    var mask = await _ble.readCommandedEngineMask();
-    for (var i = 0; mask < 0 && i < 3; i++) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      mask = await _ble.readCommandedEngineMask();
-    }
-    if (mask < 0) return;
-    final t =
-        reconciledTargets(mask, selectedTargets, _ble.offlineScanEnabled);
-    if (t.isEmpty) return;
-    if (t.length == selectedTargets.length && selectedTargets.containsAll(t)) {
-      return;
-    }
-    selectedTargets
-      ..clear()
-      ..addAll(t);
-    _savePrefs();
-    notifyListeners();
-    DebugLog.log('WARDRIVE: reconciled targets to firmware mask 0x${mask.toRadixString(16)} -> $activeLabel');
   }
 
   Future<void> _disableStaleEngines() async {
@@ -1465,7 +1452,38 @@ class WardriveController extends ChangeNotifier {
     return newId;
   }
 
-  ({double? lat, double? lon, double? acc, bool approx}) _tagGps(Detection d) {
+  static const trackMatchMs = 5000;
+
+  static GpsPosition? trackFixAt(List<GpsPosition> track, int atMs, {int maxGapMs = trackMatchMs}) {
+    if (track.isEmpty) return null;
+    var lo = 0;
+    var hi = track.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi) ~/ 2;
+      if (track[mid].timestamp.millisecondsSinceEpoch < atMs) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    var best = track[lo];
+    if (lo > 0) {
+      final before = track[lo - 1];
+      if ((before.timestamp.millisecondsSinceEpoch - atMs).abs() <
+          (best.timestamp.millisecondsSinceEpoch - atMs).abs()) {
+        best = before;
+      }
+    }
+    return (best.timestamp.millisecondsSinceEpoch - atMs).abs() <= maxGapMs ? best : null;
+  }
+
+  ({double? lat, double? lon, double? acc, bool approx}) _tagGps(Detection d, int capturedMs) {
+    if (isActive && d.latitude == null) {
+      final fix = trackFixAt(_track, capturedMs);
+      return fix == null
+          ? (lat: null, lon: null, acc: null, approx: false)
+          : (lat: fix.latitude, lon: fix.longitude, acc: fix.accuracy, approx: false);
+    }
     if (offlineGpsTag && d.latitude == null) {
       final p = _gps.recentPosition();
       if (p != null) {
@@ -1481,9 +1499,9 @@ class WardriveController extends ChangeNotifier {
     final deviceNow = _ble.importDeviceNowMs;
     final offsetMs = deviceNow - detection.deviceTimestampMs;
     final wallClock = offsetMs < 0
-        ? DateTime.now()
-        : DateTime.now().subtract(Duration(milliseconds: offsetMs));
-    final g = _tagGps(detection);
+        ? _ble.importHeaderAt
+        : _ble.importHeaderAt.subtract(Duration(milliseconds: offsetMs));
+    final g = _tagGps(detection, wallClock.millisecondsSinceEpoch);
     final key = '${detection.macAddress}|${detection.engine.name}|${detection.deviceTimestampMs}|'
         '${detection.rssi}|${detection.channel}';
     if (_importedKeys.contains(key)) {
@@ -1533,8 +1551,41 @@ class WardriveController extends ChangeNotifier {
     }
     _importedKeys.add(key);
     _spoolInserted++;
+    if (state == WardriveState.running && g.lat != null) {
+      _plotImported(detection.copyWith(
+          latitude: g.lat, longitude: g.lon, accuracy: g.acc, appTimestamp: wallClock));
+    }
     DebugLog.log('SPOOL: inserted ${detection.macAddress} → session $sid wallClock=${wallClock.toIso8601String()} ($_spoolInserted/$_spoolExpectedTotal)');
     _maybeConfirmSpool();
+  }
+
+  void _plotImported(Detection d) {
+    final key = '${d.macAddress}|${d.engine.name}';
+    if (_dedupedByMac.containsKey(key)) return;
+    _dedupedByMac[key] = d;
+    _newestFirst = null;
+    uniqueMacs.add(d.macAddress);
+    if (d.engine == Engine.flockBle || d.engine == Engine.flockWifi) {
+      _flockMacs.add(d.macAddress);
+      _flockByMac[d.macAddress] = d;
+      _cachedFlockDetections = null;
+    }
+    if (d.engine == Engine.detector) {
+      _detectorMacs.add(d.macAddress);
+      _detectorByMac[d.macAddress] = d;
+      _cachedDetectorDetections = null;
+    }
+    _scheduleNotify();
+  }
+
+  Timer? _notifyTimer;
+
+  void _scheduleNotify() {
+    _notifyTimer ??= Timer(const Duration(milliseconds: 250), () {
+      _notifyTimer = null;
+      if (state == WardriveState.running) _updateLiveActivity();
+      notifyListeners();
+    });
   }
 
   Future<void> _onWdLogFrame(WdLogFrame frame) async {
@@ -1595,7 +1646,7 @@ class WardriveController extends ChangeNotifier {
   Future<void> _onAwayLiveDetection(Detection detection) async {
     if (state == WardriveState.running) return;
     final sid = _spoolSessionId ??= await (_spoolSessionIdFuture ??= _resolveSpoolSessionId());
-    final g = _tagGps(detection);
+    final g = _tagGps(detection, detection.appTimestamp.millisecondsSinceEpoch);
     try {
       await _db.insertDetection(DetectionsCompanion(
         sessionId: drift.Value(sid),
@@ -1739,8 +1790,8 @@ class WardriveController extends ChangeNotifier {
       flockCount: includesFlock ? _flockMacs.length : 0,
       droneCount: droneCount,
       detectorCount: includesDetector ? detectorCount : 0,
-      detectionsPerKm: distanceKm > 0 && distanceKm.isFinite 
-          ? rawDetectionCount / distanceKm 
+      detectionsPerKm: distanceKm >= 0.1 && distanceKm.isFinite
+          ? rawDetectionCount / distanceKm
           : 0,
       gpsAccuracy: currentPosition?.accuracy ?? 0,
       satelliteCount: currentPosition?.satelliteCount ?? 0,
@@ -1798,7 +1849,6 @@ class WardriveController extends ChangeNotifier {
       _detectorByMac[detection.macAddress] = detection;
       _cachedDetectorDetections = null;
     }
-    _updateLiveActivity();
 
     final key = '${detection.macAddress}|${detection.engine.name}';
     final existing = _dedupedByMac[key];
@@ -1826,22 +1876,22 @@ class WardriveController extends ChangeNotifier {
         rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
         wardrive: mergedWardrive,
       );
+      _dedupedByMac.remove(key);
       _dedupedByMac[key] = updated;
-      _dedupedOrdered.remove(existing);
-      _dedupedOrdered.insert(0, updated);
+      _newestFirst = null;
       if (!shouldRelog) {
-        notifyListeners();
+        _scheduleNotify();
         return;
       }
     } else {
       _dedupedByMac[key] = detection;
-      _dedupedOrdered.insert(0, detection);
+      _newestFirst = null;
     }
 
     _db.insertDetection(detectionCompanion(detection, sessionId))
         .catchError((e) => DebugLog.log('WARDRIVE: insertDetection failed: $e'));
 
-    notifyListeners();
+    _scheduleNotify();
   }
 
   void _applyExclusionGate(GpsPosition pos) {
@@ -1870,23 +1920,20 @@ class WardriveController extends ChangeNotifier {
     currentPosition = pos;
     final ll = LatLng(pos.latitude, pos.longitude);
 
+    if (isActive && (_track.isEmpty || pos.timestamp.isAfter(_track.last.timestamp))) {
+      _track.add(pos);
+    }
+
     if (state == WardriveState.running) {
       _applyExclusionGate(pos);
     }
 
     if (state == WardriveState.running) {
-      // Guard against GPS jumps (stale restore, satellite reacquisition)
-      if (routePoints.isNotEmpty) {
-        final last = routePoints.last;
-        final jumpKm = _haversineKm(
-          last.latitude, last.longitude, pos.latitude, pos.longitude,
-        );
-        if (jumpKm.isFinite && jumpKm > 0.5) {
-          // >500m jump — likely stale position or GPS glitch, skip route point
-          DebugLog.log('WARDRIVE: GPS jump ${(jumpKm * 1000).round()}m, skipping route point');
-          notifyListeners();
-          return;
-        }
+      final prev = lastGpsForDistance;
+      if (prev != null && isImpossibleGpsStep(prev, pos)) {
+        DebugLog.log('WARDRIVE: GPS glitch, skipping route point');
+        notifyListeners();
+        return;
       }
 
       routePoints.add(ll);
@@ -1911,11 +1958,22 @@ class WardriveController extends ChangeNotifier {
     _gpsSub?.cancel();
     _statsTimer?.cancel();
     _boardLostTimer?.cancel();
+    _notifyTimer?.cancel();
     _importedDetSub?.cancel();
     _wdLogSub?.cancel();
     _awayLiveSub?.cancel();
     _spoolImportSub?.cancel();
     super.dispose();
+  }
+
+  static const maxGroundSpeedMps = 350.0;
+
+  static bool isImpossibleGpsStep(GpsPosition from, GpsPosition to) {
+    final km = _haversineKm(from.latitude, from.longitude, to.latitude, to.longitude);
+    if (!km.isFinite || km <= 0.5) return false;
+    final ms = to.timestamp.difference(from.timestamp).inMilliseconds;
+    final seconds = (ms < 1000 ? 1000 : ms) / 1000;
+    return km * 1000 / seconds > maxGroundSpeedMps;
   }
 
   static bool _isPlausibleCoord(double? lat, double? lon) {

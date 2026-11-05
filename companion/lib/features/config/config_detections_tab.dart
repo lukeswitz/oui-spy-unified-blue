@@ -1200,9 +1200,10 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
 
     final wd = ref.read(wardriveProvider);
     if (wd.isActive) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Stop active wardrive first')),
-      );
+      if (lat != null && lon != null) {
+        wd.requestZoom(lat, lon, detection: detectionFromDbRow(det));
+      }
+      context.go('/wardrive');
       return;
     }
 

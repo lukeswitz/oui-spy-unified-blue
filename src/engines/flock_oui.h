@@ -14,7 +14,6 @@ extern volatile bool g_flockExtendedOui;
 static const FlockOui FLOCK_OUI_TABLE[] = {
     { {0x00,0x03,0x7f}, 0 }, // Qualcomm Atheros QCA9377 (Flock fw default MAC)
     { {0x00,0x18,0x0a}, 1 }, // Murata
-    { {0x00,0x23,0x6c}, 1 }, // Sierra Wireless
     { {0x00,0x40,0x8c}, 1 }, // Flock BLE (@NitekryDPaul Jul 2026 LE CSV)
     { {0x00,0xf4,0x8d}, 0 }, // Liteon (flock-you: Flock Safety infrastructure, @NitekryDPaul)
     { {0x04,0x0d,0x84}, 1 }, // Silicon Labs (flock-you datasets: FS Ext Battery)
@@ -36,7 +35,6 @@ static const FlockOui FLOCK_OUI_TABLE[] = {
     { {0x58,0x00,0xe3}, 0 },
     { {0x58,0x8e,0x81}, 0 },
     { {0x5c,0x93,0xa2}, 0 },
-    { {0x60,0x62,0x01}, 1 }, // Sierra Wireless
     { {0x64,0x6e,0x69}, 0 },
     { {0x70,0x08,0x94}, 0 }, // Espressif
     { {0x70,0xc9,0x4e}, 0 },
@@ -105,7 +103,6 @@ static inline void flockOuiInitBuckets() {
 }
 
 static inline bool flockMatchOui(const uint8_t* mac) {
-    if (mac[0] & 0x02) return false;
     if (!flockOuiBucketsReady) flockOuiInitBuckets();
     const FlockOuiBucket& b = flockOuiBuckets[mac[0]];
     for (int i = b.start; i < b.start + b.count; i++) {
@@ -119,7 +116,6 @@ static inline bool flockMatchOui(const uint8_t* mac) {
 }
 
 static inline bool IRAM_ATTR flockMatchOuiISR(const uint8_t* mac) {
-    if (mac[0] & 0x02) return false;
     if (!flockOuiBucketsReady) return false;
     const FlockOuiBucket& b = flockOuiBuckets[mac[0]];
     for (int i = b.start; i < b.start + b.count; i++) {

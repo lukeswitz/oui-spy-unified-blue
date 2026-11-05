@@ -42,7 +42,7 @@ void main() {
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
-      child: PermissionsOnboardingApp(onDone: () {}),
+      child: PermissionsOnboardingApp(onDone: () {}, steps: defaultPermissionSteps()),
     ));
     container.read(appStyleProvider.notifier).state = AppStyle.paperDark;
     await tester.pump();

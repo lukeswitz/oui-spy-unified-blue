@@ -105,7 +105,8 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     if (method == 0xFF || !matchMac) return;
     // bare OUI is not a flock on its own; upstream requires corroboration
-    if (method == METHOD_OUI_ADDR1 || method == METHOD_OUI_ADDR2 || method == METHOD_OUI_ADDR3) {
+    if (method == METHOD_OUI_ADDR1 || method == METHOD_OUI_ADDR2 || method == METHOD_OUI_ADDR3 ||
+        method == METHOD_WILDCARD_PROBE) {
         if (!flockAllowOuiOnly) { g_flockOuiSuppressed++; return; }
         g_flockOuiAllowed++;
     } else {

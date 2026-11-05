@@ -153,6 +153,8 @@ class BleManager {
   int _importDropped = 0;
   int _importDeviceNow = 0;
   int get importDeviceNowMs => _importDeviceNow;
+  DateTime _importHeaderAt = DateTime.now();
+  DateTime get importHeaderAt => _importHeaderAt;
   Timer? _importTimer;
 
   // WiFi OTA progress notifications: opcode 0x06, status[1], bytes[4 LE]
@@ -376,6 +378,9 @@ class BleManager {
       _currentState == NodeConnectionState.connecting ||
       _currentState == NodeConnectionState.negotiating ||
       _currentState == NodeConnectionState.syncing;
+
+  bool _osConnectPending = false;
+  bool get phoneScanMustYield => isLinkSetup && !_osConnectPending;
   String get nodeId => _nodeId;
   String get board => _board;
 
@@ -855,13 +860,14 @@ class BleManager {
     _sessionId = sessionId;
     _device = device;
     _userInitiatedDisconnect = false;
+    _osConnectPending = autoConnect;
     _currentState = NodeConnectionState.connecting; _connectionState.add(NodeConnectionState.connecting);
 
     _lastDeviceId = device.remoteId.toString();
     DebugLog.log('BLE: connecting to ${device.remoteId}${autoConnect ? ' (OS autoConnect)' : ''}');
     if (autoConnect) {
-      await device.connect(autoConnect: true, mtu: null);
       try {
+        await device.connect(autoConnect: true, mtu: null);
         await device.connectionState
             .firstWhere((s) => s == BluetoothConnectionState.connected || _userInitiatedDisconnect)
             .timeout(autoConnectWait);
@@ -869,6 +875,8 @@ class BleManager {
         DebugLog.log('BLE: autoConnect did not complete in ${autoConnectWait.inSeconds}s — canceling');
         await device.disconnect();
         rethrow;
+      } finally {
+        _osConnectPending = false;
       }
     } else {
       await device.connect(
@@ -885,7 +893,8 @@ class BleManager {
 
     _subscriptions.add(
       device.connectionState.listen((state) {
-        DebugLog.log('BLE: connectionState=$state');
+        final why = device.disconnectReason;
+        DebugLog.log('BLE: connectionState=$state reason=${why?.code} ${why?.description}');
         if (state == BluetoothConnectionState.disconnected) {
           _livenessTimer?.cancel();
           _livenessTimer = null;
@@ -928,7 +937,7 @@ class BleManager {
       DebugLog.log('BLE: conn priority unsupported: ${e.description}');
     }
 
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid && !_isReconnect) {
       try {
         final bond = await device.bondState.first;
         if (bond != BluetoothBondState.bonded) {
@@ -1325,13 +1334,11 @@ class BleManager {
 
   Future<void> enowHubRefresh() async {
     if (_systemControl == null) return;
-    final status = enowHubStatus.first.timeout(const Duration(milliseconds: 1500));
+    final replied = enowHubStatus.first
+        .timeout(const Duration(milliseconds: 1500))
+        .then<bool>((_) => true, onError: (Object _) => false);
     await enowHubPoll();
-    try {
-      await status;
-    } on TimeoutException {
-      return;
-    }
+    if (!await replied) return;
     while (true) {
       try {
         await enowHubNodes.first.timeout(const Duration(milliseconds: 250));
@@ -2187,6 +2194,7 @@ class BleManager {
         _importTotal = h.count;
         _importDropped = h.dropped;
         _importDeviceNow = h.deviceNowMs;
+        _importHeaderAt = DateTime.now();
         _spoolImport.add(SpoolImportProgress(seen: 0, total: _importTotal, dropped: _importDropped, done: false, aborted: false));
         return;
       }

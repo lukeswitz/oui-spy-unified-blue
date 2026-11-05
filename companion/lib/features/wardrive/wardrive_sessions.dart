@@ -807,7 +807,6 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                     final wdg = ref.watch(wdgwarsProvider);
                     return ListView.builder(
                       controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       itemCount: sessions.length,
                       itemBuilder: (_, i) {
                         final sid = sessions[i].id;
@@ -1223,343 +1222,172 @@ class _SessionRow extends ConsumerWidget {
     final duration = session.endedAt != null
         ? Duration(milliseconds: session.endedAt! - session.startedAt)
         : Duration.zero;
-    final durStr = '${duration.inMinutes}m ${duration.inSeconds % 60}s';
+    final durStr = duration.inHours > 0
+        ? '${duration.inHours}h ${duration.inMinutes % 60}m'
+        : duration.inMinutes > 0
+            ? '${duration.inMinutes}m ${duration.inSeconds % 60}s'
+            : '${duration.inSeconds}s';
+
+    Widget stat(IconData icon, Color color, String value) => Padding(
+          padding: const EdgeInsets.only(right: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 3),
+              Text(
+                value,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontFamily: AppTheme.mono,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+    Widget countStat(Future<int>? future, IconData icon, Color color) => FutureBuilder<int>(
+          future: future,
+          builder: (_, snap) {
+            final count = snap.data ?? 0;
+            return count == 0 ? const SizedBox.shrink() : stat(icon, color, '$count');
+          },
+        );
 
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
         decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.accent.withValues(alpha: 0.12)
-              : t.surface,
-          border: Border.all(
-            color: selected ? AppTheme.accent : t.border,
-            width: selected ? 1.5 : 1,
-          ),
+          color: selected ? AppTheme.accent.withValues(alpha: 0.12) : null,
+          border: Border(bottom: BorderSide(color: t.border)),
         ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 440;
-            final selectBox = selectable
-                ? Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Icon(
-                      selected
-                          ? Icons.check_box
-                          : Icons.check_box_outline_blank,
-                      size: 18,
-                      color: selected ? AppTheme.accent : t.textDim,
-                    ),
-                  )
-                : const SizedBox.shrink();
-            final routeIcon = Icon(Icons.route, size: 16, color: AppTheme.accent);
-            final dateText = Text(dateStr, style: TextStyle(
-              color: t.textPrimary, fontSize: 11,
-              fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,
-            ));
-            final durText = SizedBox(
-              width: 46,
-              child: Text(durStr, style: TextStyle(
-                color: t.textDim, fontSize: 10,
-                fontFamily: AppTheme.mono,
-              )),
-            );
-            final wifiStat = SizedBox(
-              width: 44,
-              child: FutureBuilder<({int wifi, int ble})>(
-                future: wifiBleFuture,
-                builder: (_, wbSnap) {
-                  final wb = wbSnap.data;
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.wifi, size: 11, color: AppTheme.accent),
-                      const SizedBox(width: 2),
-                      Text(
-                        '${wb?.wifi ?? session.uniqueMacCount}',
-                        style: TextStyle(
-                          color: AppTheme.accent, fontSize: 10,
-                          fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            );
-            final bleStat = SizedBox(
-              width: 40,
-              child: FutureBuilder<({int wifi, int ble})>(
-                future: wifiBleFuture,
-                builder: (_, wbSnap) {
-                  final wb = wbSnap.data;
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.bluetooth, size: 11, color: Colors.blue),
-                      const SizedBox(width: 1),
-                      Text(
-                        '${wb?.ble ?? 0}',
-                        style: TextStyle(
-                          color: Colors.blue, fontSize: 10,
-                          fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            );
-            final distText = Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: SizedBox(
-                width: 66,
-                child: Text(
-                  UnitFormatter.distance(session.distanceKm, units),
-                  style: TextStyle(
-                    color: t.textDim, fontSize: 10,
-                    fontFamily: AppTheme.mono,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+        child: Row(
+          children: [
+            if (selectable)
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Icon(
+                  selected ? Icons.check_box : Icons.check_box_outline_blank,
+                  size: 20,
+                  color: selected ? AppTheme.accent : t.textDim,
                 ),
               ),
-            );
-            final flockStat = SizedBox(
-              width: 32,
-              child: flockCountFuture == null
-                  ? const SizedBox.shrink()
-                  : FutureBuilder<int>(
-                      future: flockCountFuture,
-                      builder: (_, snap) {
-                        final fc = snap.data ?? 0;
-                        if (fc == 0) return const SizedBox.shrink();
-                        return Row(
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dateStr,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    runSpacing: 3,
+                    children: [
+                      FutureBuilder<({int wifi, int ble})>(
+                        future: wifiBleFuture,
+                        builder: (_, snap) => Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.videocam, size: 11, color: AppTheme.flockBle),
-                            const SizedBox(width: 2),
-                            Text(
-                              '$fc',
-                              style: TextStyle(
-                                color: AppTheme.flockBle, fontSize: 10,
-                                fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            stat(Icons.wifi, AppTheme.accent,
+                                '${snap.data?.wifi ?? session.uniqueMacCount}'),
+                            stat(Icons.bluetooth, Colors.blue, '${snap.data?.ble ?? 0}'),
                           ],
-                        );
-                      },
+                        ),
+                      ),
+                      countStat(flockCountFuture, Icons.videocam, AppTheme.flockBle),
+                      countStat(droneCountFuture, Icons.flight, AppTheme.skySpy),
+                      countStat(detectorCountFuture, Icons.radar, AppTheme.detector),
+                      Text(
+                        '$durStr · ${UnitFormatter.distance(session.distanceKm, units)}',
+                        style: TextStyle(
+                          color: t.textDim,
+                          fontSize: 12,
+                          fontFamily: AppTheme.mono,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isRescanning) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 9,
+                          height: 9,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: AppTheme.detector,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          wd.rescanTotal == 0
+                              ? 'CHECKING OUIs'
+                              : 'CHECK ${wd.rescanCur}/${wd.rescanTotal}'
+                                  '${wd.rescanNewDetector > 0 ? ' +${wd.rescanNewDetector}d' : ''}'
+                                  '${wd.rescanNewFlock > 0 ? ' +${wd.rescanNewFlock}f' : ''}',
+                          style: TextStyle(
+                            color: AppTheme.detector,
+                            fontSize: 9,
+                            fontFamily: AppTheme.mono,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-            );
-            final detectorStat = SizedBox(
-              width: 32,
-              child: detectorCountFuture == null
-                  ? const SizedBox.shrink()
-                  : FutureBuilder<int>(
-                      future: detectorCountFuture,
-                      builder: (_, snap) {
-                        final dc = snap.data ?? 0;
-                        if (dc == 0) return const SizedBox.shrink();
-                        return Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.radar, size: 11, color: AppTheme.detector),
-                            const SizedBox(width: 2),
-                            Text(
-                              '$dc',
-                              style: TextStyle(
-                                color: AppTheme.detector, fontSize: 10,
-                                fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-            );
-            final droneStat = SizedBox(
-              width: 32,
-              child: droneCountFuture == null
-                  ? const SizedBox.shrink()
-                  : FutureBuilder<int>(
-                      future: droneCountFuture,
-                      builder: (_, snap) {
-                        final dc = snap.data ?? 0;
-                        if (dc == 0) return const SizedBox.shrink();
-                        return Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.flight,
-                                size: 11, color: AppTheme.skySpy),
-                            const SizedBox(width: 2),
-                            Text(
-                              '$dc',
-                              style: TextStyle(
-                                color: AppTheme.skySpy, fontSize: 10,
-                                fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-            );
-            final csvBtn = _SessionIconBtn(
+                  ],
+                ],
+              ),
+            ),
+            _SessionIconBtn(
               icon: Icons.file_download_outlined,
               label: 'CSV',
-              color: AppTheme.accent,
+              color: t.textSecondary,
               onTap: onShare,
-            );
-            final wigleBtn = onUploadWigle == null
-                ? null
-                : _SessionIconBtn(
-                    icon: wigleUploading
+            ),
+            if (onUploadWigle != null)
+              _SessionIconBtn(
+                icon: wigleUploading
+                    ? Icons.cloud_sync
+                    : (wigleUploaded ? Icons.cloud_done : Icons.cloud_upload_outlined),
+                label: wigleUploading ? 'SENDING' : (wigleUploaded ? 'SENT' : 'WIGLE'),
+                color: wigleUploaded ? AppTheme.success : AppTheme.warning,
+                onTap: (wigleUploaded || wigleUploading) ? null : onUploadWigle,
+                isLoading: wigleUploading,
+              ),
+            if (onUploadWdgwars != null)
+              _SessionIconBtn(
+                icon: wdgwarsQueued
+                    ? Icons.hourglass_top
+                    : (wdgwarsUploading
                         ? Icons.cloud_sync
-                        : (wigleUploaded
-                            ? Icons.cloud_done
-                            : Icons.cloud_upload_outlined),
-                    label: wigleUploading
-                        ? 'SENDING'
-                        : (wigleUploaded ? 'SENT' : 'WIGLE'),
-                    color: wigleUploading
-                        ? AppTheme.warning
-                        : (wigleUploaded ? AppTheme.success : AppTheme.warning),
-                    onTap: (wigleUploaded || wigleUploading) ? null : onUploadWigle,
-                    isLoading: wigleUploading,
-                  );
-            final wdgwarsBtn = onUploadWdgwars == null
-                ? null
-                : _SessionIconBtn(
-                    icon: wdgwarsQueued
-                        ? Icons.hourglass_top
-                        : (wdgwarsUploading
-                            ? Icons.cloud_sync
-                            : (wdgwarsUploaded
-                                ? Icons.cloud_done
-                                : Icons.sports_esports)),
-                    label: wdgwarsQueued
-                        ? 'QUEUED'
-                        : (wdgwarsUploading
-                            ? 'SENDING'
-                            : (wdgwarsUploaded ? 'SENT' : 'WDG')),
-                    color: wdgwarsUploaded ? AppTheme.success : AppTheme.wdgwars,
-                    onTap: (wdgwarsUploaded || wdgwarsUploading) ? null : onUploadWdgwars,
-                    isLoading: wdgwarsUploading && !wdgwarsQueued,
-                  );
-            final delBtn = _SessionIconBtn(
-              icon: Icons.delete_forever_outlined,
-              label: 'DEL',
+                        : (wdgwarsUploaded ? Icons.cloud_done : Icons.sports_esports)),
+                label: wdgwarsQueued
+                    ? 'QUEUED'
+                    : (wdgwarsUploading ? 'SENDING' : (wdgwarsUploaded ? 'SENT' : 'WDG')),
+                color: wdgwarsUploaded ? AppTheme.success : AppTheme.wdgwars,
+                onTap: (wdgwarsUploaded || wdgwarsUploading) ? null : onUploadWdgwars,
+                isLoading: wdgwarsUploading && !wdgwarsQueued,
+              ),
+            _SessionIconBtn(
+              icon: Icons.delete_outline,
+              label: 'DELETE',
               color: AppTheme.error,
               onTap: onDelete,
-            );
-            final actionButtons = <Widget>[
-              csvBtn,
-              const SizedBox(width: 4),
-              if (wigleBtn != null) ...[
-                wigleBtn,
-                const SizedBox(width: 4),
-              ],
-              if (wdgwarsBtn != null) ...[
-                wdgwarsBtn,
-                const SizedBox(width: 4),
-              ],
-              delBtn,
-            ];
-            final buttons = <Widget>[
-              csvBtn,
-              ?wigleBtn,
-              ?wdgwarsBtn,
-              delBtn,
-            ];
-            final actionBar = Row(
-              children: [
-                for (int i = 0; i < buttons.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 6),
-                  Expanded(child: buttons[i]),
-                ],
-              ],
-            );
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (narrow) ...[
-                  Row(
-                    children: [
-                      selectBox,
-                      routeIcon,
-                      const SizedBox(width: 8),
-                      Expanded(child: dateText),
-                      durText,
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      wifiStat,
-                      bleStat,
-                      distText,
-                      flockStat,
-                      droneStat,
-                      detectorStat,
-                      const Spacer(),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  actionBar,
-                ] else
-                  Row(
-                    children: [
-                      selectBox,
-                      routeIcon,
-                      const SizedBox(width: 8),
-                      dateText,
-                      const SizedBox(width: 10),
-                      durText,
-                      wifiStat,
-                      bleStat,
-                      distText,
-                      flockStat,
-                      droneStat,
-                      detectorStat,
-                      const Spacer(),
-                      ...actionButtons,
-                    ],
-                  ),
-                if (isRescanning) ...[
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 9,
-                        height: 9,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          color: AppTheme.detector,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        wd.rescanTotal == 0
-                            ? 'CHECKING OUIs'
-                            : 'CHECK ${wd.rescanCur}/${wd.rescanTotal}'
-                                '${wd.rescanNewDetector > 0 ? ' +${wd.rescanNewDetector}d' : ''}'
-                                '${wd.rescanNewFlock > 0 ? ' +${wd.rescanNewFlock}f' : ''}',
-                        style: TextStyle(
-                          color: AppTheme.detector,
-                          fontSize: 9,
-                          fontFamily: AppTheme.mono,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            );
-          },
+            ),
+          ],
         ),
       ),
     );
@@ -1570,13 +1398,13 @@ class _SessionIconBtn extends StatelessWidget {
   const _SessionIconBtn({
     required this.icon,
     required this.color,
-    this.label,
+    required this.label,
     this.onTap,
     this.isLoading = false,
   });
   final IconData icon;
   final Color color;
-  final String? label;
+  final String label;
   final VoidCallback? onTap;
   final bool isLoading;
 
@@ -1587,38 +1415,29 @@ class _SessionIconBtn extends StatelessWidget {
     return GestureDetector(
       onTap: isLoading ? null : onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 26,
-        padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 5),
-        constraints: BoxConstraints(minWidth: label == null ? 26 : 0),
-        decoration: BoxDecoration(
-          color: c.withValues(alpha: 0.08),
-          border: Border.all(color: c.withValues(alpha: 0.25)),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (isLoading)
               SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: c),
+                width: 20,
+                height: 20,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: c),
+                ),
               )
             else
-              Icon(icon, size: 15, color: c),
-            if (label != null) ...[
-              const SizedBox(width: 3),
-              Text(
-                label!,
-                style: TextStyle(
-                  color: c,
-                  fontSize: 8,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
+              Icon(icon, size: 20, color: c),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(color: c, fontSize: 9, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),

@@ -3,8 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart' as ph;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
@@ -13,6 +11,7 @@ import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 bool targetEngineRunning(AppState app, WardriveTarget m) {
@@ -304,17 +303,29 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
     DebugLog.log('WARDRIVE: start aborted — screen gone');
     return false;
   }
+  if (requireLocation) await _askAlwaysLocation(context);
+  if (!context.mounted) {
+    DebugLog.log('WARDRIVE: start aborted — screen gone');
+    return false;
+  }
+  await _askBackgroundRun(context);
+  if (!context.mounted) {
+    DebugLog.log('WARDRIVE: start aborted — screen gone');
+    return false;
+  }
   if (!await confirmRadioRoles(context, ref)) {
     DebugLog.log('WARDRIVE: start aborted — radio roles canceled');
     return false;
   }
-  await ref.read(wardriveProvider).startSession();
+  final wd = ref.read(wardriveProvider);
   final usb = ref.read(wifiAdapterControllerProvider);
-  if (ref.read(usbAdapterScanProvider) &&
+  final usbScan = ref.read(usbAdapterScanProvider);
+  await wd.startSession();
+  if (usbScan &&
       usb.devices.isNotEmpty &&
       usb.state != WifiAdapterState.running &&
       usb.state != WifiAdapterState.starting) {
-    final mask = switch (ref.read(wardriveProvider).radio) {
+    final mask = switch (wd.radio) {
       WardriveRadio.wifi => 0x01,
       WardriveRadio.ble => 0x02,
       WardriveRadio.both => 0x03,
@@ -370,36 +381,34 @@ Future<bool> _primeLocationPermission(BuildContext context) async {
       );
       return false;
     }
-    if (Platform.isIOS && status == LocationPermission.whileInUse) {
-      await _alwaysUpgradeDialog(
-        context,
-        prefKey: 'ios_always_upgrade_dismissed',
-        body:
-            'iOS only shows "While Using" in the first prompt. For wardriving with screen off, set:\n\n'
-            'Settings → OUI-APEX → Location → Always',
-        action: 'OPEN SETTINGS',
-        onAction: Geolocator.openAppSettings,
-      );
-    } else if (Platform.isAndroid) {
-      final always = await ph.Permission.locationAlways.status;
-      if (!always.isGranted && context.mounted) {
-        await _alwaysUpgradeDialog(
-          context,
-          prefKey: 'android_always_upgrade_dismissed',
-          body:
-              'For background tracking, Android requires "Allow all the time".\n\n'
-              'Settings → Apps → OUI-APEX → Permissions → Location → Allow all the time',
-          action: 'ALLOW ALL THE TIME',
-          onAction: () async {
-            if (!(await ph.Permission.locationAlways.request()).isGranted) {
-              await ph.openAppSettings();
-            }
-          },
-        );
-      }
-    }
     return true;
   }
+}
+
+Future<void> _askAlwaysLocation(BuildContext context) async {
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+  if (await Geolocator.checkPermission() == LocationPermission.always || !context.mounted) return;
+  await _settingsDialog(
+    context,
+    title: 'Enable "Always" Location',
+    body: 'Location stops reaching the app when the screen turns off, so the map and distance '
+        'stop too.\n\n'
+        '${Platform.isAndroid ? 'Location → Allow all the time' : 'Location → Always'}',
+    action: 'TURN ON',
+    onAction: openAlwaysLocationSettings,
+  );
+}
+
+Future<void> _askBackgroundRun(BuildContext context) async {
+  if (!Platform.isAndroid || await backgroundRunAllowed() || !context.mounted) return;
+  await _settingsDialog(
+    context,
+    title: 'Allow background running',
+    body: 'With battery optimization on, Android puts the phone to sleep about a minute after the '
+        'screen turns off. Scanning, GPS and the board link freeze until you unlock it.',
+    action: 'ALLOW',
+    onAction: requestBackgroundRun,
+  );
 }
 
 Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
@@ -509,36 +518,6 @@ Future<void> _settingsDialog(
           ),
       ],
     ),
-  );
-}
-
-Future<void> _alwaysUpgradeDialog(
-  BuildContext context, {
-  required String prefKey,
-  required String body,
-  required String action,
-  required Future<void> Function() onAction,
-}) async {
-  final p = await SharedPreferences.getInstance();
-  if (p.getBool(prefKey) == true || !context.mounted) return;
-  final t = AppTheme.of(context);
-  await _settingsDialog(
-    context,
-    title: 'Enable "Always" Location',
-    body: body,
-    action: action,
-    onAction: onAction,
-    leading: [
-      Builder(
-        builder: (ctx) => TextButton(
-          onPressed: () async {
-            await p.setBool(prefKey, true);
-            if (ctx.mounted) Navigator.of(ctx).pop();
-          },
-          child: Text("DON'T ASK AGAIN", style: TextStyle(color: t.textDim)),
-        ),
-      ),
-    ],
   );
 }
 

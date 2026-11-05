@@ -113,7 +113,7 @@ void _runFlood(ProviderContainer container) {
             'avg=${avg.toStringAsFixed(2)} worst=${worst.toStringAsFixed(1)} '
             'build=${(frames == 0 ? 0 : buildSum / frames).toStringAsFixed(1)} '
             'raster=${(frames == 0 ? 0 : rasterSum / frames).toStringAsFixed(1)} '
-            'flood=${n == null ? '-' : '${n.title()} p${n.popupCount} n${n.nameCount}'}');
+            'flood=${n == null ? '-' : '${n.title()} p${n.popupCount}'}');
         frames = 0; janky = 0; worst = 0; sum = 0; buildSum = 0; rasterSum = 0; ingestUs = 0; ingests = 0;
       }
       if (now - start >= _floodSecs * 1000) {

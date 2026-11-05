@@ -8,8 +8,8 @@
 #include "flock_oui.h"
 
 static const char* FLOCK_NAME_PATTERNS[] = {
-    "FS Ext Battery", "Penguin", "Flock", "Pigvision",
-    "FlockCam", "FlockOS", "FS-", "FS_", "flocksafety"
+    "penguin-", "FS Ext Battery", "Pigvision",
+    "Flock-", "FlockCam", "FlockOS", "flocksafety"
 };
 static const int FLOCK_NAME_PATTERN_COUNT =
     sizeof(FLOCK_NAME_PATTERNS) / sizeof(FLOCK_NAME_PATTERNS[0]);
@@ -69,7 +69,7 @@ static inline void flockMatchInit() {
 static inline bool flockMatchNameStr(const char* name) {
     if (!name || !name[0]) return false;
     for (int i = 0; i < FLOCK_NAME_PATTERN_COUNT; i++) {
-        if (strcasestr(name, FLOCK_NAME_PATTERNS[i])) return true;
+        if (strncasecmp(name, FLOCK_NAME_PATTERNS[i], strlen(FLOCK_NAME_PATTERNS[i])) == 0) return true;
     }
     return false;
 }

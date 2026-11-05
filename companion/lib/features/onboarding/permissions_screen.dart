@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:oui_spy/core/ble/ble_permissions.dart';
@@ -13,9 +14,7 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 
-const kPermissionsOnboardedKey = 'permissions_onboarded';
-
-bool needsPermissionOnboarding(SharedPreferences prefs) => prefs.getKeys().isEmpty;
+const kPermissionsOnboardedKey = 'permissions_onboarded_v2';
 
 class PermissionStep {
   const PermissionStep({
@@ -23,12 +22,27 @@ class PermissionStep {
     required this.title,
     required this.body,
     required this.request,
+    this.done,
   });
 
   final IconData icon;
   final String title;
   final String body;
   final Future<void> Function(WidgetRef ref) request;
+  final Future<bool> Function()? done;
+}
+
+Future<List<PermissionStep>> pendingPermissionSteps(
+  SharedPreferences prefs, [
+  List<PermissionStep>? steps,
+]) async {
+  final all = steps ?? defaultPermissionSteps();
+  if (prefs.getKeys().isEmpty) return all;
+  if (prefs.getBool(kPermissionsOnboardedKey) ?? false) return const [];
+  return [
+    for (final step in all)
+      if (step.done != null && !await step.done!()) step,
+  ];
 }
 
 Future<void> _requestBluetooth(WidgetRef ref) async {
@@ -46,6 +60,34 @@ Future<void> _requestLocation(WidgetRef ref) async {
     await Geolocator.requestPermission();
   }
 }
+
+Future<void> openAlwaysLocationSettings() async {
+  if (await Geolocator.checkPermission() == LocationPermission.denied) {
+    await Geolocator.requestPermission();
+  }
+  if ((await ph.Permission.locationAlways.request()).isGranted) return;
+  await Geolocator.openAppSettings();
+}
+
+Future<void> _requestLocationAlways(WidgetRef ref) async {
+  if (await BlePermissions.alwaysLocationGranted()) return;
+  final back = Completer<void>();
+  final listener = AppLifecycleListener(onResume: () {
+    if (!back.isCompleted) back.complete();
+  });
+  try {
+    await openAlwaysLocationSettings();
+    if (!await BlePermissions.alwaysLocationGranted()) await back.future;
+  } finally {
+    listener.dispose();
+  }
+}
+
+Future<bool> backgroundRunAllowed() => ph.Permission.ignoreBatteryOptimizations.isGranted;
+
+Future<void> requestBackgroundRun() => ph.Permission.ignoreBatteryOptimizations.request();
+
+Future<void> _requestBackgroundRun(WidgetRef ref) => requestBackgroundRun();
 
 Future<void> _requestNotifications(WidgetRef ref) =>
     ref.read(notificationServiceProvider).init();
@@ -65,10 +107,32 @@ List<PermissionStep> defaultPermissionSteps() => [
         title: 'Location',
         body: 'Location puts each detection on the map and records where your '
             'wardrive sessions went. It also lets the app turn the radios off '
-            'inside your exclusion zones.\n\nTo keep wardriving with the screen '
-            'off, the app asks for "Always" access later, when you start a session.',
+            'inside your exclusion zones.',
         request: _requestLocation,
       ),
+      if (Platform.isAndroid || Platform.isIOS)
+        PermissionStep(
+          icon: Icons.my_location,
+          title: 'Location all the time',
+          body: 'Wardriving with the screen off needs location set to '
+              '${Platform.isAndroid ? '"Allow all the time"' : '"Always"'}. Without it, location '
+              'stops reaching the app when the screen turns off, so the map and distance stop too.'
+              '\n\n${Platform.isAndroid ? 'This can only be set in Settings. Continue opens it. Choose '
+                  'Permissions if it shows, then Location, then Allow all the time, then come back.' : 'Continue shows the prompt. Choose Change to Always Allow. If Settings opens '
+                  'instead, choose Location, then Always, then come back.'}',
+          request: _requestLocationAlways,
+          done: BlePermissions.alwaysLocationGranted,
+        ),
+      if (Platform.isAndroid)
+        const PermissionStep(
+          icon: Icons.battery_charging_full,
+          title: 'Run in the background',
+          body: 'With battery optimization on, Android puts the phone to sleep about a minute after '
+              'the screen turns off, even with Always location. Scanning, GPS and the board link all '
+              'freeze until you unlock it.\n\nChoose Allow on the next prompt.',
+          request: _requestBackgroundRun,
+          done: backgroundRunAllowed,
+        ),
       const PermissionStep(
         icon: Icons.notifications_outlined,
         title: 'Notifications',
@@ -79,9 +143,10 @@ List<PermissionStep> defaultPermissionSteps() => [
     ];
 
 class PermissionsOnboardingApp extends ConsumerWidget {
-  const PermissionsOnboardingApp({super.key, required this.onDone});
+  const PermissionsOnboardingApp({super.key, required this.onDone, required this.steps});
 
   final VoidCallback onDone;
+  final List<PermissionStep> steps;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -100,7 +165,7 @@ class PermissionsOnboardingApp extends ConsumerWidget {
       title: 'OUI-APEX',
       theme: AppTheme.themeFor(style, brightness),
       debugShowCheckedModeBanner: false,
-      home: PermissionsScreen(onDone: onDone),
+      home: PermissionsScreen(onDone: onDone, steps: steps),
     );
   }
 }
@@ -119,6 +184,19 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
   late final List<PermissionStep> _steps = widget.steps ?? defaultPermissionSteps();
   int _index = 0;
   bool _busy = false;
+  bool _notSet = false;
+
+  void _advance() {
+    if (_index == _steps.length - 1) {
+      widget.onDone();
+      return;
+    }
+    setState(() {
+      _index++;
+      _busy = false;
+      _notSet = false;
+    });
+  }
 
   Future<void> _continue() async {
     setState(() => _busy = true);
@@ -129,14 +207,17 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
       DebugLog.log('ONBOARD: ${step.title} request failed: $e');
     }
     if (!mounted) return;
-    if (_index == _steps.length - 1) {
-      widget.onDone();
+    final done = step.done;
+    if (done != null && !await done()) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _notSet = true;
+      });
       return;
     }
-    setState(() {
-      _index++;
-      _busy = false;
-    });
+    if (!mounted) return;
+    _advance();
   }
 
   @override
@@ -152,7 +233,7 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'OUI-APEX needs ${_steps.length} permissions to work. '
+                'OUI-APEX needs ${_steps.length} ${_steps.length == 1 ? 'permission' : 'permissions'} to work. '
                 'Step ${_index + 1} of ${_steps.length}.',
                 style: TextStyle(color: t.textDim, fontSize: 13),
               ),
@@ -180,10 +261,20 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
               ),
               const Spacer(),
               Text(
-                'Your phone asks you next. You can change this later in Settings.',
-                style: TextStyle(color: t.textDim, fontSize: 13),
+                _notSet
+                    ? 'Not set yet. Wardriving stops when the screen turns off until this is set.'
+                    : 'Your phone asks you next. You can change this later in Settings.',
+                style: TextStyle(color: _notSet ? AppTheme.error : t.textDim, fontSize: 13),
               ),
               const SizedBox(height: 12),
+              if (_notSet) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: TextButton(onPressed: _advance, child: const Text('Skip for now')),
+                ),
+                const SizedBox(height: 8),
+              ],
               SizedBox(
                 width: double.infinity,
                 height: 52,

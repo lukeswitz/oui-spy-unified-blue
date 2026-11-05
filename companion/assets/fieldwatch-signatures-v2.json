@@ -1071,14 +1071,6 @@
                     "kind": "MANUFACTURER_DATA",
                     "text": "",
                     "companyId": 76,
-                    "dataPrefixHex": "0B",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "MANUFACTURER_DATA",
-                    "text": "",
-                    "companyId": 76,
                     "dataPrefixHex": "05",
                     "radio": null,
                     "enabled": true
@@ -20588,7 +20580,7 @@
             "notes": "Cradlepoint vehicle router (IBR / R-series). Common in police, EMS, utilities, and commercial fleets. Hidden SSIDs still hit on the board vendor.",
             "attentionNote": "Ericsson Cradlepoint vehicle router (IBR / R-series). Common in US police and public-safety fleets; also utilities, EMS, and commercial fleet. Hidden or renamed SSIDs still hit on the CradlePoint IEEE OUI. Pattern match, not that agency or that car. Look with your eyes.",
             "builtIn": true,
-            "kind": "LAW_ENFORCEMENT"
+            "kind": "ISP"
         },
         {
             "id": "fleet-crazyflie",
@@ -24536,59 +24528,35 @@
                     "enabled": true
                 },
                 {
-                    "kind": "NAME_CONTAINS",
-                    "text": "Flock",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "FLCK",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
                     "kind": "NAME_GLOB",
                     "text": "Flock-*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 },
                 {
                     "kind": "NAME_GLOB",
-                    "text": "Flock-??????",
+                    "text": "FlockCam*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 },
                 {
-                    "kind": "NAME_CONTAINS",
-                    "text": "CONDOR",
+                    "kind": "NAME_GLOB",
+                    "text": "FlockOS*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 },
                 {
-                    "kind": "NAME_CONTAINS",
-                    "text": "FALCON",
+                    "kind": "NAME_GLOB",
+                    "text": "flocksafety*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "SPARROW",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 }
             ],
@@ -25022,27 +24990,11 @@
             "colorIndex": 1,
             "rules": [
                 {
-                    "kind": "NAME_CONTAINS",
-                    "text": "FS Ext Battery",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
                     "kind": "NAME_GLOB",
-                    "text": "FS_*",
+                    "text": "FS Ext Battery*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_GLOB",
-                    "text": "FS Ext*",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 },
                 {
@@ -49488,6 +49440,31 @@
             "kind": "WEARABLE"
         },
         {
+            "id": "fleet-apple-watch",
+            "name": "Apple Watch",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 3,
+            "rules": [
+                {
+                    "kind": "MANUFACTURER_DATA",
+                    "text": "",
+                    "companyId": 76,
+                    "dataPrefixHex": "0B",
+                    "radio": "BLE",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Apple Watch sending Magic Switch, a Continuity message only a worn Watch sends, when it has lost its link to its iPhone with the screen on. A Watch connected to its iPhone does not send this and cannot be told from other Apple devices.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "WEARABLE"
+        },
+        {
             "id": "fleet-smartwatch",
             "name": "Smartwatch",
             "enabled": true,
@@ -49845,27 +49822,11 @@
             "colorIndex": 1,
             "rules": [
                 {
-                    "kind": "NAME_CONTAINS",
-                    "text": "Penguin",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "PENGUIN",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
                     "kind": "NAME_GLOB",
-                    "text": "Penguin*",
+                    "text": "penguin-*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 },
                 {
@@ -49873,7 +49834,7 @@
                     "text": "",
                     "companyId": 2504,
                     "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 }
             ],
@@ -50130,35 +50091,11 @@
             "colorIndex": 1,
             "rules": [
                 {
-                    "kind": "NAME_CONTAINS",
-                    "text": "Pigvision",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "PigVision",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "PIGVISION",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
                     "kind": "NAME_GLOB",
                     "text": "Pigvision*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 }
             ],
@@ -50595,14 +50532,6 @@
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "RAVEN",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
                 {
                     "kind": "NAME_CONTAINS",
                     "text": "ShotSpotter",

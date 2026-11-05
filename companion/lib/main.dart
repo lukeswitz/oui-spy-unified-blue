@@ -49,13 +49,16 @@ void main() async {
     overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
   );
 
-  if (needsPermissionOnboarding(prefs) && !const bool.fromEnvironment('BENCH')) {
-    final done = Completer<void>();
-    runApp(UncontrolledProviderScope(
-      container: container,
-      child: PermissionsOnboardingApp(onDone: done.complete),
-    ));
-    await done.future;
+  if (!const bool.fromEnvironment('BENCH')) {
+    final steps = await pendingPermissionSteps(prefs);
+    if (steps.isNotEmpty) {
+      final done = Completer<void>();
+      runApp(UncontrolledProviderScope(
+        container: container,
+        child: PermissionsOnboardingApp(onDone: done.complete, steps: steps),
+      ));
+      await done.future;
+    }
     await prefs.setBool(kPermissionsOnboardedKey, true);
   }
 

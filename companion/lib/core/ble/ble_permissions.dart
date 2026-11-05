@@ -32,10 +32,17 @@ class BlePermissions {
       final res = await [
         ph.Permission.bluetoothScan,
         ph.Permission.bluetoothConnect,
+        ph.Permission.location,
       ].request();
       DebugLog.log('BLEPERM: sdk=$sdk scan=${res[ph.Permission.bluetoothScan]} '
-          'connect=${res[ph.Permission.bluetoothConnect]}');
-      return _collapse(res.values);
+          'connect=${res[ph.Permission.bluetoothConnect]} location=${res[ph.Permission.location]}');
+      final granted = _collapse(res.values);
+      if (granted != BlePermResult.ready) return granted;
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        DebugLog.log('BLEPERM: location services off');
+        return BlePermResult.locationServicesOff;
+      }
+      return BlePermResult.ready;
     }
 
     final loc = await ph.Permission.location.request();
@@ -49,6 +56,9 @@ class BlePermissions {
     }
     return BlePermResult.ready;
   }
+
+  static Future<bool> alwaysLocationGranted() async =>
+      await Geolocator.checkPermission() == LocationPermission.always;
 
   static BlePermResult _collapse(Iterable<ph.PermissionStatus> statuses) {
     if (statuses.any((s) => s.isPermanentlyDenied)) {

@@ -177,7 +177,10 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     return _sortAscending ? (a, b) => cmp(b, a) : cmp;
   }
 
+  bool _withYouOnly = false;
+
   bool _matches(ClassifiedDevice d) {
+    if (_withYouOnly && !ref.read(deviceRegistryProvider).withYou(d)) return false;
     if (_radio != null && d.obs.kind != _radio) return false;
     if (_source != null && !d.sources.contains(_source)) return false;
     if (_unclassifiedOnly) return d.signatures.isEmpty;
@@ -186,6 +189,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   }
 
   int get _filterCount =>
+      (_withYouOnly ? 1 : 0) +
       (_radio != null ? 1 : 0) +
       (_source != null ? 1 : 0) +
       (_class != null || _unclassifiedOnly ? 1 : 0);
@@ -249,6 +253,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                       _source = null;
                       _class = null;
                       _unclassifiedOnly = false;
+                      _withYouOnly = false;
                     }),
                     child: Text(
                       'RESET',
@@ -280,6 +285,27 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                             apply(() => _source = s);
                           },
                         ),
+                    ],
+                  ),
+                ),
+                CommandSheetGroup(
+                  label: 'MOVEMENT',
+                  child: Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      CommandChip(
+                        label: 'ALL',
+                        selected: !_withYouOnly,
+                        color: kPillAll,
+                        onTap: () => apply(() => _withYouOnly = false),
+                      ),
+                      CommandChip(
+                        label: 'WITH YOU',
+                        selected: _withYouOnly,
+                        color: AppTheme.error,
+                        onTap: () => apply(() => _withYouOnly = true),
+                      ),
                     ],
                   ),
                 ),

@@ -27,11 +27,13 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
+import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
@@ -79,12 +81,22 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   String _classGroupLabel = '';
   String _cachedLayersKey = '';
   List<Geofence> _exclusionZones = [];
+  bool _alwaysLocationMissing = false;
+
+  Future<void> _checkAlwaysLocation() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    final missing = !await BlePermissions.alwaysLocationGranted();
+    if (mounted && missing != _alwaysLocationMissing) {
+      setState(() => _alwaysLocationMissing = missing);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadExclusionZones();
+    _checkAlwaysLocation();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final ok = await _primeLocationPermission();
       if (ok && mounted) ref.read(gpsProvider).start();
@@ -101,6 +113,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _checkAlwaysLocation();
       DebugLog.log('WardriveScreen: resumed, priming permissions');
       _primeLocationPermission().then((success) {
         if (!mounted) return;
@@ -118,7 +131,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   void _onMapReady() {
     if (_initialFitDone) return;
     final wd = ref.read(wardriveProvider);
-    if (!wd.hasSessionData) return;
+    if (!wd.hasSessionData || wd.isActive) return;
     _initialFitDone = true;
     setState(() => _followMode = false);
     _fitToSessionBounds(wd, includeCurrentPosition: true);
@@ -297,7 +310,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     } else if (!_povHeading.isNaN) {
       _applyFollowCamera(here, _povHeading);
     } else {
-      _mapController.move(here, _mapController.camera.zoom);
+      _centerInView(here);
     }
   }
 
@@ -311,10 +324,17 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       _mapController.moveAndRotate(here, cam.zoom, -headingDeg);
       return;
     }
-    final mpp = _metersPerPixel(here.latitude, cam.zoom);
-    final aheadMeters = mpp * size.y * 0.25;
-    final ahead = const Distance().offset(here, aheadMeters, headingDeg);
-    _mapController.moveAndRotate(ahead, cam.zoom, -headingDeg);
+    _mapController.rotate(-headingDeg);
+    _centerInView(here);
+  }
+
+  double _bottomHeight = 0;
+  final _bottomKey = GlobalKey();
+
+  void _centerInView(LatLng here) {
+    final top = _statsHeight + 8 + _chipsHeight;
+    final bottom = _bottomHeight + 16;
+    _mapController.move(here, _mapController.camera.zoom, offset: Offset(0, (top - bottom) / 2));
   }
 
   List<Widget> _exclusionZoneLayers() {
@@ -515,6 +535,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final zoom = wd.consumeZoomTarget()!;
       final focus = wd.consumeZoomDetection();
       _followMode = false;
+      _initialFitDone = true;
       _focusedDetection = focus;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -556,7 +577,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       } else if (_followMode) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !_followMode) return;
-          _mapController.move(here, _mapController.camera.zoom);
+          _centerInView(here);
         });
       }
     } else if (!_povHeading.isNaN) {
@@ -814,6 +835,40 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                             ),
                           ),
                         ),
+                      if (_alwaysLocationMissing)
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(12, pills.isEmpty ? 44 : 0, 12, 0),
+                          child: Container(
+                            padding: const EdgeInsets.only(left: 12, right: 4),
+                            decoration: BoxDecoration(
+                              color: t.surface.withValues(alpha: 0.96),
+                              border: Border.all(color: AppTheme.warning),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.my_location, size: 18, color: AppTheme.warning),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Location is not set to ${Platform.isAndroid ? 'Allow all the time' : 'Always'}. '
+                                    'The map stops when the screen turns off.',
+                                    style: TextStyle(color: t.textPrimary, fontSize: 13),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: openAlwaysLocationSettings,
+                                  child: Text(
+                                    'TURN ON',
+                                    style: TextStyle(
+                                      color: AppTheme.warning,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -949,7 +1004,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             if (wd.isActive)
               Positioned(
                 bottom: 16, left: 0, right: 0,
-                child: Column(
+                child: _MeasuredBox(
+                  statsKey: _bottomKey,
+                  onHeightChanged: (h) {
+                    if ((_bottomHeight - h).abs() > 1) {
+                      setState(() => _bottomHeight = h);
+                    }
+                  },
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _runControls(ref, wd),
@@ -979,6 +1041,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                         ),
                       ),
                   ],
+                ),
                 ),
               ),
             mapAttribution(mapStyle),

@@ -280,6 +280,12 @@ class SignatureEngine {
 
   bool get hasClusters => _clusterPlans.isNotEmpty;
 
+  late final int clusterWindowMs = _clusterPlans.fold<int>(0, (most, idx) {
+    final sec = _plans[idx].sig.peerWindowSec;
+    final ms = (sec <= 0 ? 60 : sec) * 1000;
+    return ms > most ? ms : most;
+  });
+
   List<Signature> clusterMatch(Observation a, Iterable<Observation> devices, int now) {
     if (_clusterPlans.isEmpty) return const [];
     final out = <Signature>[];

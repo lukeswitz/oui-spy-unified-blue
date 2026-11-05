@@ -36,6 +36,7 @@ _SigRule _any(List<String> subs, String bucket, String label, int w) =>
 
 final List<_SigRule> _sigRules = [
   _SigRule((n) => n.contains('airtag') || n == 'find my' || n.contains('find hub') || n.contains('dult'), 'tag', '', 8),
+  _any(['apple watch'], 'wearable', 'an Apple Watch', 8),
   _any(['apple device'], 'phone', 'an iPhone, iPad, or Mac', 7),
   _any(['apple audio'], 'audio-personal', 'AirPods, Beats, or AirPlay', 7),
   _any(['microsoft'], 'computer', 'a Windows / Surface / Xbox radio', 6),
@@ -187,7 +188,7 @@ final List<_SigRule> _sigRules = [
   _eq('peoplenet', 'hotspot', 'a PeopleNet fleet ELD hotspot', 6),
   _eq('uconnect', 'hotspot', 'a Uconnect in-car hotspot', 6),
   _eq('carplay', 'hotspot', 'a CarPlay in-car hotspot', 6),
-  _eq('cradlepoint', 'hotspot', 'a Cradlepoint vehicle router (often public-safety / fleet)', 7),
+  _eq('cradlepoint', 'hotspot', 'a Cradlepoint cellular router (businesses, fleets, some public safety)', 7),
   _eq('airlink', 'hotspot', 'a Sierra Wireless AirLink vehicle gateway', 7),
   _eq('compex', 'hotspot', 'a Compex access point (sometimes public-safety / fleet)', 6),
   _eq('novatel wireless', 'hotspot', 'a Novatel Wireless / Inseego vehicle radio', 6),

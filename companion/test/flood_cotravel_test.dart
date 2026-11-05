@@ -25,26 +25,6 @@ Observation _ble(
 
 Observation _prox(int n, {int rssi = -48}) => _ble(n, rssi: rssi, mfg: const [MfgRecord(0x004C, '070100')]);
 
-Observation _ap(int n, String name, {int rssi = -34, int channel = 6}) {
-  String b(int v) => (v & 0xFF).toRadixString(16).padLeft(2, '0').toUpperCase();
-  final mac = '02:${b(n >> 24)}:${b(n >> 16)}:${b(n >> 8)}:${b(n)}:01';
-  return Observation(
-    key: 'WIFI:$mac',
-    kind: RadioKind.wifi,
-    mac: mac,
-    name: name,
-    rssi: rssi,
-    channel: channel,
-    hiddenSsid: name.isEmpty,
-  );
-}
-
-int _at(int step) => 1000000 + step * 30000;
-Observation _anchor() => _ap(1, 'FrontDesk', rssi: -50, channel: 11);
-List<Observation> _spam({int start = 100, int count = 15}) => [
-  for (var i = 0; i < count; i++) _ap(start + i, 'Spam${start + i}'),
-];
-
 void _settle(PairingFlood f, int at) {
   f.consider(_ble(250), at);
   f.tick(at);
@@ -52,31 +32,40 @@ void _settle(PairingFlood f, int at) {
 
 void main() {
   group('PairingFlood', () {
-    test('nine popups stay quiet', () {
+    test('one under the minimum stays quiet', () {
       final f = PairingFlood();
-      for (var i = 0; i < 9; i++) {
+      for (var i = 0; i < PairingFlood.popupMin - 1; i++) {
         f.consider(_prox(i), 0);
       }
       _settle(f, PairingFlood.confirmMs);
       expect(f.notice, isNull);
     });
 
-    test('ten clustered popups open the dialog', () {
+    test('crowd of one-shot addresses at spread signal levels never flags', () {
       final f = PairingFlood();
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < 180; i++) {
+        f.consider(_prox(i, rssi: -60 - (i % 35)), 0);
+      }
+      _settle(f, PairingFlood.confirmMs);
+      expect(f.notice, isNull);
+    });
+
+    test('clustered popups at the minimum open the dialog', () {
+      final f = PairingFlood();
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 0);
       }
       _settle(f, PairingFlood.confirmMs);
       final n = f.notice!;
       expect(n.showDialog, isTrue);
       expect(n.title(), 'Pairing flood');
-      expect(n.popupCount, 10);
+      expect(n.popupCount, PairingFlood.popupMin);
       expect(n.families, ['Apple proximity pairing']);
       expect(n.medianRssi, -48);
-      expect(n.line(), 'Pairing flood · 10 new addresses · about -48 dBm');
-      f.consider(_prox(10), 1000);
+      expect(n.line(), 'Pairing flood · ${PairingFlood.popupMin} new addresses · about -48 dBm');
+      f.consider(_prox(PairingFlood.popupMin), 1000);
       _settle(f, PairingFlood.confirmMs + 1000);
-      expect(f.notice!.popupCount, 11);
+      expect(f.notice!.popupCount, PairingFlood.popupMin + 1);
     });
 
     test('mixed popup families share one counter', () {
@@ -86,14 +75,14 @@ void main() {
       f.consider(_ble(2, mfg: const [MfgRecord(0x004C, '0F0100')]), 0);
       f.consider(_ble(3, mfg: const [MfgRecord(0x004C, '0F0100')]), 0);
       f.consider(_ble(4, sd: const [ServiceDataRecord('FE2C', '000006')]), 0);
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < PairingFlood.popupMin - 6; i++) {
         f.consider(_prox(10 + i), 0);
       }
       _settle(f, PairingFlood.confirmMs);
       expect(f.notice, isNull);
       f.consider(_ble(5, mfg: const [MfgRecord(0x0006, '0109')]), 0);
       _settle(f, PairingFlood.confirmMs);
-      expect(f.notice!.popupCount, 10);
+      expect(f.notice!.popupCount, PairingFlood.popupMin);
       expect(f.notice!.families, ['Apple proximity pairing', 'Apple Nearby Action', 'Fast Pair', 'Swift Pair']);
     });
 
@@ -108,7 +97,7 @@ void main() {
 
     test('window expires', () {
       final f = PairingFlood();
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 0);
       }
       _settle(f, PairingFlood.confirmMs + PairingFlood.windowMs);
@@ -117,13 +106,13 @@ void main() {
       expect(f.notice, isNull);
     });
 
-    test('name flood needs randomized named addresses', () {
+    test('named devices are never a flood', () {
       final f = PairingFlood();
-      for (var i = 0; i < 15; i++) {
+      for (var i = 0; i < 200; i++) {
         f.consider(_ble(i, name: 'Radio $i', rssi: -55), 0);
       }
       _settle(f, PairingFlood.confirmMs);
-      expect(f.notice!.title(), 'Name flood');
+      expect(f.notice, isNull);
       final g = PairingFlood();
       for (var i = 0; i < 20; i++) {
         g.consider(
@@ -142,7 +131,7 @@ void main() {
 
     test('node addresses that never return flag after confirm', () {
       final f = PairingFlood();
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 0);
       }
       expect(f.notice, isNull);
@@ -150,14 +139,14 @@ void main() {
       f.tick(PairingFlood.confirmMs - 1);
       expect(f.notice, isNull);
       f.tick(PairingFlood.confirmMs);
-      expect(f.notice!.popupCount, 10);
+      expect(f.notice!.popupCount, PairingFlood.popupMin);
       f.tick(PairingFlood.confirmMs + PairingFlood.windowMs + 1);
       expect(f.notice, isNull);
     });
 
     test('listening stopped before confirm never flags', () {
       final f = PairingFlood();
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 0);
       }
       f.consider(_ble(200), PairingFlood.confirmMs - 1);
@@ -167,10 +156,10 @@ void main() {
 
     test('node addresses that return are a crowd, not a flood', () {
       final f = PairingFlood();
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 0);
       }
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 10000);
       }
       f.tick(PairingFlood.confirmMs);
@@ -179,13 +168,13 @@ void main() {
 
     test('re-heard inside the rotation time still counts as spam', () {
       final f = PairingFlood();
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
         f.consider(_prox(i), 0);
         f.consider(_prox(i), PairingFlood.persistMs - 1);
       }
       f.consider(_ble(200), PairingFlood.confirmMs);
       f.tick(PairingFlood.confirmMs);
-      expect(f.notice!.popupCount, 10);
+      expect(f.notice!.popupCount, PairingFlood.popupMin);
     });
 
     test('sustained spam at 100 per second stays flagged without gaps', () {
@@ -252,10 +241,10 @@ void main() {
 
     test('node crowd re-reported on rediscover never flags', () {
       final reg = DeviceRegistry(engine: SignatureEngine(const []));
-      for (var i = 0; i < 12; i++) {
+      for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
         reg.ingest(at(_prox(i), 0), source: 'esp32');
       }
-      for (var i = 0; i < 12; i++) {
+      for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
         reg.ingest(at(_prox(i), 10000), source: 'esp32');
       }
       reg.pairingFlood.tick(PairingFlood.confirmMs);
@@ -264,18 +253,18 @@ void main() {
 
     test('node one-shot addresses flag after confirm', () {
       final reg = DeviceRegistry(engine: SignatureEngine(const []));
-      for (var i = 0; i < 12; i++) {
+      for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
         reg.ingest(at(_prox(i), 0), source: 'esp32');
       }
       expect(reg.pairingFlood.notice, isNull);
       reg.ingest(at(_ble(200), PairingFlood.confirmMs), source: 'esp32');
       reg.pairingFlood.tick(PairingFlood.confirmMs);
-      expect(reg.pairingFlood.notice!.popupCount, 12);
+      expect(reg.pairingFlood.notice!.popupCount, PairingFlood.popupMin + 2);
     });
 
     test('node disconnect leaves pending addresses unconfirmed', () {
       final reg = DeviceRegistry(engine: SignatureEngine(const []));
-      for (var i = 0; i < 12; i++) {
+      for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
         reg.ingest(at(_prox(i), 0), source: 'esp32');
       }
       reg.pairingFlood.tick(PairingFlood.confirmMs + 1000);
@@ -284,11 +273,11 @@ void main() {
 
     test('phone crowd re-heard on its 5 s ingest cadence never flags', () {
       final reg = DeviceRegistry(engine: SignatureEngine(const []));
-      for (var i = 0; i < 12; i++) {
+      for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
         reg.ingest(at(_prox(i), 0), source: 'phone');
       }
       for (final t in [PhoneBleSource.ingestEvery.inMilliseconds, 2 * PhoneBleSource.ingestEvery.inMilliseconds]) {
-        for (var i = 0; i < 12; i++) {
+        for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
           reg.ingest(at(_prox(i), t), source: 'phone');
         }
       }
@@ -297,9 +286,9 @@ void main() {
       expect(reg.pairingFlood.notice, isNull);
     });
 
-    test('crowd larger than the registry cap never flags', () {
+    test('crowd above the old 10k cap is all kept and never flags', () {
       final reg = DeviceRegistry(engine: SignatureEngine(const []));
-      const n = DeviceRegistry.maxDevices + 1000;
+      const n = 11000;
       String hx(int v) => (v & 0xFF).toRadixString(16).padLeft(2, '0').toUpperCase();
       Observation dev(int i, int ms) {
         final mac = '6E:00:00:00:${hx(i >> 8)}:${hx(i)}';
@@ -315,97 +304,18 @@ void main() {
         reg.pairingFlood.tick(t + 9000);
         if (reg.pairingFlood.notice != null) missedQuiet.add(t);
       }
-      expect(reg.count, DeviceRegistry.maxDevices);
+      expect(reg.count, n);
       expect(missedQuiet, isEmpty);
     });
 
     test('phone one-shot spam flags after confirm', () {
       final reg = DeviceRegistry(engine: SignatureEngine(const []));
-      for (var i = 0; i < 12; i++) {
-        reg.ingest(at(_prox(i), i * 100), source: 'phone');
+      for (var i = 0; i < PairingFlood.popupMin + 2; i++) {
+        reg.ingest(at(_prox(i), i * 10), source: 'phone');
       }
       reg.ingest(at(_ble(200), PairingFlood.confirmMs + 1200), source: 'phone');
       reg.pairingFlood.tick(PairingFlood.confirmMs + 1200);
-      expect(reg.pairingFlood.notice!.popupCount, 12);
-    });
-  });
-
-  group('WifiBeaconFlood', () {
-    test('first scan stays quiet when crowd leaves', () {
-      final f = WifiBeaconFlood();
-      f.scan([_anchor(), ..._spam(count: 20)], _at(0));
-      f.scan([_anchor()], _at(1));
-      expect(f.notice, isNull);
-    });
-
-    test('burst that vanishes next scan is a flood', () {
-      final f = WifiBeaconFlood();
-      f.scan([_anchor()], _at(0));
-      f.scan([_anchor(), ..._spam()], _at(1));
-      expect(f.notice, isNull);
-      f.scan([_anchor()], _at(2));
-      expect(f.notice!.wifi, isTrue);
-      expect(f.notice!.popupCount, 15);
-      expect(f.notice!.line(), 'Wi-Fi beacon flood · 15 new names · about -34 dBm');
-    });
-
-    test('mesh, guest suffix, hidden stay out', () {
-      final mesh = WifiBeaconFlood()
-        ..scan([_anchor()], _at(0))
-        ..scan([_anchor(), for (var i = 0; i < 20; i++) _ap(300 + i, 'BuildingMesh')], _at(1))
-        ..scan([_anchor()], _at(2));
-      expect(mesh.notice, isNull);
-      final hidden = WifiBeaconFlood()
-        ..scan([_anchor()], _at(0))
-        ..scan([_anchor(), for (var i = 0; i < 20; i++) _ap(400 + i, '')], _at(1))
-        ..scan([_anchor()], _at(2));
-      expect(hidden.notice, isNull);
-      final known = [
-        for (var i = 1; i <= 15; i++) _ap(10 + i, 'Net${i.toString().padLeft(2, '0')}', rssi: -60, channel: 1),
-      ];
-      const suffixes = [
-        'Guest',
-        '5G',
-        'ext',
-        '2.4',
-        '5GHz',
-        'extender',
-        'guests',
-        '6G',
-        '2.4GHz',
-        '6GHz',
-        'guest',
-        '5g',
-        'EXT',
-        '2.4g',
-        'Guests',
-      ];
-      final guests = [
-        for (var i = 0; i < 15; i++) _ap(200 + i, 'Net${(i + 1).toString().padLeft(2, '0')}-${suffixes[i]}'),
-      ];
-      final g = WifiBeaconFlood()
-        ..scan([_anchor(), ...known], _at(0))
-        ..scan([_anchor(), ...guests], _at(1))
-        ..scan([_anchor()], _at(2));
-      expect(g.notice, isNull);
-    });
-
-    test('cluster that stays is not a flood', () {
-      final batch = [_anchor(), ..._spam()];
-      final f = WifiBeaconFlood()
-        ..scan([_anchor()], _at(0))
-        ..scan(batch, _at(1))
-        ..scan(batch, _at(2))
-        ..scan(batch, _at(3));
-      expect(f.notice, isNull);
-    });
-
-    test('short list stays out', () {
-      final f = WifiBeaconFlood()
-        ..scan([_anchor()], _at(0))
-        ..scan([_anchor(), ..._spam(count: 14)], _at(1))
-        ..scan([_anchor()], _at(2));
-      expect(f.notice, isNull);
+      expect(reg.pairingFlood.notice!.popupCount, PairingFlood.popupMin + 2);
     });
   });
 
