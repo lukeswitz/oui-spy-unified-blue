@@ -67,10 +67,9 @@
 | **App + board** | Phone app connected to an ESP32 board over Bluetooth | The board runs the engines. The app controls it, shows the feed and map, adds phone GPS, and saves PCAPs |
 | **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
 | **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
-| **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's radios: Bluetooth and Wi-Fi on Android, Bluetooth on iPhone |
+| **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's own radios |
 | **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 315 / 433 / 915 MHz and ADS-B. A USB Wi-Fi adapter scans Wi-Fi, and the MT7921AU also scans Bluetooth LE. Both run alongside the phone's radios |
 
-- **Together:** the board detects while the phone foxhunts a device it found, or both scan into one session.
 - **Offline scan** (SETTINGS → NODE → HARDWARE): the board keeps scanning without the phone, even after a reboot, and uploads hits on reconnect. A directly connected board with a GPS module fix also wardrives, one row per device every 5 min, up to 1 MB. It stops after 60 s without a fix.
 - **Private Bluetooth link:** the board changes its private address at random every 5–15 min. After pairing, it hides its name and refuses unknown phones. The paired phone reconnects on its own, even after a reboot. There is no PIN; accept the prompt on your phone. To pair another phone, restart the board: it accepts one new phone in the 2 min after power-on. After updating an S3, C3 or older ESP32 board, forget it in your phone's Bluetooth settings and pair again.
 - **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the board adds Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes to your wardrive. Tap **Start hub**, power on a Piglet, and tap **Pair** under **Nearby nodes**. The hub board leaves the mesh while it runs. The wardrive radio picker can leave out any paired node.
@@ -90,11 +89,10 @@
 
 - **Manager boards:** XIAO ESP32-S3 (`mgr-xiao_s3`), ESP32-S3 DevKitC (`mgr-s3_devkitc`), XIAO ESP32-C5 (`mgr-xiao_c5`), XIAO ESP32-C3 (`mgr-xiao_c3`), ESP32 WROOM (`mgr-wroom`). A manager does no scanning.
 - **No mesh:** the M5StickC, PLUS and PLUS2 skip mesh to fit their RAM. They connect straight to the phone or run standalone.
-- **No buzzer:** the app hides the buzzer settings on boards that lack one.
 
 ## USB radios on Android
 
-OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle through Android's USB API. It needs no root, kernel driver or custom ROM.
+OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle with no root, kernel driver or custom ROM.
 
 <div align="center">
 <table>
@@ -105,13 +103,11 @@ OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle through Android's USB API.
 </div>
 
 - **Setup:** plug it in, choose OUI-APEX when Android asks, and tick "Use by default for this USB device". The app then reclaims it after a restart. It shows on Home with its own START control.
-- **Several at once:** the phone's radios, a USB Wi-Fi adapter and an RTL-SDR scan into one session.
 
 ### Wi-Fi adapters
 
 - **Receive only:** the adapter scans in monitor mode and never transmits.
-- **Firmware:** on first use, the app downloads it from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/), checks a pinned SHA-256, and caches it.
-- **Per AP:** each access point is logged with its channel and security (open, WEP, WPA, WPA2 or WPA3).
+- **Firmware:** first use needs internet to download the chipset firmware from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/).
 
 | Chipset | Scans |
 |---|---|
@@ -121,7 +117,7 @@ OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle through Android's USB API.
 | Atheros AR9271 | Wi-Fi (2.4 GHz) |
 | Ralink RT3070 | Wi-Fi (2.4 GHz) |
 
-On the MT7921AU (Alfa AWUS036AXM), pick BLE or WiFi+BLE on the radio control to scan Bluetooth LE. Its hits are tagged `USB WIFI` and `USB-BLE`.
+On the MT7921AU (Alfa AWUS036AXM), pick BLE or WiFi+BLE on the radio control to scan Bluetooth LE.
 
 ### RTL-SDR
 
@@ -147,9 +143,8 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 </table>
 </div>
 
-SCAN runs only the categories you pick: **Weather, Home, Meters, Security, Remotes**. The info button explains each one.
+SCAN runs only the categories you pick: **Weather, Home, Meters, Security, Remotes**.
 
-- Decoders drop readings that fail their checksum.
 - Decoded devices save to History under an SDR filter, and you can foxhunt them by signal strength.
 - The **TPMS** tab reads tire sensors more reliably than SCAN.
 - **ADS-B** shows each aircraft's callsign, altitude, speed, heading and photo, and maps its flight path. One button uploads heard aircraft to WDGWars.
@@ -179,7 +174,7 @@ In SETTINGS → **Detection & alerts**, each type can **alert** (notification pl
 | **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe |
 | **SUSPECTED** | A listed OUI only |
 
-The tier shows on feed rows, in the detail sheet, and in DETECTIONS → HISTORY, which can filter by tier.
+DETECTIONS → HISTORY can filter by tier.
 
 ## App
 
@@ -196,15 +191,13 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 </div>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
-- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export). A hit's detail says what it is and why, with signal strength, decoded advertisement, services, first and last seen, and buttons to foxhunt or map it. SHOW ALL maps its whole class.
-- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …) and a confidence dot. Sources: OUI vendor categories, Bluetooth SIG IDs, AntiHunter tables, Fieldwatch signatures. Class alerts are on by default.
-- **Phone scan**: phone icon in the status bar, off at launch. Hits show as node PHONE. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
-- **USB radios**: see [USB radios on Android](#usb-radios-on-android).
-- **Notifications**: title is the matched target (watchlist name, signature, probed SSID); body is RSSI, channel, name, MAC.
+- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
+- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default.
+- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
 - **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
 - **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
-- **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m), querying `overpass-api.de` (fallback `overpass.private.coffee`). *WDG TERRITORY* shows a linked account's WDGWars territory.
+- **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m). *WDG TERRITORY* shows a linked account's WDGWars territory.
 - **Geofences**: inside a zone, detections drop from feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
 - **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
 - **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
@@ -219,8 +212,8 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
 | Service | When the app connects | What it sends | Usage rules the app follows |
 |---|---|---|---|
-| [WiGLE](https://api.wigle.net) | Sign in or upload a session | API name + token; session file on upload | On HTTP 429, pauses WiGLE 24h ("Try again in 24hr" on HOME and **Settings → Data → Accounts**). Each session uploads once, on confirm. |
-| [WDGWars](https://wdgwars.pl) | Link an account, upload a session, or turn on **WDG TERRITORY** | API key; compressed session file; territory requests | UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min. Shows returned counts after upload. |
+| [WiGLE](https://api.wigle.net) | Sign in or upload a session | API name + token; session file on upload | On HTTP 429, pauses WiGLE 24h. Each session uploads once, on confirm. |
+| [WDGWars](https://wdgwars.pl) | Link an account, upload a session, or turn on **WDG TERRITORY** | API key; compressed session file; territory requests | UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min. |
 | [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (`overpass-api.de`, fallback `overpass.private.coffee`) | **MAPPED ALPRs** on (off by default) and you move the map or open a Flock hit | The map corners in view | UA `oui-spy-companion/1.0`. Caches areas 7 days, one request at a time. On HTTP 429 waits 30s or longer. |
 | [OpenFreeMap](https://openfreemap.org) styles: Dark (default), Fiord, Liberty, Bright, Positron | A map is on screen | Tile numbers in view | No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap". |
 | [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map): Satellite (US) | You pick Satellite (US) | Tile numbers in view | Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit. |
@@ -266,8 +259,6 @@ Files go to `/OUISPY` on the card:
 
 Modes: `DETECT FLOCKB FLOCKW FOXHNT SKYSPY UNIPWN`. Wardrive and PCAP need the app on these boards (no SD card).
 
-A tap of **A** acts after 0.35 s and does nothing on the detections screen.
-
 ### Main screen (both)
 
 - **Top left:** selected mode (amber = selected, green = running).
@@ -285,7 +276,6 @@ Detector MAC, OUI and UUID targets and signatures set in the app stay on the boa
 - **Rows:** the 4 latest detections, newest on top.
 - **Each row:** engine icon, name (12 characters, MAC address if none), dBm, signal bars.
 - **Header:** detections since boot.
-- A device hit twice in a row shows once.
 
 ## Mesh
 
@@ -295,7 +285,7 @@ Detector MAC, OUI and UUID targets and signatures set in the app stay on the boa
 - Boards use a random MAC each boot; the node ID stays fixed.
 - A node silent for 45 s drops off and rejoins when back in range.
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
-- Any mix of node boards works under one manager. The app shows each node's board.
+- Any mix of node boards works under one manager.
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 
 ## Optional GPS module
@@ -343,13 +333,11 @@ gh release upload v1.2.3 dist/v1.2.3/*.bin --clobber
 
 `keygen` prints the public key. Put it in `src/ota_pubkey.h` and `companion/lib/core/ota/ota_signature.dart`. Back up the private key and never commit it. If you lose it, boards can only move to a new key by USB flashing.
 
-**Firmware libraries:** [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus), [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library); ESP-IDF ESP-NOW and mbedTLS.
-
-**Map tiles:** [OpenFreeMap](https://openfreemap.org/) with [OpenMapTiles](https://openmaptiles.org/) and [OpenStreetMap](https://www.openstreetmap.org/copyright) data; satellite imagery from [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map). 
-
-**Vendor OUIs** from the IEEE MA-L, MA-M and MA-S registries via [Wireshark manuf](https://www.wireshark.org/download/automated/data/manuf.gz).
-
 ## Credits
+
+- Firmware libraries: [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus), [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library); ESP-IDF ESP-NOW and mbedTLS.
+- Map tiles: [OpenFreeMap](https://openfreemap.org/) with [OpenMapTiles](https://openmaptiles.org/) and [OpenStreetMap](https://www.openstreetmap.org/copyright) data; satellite imagery from [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map).
+- Vendor OUIs: IEEE MA-L, MA-M and MA-S registries via [Wireshark manuf](https://www.wireshark.org/download/automated/data/manuf.gz).
 
 - Upstream engines: [Detector](https://github.com/colonelpanichacks/ouispy-detector), [Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter), [Flock You](https://github.com/colonelpanichacks/flock-you), [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy), [UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) by **colonelpanichacks**.
 - **Will Greenberg** ([flock-you](https://github.com/wgreenberg/flock-you)): XUNTONG `0x09C8` detection.
