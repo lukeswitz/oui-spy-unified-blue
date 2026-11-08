@@ -88,10 +88,6 @@
 #define LY_BOX_H         66
 #define LY_LBOX_W       152
 #define LY_LSPLIT_Y      54
-#define LY_ELIST_X        6
-#define LY_ELIST_Y       20
-#define LY_ELIST_DY      12
-#define LY_ELIST_ROWS     5
 #define LY_WIFI_IX        4
 #define LY_WIFI_IY       26
 #define LY_WIFI_NX       34
@@ -120,6 +116,14 @@
 #define LY_STRIP_CNT_DX   8
 #define LY_STRIP_CNT_Y  112
 #define LY_STRIP_CNT_SZ   1
+#define LY_FEED_X         3
+#define LY_FEED_HDR_Y     1
+#define LY_FEED_TOP      16
+#define LY_FEED_RH       28
+#define LY_FEED_ROWS      4
+#define LY_FEED_SZ        2
+#define LY_FEED_NAME_X   26
+#define LY_FEED_NAMEFMT  "%-12.12s"
 #else
 #define DONGLE_COLS      26
 #define DONGLE_ROWS      9
@@ -142,10 +146,6 @@
 #define LY_BOX_H         43
 #define LY_LBOX_W       102
 #define LY_LSPLIT_Y      36
-#define LY_ELIST_X        3
-#define LY_ELIST_Y       14
-#define LY_ELIST_DY      10
-#define LY_ELIST_ROWS     4
 #define LY_WIFI_IX        3
 #define LY_WIFI_IY       14
 #define LY_WIFI_NX       28
@@ -179,6 +179,14 @@
 #define LY_STRIP_CNT_DX   1
 #define LY_STRIP_CNT_Y   71
 #define LY_STRIP_CNT_SZ   1
+#define LY_FEED_X         2
+#define LY_FEED_HDR_Y     1
+#define LY_FEED_TOP      11
+#define LY_FEED_RH       17
+#define LY_FEED_ROWS      4
+#define LY_FEED_SZ        1
+#define LY_FEED_NAME_X   20
+#define LY_FEED_NAMEFMT  "%-12.12s"
 #endif
 
 extern bool hwGpsUtc(uint32_t* epochOut);
@@ -203,6 +211,8 @@ static uint32_t s_pcapBytes = 0;
 static uint16_t s_pcapIdx = 0;
 
 static uint32_t s_hits = 0;
+static uint32_t s_wifiHits = 0;
+static uint32_t s_bleHits = 0;
 static uint32_t s_wigleRows = 0;
 static uint32_t s_detRows = 0;
 static uint32_t s_lastDraw = 0;
@@ -216,7 +226,7 @@ typedef struct {
 } DongleField;
 
 static DongleField s_fNode, s_fApp, s_fMesh, s_fSd, s_fGps;
-static DongleField s_fLog;
+static DongleField s_fWifi, s_fBle, s_fLog;
 static DongleField s_fHit1, s_fHit2, s_fWd, s_fMph;
 static DongleField s_fMode;
 
@@ -233,6 +243,8 @@ static DongleField s_fStrip[DONGLE_STRIP_MAX];
 static uint8_t s_stripCntLen[DONGLE_STRIP_MAX] = {0};
 #endif
 static uint32_t s_wdStartMs = 0;
+static uint16_t s_wifiIconColor = 1;
+static uint16_t s_bleIconColor = 1;
 static bool s_chromeDrawn = false;
 static uint16_t s_engStripMask = 0xFFFF;
 #define DONGLE_TAP_WINDOW_MS 400u
@@ -242,12 +254,16 @@ static bool s_btnDown = false;
 static uint32_t s_btnChangeMs = 0;
 static uint32_t s_btnTapDeadline = 0;
 
+#define DONGLE_SEEN_BYTES 2048
+#define DONGLE_SEEN_BITS  (DONGLE_SEEN_BYTES * 8)
+
 #define DONGLE_ENG_SEEN_BYTES 256
 #define DONGLE_ENG_SEEN_BITS  (DONGLE_ENG_SEEN_BYTES * 8)
 
+static uint8_t s_wifiSeen[DONGLE_SEEN_BYTES];
+static uint8_t s_bleSeen[DONGLE_SEEN_BYTES];
 static uint8_t s_engSeen[ENGINE_COUNT][DONGLE_ENG_SEEN_BYTES];
 static uint32_t s_engCount[ENGINE_COUNT];
-static int8_t s_engRssi[ENGINE_COUNT] = {0};
 
 static uint32_t macHash(const uint8_t* mac) {
     uint32_t h = 2166136261u;
@@ -305,6 +321,15 @@ static char s_hitName[DONGLE_COLS + 1] = "";
 static int8_t s_hitRssi = 0;
 static uint8_t s_hitChan = 0;
 static bool s_haveHit = false;
+
+#define DONGLE_FEED_MAX 12
+typedef struct { uint8_t eng; int8_t rssi; char label[18]; } DongleFeedRow;
+static DongleFeedRow s_feed[DONGLE_FEED_MAX];
+static uint8_t s_feedHead = 0;
+static uint8_t s_feedCount = 0;
+static uint8_t s_feedLastMac[6] = {0};
+static uint8_t s_dongleScreen = 0;
+static bool s_feedForce = true;
 
 static uint32_t s_epochBase = 0;
 static uint32_t s_epochBaseMs = 0;
@@ -641,6 +666,33 @@ static void fmtCount(uint32_t v, char* out, size_t len) {
     else                   snprintf(out, len, "%luM", (unsigned long)(v / 1000000u));
 }
 
+static void drawWifiIcon(int16_t x, int16_t y, uint16_t color) {
+    if (color == s_wifiIconColor) return;
+    s_wifiIconColor = color;
+    s_tft.fillRect(x, y, 20, 17, DGX_BLACK);
+    int16_t cx = x + 9, cy = y + 15;
+    for (int16_t r = 4; r <= 10; r += 3) {
+        for (int16_t dx = -r; dx <= r; dx++) {
+            int16_t dy = (int16_t)(sqrtf((float)(r * r - dx * dx)) + 0.5f);
+            if (dy < (r >> 1)) continue;
+            s_tft.drawPixel(cx + dx, cy - dy, color);
+        }
+    }
+    s_tft.fillRect(cx - 1, cy - 1, 2, 2, color);
+}
+
+static void drawBleIcon(int16_t x, int16_t y, uint16_t color) {
+    if (color == s_bleIconColor) return;
+    s_bleIconColor = color;
+    s_tft.fillRect(x, y, 12, 15, DGX_BLACK);
+    int16_t cx = x + 5;
+    s_tft.drawLine(cx, y + 1, cx, y + 13, color);
+    s_tft.drawLine(cx, y + 1, cx + 4, y + 4, color);
+    s_tft.drawLine(cx + 4, y + 4, cx - 3, y + 10, color);
+    s_tft.drawLine(cx, y + 13, cx + 4, y + 10, color);
+    s_tft.drawLine(cx + 4, y + 10, cx - 3, y + 4, color);
+}
+
 static void tag(DongleField* f, int16_t x, const char* text, bool ok, uint16_t okColor) {
     fld(f, x, LY_TAG_Y, 1, ok ? okColor : DGX_DIM, 3, text);
 }
@@ -791,35 +843,75 @@ static void drawEngineStrip(uint8_t mask) {
     }
 }
 
-static DongleField s_fEngRow[LY_ELIST_ROWS];
-#if DGS_W >= 240
-#define LY_ELIST_FMT   "%-6s %5s %4d"
-#define LY_ELIST_W     22
-#else
-#define LY_ELIST_FMT   "%-6s %4s%4d"
-#define LY_ELIST_W     15
-#endif
-static void drawEngineList(void) {
-    char buf[24];
-    char cnt[8];
-    int slot = 0;
-    for (int i = 0; i < DONGLE_STRIP_MAX && slot < LY_ELIST_ROWS; i++) {
-        uint8_t eid = kStripEngines[i];
-        if (eid >= ENGINE_COUNT || s_engCount[eid] == 0) continue;
-        fmtCount(s_engCount[eid], cnt, sizeof(cnt));
-        snprintf(buf, sizeof(buf), LY_ELIST_FMT,
-                 engShortName(eid), cnt, (int)s_engRssi[eid]);
-        fld(&s_fEngRow[slot], LY_ELIST_X, (int16_t)(LY_ELIST_Y + slot * LY_ELIST_DY),
-            1, kEngColor[eid], LY_ELIST_W, buf);
-        slot++;
+static void drawRssiBars(int16_t x, int16_t y, int8_t rssi, uint16_t c) {
+    int lvl = ((int)rssi + 100) / 13;
+    if (lvl < 0) lvl = 0;
+    if (lvl > 4) lvl = 4;
+    for (int b = 0; b < 4; b++) {
+        int16_t bh = (int16_t)(5 + b * 4);
+        int16_t bx = (int16_t)(x + b * 8);
+        int16_t by = (int16_t)(y + 17 - bh);
+        if (b < lvl) s_tft.fillRect(bx, by, 6, bh, c);
+        else         s_tft.drawRect(bx, by, 6, bh, DGX_SLATE);
     }
-    for (; slot < LY_ELIST_ROWS; slot++)
-        fld(&s_fEngRow[slot], LY_ELIST_X, (int16_t)(LY_ELIST_Y + slot * LY_ELIST_DY),
-            1, DGX_SLATE, LY_ELIST_W, "");
+}
+
+static uint32_t s_feedHdrHits = 0xFFFFFFFFu;
+
+static void drawFeedHeader(void) {
+    char hdr[24];
+    snprintf(hdr, sizeof(hdr), "DETECTIONS %-10lu", (unsigned long)s_hits);
+    s_tft.setTextSize(1);
+    s_tft.setTextColor(DGX_WHITE, DGX_BLACK);
+    s_tft.setCursor(LY_FEED_X, LY_FEED_HDR_Y);
+    s_tft.print(hdr);
+    s_feedHdrHits = s_hits;
+}
+
+static void drawFeedScreen(void) {
+    if (!s_feedForce) {
+        if (s_hits != s_feedHdrHits) drawFeedHeader();
+        return;
+    }
+    s_feedForce = false;
+    s_tft.fillRect(0, 0, DGS_W, DGS_H, DGX_BLACK);
+    drawFeedHeader();
+    s_tft.drawFastHLine(0, (int16_t)(LY_FEED_TOP - 2), DGS_W, DGX_SLATE);
+    int shown = s_feedCount < LY_FEED_ROWS ? s_feedCount : LY_FEED_ROWS;
+    if (shown == 0) {
+        s_tft.setTextColor(DGX_SLATE, DGX_BLACK);
+        s_tft.setCursor(LY_FEED_X, (int16_t)(LY_FEED_TOP + 4));
+        s_tft.print("No detections yet");
+    }
+    for (int r = 0; r < shown; r++) {
+        int16_t y = (int16_t)(LY_FEED_TOP + r * LY_FEED_RH);
+        uint8_t idx = (uint8_t)((s_feedHead + DONGLE_FEED_MAX - 1 - r) % DONGLE_FEED_MAX);
+        DongleFeedRow* fr = &s_feed[idx];
+        uint8_t eid = fr->eng < ENGINE_COUNT ? fr->eng : ENGINE_WARDRIVE;
+        uint16_t col = kEngColor[eid];
+        drawEngineIcon(eid, LY_FEED_X, (int16_t)(y + (LY_FEED_RH - 16) / 2), col);
+        char nm[20];
+        snprintf(nm, sizeof(nm), LY_FEED_NAMEFMT, fr->label);
+        s_tft.setTextSize(LY_FEED_SZ);
+        s_tft.setTextColor(DGX_WHITE, DGX_BLACK);
+        s_tft.setCursor(LY_FEED_NAME_X, (int16_t)(y + (LY_FEED_RH - 8 * LY_FEED_SZ) / 2));
+        s_tft.print(nm);
+        char rs[8];
+        snprintf(rs, sizeof(rs), "%d", (int)fr->rssi);
+        s_tft.setTextSize(1);
+        s_tft.setTextColor(DGX_GREY, DGX_BLACK);
+        s_tft.setCursor((int16_t)(DGS_W - 55), (int16_t)(y + (LY_FEED_RH - 8) / 2));
+        s_tft.print(rs);
+        drawRssiBars((int16_t)(DGS_W - 33), (int16_t)(y + (LY_FEED_RH - 17) / 2), fr->rssi, col);
+        if (r < shown - 1)
+            s_tft.drawFastHLine(0, (int16_t)(y + LY_FEED_RH - 1), DGS_W, DGX_SLATE);
+    }
+    s_tft.setTextSize(1);
 }
 
 static void tftDraw(void) {
     if (!s_tftReady) return;
+    if (s_dongleScreen == 1) { drawFeedScreen(); return; }
     char buf[40];
 
     bool phone = bleGattIsConnected();
@@ -870,11 +962,23 @@ static void tftDraw(void) {
         s_chromeDrawn = true;
         s_tft.drawFastHLine(0, LY_RULE1_Y, DGS_W, DGX_SLATE);
         s_tft.drawRect(0, LY_BOX_Y, LY_LBOX_W, LY_BOX_H, DGX_SLATE);
+        s_tft.drawFastHLine(2, LY_LSPLIT_Y, LY_LBOX_W - 4, DGX_SLATE);
         s_tft.drawRect(LY_LBOX_W, LY_BOX_Y, DGS_W - LY_LBOX_W, LY_BOX_H, DGX_SLATE);
         s_tft.drawFastHLine(0, LY_RULE2_Y, DGS_W, DGX_SLATE);
     }
 
-    drawEngineList();
+    const uint8_t wifiMask = (1 << ENGINE_FLOCK_WIFI) | (1 << ENGINE_WARDRIVE) |
+                             (1 << ENGINE_PCAP) | (1 << ENGINE_SKYSPY);
+    const uint8_t bleMask  = (1 << ENGINE_FLOCK_BLE) | (1 << ENGINE_UNIPWN) |
+                             (1 << ENGINE_DETECTOR) | (1 << ENGINE_FOXHUNTER);
+    drawWifiIcon(LY_WIFI_IX, LY_WIFI_IY, (mask & wifiMask) ? DGX_LIME : DGX_GREY);
+    drawBleIcon(LY_BLE_IX, LY_BLE_IY, (mask & bleMask) ? DGX_SKY : DGX_GREY);
+
+    fmtCount(s_wifiHits, buf, sizeof(buf));
+    fld(&s_fWifi, LY_WIFI_NX, LY_WIFI_NY, LY_WIFI_NSZ, DGX_LIME, 4, buf);
+
+    fmtCount(s_bleHits, buf, sizeof(buf));
+    fld(&s_fBle, LY_BLE_NX, LY_BLE_NY, LY_BLE_NSZ, DGX_SKY, 4, buf);
 
 
     if (engineGetState(ENGINE_PCAP) != ESTATE_DISABLED) {
@@ -1068,8 +1172,42 @@ static void cycleBrightness(uint32_t now) {
 
 static void pwrShortPress(uint32_t now) { cycleBrightness(now); }
 
+#define DONGLE_DOUBLETAP_MS 350u
+static uint32_t s_aLastTapAt = 0;
+static bool s_aTapPending = false;
+
+static void dongleResetAllFields(void) {
+    s_tft.fillScreen(DGX_BLACK);
+    memset(&s_fNode, 0, sizeof(s_fNode)); memset(&s_fApp, 0, sizeof(s_fApp));
+    memset(&s_fMesh, 0, sizeof(s_fMesh)); memset(&s_fSd, 0, sizeof(s_fSd));
+    memset(&s_fGps, 0, sizeof(s_fGps));   memset(&s_fWifi, 0, sizeof(s_fWifi));
+    memset(&s_fBle, 0, sizeof(s_fBle));   memset(&s_fLog, 0, sizeof(s_fLog));
+    memset(&s_fHit1, 0, sizeof(s_fHit1)); memset(&s_fHit2, 0, sizeof(s_fHit2));
+    memset(&s_fWd, 0, sizeof(s_fWd));     memset(&s_fMph, 0, sizeof(s_fMph));
+    memset(&s_fMode, 0, sizeof(s_fMode));
+    memset(s_fStrip, 0, sizeof(s_fStrip));
+    s_feedForce = true;
+#if DGS_W >= 240
+    memset(s_stripCntLen, 0, sizeof(s_stripCntLen));
+#endif
+    s_wifiIconColor = 1;
+    s_bleIconColor = 1;
+    s_chromeDrawn = false;
+    s_engStripMask = 0xFFFF;
+}
+
+static void switchDongleScreen(void) {
+    s_dongleScreen ^= 1;
+    dongleResetAllFields();
+    tftDraw();
+}
+
 #if DONGLE_BTN_B >= 0
 static void buttonTickMulti(uint32_t now) {
+    if (s_aTapPending && (now - s_aLastTapAt) > DONGLE_DOUBLETAP_MS) {
+        s_aTapPending = false;
+        if (s_dongleScreen == 0) cycleDetMode(now);
+    }
     bool aDown = digitalRead(DONGLE_BTN) == LOW;
     if (aDown != s_btnDown && (now - s_btnChangeMs) >= 40u) {
         s_btnChangeMs = now;
@@ -1077,8 +1215,9 @@ static void buttonTickMulti(uint32_t now) {
         if (aDown) {
             s_btnADownMs = now;
             s_btnALongFired = false;
-        } else {
-            if (!s_btnALongFired) cycleDetMode(now);
+        } else if (!s_btnALongFired) {
+            if (s_aTapPending) { s_aTapPending = false; switchDongleScreen(); }
+            else { s_aTapPending = true; s_aLastTapAt = now; }
         }
     } else if (aDown == s_btnDown) {
         s_btnChangeMs = now;
@@ -1148,12 +1287,28 @@ static void buttonTick(uint32_t now) {
     }
 
     bool down = digitalRead(DONGLE_BTN) == LOW;
-    if (down == s_btnDown) { s_btnChangeMs = now; return; }
+    if (down == s_btnDown) {
+        s_btnChangeMs = now;
+        if (down && !s_btnALongFired && (now - s_btnADownMs) >= DONGLE_LONG_PRESS_MS) {
+            s_btnALongFired = true;
+            s_btnTapDeadline = 0;
+            switchDongleScreen();
+        }
+        return;
+    }
     if (now - s_btnChangeMs < 40u) return;
     s_btnChangeMs = now;
     s_btnDown = down;
     if (!down) return;
 
+    s_btnADownMs = now;
+    s_btnALongFired = false;
+    if (s_dongleScreen == 1) {
+        s_btnALongFired = true;
+        s_btnTapDeadline = 0;
+        switchDongleScreen();
+        return;
+    }
     if (s_btnTapDeadline) {
         s_btnTapDeadline = 0;
         startSelectedMode(now);
@@ -1228,17 +1383,24 @@ void dongleInit(void) {
                       s_detCsv ? 1 : 0, s_wigleCsv ? 1 : 0);
     }
     memset(s_lastLine, 0, sizeof(s_lastLine));
-    s_tft.fillScreen(DGX_BLACK);
-    memset(&s_fNode, 0, sizeof(s_fNode)); memset(&s_fApp, 0, sizeof(s_fApp));
-    memset(&s_fMesh, 0, sizeof(s_fMesh)); memset(&s_fSd, 0, sizeof(s_fSd));
-    memset(&s_fGps, 0, sizeof(s_fGps));   memset(&s_fLog, 0, sizeof(s_fLog));
-    memset(&s_fHit1, 0, sizeof(s_fHit1)); memset(&s_fHit2, 0, sizeof(s_fHit2));
-    memset(s_fEngRow, 0, sizeof(s_fEngRow));
-#if DGS_W >= 240
-    memset(s_stripCntLen, 0, sizeof(s_stripCntLen));
+    dongleResetAllFields();
+#ifdef OUISPY_DONGLE_UI_DEMO
+    static const struct { uint8_t e; int8_t r; const char* l; } kDemo[] = {
+        { ENGINE_FLOCK_BLE, -57, "Penguin-12" },
+        { ENGINE_SKYSPY,    -71, "drone-a1b2" },
+        { ENGINE_DETECTOR,  -63, "iPhone" },
+        { ENGINE_FLOCK_WIFI,-80, "FS-Camera-7" },
+        { ENGINE_WARDRIVE,  -74, "LinksysAP" },
+    };
+    for (unsigned i = 0; i < sizeof(kDemo) / sizeof(kDemo[0]); i++) {
+        DongleFeedRow* fr = &s_feed[s_feedHead];
+        fr->eng = kDemo[i].e; fr->rssi = kDemo[i].r;
+        snprintf(fr->label, sizeof(fr->label), "%s", kDemo[i].l);
+        s_feedHead = (uint8_t)((s_feedHead + 1) % DONGLE_FEED_MAX);
+        if (s_feedCount < DONGLE_FEED_MAX) s_feedCount++;
+    }
+    s_dongleScreen = 1;
 #endif
-    s_chromeDrawn = false;
-    s_engStripMask = 0xFFFF;
     tftDraw();
 }
 
@@ -1276,6 +1438,20 @@ void dongleOnDetection(const DetectionEvent* evt) {
     memcpy(s_hitMacRaw, evt->mac, 6);
     s_haveHit = true;
 
+    if (memcmp(evt->mac, s_feedLastMac, 6) != 0) {
+        memcpy(s_feedLastMac, evt->mac, 6);
+        DongleFeedRow* fr = &s_feed[s_feedHead];
+        fr->eng = evt->engine_id;
+        fr->rssi = evt->rssi;
+        if (name && name[0]) snprintf(fr->label, sizeof(fr->label), "%s", name);
+        else snprintf(fr->label, sizeof(fr->label), "%02X%02X%02X%02X%02X%02X",
+                      evt->mac[0], evt->mac[1], evt->mac[2],
+                      evt->mac[3], evt->mac[4], evt->mac[5]);
+        s_feedHead = (uint8_t)((s_feedHead + 1) % DONGLE_FEED_MAX);
+        if (s_feedCount < DONGLE_FEED_MAX) s_feedCount++;
+        s_feedForce = true;
+    }
+
     switch ((EngineId)evt->engine_id) {
         case ENGINE_DETECTOR:
         case ENGINE_FLOCK_BLE:
@@ -1291,11 +1467,15 @@ void dongleOnDetection(const DetectionEvent* evt) {
             break;
     }
 
+    if (isBle) {
+        if (markSeen(s_bleSeen, DONGLE_SEEN_BITS, evt->mac)) s_bleHits++;
+    } else {
+        if (markSeen(s_wifiSeen, DONGLE_SEEN_BITS, evt->mac)) s_wifiHits++;
+    }
     if (evt->engine_id < ENGINE_COUNT &&
         markSeen(s_engSeen[evt->engine_id], DONGLE_ENG_SEEN_BITS, evt->mac)) {
         s_engCount[evt->engine_id]++;
     }
-    if (evt->engine_id < ENGINE_COUNT) s_engRssi[evt->engine_id] = evt->rssi;
 
     uint8_t eid = evt->engine_id < ENGINE_COUNT ? evt->engine_id : ENGINE_WARDRIVE;
     const DongleLedPattern* pat = &kEngLed[eid];

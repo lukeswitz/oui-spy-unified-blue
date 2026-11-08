@@ -72,12 +72,12 @@
 | XIAO ESP32-C5 *(experimental)* | 2.4 + 5 GHz | – | – | GPIO25 | yes | `node-xiao_c5` |
 | LilyGO T-Dongle-S3 | 2.4 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_s3` |
 | LilyGO T-Dongle-C5 *(experimental)* | 2.4 + 5 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_c5` |
-| M5StickC PLUS | 2.4 GHz | LCD, 3 buttons | – | built in | yes | `node-stickc_plus` |
+| M5StickC PLUS | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus` |
 | M5StickC PLUS2 | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus2` |
 | M5StickC (original) | 2.4 GHz | LCD, 3 buttons | – | none | **no** | `node-stickc` |
 
 - **Manager boards:** XIAO ESP32-S3 (`mgr-xiao_s3`), ESP32-S3 DevKitC (`mgr-s3_devkitc`), XIAO ESP32-C5 (`mgr-xiao_c5`), XIAO ESP32-C3 (`mgr-xiao_c3`), ESP32 WROOM (`mgr-wroom`). A manager does no scanning.
-- **No mesh:** the original M5StickC and the PLUS2 skip mesh to fit their RAM. They connect straight to the phone or run standalone.
+- **No mesh:** the M5StickC, PLUS and PLUS2 skip mesh to fit their RAM. They connect straight to the phone or run standalone.
 - **No buzzer:** the app hides the buzzer settings on boards that lack one.
 
 ## USB radios on Android
@@ -232,6 +232,8 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 |---|---|
 | 1 press | Select next mode |
 | 2 presses | Start / stop selected mode |
+| Hold | Open detections screen |
+| Any press on detections screen | Back to main screen |
 
 Modes: `DETECT FLOCKB FLOCKW FOXHNT SKYSPY UNIPWN WARDRV PCAP`.
 
@@ -251,6 +253,7 @@ Files go to `/OUISPY` on the card:
 | Button | Press | Action |
 |---|---|---|
 | **A** (front) | tap | Select next mode |
+| **A** | double-tap | Detections screen on / off |
 | **A** | hold | Foxhunt the last alert (or the app's target); hold again to stop |
 | **B** (side) | tap | Start / stop selected mode |
 | **B** | hold | Buzzer on / off (PLUS and PLUS2) |
@@ -259,7 +262,9 @@ Files go to `/OUISPY` on the card:
 
 Modes: `DETECT FLOCKB FLOCKW FOXHNT SKYSPY UNIPWN`. Wardrive and PCAP need the app on these boards (no SD card).
 
-### Screen (both)
+A tap of **A** acts after 0.35 s and does nothing on the detections screen.
+
+### Main screen (both)
 
 - **Top left:** selected mode (amber = selected, green = running).
 - **Top right:** `APP` `MSH` `SD` `GPS` status.
@@ -269,6 +274,13 @@ Modes: `DETECT FLOCKB FLOCKW FOXHNT SKYSPY UNIPWN`. Wardrive and PCAP need the a
 
 Foxhunt picks, in order: the target set in the app, else the last Detector / Flock / Sky Spy / UniPwn alert seen by this board.
 
+### Detections screen (both)
+
+- **Rows:** the 4 latest detections, newest on top.
+- **Each row:** engine icon, name (12 characters, MAC address if none), dBm, signal bars.
+- **Header:** detections since boot.
+- A device hit twice in a row shows once.
+
 ## Mesh
 
 - One MANAGER connects to the phone; up to 6 NODES report to it over ESP-NOW on 2.4 GHz channel 1.
@@ -277,7 +289,7 @@ Foxhunt picks, in order: the target set in the app, else the last Detector / Flo
 - Boards use a random MAC each boot; the node ID stays fixed.
 - A node silent for 45 s drops off and rejoins when back in range.
 - Buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings set on the manager are pushed to every node.
-- Any mix of node boards works under one manager (e.g. T-Dongle-S3 + T-Dongle-C5 + M5StickC PLUS + XIAO).
+- Any mix of node boards works under one manager (e.g. T-Dongle-S3 + T-Dongle-C5 + XIAO).
 - Each node reports its board to the manager; the app shows it on every node row.
 - Fleet update (SETTINGS → NODE → FIRMWARE) updates every node over Wi-Fi, and each node downloads the image for its own board. Nodes older than v0.6.1 do not report a board and take the image for the board picked in the app.
 
