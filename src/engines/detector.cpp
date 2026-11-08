@@ -134,6 +134,7 @@ static const uint32_t BEACON_FLOOD_WINDOW_MS = 5000;
 static const uint32_t BEACON_FLOOD_COOLDOWN_MS = 60000;
 static BeaconSeen* beaconSeen = nullptr;
 static uint32_t beaconFloodLastAlert = 0;
+static uint8_t beaconFloodLastConf = 0;
 static volatile unsigned long lastPwnAlert = 0;
 static uint16_t sigMask = 0;
 
@@ -715,12 +716,14 @@ static void IRAM_ATTR detectorBeaconFloodISR(const uint8_t* p, int len, int rssi
         if (abs(o.rssi - rssi) <= BEACON_FLOOD_RSSI_BAND_DB) near++;
     }
     if (near < BEACON_FLOOD_APS) return;
-    if (beaconFloodLastAlert != 0 && now - beaconFloodLastAlert < BEACON_FLOOD_COOLDOWN_MS) return;
+    uint8_t conf = near >= BEACON_FLOOD_HIGH_APS ? DET_CONF_HIGH : DET_CONF_SUSPECTED;
+    bool cooling = beaconFloodLastAlert != 0 && now - beaconFloodLastAlert < BEACON_FLOOD_COOLDOWN_MS;
+    if (cooling && conf <= beaconFloodLastConf) return;
     beaconFloodLastAlert = now;
+    beaconFloodLastConf = conf;
     char desc[32];
     snprintf(desc, sizeof(desc), "Beacon flood, %u fake APs", (unsigned)near);
-    pushApSigISR(b, rssi, channel, METHOD_DET_BEACONFLOOD,
-                 near >= BEACON_FLOOD_HIGH_APS ? DET_CONF_HIGH : DET_CONF_SUSPECTED, desc);
+    pushApSigISR(b, rssi, channel, METHOD_DET_BEACONFLOOD, conf, desc);
 }
 
 static void detectorJoinFrame(const uint8_t* p, int len, int rssi, uint8_t channel) {
@@ -1440,6 +1443,7 @@ int detectorPortSelfTest(void) {
     auto beaconBurst = [&](uint8_t tag, int count, int rssiStep) {
         memset(beaconSeen, 0, BEACON_SEEN_SLOTS * sizeof(BeaconSeen));
         beaconFloodLastAlert = 0;
+        beaconFloodLastConf = 0;
         pstDrain();
         for (int i = 0; i < count; i++) {
             const uint8_t fake[6] = {0x02, tag, 0x00, (uint8_t)i, 0x40, 0x01};
@@ -1452,9 +1456,11 @@ int detectorPortSelfTest(void) {
     beaconBurst(0x02, BEACON_FLOOD_APS, 0);
     bool bf = pstPop(&e) && e.method == METHOD_DET_BEACONFLOOD && e.ext.detector.confidence == DET_CONF_SUSPECTED;
     pstCheck("beacon_flood_one_radio_suspected", bf, e.ext.detector.filter_desc);
-    beaconBurst(0x03, BEACON_FLOOD_HIGH_APS, 0);
-    bf = pstPop(&e) && e.method == METHOD_DET_BEACONFLOOD && e.ext.detector.confidence == DET_CONF_HIGH;
-    pstCheck("beacon_flood_many_high", bf, e.ext.detector.filter_desc);
+    beaconBurst(0x03, BEACON_FLOOD_HIGH_APS + 5, 0);
+    bf = pstPop(&e) && e.method == METHOD_DET_BEACONFLOOD && e.ext.detector.confidence == DET_CONF_SUSPECTED;
+    bf = bf && pstPop(&e) && e.method == METHOD_DET_BEACONFLOOD && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("beacon_flood_upgrades_to_high", bf, e.ext.detector.filter_desc);
+    pstCheck("beacon_flood_one_alert_per_tier", !pstPop(&e));
     beaconBurst(0x04, BEACON_FLOOD_HIGH_APS, 7);
     pstCheck("beacon_flood_spread_crowd_quiet", !pstPop(&e));
     memset(beaconSeen, 0, BEACON_SEEN_SLOTS * sizeof(BeaconSeen));
