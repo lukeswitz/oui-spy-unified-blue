@@ -15,6 +15,7 @@ import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/core/phone_watch.dart';
+import 'package:oui_spy/core/watch_alerts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';

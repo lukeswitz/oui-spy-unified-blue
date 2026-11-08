@@ -2,7 +2,7 @@ part of 'device_config.dart';
 
 class _WatchItem {
   const _WatchItem(this.label, this.desc, this.icon,
-      {this.bits = 0, this.classes = const {}, this.flock = false, this.drone = false, this.methods});
+      {this.bits = 0, this.classes = const {}, this.flock = false, this.drone = false, this.methods, this.watch});
   final String label;
   final String desc;
   final IconData icon;
@@ -11,6 +11,7 @@ class _WatchItem {
   final bool flock;
   final bool drone;
   final List<String>? methods;
+  final String? watch;
 }
 
 const _watchGroups = <(String, List<_WatchItem>)>[
@@ -23,10 +24,18 @@ const _watchGroups = <(String, List<_WatchItem>)>[
         bits: sigAxon, classes: {SignatureClass.lawEnforcement}),
     _WatchItem('Drones', 'Drones and drone controllers, including Remote ID', Icons.flight,
         classes: {SignatureClass.drone}, drone: true),
+    _WatchItem('Drone loitering', 'A drone hovering near you, or its pilot moving toward you', Icons.flight_land,
+        watch: 'drone_loiter'),
+    _WatchItem('Aircraft circling you', 'A plane or helicopter orbiting you. Needs an RTL-SDR on ADS-B',
+        Icons.connecting_airports, watch: 'aircraft_circle'),
   ]),
   ('TRACKERS & WEARABLES', [
     _WatchItem('Trackers', 'AirTags and other tags that could be following you', Icons.track_changes,
         bits: sigTracker, classes: {SignatureClass.finder}),
+    _WatchItem('Car following you', 'Tire sensors that travel with you. Needs an RTL-SDR on TPMS', Icons.directions_car,
+        watch: 'car_follow'),
+    _WatchItem('Crossing your mesh', 'A device moving from one of your nodes to another', Icons.route,
+        watch: 'mesh_crossing'),
     _WatchItem('Smart glasses', 'Ray-Ban and Oakley Meta camera glasses', Icons.visibility,
         bits: sigGlasses, classes: {SignatureClass.glasses}),
   ]),
@@ -106,13 +115,17 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     final moreClasses = [for (final (_, cs) in _moreGroups) ...cs];
     final moreOn = moreClasses.where(notif.classAlerts.contains).length;
 
+    final watchAlerts = ref.watch(watchAlertsProvider);
+
     bool isOn(_WatchItem w) =>
+        (w.watch != null && watchAlerts.isOn(w.watch!)) ||
         (sigMask & w.bits) != 0 ||
         w.classes.any(notif.classAlerts.contains) ||
         (w.flock && notif.flockEnabled) ||
         (w.drone && notif.droneEnabled);
 
     void setOn(_WatchItem w, bool v) {
+      if (w.watch != null) watchAlerts.set(w.watch!, v);
       final sig = ref.read(detectorSigMaskProvider.notifier);
       for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera, sigMesh, sigBeaconFlood]) {
         if (w.bits & b != 0) sig.setBit(b, v);
@@ -168,8 +181,8 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               color: AppTheme.detector,
               value: isOn(w),
               onChanged: (v) => setOn(w, v),
-              notify: !notif.isMuted(muteKeys(w)),
-              onNotify: (v) => notif.setMuted(muteKeys(w), !v),
+              notify: w.watch != null || !notif.isMuted(muteKeys(w)),
+              onNotify: w.watch != null ? null : (v) => notif.setMuted(muteKeys(w), !v),
             ),
             if (w.flock && isOn(w))
               ConfigToggleRow(
