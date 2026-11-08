@@ -88,6 +88,10 @@
 #define LY_BOX_H         66
 #define LY_LBOX_W       152
 #define LY_LSPLIT_Y      54
+#define LY_ELIST_X        6
+#define LY_ELIST_Y       20
+#define LY_ELIST_DY      12
+#define LY_ELIST_ROWS     5
 #define LY_WIFI_IX        4
 #define LY_WIFI_IY       26
 #define LY_WIFI_NX       34
@@ -138,6 +142,10 @@
 #define LY_BOX_H         43
 #define LY_LBOX_W       102
 #define LY_LSPLIT_Y      36
+#define LY_ELIST_X        3
+#define LY_ELIST_Y       14
+#define LY_ELIST_DY      10
+#define LY_ELIST_ROWS     4
 #define LY_WIFI_IX        3
 #define LY_WIFI_IY       14
 #define LY_WIFI_NX       28
@@ -195,8 +203,6 @@ static uint32_t s_pcapBytes = 0;
 static uint16_t s_pcapIdx = 0;
 
 static uint32_t s_hits = 0;
-static uint32_t s_wifiHits = 0;
-static uint32_t s_bleHits = 0;
 static uint32_t s_wigleRows = 0;
 static uint32_t s_detRows = 0;
 static uint32_t s_lastDraw = 0;
@@ -210,7 +216,7 @@ typedef struct {
 } DongleField;
 
 static DongleField s_fNode, s_fApp, s_fMesh, s_fSd, s_fGps;
-static DongleField s_fWifi, s_fBle, s_fLog;
+static DongleField s_fLog;
 static DongleField s_fHit1, s_fHit2, s_fWd, s_fMph;
 static DongleField s_fMode;
 
@@ -227,8 +233,6 @@ static DongleField s_fStrip[DONGLE_STRIP_MAX];
 static uint8_t s_stripCntLen[DONGLE_STRIP_MAX] = {0};
 #endif
 static uint32_t s_wdStartMs = 0;
-static uint16_t s_wifiIconColor = 1;
-static uint16_t s_bleIconColor = 1;
 static bool s_chromeDrawn = false;
 static uint16_t s_engStripMask = 0xFFFF;
 #define DONGLE_TAP_WINDOW_MS 400u
@@ -238,16 +242,12 @@ static bool s_btnDown = false;
 static uint32_t s_btnChangeMs = 0;
 static uint32_t s_btnTapDeadline = 0;
 
-#define DONGLE_SEEN_BYTES 2048
-#define DONGLE_SEEN_BITS  (DONGLE_SEEN_BYTES * 8)
-
 #define DONGLE_ENG_SEEN_BYTES 256
 #define DONGLE_ENG_SEEN_BITS  (DONGLE_ENG_SEEN_BYTES * 8)
 
-static uint8_t s_wifiSeen[DONGLE_SEEN_BYTES];
-static uint8_t s_bleSeen[DONGLE_SEEN_BYTES];
 static uint8_t s_engSeen[ENGINE_COUNT][DONGLE_ENG_SEEN_BYTES];
 static uint32_t s_engCount[ENGINE_COUNT];
+static int8_t s_engRssi[ENGINE_COUNT] = {0};
 
 static uint32_t macHash(const uint8_t* mac) {
     uint32_t h = 2166136261u;
@@ -641,33 +641,6 @@ static void fmtCount(uint32_t v, char* out, size_t len) {
     else                   snprintf(out, len, "%luM", (unsigned long)(v / 1000000u));
 }
 
-static void drawWifiIcon(int16_t x, int16_t y, uint16_t color) {
-    if (color == s_wifiIconColor) return;
-    s_wifiIconColor = color;
-    s_tft.fillRect(x, y, 20, 17, DGX_BLACK);
-    int16_t cx = x + 9, cy = y + 15;
-    for (int16_t r = 4; r <= 10; r += 3) {
-        for (int16_t dx = -r; dx <= r; dx++) {
-            int16_t dy = (int16_t)(sqrtf((float)(r * r - dx * dx)) + 0.5f);
-            if (dy < (r >> 1)) continue;
-            s_tft.drawPixel(cx + dx, cy - dy, color);
-        }
-    }
-    s_tft.fillRect(cx - 1, cy - 1, 2, 2, color);
-}
-
-static void drawBleIcon(int16_t x, int16_t y, uint16_t color) {
-    if (color == s_bleIconColor) return;
-    s_bleIconColor = color;
-    s_tft.fillRect(x, y, 12, 15, DGX_BLACK);
-    int16_t cx = x + 5;
-    s_tft.drawLine(cx, y + 1, cx, y + 13, color);
-    s_tft.drawLine(cx, y + 1, cx + 4, y + 4, color);
-    s_tft.drawLine(cx + 4, y + 4, cx - 3, y + 10, color);
-    s_tft.drawLine(cx, y + 13, cx + 4, y + 10, color);
-    s_tft.drawLine(cx + 4, y + 10, cx - 3, y + 4, color);
-}
-
 static void tag(DongleField* f, int16_t x, const char* text, bool ok, uint16_t okColor) {
     fld(f, x, LY_TAG_Y, 1, ok ? okColor : DGX_DIM, 3, text);
 }
@@ -818,6 +791,33 @@ static void drawEngineStrip(uint8_t mask) {
     }
 }
 
+static DongleField s_fEngRow[LY_ELIST_ROWS];
+#if DGS_W >= 240
+#define LY_ELIST_FMT   "%-6s %5s %4d"
+#define LY_ELIST_W     22
+#else
+#define LY_ELIST_FMT   "%-6s %4s%4d"
+#define LY_ELIST_W     15
+#endif
+static void drawEngineList(void) {
+    char buf[24];
+    char cnt[8];
+    int slot = 0;
+    for (int i = 0; i < DONGLE_STRIP_MAX && slot < LY_ELIST_ROWS; i++) {
+        uint8_t eid = kStripEngines[i];
+        if (eid >= ENGINE_COUNT || s_engCount[eid] == 0) continue;
+        fmtCount(s_engCount[eid], cnt, sizeof(cnt));
+        snprintf(buf, sizeof(buf), LY_ELIST_FMT,
+                 engShortName(eid), cnt, (int)s_engRssi[eid]);
+        fld(&s_fEngRow[slot], LY_ELIST_X, (int16_t)(LY_ELIST_Y + slot * LY_ELIST_DY),
+            1, kEngColor[eid], LY_ELIST_W, buf);
+        slot++;
+    }
+    for (; slot < LY_ELIST_ROWS; slot++)
+        fld(&s_fEngRow[slot], LY_ELIST_X, (int16_t)(LY_ELIST_Y + slot * LY_ELIST_DY),
+            1, DGX_SLATE, LY_ELIST_W, "");
+}
+
 static void tftDraw(void) {
     if (!s_tftReady) return;
     char buf[40];
@@ -870,23 +870,11 @@ static void tftDraw(void) {
         s_chromeDrawn = true;
         s_tft.drawFastHLine(0, LY_RULE1_Y, DGS_W, DGX_SLATE);
         s_tft.drawRect(0, LY_BOX_Y, LY_LBOX_W, LY_BOX_H, DGX_SLATE);
-        s_tft.drawFastHLine(2, LY_LSPLIT_Y, LY_LBOX_W - 4, DGX_SLATE);
         s_tft.drawRect(LY_LBOX_W, LY_BOX_Y, DGS_W - LY_LBOX_W, LY_BOX_H, DGX_SLATE);
         s_tft.drawFastHLine(0, LY_RULE2_Y, DGS_W, DGX_SLATE);
     }
 
-    const uint8_t wifiMask = (1 << ENGINE_FLOCK_WIFI) | (1 << ENGINE_WARDRIVE) |
-                             (1 << ENGINE_PCAP) | (1 << ENGINE_SKYSPY);
-    const uint8_t bleMask  = (1 << ENGINE_FLOCK_BLE) | (1 << ENGINE_UNIPWN) |
-                             (1 << ENGINE_DETECTOR) | (1 << ENGINE_FOXHUNTER);
-    drawWifiIcon(LY_WIFI_IX, LY_WIFI_IY, (mask & wifiMask) ? DGX_LIME : DGX_GREY);
-    drawBleIcon(LY_BLE_IX, LY_BLE_IY, (mask & bleMask) ? DGX_SKY : DGX_GREY);
-
-    fmtCount(s_wifiHits, buf, sizeof(buf));
-    fld(&s_fWifi, LY_WIFI_NX, LY_WIFI_NY, LY_WIFI_NSZ, DGX_LIME, 4, buf);
-
-    fmtCount(s_bleHits, buf, sizeof(buf));
-    fld(&s_fBle, LY_BLE_NX, LY_BLE_NY, LY_BLE_NSZ, DGX_SKY, 4, buf);
+    drawEngineList();
 
 
     if (engineGetState(ENGINE_PCAP) != ESTATE_DISABLED) {
@@ -1243,14 +1231,12 @@ void dongleInit(void) {
     s_tft.fillScreen(DGX_BLACK);
     memset(&s_fNode, 0, sizeof(s_fNode)); memset(&s_fApp, 0, sizeof(s_fApp));
     memset(&s_fMesh, 0, sizeof(s_fMesh)); memset(&s_fSd, 0, sizeof(s_fSd));
-    memset(&s_fGps, 0, sizeof(s_fGps));   memset(&s_fWifi, 0, sizeof(s_fWifi));
-    memset(&s_fBle, 0, sizeof(s_fBle));   memset(&s_fLog, 0, sizeof(s_fLog));
+    memset(&s_fGps, 0, sizeof(s_fGps));   memset(&s_fLog, 0, sizeof(s_fLog));
     memset(&s_fHit1, 0, sizeof(s_fHit1)); memset(&s_fHit2, 0, sizeof(s_fHit2));
+    memset(s_fEngRow, 0, sizeof(s_fEngRow));
 #if DGS_W >= 240
     memset(s_stripCntLen, 0, sizeof(s_stripCntLen));
 #endif
-    s_wifiIconColor = 1;
-    s_bleIconColor = 1;
     s_chromeDrawn = false;
     s_engStripMask = 0xFFFF;
     tftDraw();
@@ -1305,15 +1291,11 @@ void dongleOnDetection(const DetectionEvent* evt) {
             break;
     }
 
-    if (isBle) {
-        if (markSeen(s_bleSeen, DONGLE_SEEN_BITS, evt->mac)) s_bleHits++;
-    } else {
-        if (markSeen(s_wifiSeen, DONGLE_SEEN_BITS, evt->mac)) s_wifiHits++;
-    }
     if (evt->engine_id < ENGINE_COUNT &&
         markSeen(s_engSeen[evt->engine_id], DONGLE_ENG_SEEN_BITS, evt->mac)) {
         s_engCount[evt->engine_id]++;
     }
+    if (evt->engine_id < ENGINE_COUNT) s_engRssi[evt->engine_id] = evt->rssi;
 
     uint8_t eid = evt->engine_id < ENGINE_COUNT ? evt->engine_id : ENGINE_WARDRIVE;
     const DongleLedPattern* pat = &kEngLed[eid];
