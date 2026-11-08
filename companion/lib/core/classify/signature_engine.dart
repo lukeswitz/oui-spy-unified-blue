@@ -353,6 +353,7 @@ class SignatureEngine {
     }
     if (hits.contains('fleet-osmo') || hits.contains('fleet-dji-power')) hits.remove('fleet-dji');
     if (hits.contains('fleet-meraki')) hits.remove('fleet-cisco');
+    if (hits.contains('fleet-polar')) hits.remove('fleet-gopro');
     if (hits.contains('fleet-airtag') &&
         !o.name.toLowerCase().contains('airtag') &&
         !_hasUuid(o, uuidAliases('FD44')) &&

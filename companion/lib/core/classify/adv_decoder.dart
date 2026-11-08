@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'observation.dart';
 import 'signature_engine.dart' show teslaIBeaconMfgPrefix;
+import 'smarttag.dart';
 
 class AdvField {
   final String label;
@@ -51,6 +52,14 @@ class AdvPayloadDecoder {
         return _decodeFastPair(bytes);
       case 0xFEAA:
         return _decodeEddystone(bytes);
+      case 0xFD5A:
+        final tag = SmartTagAdv.parse(bytes);
+        if (tag == null) return const [];
+        return [
+          AdvField('SmartTag', tag.stateLabel),
+          AdvField('SmartTag privacy ID', tag.privacyId),
+          AdvField('SmartTag UWB', tag.uwb ? 'yes' : 'no'),
+        ];
       default:
         return const [];
     }
@@ -174,6 +183,19 @@ class AdvPayloadDecoder {
             );
           } else {
             out.add(const RoleHint('beacon', 'an Eddystone beacon', 'It broadcasts a Google Eddystone beacon signal.', 6));
+          }
+        case 0xFD5A:
+          final bytes = hexToBytes(sd.dataHex);
+          final tag = bytes == null ? null : SmartTagAdv.parse(bytes);
+          if (tag != null) {
+            out.add(
+              RoleHint(
+                'tag',
+                tag.separated ? 'a Samsung SmartTag away from its owner' : 'a Samsung SmartTag with its owner',
+                'Samsung SmartTag Offline Finding frame: ${tag.stateLabel}.',
+                8,
+              ),
+            );
           }
       }
     }

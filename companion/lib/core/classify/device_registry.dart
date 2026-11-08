@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/link/phone_scan.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
@@ -26,10 +27,12 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
+import 'beacon_flood.dart';
 import 'co_travel.dart';
 import 'device_explain.dart';
 import 'flood.dart';
 import 'kin_index.dart';
+import 'smarttag.dart';
 import 'observation.dart';
 import 'signature_engine.dart';
 
@@ -613,7 +616,9 @@ class DeviceRegistry extends ChangeNotifier {
   final _subs =<StreamSubscription<Observation>>[];
   final _sources = <ObservationSource>[];
   final pairingFlood = PairingFlood();
+  final beaconFlood = BeaconFlood();
   final kinIndex = KinIndex();
+  final _smartTagKeys = <String, String>{};
   final _path = <GpsSample>[];
   Timer? _tick;
   bool _dirty = false;
@@ -661,7 +666,8 @@ class DeviceRegistry extends ChangeNotifier {
     final now = o.lastSeenMs;
     final prev = _devices[o.key];
     pairingFlood.consider(o, now);
-    var trail = prev?.obs.gpsTrail ?? const <GpsSample>[];
+    beaconFlood.consider(o, now, () => vendorOf?.call(o.mac) == null && _baseVendor(o) == null);
+    var trail = prev?.obs.gpsTrail ?? _smartTagTrail(o) ?? const <GpsSample>[];
     for (final s in o.gpsTrail) {
       trail = appendTrail(trail, s, _trailCap);
     }
@@ -715,6 +721,17 @@ class DeviceRegistry extends ChangeNotifier {
     ));
   }
 
+  List<GpsSample>? _smartTagTrail(Observation o) {
+    final tag = SmartTagAdv.of(o);
+    if (tag == null || !tag.separated) return null;
+    final before = _smartTagKeys[tag.privacyId];
+    if (_smartTagKeys.length >= 512 && before == null) _smartTagKeys.remove(_smartTagKeys.keys.first);
+    _smartTagKeys[tag.privacyId] = o.key;
+    if (before == null || before == o.key) return null;
+    final old = _devices[before]?.obs.gpsTrail;
+    return old == null || old.isEmpty ? null : old;
+  }
+
   ClassifiedDevice _withKin(ClassifiedDevice base) {
     final o = base.obs;
     if (o.kind != RadioKind.ble) return base;
@@ -753,8 +770,11 @@ class DeviceRegistry extends ChangeNotifier {
 
   void _onTick() {
     final had = pairingFlood.notice;
-    pairingFlood.tick(DateTime.now().millisecondsSinceEpoch);
-    if (_dirty || !identical(had, pairingFlood.notice)) {
+    final hadBeacon = beaconFlood.notice;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    pairingFlood.tick(now);
+    beaconFlood.tick(now);
+    if (_dirty || !identical(had, pairingFlood.notice) || !identical(hadBeacon, beaconFlood.notice)) {
       _dirty = false;
       notifyListeners();
     }
@@ -867,6 +887,8 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
         longitude: trail.isNotEmpty ? trail.last.lon : pos?.longitude,
       ).catchError((Object e) => DebugLog.log('CLASSIFY: alert log failed: $e'));
     };
+  reg.beaconFlood.enabled = ref.read(detectorSigMaskProvider) & sigBeaconFlood != 0;
+  ref.listen(detectorSigMaskProvider, (_, mask) => reg.beaconFlood.enabled = mask & sigBeaconFlood != 0);
   reg.loadCatalog();
   reg.attach(EspDetectionSource(ref.read(bleManagerProvider).detections));
   reg.attach(ref.read(phoneBleSourceProvider));

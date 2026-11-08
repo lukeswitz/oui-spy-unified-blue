@@ -28,7 +28,7 @@ void main() {
   });
 
   test('catalog parses with expected stock rows', () {
-    expect(sigs.length, 307);
+    expect(sigs.length, 312);
     final ray = byId['fleet-rayneo']!;
     expect(ray.matchAny, isFalse);
     expect(ray.rules.length, 2);
@@ -74,6 +74,34 @@ void main() {
       vendorIeOuis: ['FA:0B:BC'],
     );
     expect(engine.match(o).map((s) => s.id), contains('fleet-remote-id'));
+  });
+
+  test('rows written from verified identifiers match', () {
+    List<String> ids(Observation o) => [for (final s in engine.match(o)) s.id];
+    Observation ble({List<String> uuids = const [], List<MfgRecord> mfg = const [], String name = ''}) =>
+        Observation(key: 'BLE:X', kind: RadioKind.ble, mac: '', name: name, serviceUuids: uuids, mfgRecords: mfg);
+    Observation wifi(String ssid, {List<String> ies = const []}) => Observation(
+          key: 'WIFI:02:00:00:00:00:01',
+          kind: RadioKind.wifi,
+          mac: '02:00:00:00:00:01',
+          name: ssid,
+          vendorIeOuis: ies,
+        );
+    expect(ids(ble(uuids: ['F47B5E2D-4A9E-4C5A-9B3F-8E1D2C3A4B5C'])), contains('fleet-bitchat'));
+    expect(ids(ble(uuids: ['FE95'])), contains('fleet-xiaomi-mihome'));
+    expect(ids(ble(uuids: ['FE33'])), contains('fleet-chipolo'));
+    expect(ids(ble(uuids: ['FEEC'])), contains('fleet-tile'));
+    for (final u in ['3080', '3081', '3082', '3083']) {
+      expect(ids(ble(uuids: [u])), contains('fleet-flipper'));
+    }
+    expect(ids(ble(mfg: const [MfgRecord(0x006B, '00')])), contains('fleet-polar'));
+    expect(ids(ble(uuids: ['FEEE', 'FEA5'])), allOf(contains('fleet-polar'), isNot(contains('fleet-gopro'))));
+    expect(ids(ble(uuids: ['FEA5'])), contains('fleet-gopro'));
+    expect(ids(wifi('ExpressLRS TX')), contains('fleet-elrs'));
+    expect(ids(wifi('EZVIZ_123456789')), contains('fleet-ezviz'));
+    expect(ids(wifi('', ies: ['26:37:12'])), contains('fleet-dji'));
+    expect(ids(ble(uuids: ['FD5A'])), contains('fleet-smarttag'));
+    expect(ids(ble(mfg: const [MfgRecord(0x0075, '0100')])), isNot(contains('fleet-smarttag')));
   });
 
   test('phone-scanned watch name classifies as wearable', () {

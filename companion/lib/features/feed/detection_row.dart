@@ -1109,6 +1109,7 @@ String methodLabel(String method) => switch (method) {
   'deauth_storm' => 'DEAUTH',
   'join_flood' => 'JOIN FLOOD',
   'tag_flood' => 'TAG FLOOD',
+  'beacon_flood' => 'BEACON FLOOD',
   'probe_ssid' => 'PROBE',
   'pwnagotchi' => 'PWNAGOTCHI',
   'glasses' => 'META GLASSES',

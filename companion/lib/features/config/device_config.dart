@@ -536,6 +536,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           onTap: () => _launchUrl('https://github.com/lukeswitz/oui-spy-unified-blue'),
           trailing: Icon(Icons.open_in_new, size: 14, color: t.textDim),
         ),
+        ConfigActionRow(
+          icon: Icons.description_outlined,
+          label: 'Open-source licenses',
+          onTap: () => showLicensePage(context: context, applicationName: 'OUI-APEX'),
+        ),
       ],
     );
   }

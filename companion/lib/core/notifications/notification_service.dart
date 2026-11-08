@@ -609,6 +609,7 @@ class NotificationService extends ChangeNotifier {
         'deauth_storm' => 'Deauth Attack',
         'join_flood' => 'Wi-Fi Join Flood',
         'tag_flood' => 'Tracker Tag Flood',
+        'beacon_flood' => 'Wi-Fi Beacon Flood',
         'pwnagotchi' => 'Pwnagotchi',
         'glasses' => 'Meta Smart Glasses',
         'axon' => 'Axon Device',

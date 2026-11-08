@@ -80,10 +80,20 @@ void main() {
       }
       _settle(f, PairingFlood.confirmMs);
       expect(f.notice, isNull);
-      f.consider(_ble(5, mfg: const [MfgRecord(0x0006, '0109')]), 0);
+      f.consider(_ble(5, mfg: const [MfgRecord(0x0006, '030080')]), 0);
       _settle(f, PairingFlood.confirmMs);
       expect(f.notice!.popupCount, PairingFlood.popupMin);
       expect(f.notice!.families, ['Apple proximity pairing', 'Apple Nearby Action', 'Fast Pair', 'Swift Pair']);
+    });
+
+    test('Windows CDP beacons and Find My payloads are not popups', () {
+      final f = PairingFlood();
+      for (var i = 0; i < PairingFlood.popupMin; i++) {
+        f.consider(_ble(i, mfg: const [MfgRecord(0x0006, '0109200200')]), 0);
+        f.consider(_ble(100 + i, mfg: const [MfgRecord(0x004C, '1202000007020000')]), 0);
+      }
+      _settle(f, PairingFlood.confirmMs);
+      expect(f.notice, isNull);
     });
 
     test('same address counted once', () {

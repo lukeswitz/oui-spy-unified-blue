@@ -12,6 +12,7 @@ class FloodNotice {
   final List<String> families;
   final int? medianRssi;
   final List<String> keys;
+  final String label;
 
   const FloodNotice({
     required this.showDialog,
@@ -20,6 +21,7 @@ class FloodNotice {
     this.families = const [],
     this.medianRssi,
     this.keys = const [],
+    this.label = 'Pairing flood',
   });
 
   FloodNotice quiet() => FloodNotice(
@@ -29,9 +31,10 @@ class FloodNotice {
     families: families,
     medianRssi: medianRssi,
     keys: keys,
+    label: label,
   );
 
-  String title() => 'Pairing flood';
+  String title() => label;
 
   String line() {
     final loud = medianRssi != null ? ' · about $medianRssi dBm' : '';
@@ -220,11 +223,13 @@ class PairingFlood {
   static int _appleBits(List<int> bytes) {
     var i = 0;
     var bits = 0;
+    var sawFindMy = false;
     while (i + 2 <= bytes.length) {
       final type = bytes[i];
       final len = bytes[i + 1];
       if (len <= 0 || i + 2 + len > bytes.length) break;
-      if (type == 0x07) bits |= _bitProx;
+      if (type == 0x12) sawFindMy = true;
+      if (type == 0x07 && !sawFindMy) bits |= _bitProx;
       if (type == 0x0F) bits |= _bitAction;
       i += 2 + len;
     }
@@ -232,7 +237,6 @@ class PairingFlood {
   }
 
   static bool _swiftPair(List<int> b) {
-    if (b.length >= 2 && b[0] == 0x01) return true;
     if (b.length < 3 || b[0] != 0x03) return false;
     return b[1] <= 0x02 && b[2] == 0x80;
   }

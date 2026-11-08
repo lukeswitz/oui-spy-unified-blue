@@ -10024,6 +10024,14 @@
                     "dataPrefixHex": "",
                     "radio": null,
                     "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "FE33",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
                 }
             ],
             "minPeers": 0,
@@ -21618,6 +21626,14 @@
                     "dataPrefixHex": "",
                     "radio": "WIFI",
                     "enabled": true
+                },
+                {
+                    "kind": "VENDOR_IE_OUI",
+                    "text": "26:37:12",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
                 }
             ],
             "minPeers": 0,
@@ -24500,6 +24516,38 @@
                     "companyId": 0,
                     "dataPrefixHex": "",
                     "radio": "BLE",
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "3080",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "3081",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "3082",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "3083",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
                     "enabled": true
                 }
             ],
@@ -56340,21 +56388,13 @@
                     "dataPrefixHex": "",
                     "radio": null,
                     "enabled": true
-                },
-                {
-                    "kind": "MANUFACTURER_ID",
-                    "text": "",
-                    "companyId": 117,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
                 }
             ],
             "minPeers": 0,
             "peerWindowSec": 60,
             "clusterByOui": false,
             "sequentialMac": false,
-            "notes": "Samsung SmartTag / SmartTag+ item finder. Addresses often rotate.",
+            "notes": "Samsung SmartTag / SmartTag+ item finder, matched by its name or service FD5A. Samsung phones, TVs, Buds and watches also send Samsung's company ID, so that ID alone does not match. Addresses often rotate.",
             "attentionNote": "",
             "builtIn": true,
             "kind": "FINDER"
@@ -58344,6 +58384,14 @@
                     "kind": "MANUFACTURER_ID",
                     "text": "",
                     "companyId": 199,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "FEEC",
+                    "companyId": 0,
                     "dataPrefixHex": "",
                     "radio": null,
                     "enabled": true
@@ -64784,6 +64832,155 @@
             "attentionNote": "",
             "builtIn": true,
             "kind": "BEACON"
+        },
+        {
+            "id": "fleet-bitchat",
+            "name": "Bitchat",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 0,
+            "rules": [
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5a",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Phone running Bitchat, a Bluetooth mesh chat app. Matched by its mainnet or testnet service UUID. Pattern match, not that person.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "MESH"
+        },
+        {
+            "id": "fleet-elrs",
+            "name": "ExpressLRS",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 1,
+            "rules": [
+                {
+                    "kind": "NAME_GLOB",
+                    "text": "ExpressLRS*",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "WIFI",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "ExpressLRS radio-control transmitter or receiver in Wi-Fi setup mode. Its hotspot is named ExpressLRS TX or ExpressLRS RX. Common on FPV drones.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "DRONE"
+        },
+        {
+            "id": "fleet-ezviz",
+            "name": "EZVIZ",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 6,
+            "rules": [
+                {
+                    "kind": "NAME_GLOB",
+                    "text": "EZVIZ_*",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "WIFI",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "EZVIZ camera or doorbell in setup mode. Its hotspot is EZVIZ_ followed by the serial number. A camera already on a home network does not show this name.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "CAMERA"
+        },
+        {
+            "id": "fleet-polar",
+            "name": "Polar",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 3,
+            "rules": [
+                {
+                    "kind": "MANUFACTURER_ID",
+                    "text": "",
+                    "companyId": 107,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "FEEE",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                },
+                {
+                    "kind": "NAME_GLOB",
+                    "text": "Polar*",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Polar heart-rate strap, sports watch or sensor. Matched by Polar's company ID 0x006B, service FEEE, or a name starting with Polar.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "WEARABLE"
+        },
+        {
+            "id": "fleet-xiaomi-mihome",
+            "name": "Xiaomi Mi Home",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 6,
+            "rules": [
+                {
+                    "kind": "SERVICE_UUID",
+                    "text": "FE95",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": null,
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Xiaomi Mi Home device, such as a sensor, lamp, scale or toothbrush, sending Xiaomi's service FE95. Names the family, not one model.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "HOME"
         }
     ]
 }

@@ -34,6 +34,7 @@ const _watchGroups = <(String, List<_WatchItem>)>[
     _WatchItem('Hacking tools', 'Flipper Zero, Pwnagotchi and other pentest gear', Icons.bug_report,
         bits: sigFlipper | sigPwnagotchi, classes: {SignatureClass.hacking}),
     _WatchItem('Wi-Fi deauth attacks', 'Someone knocking devices off Wi-Fi or flooding an access point with join requests', Icons.wifi_off, bits: sigDeauth),
+    _WatchItem('Wi-Fi beacon floods', 'One radio faking a crowd of Wi-Fi networks', Icons.wifi_channel, bits: sigBeaconFlood),
     _WatchItem('Probe requests', 'Phones calling out for saved Wi-Fi names. Noisy in busy areas', Icons.wifi_find,
         bits: sigProbe, methods: ['probe_ssid']),
     _WatchItem('Rogue access points', 'Evil twins (a network name from a second radio of another vendor) and KARMA APs (one radio answering as many networks). Shares the probe switch', Icons.wifi_tethering_error,
@@ -111,7 +112,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
 
     void setOn(_WatchItem w, bool v) {
       final sig = ref.read(detectorSigMaskProvider.notifier);
-      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera, sigMesh]) {
+      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera, sigMesh, sigBeaconFlood]) {
         if (w.bits & b != 0) sig.setBit(b, v);
       }
       for (final c in w.classes) {
@@ -136,12 +137,24 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 14, left: 2, right: 2),
-          child: Text(
-            'Choose what OUI-APEX watches for. When it finds one you get a notification and a pin on the map. Tap the bell to log a type without notifying.',
-            style: TextStyle(color: t.textDim, fontSize: 12, height: 1.3),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: Text('Choose what OUI-APEX watches for.',
+                    style: TextStyle(color: t.textDim, fontSize: 12, height: 1.3)),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.info_outline, color: t.textSecondary),
+              tooltip: 'About detection & alerts',
+              onPressed: () => showInfoSheet(context, t, 'Detection & alerts', const [
+                'A switch turns a type on. A find gives a notification and a pin on the map.',
+                'Tap the bell on a row to log that type without notifying.',
+              ]),
+            ),
+          ],
         ),
         for (final (title, items) in _watchGroups) ...[
           ConfigSectionHeader(label: title, topPadding: 6),
@@ -168,23 +181,30 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           ],
           const SizedBox(height: 12),
         ],
-        ConfigSectionHeader(label: 'Privacy screen'),
+        _InfoHeader(
+          label: 'Privacy screen',
+          lines: const [
+            'Shows only the first two MAC bytes and the first three characters of names and SSIDs in detection lists, detail sheets, map lists and Devices.',
+            'Display only. The database, exports and uploads keep full values, and Copy copies the real value.',
+          ],
+        ),
         ConfigToggleRow(
           icon: Icons.visibility_off,
           label: 'Mask identifiers on screen',
-          subtitle: 'Shows only the first two MAC bytes and the first three characters of names and SSIDs in detection lists, detail sheets, map lists and Devices. Display only: the database, exports and uploads keep full values, and Copy copies the real value.',
+          subtitle: 'Hides most of each MAC, name and SSID',
           color: AppTheme.detector,
           value: ref.watch(privacyScreenProvider),
           onChanged: (v) => ref.read(privacyScreenProvider.notifier).set(v),
         ),
         const SizedBox(height: 12),
-        ConfigSectionHeader(label: 'Alert threshold'),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6, left: 2, right: 2),
-          child: Text(
-            'Board signatures report how strong the evidence is. Suspected = one weak signal (a vendor OUI, a tracker seen for seconds). High = one specific signal. Verified = two independent signals. Hits below the threshold are still logged; Suspected hits arrive silently.',
-            style: TextStyle(color: t.textDim, fontSize: 12, height: 1.3),
-          ),
+        _InfoHeader(
+          label: 'Alert threshold',
+          lines: const [
+            'Board signatures report how strong the evidence is.',
+            'Suspected: one weak signal, such as a vendor OUI or a tracker seen for seconds.',
+            'High: one specific signal. Verified: two independent signals.',
+            'Hits below the threshold are still logged. Suspected hits arrive silently.',
+          ],
         ),
         SizedBox(
           width: double.infinity,
@@ -246,6 +266,28 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
         ),
         const SizedBox(height: 20),
         ...widget.footer,
+      ],
+    );
+  }
+}
+
+class _InfoHeader extends StatelessWidget {
+  const _InfoHeader({required this.label, required this.lines});
+  final String label;
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Row(
+      children: [
+        Expanded(child: ConfigSectionHeader(label: label)),
+        IconButton(
+          icon: Icon(Icons.info_outline, size: 18, color: t.textSecondary),
+          tooltip: 'About $label',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => showInfoSheet(context, t, label, lines),
+        ),
       ],
     );
   }

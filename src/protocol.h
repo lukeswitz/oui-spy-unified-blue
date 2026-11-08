@@ -157,6 +157,7 @@ enum EngineState : uint8_t {
 #define METHOD_DET_MESH        13
 #define METHOD_DET_JOINFLOOD   14
 #define METHOD_DET_TAGFLOOD    15
+#define METHOD_DET_BEACONFLOOD 16
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
@@ -167,7 +168,8 @@ enum EngineState : uint8_t {
 #define SIG_AXON       0x40
 #define SIG_CAMERA     0x80
 #define SIG_MESH       0x100
-#define SIG_ALL        0x1FF
+#define SIG_BEACONFLOOD 0x200
+#define SIG_ALL        0x3FF
 
 #define OUISPY_BLE_PROTO_VERSION 2
 

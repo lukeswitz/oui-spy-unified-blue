@@ -488,6 +488,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final ordered = _cache!.ordered;
     final shown = ordered;
     final flood = reg.pairingFlood.notice;
+    final beaconFlood = reg.beaconFlood.notice;
     final content = Column(
           children: [
             CommandHeader(
@@ -545,6 +546,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
             ),
             if (flood != null)
               _FloodBanner(notice: flood, onDismiss: reg.pairingFlood.dismiss),
+            if (beaconFlood != null)
+              _FloodBanner(notice: beaconFlood, onDismiss: reg.beaconFlood.dismiss),
             const Divider(height: 1),
             Expanded(
               child: shown.isEmpty

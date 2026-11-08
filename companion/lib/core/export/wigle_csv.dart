@@ -116,7 +116,7 @@ class WigleCsv {
     };
   }
 
-  static const _notSelfIdentity = {'wifi_client', 'probe_ssid', 'deauth_storm', 'karma', 'join_flood', 'tag_flood'};
+  static const _notSelfIdentity = {'wifi_client', 'probe_ssid', 'deauth_storm', 'karma', 'join_flood', 'tag_flood', 'beacon_flood'};
 
   static String _frequency(Detection d) {
     final isBle = d.isBleDetection;

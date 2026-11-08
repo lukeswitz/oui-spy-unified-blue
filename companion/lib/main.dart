@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -26,6 +27,12 @@ import 'package:uuid/uuid.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(
+      const ['Fieldwatch', 'buttplug.io', 'Theengs Decoder', 'Home Assistant'],
+      await rootBundle.loadString('NOTICE'),
+    );
+  });
   await DebugLog.init();
 
   FlutterError.onError = (details) {

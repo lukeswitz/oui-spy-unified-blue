@@ -38,18 +38,20 @@
 >
 > **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
 
+**Contents**
 
-
-
-
-> [!IMPORTANT]
-> **Turn off Android's Wi-Fi scan limit.** Android allows four Wi-Fi scans every two minutes and fails the rest.
->
-> 1. **Settings → About phone**: tap **Build number** seven times to turn on Developer options.
-> 2. **Settings → System → Developer options → Networking**: turn off **Wi-Fi scan throttling**.
->
-> Menu paths vary by phone. USB Wi-Fi adapters are not limited.
-
+- [Quick start](#quick-start)
+- [Engines](#engines)
+- [Ways to run](#ways-to-run)
+- [App](#app)
+- [USB radios on Android](#usb-radios-on-android)
+- [Boards](#boards)
+- [Standalone controls](#standalone-controls)
+- [Mesh](#mesh)
+- [Optional GPS module](#optional-gps-module)
+- [Internet services](#internet-services)
+- [Build](#build)
+- [Credits](#credits)
 
 ## Quick start
 
@@ -59,6 +61,41 @@
 
 - **Android:** set Location to **Allow all the time**, or scanning stops when the screen is off.
 - **macOS:** Gatekeeper blocks the first launch of the release zip because it is not notarized. [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) builds are.
+
+> [!IMPORTANT]
+> **Turn off Android's Wi-Fi scan limit.** Android allows four Wi-Fi scans every two minutes and fails the rest.
+>
+> 1. **Settings → About phone**: tap **Build number** seven times to turn on Developer options.
+> 2. **Settings → System → Developer options → Networking**: turn off **Wi-Fi scan throttling**.
+>
+> Menu paths vary by phone. USB Wi-Fi adapters are not limited.
+
+## Engines
+
+| Engine | Finds |
+|---|---|
+| **Detector** | Your watchlist (MAC, OUI prefix, name, 16-bit BLE service UUID), plus built-in signatures, all off by default: Find My / AirTag following you, floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, Pwnagotchi, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE |
+| **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras and Raven gunshot sensors. Optional OUI-only Wi-Fi hits |
+| **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
+| **Foxhunter** | One target device. Beep rate (or the RSSI meter on boards without a buzzer) rises as you get closer |
+| **UniPwn** | Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …) |
+| **Wardrive** | Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS |
+| **PCAP** | Raw 802.11 or BLE advertising frames to a Wireshark `.pcap` |
+
+> [!IMPORTANT]
+> The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
+
+In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off.
+
+### Flock confidence
+
+| Tier | Matched |
+|---|---|
+| **VERIFIED** | Bare-serial name + XUNTONG `0x09C8` manufacturer ID + TN serial |
+| **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe |
+| **SUSPECTED** | A listed OUI only |
+
+DETECTIONS → HISTORY can filter by tier.
 
 ## Ways to run
 
@@ -74,21 +111,33 @@
 - **Private Bluetooth link:** the board changes its private address at random every 5–15 min. After pairing, it hides its name and refuses unknown phones. The paired phone reconnects on its own, even after a reboot. There is no PIN; accept the prompt on your phone. To pair another phone, restart the board: it accepts one new phone in the 2 min after power-on. After updating an S3, C3 or older ESP32 board, forget it in your phone's Bluetooth settings and pair again.
 - **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the board adds Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes to your wardrive. Tap **Start hub**, power on a Piglet, and tap **Pair** under **Nearby nodes**. The hub board leaves the mesh while it runs. The wardrive radio picker can leave out any paired node.
 
-## Boards
+## App
 
-| Board | Bands | Screen / buttons | microSD | Buzzer | Mesh node | Flasher target |
-|---|---|---|---|---|---|---|
-| XIAO ESP32-S3 | 2.4 GHz | – | – | GPIO3 (OUI-SPY board) | yes | `node-xiao_s3` |
-| ESP32-S3 N16R8 DevKitC | 2.4 GHz | – | – | GPIO3 | yes | `node-s3_devkitc` |
-| XIAO ESP32-C5 *(experimental)* | 2.4 + 5 GHz | – | – | GPIO25 | yes | `node-xiao_c5` |
-| LilyGO T-Dongle-S3 | 2.4 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_s3` |
-| LilyGO T-Dongle-C5 *(experimental)* | 2.4 + 5 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_c5` |
-| M5StickC PLUS | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus` |
-| M5StickC PLUS2 | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus2` |
-| M5StickC (original) | 2.4 GHz | LCD, 3 buttons | – | none | **no** | `node-stickc` |
+Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
-- **Manager boards:** XIAO ESP32-S3 (`mgr-xiao_s3`), ESP32-S3 DevKitC (`mgr-s3_devkitc`), XIAO ESP32-C5 (`mgr-xiao_c5`), XIAO ESP32-C3 (`mgr-xiao_c3`), ESP32 WROOM (`mgr-wroom`). A manager does no scanning.
-- **No mesh:** the M5StickC, PLUS and PLUS2 skip mesh to fit their RAM. They connect straight to the phone or run standalone.
+<div align="center">
+<table>
+  <tr>
+    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /><br><sub>Settings</sub></td>
+    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" /><br><sub>Detection &amp; alerts</sub></td>
+    <td align="center" width="34%"><img width="176" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" /><br><sub>Map</sub></td>
+  </tr>
+</table>
+</div>
+
+- **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
+- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
+- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
+- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
+- **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
+- **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
+- **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
+- **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m). *WDG TERRITORY* shows a linked account's WDGWars territory.
+- **Geofences**: inside a zone, detections drop from feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
+- **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
+- **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
+- **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
+- **Android**: during a session, an ongoing notification shows live counts and the last alert.
 
 ## USB radios on Android
 
@@ -149,77 +198,21 @@ SCAN runs only the categories you pick: **Weather, Home, Meters, Security, Remot
 - The **TPMS** tab reads tire sensors more reliably than SCAN.
 - **ADS-B** shows each aircraft's callsign, altitude, speed, heading and photo, and maps its flight path. One button uploads heard aircraft to WDGWars.
 
-## Engines
+## Boards
 
-| Engine | Finds |
-|---|---|
-| **Detector** | Your watchlist (MAC, OUI prefix, name, 16-bit BLE service UUID), plus built-in signatures, all off by default: Find My / AirTag following you, floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, directed probes, Pwnagotchi, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE |
-| **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras and Raven gunshot sensors. Optional OUI-only Wi-Fi hits |
-| **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
-| **Foxhunter** | One target device. Beep rate (or the RSSI meter on boards without a buzzer) rises as you get closer |
-| **UniPwn** | Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …) |
-| **Wardrive** | Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS |
-| **PCAP** | Raw 802.11 or BLE advertising frames to a Wireshark `.pcap` |
+| Board | Bands | Screen / buttons | microSD | Buzzer | Mesh node | Flasher target |
+|---|---|---|---|---|---|---|
+| XIAO ESP32-S3 | 2.4 GHz | – | – | GPIO3 (OUI-SPY board) | yes | `node-xiao_s3` |
+| ESP32-S3 N16R8 DevKitC | 2.4 GHz | – | – | GPIO3 | yes | `node-s3_devkitc` |
+| XIAO ESP32-C5 *(experimental)* | 2.4 + 5 GHz | – | – | GPIO25 | yes | `node-xiao_c5` |
+| LilyGO T-Dongle-S3 | 2.4 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_s3` |
+| LilyGO T-Dongle-C5 *(experimental)* | 2.4 + 5 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_c5` |
+| M5StickC PLUS | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus` |
+| M5StickC PLUS2 | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus2` |
+| M5StickC (original) | 2.4 GHz | LCD, 3 buttons | – | none | **no** | `node-stickc` |
 
-> [!IMPORTANT]
-> The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
-
-In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off.
-
-### Flock confidence
-
-| Tier | Matched |
-|---|---|
-| **VERIFIED** | Bare-serial name + XUNTONG `0x09C8` manufacturer ID + TN serial |
-| **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe |
-| **SUSPECTED** | A listed OUI only |
-
-DETECTIONS → HISTORY can filter by tier.
-
-## App
-
-Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
-
-<div align="center">
-<table>
-  <tr>
-    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /><br><sub>Settings</sub></td>
-    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" /><br><sub>Detection &amp; alerts</sub></td>
-    <td align="center" width="34%"><img width="176" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" /><br><sub>Map</sub></td>
-  </tr>
-</table>
-</div>
-
-- **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
-- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
-- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default.
-- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
-- **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
-- **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
-- **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
-- **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m). *WDG TERRITORY* shows a linked account's WDGWars territory.
-- **Geofences**: inside a zone, detections drop from feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
-- **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
-- **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
-- **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
-- **Android**: during a session, an ongoing notification shows live counts and the last alert.
-
-## Internet services
-
-- **No analytics or crash reporting.**
-- The app connects to a service below only when you use its feature.
-- Detections, sessions and captures stay on the phone until you upload or export them.
-
-| Service | When the app connects | What it sends | Usage rules the app follows |
-|---|---|---|---|
-| [WiGLE](https://api.wigle.net) | Sign in or upload a session | API name + token; session file on upload | On HTTP 429, pauses WiGLE 24h. Each session uploads once, on confirm. |
-| [WDGWars](https://wdgwars.pl) | Link an account, upload a session, or turn on **WDG TERRITORY** | API key; compressed session file; territory requests | UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min. |
-| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (`overpass-api.de`, fallback `overpass.private.coffee`) | **MAPPED ALPRs** on (off by default) and you move the map or open a Flock hit | The map corners in view | UA `oui-spy-companion/1.0`. Caches areas 7 days, one request at a time. On HTTP 429 waits 30s or longer. |
-| [OpenFreeMap](https://openfreemap.org) styles: Dark (default), Fiord, Liberty, Bright, Positron | A map is on screen | Tile numbers in view | No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap". |
-| [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map): Satellite (US) | You pick Satellite (US) | Tile numbers in view | Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit. |
-| [GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) | You tap **Check for Update** (Settings → Node → Firmware) | Nothing about you or your board | UA `oui-spy-companion/1.0`. 60 checks/hour per IP; pauses to GitHub's reset. Firmware comes from the same release. |
-| [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** (Settings → Data → Export → OUI DATABASE) | Nothing | Fetches the MAC vendor list at most every 7 days. UA `oui-spy-companion/1.0`. |
-| [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** on a drone | The drone's Remote ID serial | UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×. |
+- **Manager boards:** XIAO ESP32-S3 (`mgr-xiao_s3`), ESP32-S3 DevKitC (`mgr-s3_devkitc`), XIAO ESP32-C5 (`mgr-xiao_c5`), XIAO ESP32-C3 (`mgr-xiao_c3`), ESP32 WROOM (`mgr-wroom`). A manager does no scanning.
+- **No mesh:** the M5StickC, PLUS and PLUS2 skip mesh to fit their RAM. They connect straight to the phone or run standalone.
 
 ## Standalone controls
 
@@ -299,6 +292,23 @@ A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its 
 
 Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
 
+## Internet services
+
+- **No analytics or crash reporting.**
+- The app connects to a service below only when you use its feature.
+- Detections, sessions and captures stay on the phone until you upload or export them.
+
+| Service | When the app connects | What it sends | Usage rules the app follows |
+|---|---|---|---|
+| [WiGLE](https://api.wigle.net) | Sign in or upload a session | API name + token; session file on upload | On HTTP 429, pauses WiGLE 24h. Each session uploads once, on confirm. |
+| [WDGWars](https://wdgwars.pl) | Link an account, upload a session, or turn on **WDG TERRITORY** | API key; compressed session file; territory requests | UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min. |
+| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (`overpass-api.de`, fallback `overpass.private.coffee`) | **MAPPED ALPRs** on (off by default) and you move the map or open a Flock hit | The map corners in view | UA `oui-spy-companion/1.0`. Caches areas 7 days, one request at a time. On HTTP 429 waits 30s or longer. |
+| [OpenFreeMap](https://openfreemap.org) styles: Dark (default), Fiord, Liberty, Bright, Positron | A map is on screen | Tile numbers in view | No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap". |
+| [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map): Satellite (US) | You pick Satellite (US) | Tile numbers in view | Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit. |
+| [GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) | You tap **Check for Update** (Settings → Node → Firmware) | Nothing about you or your board | UA `oui-spy-companion/1.0`. 60 checks/hour per IP; pauses to GitHub's reset. Firmware comes from the same release. |
+| [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** (Settings → Data → Export → OUI DATABASE) | Nothing | Fetches the MAC vendor list at most every 7 days. UA `oui-spy-companion/1.0`. |
+| [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** on a drone | The drone's Remote ID serial | UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×. |
+
 ## Build
 
 ```bash
@@ -335,17 +345,17 @@ gh release upload v1.2.3 dist/v1.2.3/*.bin --clobber
 
 ## Credits
 
-- Firmware libraries: [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus), [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library); ESP-IDF ESP-NOW and mbedTLS.
-- Map tiles: [OpenFreeMap](https://openfreemap.org/) with [OpenMapTiles](https://openmaptiles.org/) and [OpenStreetMap](https://www.openstreetmap.org/copyright) data; satellite imagery from [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map).
-- Vendor OUIs: IEEE MA-L, MA-M and MA-S registries via [Wireshark manuf](https://www.wireshark.org/download/automated/data/manuf.gz).
-
 - Upstream engines: [Detector](https://github.com/colonelpanichacks/ouispy-detector), [Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter), [Flock You](https://github.com/colonelpanichacks/flock-you), [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy), [UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) by **colonelpanichacks**.
 - **Will Greenberg** ([flock-you](https://github.com/wgreenberg/flock-you)): XUNTONG `0x09C8` detection.
 - **@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)): promiscuous Flock OUI set and the addr1 receiver technique.
 - **DeFlockJoplin** ([flock-you](https://github.com/DeflockJoplin/flock-you)): wildcard-probe signature.
-- **OffGridPete** ([Fieldwatch](https://github.com/OffGridPete/Fieldwatch)): device signature catalog and classifier.
+- **OffGridPete** ([Fieldwatch](https://github.com/OffGridPete/Fieldwatch), MIT): the app's signature catalog starts from Fieldwatch catalog 92. The advertisement decoder, device explanations, signature engine, field decoder, pairing-flood and co-travel code are Dart ports of Fieldwatch. Details in [companion/NOTICE](companion/NOTICE).
+- Catalog entries from [Home Assistant](https://github.com/home-assistant/core) Bluetooth matchers, the [buttplug.io](https://github.com/buttplugio/buttplug) device config, and [Theengs Decoder](https://github.com/theengs/decoder) device identifiers.
 - Company and service IDs: [Bluetooth SIG assigned numbers](https://bitbucket.org/bluetooth-SIG/public).
 - OUI sources: [zmattmanz](https://github.com/zmattmanz), [dougborg/AirHound](https://github.com/dougborg), [VirtuallyScott](https://github.com/VirtuallyScott).
+- Vendor OUIs: IEEE MA-L, MA-M and MA-S registries via [Wireshark manuf](https://www.wireshark.org/download/automated/data/manuf.gz).
+- Firmware libraries: [NimBLE-Arduino](https://github.com/h2zero/NimBLE-Arduino), [TinyGPS++](https://github.com/mikalhart/TinyGPSPlus), [Adafruit GFX](https://github.com/adafruit/Adafruit-GFX-Library); ESP-IDF ESP-NOW and mbedTLS.
+- Map tiles: [OpenFreeMap](https://openfreemap.org/) with [OpenMapTiles](https://openmaptiles.org/) and [OpenStreetMap](https://www.openstreetmap.org/copyright) data; satellite imagery from [USGS The National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map).
 
 ## Disclaimer
 

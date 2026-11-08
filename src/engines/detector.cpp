@@ -124,6 +124,16 @@ struct TagChurn {
     uint32_t lastAlert;
 };
 static TagChurn* tagChurn = nullptr;
+struct BeaconSeen { uint32_t key; uint32_t lastMs; int8_t rssi; uint8_t channel; };
+static const int BEACON_SEEN_SLOTS = 64;
+static const uint8_t BEACON_FLOOD_APS = 15;
+static const uint8_t BEACON_FLOOD_HIGH_APS = 30;
+static const int BEACON_FLOOD_RSSI_BAND_DB = 3;
+static const int BEACON_FLOOD_MIN_RSSI = -75;
+static const uint32_t BEACON_FLOOD_WINDOW_MS = 5000;
+static const uint32_t BEACON_FLOOD_COOLDOWN_MS = 60000;
+static BeaconSeen* beaconSeen = nullptr;
+static uint32_t beaconFloodLastAlert = 0;
 static volatile unsigned long lastPwnAlert = 0;
 static uint16_t sigMask = 0;
 
@@ -677,6 +687,42 @@ static void IRAM_ATTR detectorRogueApISR(const uint8_t* p, int len, int rssi, ui
     }
 }
 
+static void IRAM_ATTR detectorBeaconFloodISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
+    if (!beaconSeen || len < 24 || rssi < BEACON_FLOOD_MIN_RSSI) return;
+    const uint8_t* b = &p[16];
+    uint32_t key = ((uint32_t)b[1] << 24) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 8) | b[4];
+    uint32_t now = millis();
+    if (now == 0) now = 1;
+    int slot = -1, freeSlot = -1, oldest = 0;
+    for (int i = 0; i < BEACON_SEEN_SLOTS; i++) {
+        const BeaconSeen& c = beaconSeen[i];
+        bool live = c.lastMs != 0 && now - c.lastMs <= BEACON_FLOOD_WINDOW_MS;
+        if (live && c.key == key) { slot = i; break; }
+        if (!live) { if (freeSlot < 0) freeSlot = i; continue; }
+        if (c.lastMs < beaconSeen[oldest].lastMs) oldest = i;
+    }
+    bool fresh = slot < 0;
+    BeaconSeen& s = beaconSeen[fresh ? (freeSlot >= 0 ? freeSlot : oldest) : slot];
+    s.key = key;
+    s.lastMs = now;
+    s.rssi = (int8_t)rssi;
+    s.channel = channel;
+    if (!fresh) return;
+    uint8_t near = 0;
+    for (int i = 0; i < BEACON_SEEN_SLOTS; i++) {
+        const BeaconSeen& o = beaconSeen[i];
+        if (o.lastMs == 0 || now - o.lastMs > BEACON_FLOOD_WINDOW_MS || o.channel != channel) continue;
+        if (abs(o.rssi - rssi) <= BEACON_FLOOD_RSSI_BAND_DB) near++;
+    }
+    if (near < BEACON_FLOOD_APS) return;
+    if (beaconFloodLastAlert != 0 && now - beaconFloodLastAlert < BEACON_FLOOD_COOLDOWN_MS) return;
+    beaconFloodLastAlert = now;
+    char desc[32];
+    snprintf(desc, sizeof(desc), "Beacon flood, %u fake APs", (unsigned)near);
+    pushApSigISR(b, rssi, channel, METHOD_DET_BEACONFLOOD,
+                 near >= BEACON_FLOOD_HIGH_APS ? DET_CONF_HIGH : DET_CONF_SUSPECTED, desc);
+}
+
 static void detectorJoinFrame(const uint8_t* p, int len, int rssi, uint8_t channel) {
     if (!joinTargets || len < 24 || (p[1] & 0x08)) return;
     const uint8_t* bssid = &p[16];
@@ -783,6 +829,7 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
     }
 
     if ((sigMask & SIG_PROBE) && fctl == 0x80) detectorRogueApISR(p, len, rssi, channel);
+    if ((sigMask & SIG_BEACONFLOOD) && fctl == 0x80) detectorBeaconFloodISR(p, len, rssi, channel);
 
     static const uint8_t pwnMac[6] = {0xde, 0xad, 0xbe, 0xef, 0xde, 0xad};
     if ((sigMask & SIG_PWNAGOTCHI) && fctl == 0x80 && memcmp(&p[10], pwnMac, 6) == 0) {
@@ -1026,7 +1073,7 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
                   detectorFilterCount(), uuidFilterCount, (unsigned)sigMask);
 }
 
-static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA;
+static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA | SIG_BEACONFLOOD;
 
 static uint32_t detectorWifiFilter(void) {
     return (sigMask & SIG_CAMERA) ? (WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA)
@@ -1065,6 +1112,7 @@ static void detectorStart(void) {
     if (!bssidSsids) bssidSsids = (BssidSsids*)calloc(BSSID_SSID_SLOTS, sizeof(BssidSsids));
     if (!joinTargets) joinTargets = (JoinTarget*)calloc(JOIN_TARGET_SLOTS, sizeof(JoinTarget));
     if (!tagChurn) tagChurn = (TagChurn*)calloc(1, sizeof(TagChurn));
+    if (!beaconSeen) beaconSeen = (BeaconSeen*)calloc(BEACON_SEEN_SLOTS, sizeof(BeaconSeen));
     scanning = true;
     dedup.setCooldownMs(engineGetRediscoverMs());
     wifiDedupISR.setCooldownMs(engineGetRediscoverMs());
@@ -1386,8 +1434,46 @@ int detectorPortSelfTest(void) {
     bool pr = pstPop(&e) && e.method == METHOD_DET_PROBE && strcmp(e.ext.detector.filter_desc, "AbcD") == 0;
     pstCheck("probe_ssid_ascii_only", pr, e.ext.detector.filter_desc);
 
+    if (!beaconSeen) beaconSeen = (BeaconSeen*)calloc(BEACON_SEEN_SLOTS, sizeof(BeaconSeen));
+    uint16_t maskBeforeBeacon = sigMask;
+    sigMask = SIG_BEACONFLOOD;
+    auto beaconBurst = [&](uint8_t tag, int count, int rssiStep) {
+        memset(beaconSeen, 0, BEACON_SEEN_SLOTS * sizeof(BeaconSeen));
+        beaconFloodLastAlert = 0;
+        pstDrain();
+        for (int i = 0; i < count; i++) {
+            const uint8_t fake[6] = {0x02, tag, 0x00, (uint8_t)i, 0x40, 0x01};
+            int fn = pstBeacon(f, fake, "MyNetwork");
+            detectorSigFrameISR(f, fn, -50 - (i * rssiStep) % 40, 6);
+        }
+    };
+    beaconBurst(0x01, BEACON_FLOOD_APS - 1, 0);
+    pstCheck("beacon_flood_below_threshold_quiet", !pstPop(&e));
+    beaconBurst(0x02, BEACON_FLOOD_APS, 0);
+    bool bf = pstPop(&e) && e.method == METHOD_DET_BEACONFLOOD && e.ext.detector.confidence == DET_CONF_SUSPECTED;
+    pstCheck("beacon_flood_one_radio_suspected", bf, e.ext.detector.filter_desc);
+    beaconBurst(0x03, BEACON_FLOOD_HIGH_APS, 0);
+    bf = pstPop(&e) && e.method == METHOD_DET_BEACONFLOOD && e.ext.detector.confidence == DET_CONF_HIGH;
+    pstCheck("beacon_flood_many_high", bf, e.ext.detector.filter_desc);
+    beaconBurst(0x04, BEACON_FLOOD_HIGH_APS, 7);
+    pstCheck("beacon_flood_spread_crowd_quiet", !pstPop(&e));
+    memset(beaconSeen, 0, BEACON_SEEN_SLOTS * sizeof(BeaconSeen));
+    beaconFloodLastAlert = 0;
+    pstDrain();
+    const uint8_t vapBase[6] = {0x02, 0x05, 0x06, 0x07, 0x08, 0x00};
+    for (int i = 0; i < BEACON_FLOOD_HIGH_APS; i++) {
+        uint8_t vap[6];
+        memcpy(vap, vapBase, 6);
+        vap[0] = (uint8_t)(0x02 | (i << 2));
+        vap[5] = (uint8_t)i;
+        int fn = pstBeacon(f, vap, "MyNetwork");
+        detectorSigFrameISR(f, fn, -50, 6);
+    }
+    pstCheck("beacon_flood_one_ap_many_ssids_quiet", !pstPop(&e));
+    sigMask = maskBeforeBeacon;
+
     detectorSetSigMask(SIG_ALL);
-    pstCheck("sigmask_9bit", detectorGetSigMask() == 0x1FF);
+    pstCheck("sigmask_10bit", detectorGetSigMask() == 0x3FF);
 
     pstDrain();
     detectorSetSigMask(savedMask);

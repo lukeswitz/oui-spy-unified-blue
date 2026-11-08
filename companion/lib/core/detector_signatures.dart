@@ -11,7 +11,8 @@ const int sigGlasses = 0x20;
 const int sigAxon = 0x40;
 const int sigCamera = 0x80;
 const int sigMesh = 0x100;
-const int sigAll = 0x1FF;
+const int sigBeaconFlood = 0x200;
+const int sigAll = 0x3FF;
 
 const detectorMethodsByBit = {
   sigTracker: ['tracker', 'tag_flood'],
@@ -23,6 +24,7 @@ const detectorMethodsByBit = {
   sigAxon: ['axon'],
   sigCamera: ['camera', 'amazon'],
   sigMesh: ['mesh'],
+  sigBeaconFlood: ['beacon_flood'],
 };
 
 class DetectorSignature {
@@ -53,6 +55,8 @@ const List<DetectorSignature> detectorSignatures = [
       'Security, doorbell, plate-reader and dash cameras by vendor OUI on any Wi-Fi frame or BLE address (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and more), or by a camera brand in the network or device name. A matching vendor and name is rated verified, a name alone high, and a vendor alone suspected; Amazon Sidewalk BLE (CID 0x0171, service 0xFE03) and Amazon BLE services 0xFE00/0xFE15/0xFCDC/0xFD41'),
   DetectorSignature(sigMesh, 'Mesh radios', 'Mesh', Icons.hub,
       'Meshtastic nodes (service 6ba1b218-…-eafd, or name) and MeshCore nodes (name)'),
+  DetectorSignature(sigBeaconFlood, 'Wi-Fi beacon flood', 'Beacon flood', Icons.wifi_channel,
+      'One radio faking a crowd of Wi-Fi networks: 15+ access points on one channel at the same signal level within seconds'),
 ];
 
 class DetectorSigMaskNotifier extends StateNotifier<int> {
