@@ -715,6 +715,16 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
                 _toggleSearch();
               },
             ),
+            CommandSheetTile(
+              icon: Icons.share_location,
+              label: 'SEEN AT YOUR STOPS',
+              subtitle: 'Radios heard at 2+ of your stops in 7 days',
+              color: AppTheme.detector,
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StopsScreen()));
+              },
+            ),
             const Divider(height: 1),
             CommandSheetTile(
               icon: Icons.ios_share,

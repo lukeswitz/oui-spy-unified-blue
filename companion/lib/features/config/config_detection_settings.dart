@@ -101,6 +101,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     final phoneScan = ref.watch(phoneBleSourceProvider).active;
     final targets = watchlist.entries.length;
     final ignoring = ignore.entries.where((e) => e.enabled).length;
+    final trustedCount = ref.watch(trustedNetworksProvider).networks.length;
     final moreClasses = [for (final (_, cs) in _moreGroups) ...cs];
     final moreOn = moreClasses.where(notif.classAlerts.contains).length;
 
@@ -244,6 +245,15 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               : '$targets device${targets == 1 ? '' : 's'} · add or import',
           color: AppTheme.detector,
           onTap: () => _pushPage(context, 'Watchlist', const SingleChildScrollView(child: WatchlistPanel())),
+        ),
+        ConfigActionRow(
+          icon: Icons.wifi_lock,
+          label: 'Trusted networks',
+          subtitle: trustedCount == 0
+              ? 'Your Wi-Fi names · warns on lookalikes'
+              : '$trustedCount network${trustedCount == 1 ? '' : 's'} · warns on lookalikes',
+          color: AppTheme.detector,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TrustedNetworksScreen())),
         ),
         ConfigActionRow(
           icon: Icons.shield_outlined,

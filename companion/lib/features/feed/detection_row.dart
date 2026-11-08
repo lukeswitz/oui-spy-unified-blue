@@ -29,6 +29,8 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
+import 'package:oui_spy/core/trusted_networks.dart';
+import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
@@ -482,6 +484,19 @@ void showDetectionDetails(
                       icon: const Icon(Icons.travel_explore, size: 18),
                       label: const Text('Check this AP on WiGLE'),
                       onPressed: () => _wigleLookup(ctx, ref, detection),
+                    ),
+                  ],
+                  if (detection.method == 'wifi_ap' && detection.ssid.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Consumer(
+                      builder: (_, r, _) {
+                        final trusted = r.watch(trustedNetworksProvider).isTrusted(detection.ssid);
+                        return OutlinedButton.icon(
+                          icon: Icon(trusted ? Icons.verified_user : Icons.verified_user_outlined, size: 18),
+                          label: Text(trusted ? 'Trusted network' : 'Trust this network'),
+                          onPressed: trusted ? null : () => trustNetwork(ref, detection.ssid),
+                        );
+                      },
                     ),
                   ],
                   if (canRing) ...[

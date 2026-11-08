@@ -129,6 +129,8 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
 - **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
 - **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
+- **Seen at your stops** (HISTORY → More): radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
+- **Trusted networks** (SETTINGS → Detection & alerts, or **Trust this network** on an access point): learns your Wi-Fi for a day, then warns when its name shows up with weaker security, from another maker, or far from usual places.
 - **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
 - **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.

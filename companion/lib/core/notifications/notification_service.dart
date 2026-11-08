@@ -431,6 +431,22 @@ class NotificationService extends ChangeNotifier {
     return m;
   }
 
+  void onWatchAlert({required String kind, required String title, required String body, String? subtitle, String? mac}) {
+    if (!_initialized || !_permissionGranted || mutedAlerts.contains(kind) || _isRateLimited()) return;
+    _recordRateLimit();
+    _fireNotification(
+      id: _notifId(NotifChannel.detector),
+      channel: NotifChannel.detector,
+      title: title,
+      subtitle: subtitle,
+      body: body,
+      groupKey: NotifChannel.detector,
+      alertKind: kind,
+      alertMac: mac,
+      muteKey: kind,
+    );
+  }
+
   void onWardriveEndedBoardLost({required int minutes, required int detections}) {
     if (!_initialized || !_permissionGranted || !wardriveStatusEnabled) return;
     _fireNotification(

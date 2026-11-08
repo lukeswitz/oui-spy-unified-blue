@@ -476,6 +476,63 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<
+      (
+        List<(int, double, double)>,
+        List<({String mac, String name, String ssid, String engine, String method, int channel, double lat, double lon, int lastMs})>
+      )> stopsReportInput(int sinceMs) async {
+    const where = 'app_timestamp >= ? AND latitude IS NOT NULL AND longitude IS NOT NULL '
+        'AND (approx_gps IS NULL OR approx_gps = 0)';
+    final track = await customSelect(
+      'SELECT app_timestamp / 60000 AS m, AVG(latitude) AS la, AVG(longitude) AS lo '
+      'FROM detections WHERE $where GROUP BY m ORDER BY m',
+      variables: [Variable.withInt(sinceMs)],
+    ).get();
+    final cells = await customSelect(
+      "SELECT mac_address, MAX(device_name) AS name, MAX(ssid) AS ssid, MAX(engine) AS engine, "
+      "MAX(detection_method) AS method, MAX(channel) AS ch, AVG(latitude) AS la, AVG(longitude) AS lo, "
+      "MAX(app_timestamp) AS last_ms FROM detections WHERE $where AND mac_address != '' "
+      'GROUP BY mac_address, CAST(latitude / 0.0015 AS INTEGER), CAST(longitude / 0.0015 AS INTEGER)',
+      variables: [Variable.withInt(sinceMs)],
+    ).get();
+    return (
+      [for (final r in track) (r.read<int>('m') * 60000, r.read<double>('la'), r.read<double>('lo'))],
+      [
+        for (final r in cells)
+          (
+            mac: r.read<String>('mac_address'),
+            name: r.readNullable<String>('name') ?? '',
+            ssid: r.readNullable<String>('ssid') ?? '',
+            engine: r.readNullable<String>('engine') ?? '',
+            method: r.readNullable<String>('method') ?? '',
+            channel: r.readNullable<int>('ch') ?? 0,
+            lat: r.read<double>('la'),
+            lon: r.read<double>('lo'),
+            lastMs: r.read<int>('last_ms'),
+          ),
+      ],
+    );
+  }
+
+  Future<List<({String mac, int auth, double? lat, double? lon})>> trustedSeed(String ssid) async {
+    final rows = await customSelect(
+      "SELECT mac_address, MAX(auth_mode) AS auth, AVG(latitude) AS la, AVG(longitude) AS lo FROM detections "
+      "WHERE ssid = ? AND detection_method = 'wifi_ap' AND mac_address != '' "
+      'GROUP BY mac_address, CAST(COALESCE(latitude, 0) / 0.003 AS INTEGER), CAST(COALESCE(longitude, 0) / 0.003 AS INTEGER) '
+      'LIMIT 500',
+      variables: [Variable.withString(ssid)],
+    ).get();
+    return [
+      for (final r in rows)
+        (
+          mac: r.read<String>('mac_address'),
+          auth: r.readNullable<int>('auth') ?? -1,
+          lat: r.readNullable<double>('la'),
+          lon: r.readNullable<double>('lo'),
+        ),
+    ];
+  }
+
   /// Get all distinct MACs seen across all sessions for stalking detection.
   Future<List<int>> sightingTimesForMac(String mac) async {
     final ts = detections.appTimestamp;

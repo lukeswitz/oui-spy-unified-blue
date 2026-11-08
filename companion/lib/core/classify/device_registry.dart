@@ -24,6 +24,7 @@ import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/classify/bt_sig_registry.dart';
 import 'package:oui_spy/core/classify/vendor_class.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
@@ -609,6 +610,7 @@ class DeviceRegistry extends ChangeNotifier {
 
   final String? Function(String mac)? vendorOf;
   void Function(ClassifiedDevice)? onClassified;
+  void Function(Observation o, String Function() vendor, GpsSample? at)? onAp;
 
   SignatureEngine? _engine;
   final _devices = <String, ClassifiedDevice>{};
@@ -672,6 +674,10 @@ class DeviceRegistry extends ChangeNotifier {
       trail = appendTrail(trail, s, _trailCap);
     }
     final merged = (prev == null ? o : prev.obs.merge(o)).withTrail(trail);
+    if (o.isAp && o.name.isNotEmpty) {
+      onAp?.call(o, () => vendorOf?.call(o.mac) ?? _baseVendor(o) ?? '',
+          o.gpsTrail.isNotEmpty ? o.gpsTrail.last : (_path.isEmpty ? null : _path.last));
+    }
     final engine = _engine;
     final sigs = [
       ...?engine?.match(merged),
@@ -887,6 +893,24 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
         longitude: trail.isNotEmpty ? trail.last.lon : pos?.longitude,
       ).catchError((Object e) => DebugLog.log('CLASSIFY: alert log failed: $e'));
     };
+  final trusted = ref.read(trustedNetworksProvider);
+  reg.onAp = (o, vendor, at) {
+    if (!trusted.isTrusted(o.name)) return;
+    final mac = MacUtil.normalize(o.mac);
+    final reasons = trusted.check(
+      o.name,
+      TrustedSighting(mac, vendor(), o.authMode, at?.lat, at?.lon),
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    if (reasons == null) return;
+    notif.onWatchAlert(
+      kind: 'trusted_network',
+      title: 'Possible evil twin of "${o.name}"',
+      subtitle: reasons.join(', '),
+      body: 'Access point $mac · ${o.rssi} dBm',
+      mac: mac,
+    );
+  };
   reg.beaconFlood.enabled = ref.read(detectorSigMaskProvider) & sigBeaconFlood != 0;
   ref.listen(detectorSigMaskProvider, (_, mask) => reg.beaconFlood.enabled = mask & sigBeaconFlood != 0);
   reg.loadCatalog();
