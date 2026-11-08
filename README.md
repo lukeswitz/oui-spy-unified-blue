@@ -43,15 +43,12 @@
 
 
 > [!IMPORTANT]
-> **Turn off Android's Wi-Fi scan limit.**
+> **Turn off Android's Wi-Fi scan limit.** Android allows four Wi-Fi scans every two minutes and fails the rest.
 >
-> Android only allows four Wi-Fi scans every two minutes. Scan requests past the 2min limit fail.
+> 1. **Settings → About phone**: tap **Build number** seven times to turn on Developer options.
+> 2. **Settings → System → Developer options → Networking**: turn off **Wi-Fi scan throttling**.
 >
-> **To turn the limit off:**
-> 1. Open **Settings → About phone** and tap **Build number** seven times. This turns on Developer options.
-> 2. Open **Settings → System → Developer options**. Under **Networking**, turn off **Wi-Fi scan throttling**.
->
-> The menu path differs on some phones. The limit applies only to the phone's own Wi-Fi radio. USB Wi-Fi adapters are not limited, because the app reads them over USB instead of through Android's Wi-Fi scan.
+> Menu paths vary by phone. USB Wi-Fi adapters are not limited.
 
 
 ## Quick start
@@ -61,22 +58,22 @@
 3. Open the app, tap **CONNECT**, pick the board.
 
 - **Android:** set Location to **Allow all the time**, or scanning stops when the screen is off.
-- **macOS:** the release zip is signed but not notarized, so Gatekeeper blocks the first launch. For a notarized build, use [TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
+- **macOS:** Gatekeeper blocks the first launch of the release zip because it is not notarized. [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) builds are.
 
 ## Ways to run
 
 | Mode | How | What you get |
 |---|---|---|
-| **App + board** | Phone app connected to an ESP32 board over Bluetooth | The board does the scanning and runs every engine; the app controls it, shows the live feed and map, adds the phone's GPS, and saves PCAP on the phone |
+| **App + board** | Phone app connected to an ESP32 board over Bluetooth | The board runs the engines. The app controls it, shows the feed and map, adds phone GPS, and saves PCAPs |
 | **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
 | **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
 | **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's radios: Bluetooth and Wi-Fi on Android, Bluetooth on iPhone |
-| **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 433 / 315 / 915 MHz and ADS-B; a USB Wi-Fi adapter scans Wi-Fi (the MT7921AU also Bluetooth LE). Run them together or on their own, alongside the phone's own radios |
+| **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 315 / 433 / 915 MHz and ADS-B. A USB Wi-Fi adapter scans Wi-Fi, and the MT7921AU also scans Bluetooth LE. Both run alongside the phone's radios |
 
-- **Together:** the board keeps detecting while the phone foxhunts a device it found, or both scan into one session.
-- **Offline scan** (SETTINGS → NODE → HARDWARE): a board keeps scanning after the phone disconnects. Hits buffer to flash and upload on reconnect. The setting survives a reboot. A directly connected board with a GPS module fix also keeps wardriving and saves each network with its location, one row per device every 5 minutes, up to 1 MB. The app imports those rows on reconnect, and they can upload to WiGLE. Without a GPS fix for 60 s, the board stops wardriving.
-- **Private Bluetooth link**: the board advertises a private address that it changes at a random interval of 5 to 15 minutes. After a phone pairs, the board advertises no name or service and refuses phones it does not know. A paired phone resolves the new address and reconnects, including after the board reboots, with no new pairing. Pairing uses bonded LE Secure Connections with no PIN, and you accept it in your phone's pairing prompt. To pair another phone, restart the board. It accepts a new phone for 2 minutes after power-on or until a phone connects. The C5 boards use the chip's own address resolver. The S3, C3 and older ESP32 boards resolve it in the Bluetooth host. After you update an S3, C3 or older ESP32 board to this firmware, forget it in your phone's Bluetooth settings and pair it once more.
-- **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the connected board collects Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes and adds them to your wardrive. Tap **Start hub**, power on a Piglet node nearby, and tap **Pair** when it shows under **Nearby nodes**. The hub board leaves the mesh while it runs; your other boards keep meshing. When you start a wardrive, the radio picker lists the hub and lets you leave out any paired node.
+- **Together:** the board detects while the phone foxhunts a device it found, or both scan into one session.
+- **Offline scan** (SETTINGS → NODE → HARDWARE): the board keeps scanning without the phone, even after a reboot, and uploads hits on reconnect. A directly connected board with a GPS module fix also wardrives, one row per device every 5 min, up to 1 MB. It stops after 60 s without a fix.
+- **Private Bluetooth link:** the board changes its private address at random every 5–15 min. After pairing, it hides its name and refuses unknown phones. The paired phone reconnects on its own, even after a reboot. There is no PIN; accept the prompt on your phone. To pair another phone, restart the board: it accepts one new phone in the 2 min after power-on. After updating an S3, C3 or older ESP32 board, forget it in your phone's Bluetooth settings and pair again.
+- **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the board adds Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes to your wardrive. Tap **Start hub**, power on a Piglet, and tap **Pair** under **Nearby nodes**. The hub board leaves the mesh while it runs. The wardrive radio picker can leave out any paired node.
 
 ## Boards
 
@@ -97,7 +94,7 @@
 
 ## USB radios on Android
 
-Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX drives it directly — no root, kernel driver, or custom ROM.
+OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle through Android's USB API. It needs no root, kernel driver or custom ROM.
 
 <div align="center">
 <table>
@@ -107,16 +104,14 @@ Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX
 </table>
 </div>
 
-- **User space:** the app talks to the adapter through Android's USB API, so it works on a stock phone.
-- **Run several at once:** the phone's radios, a USB Wi-Fi adapter, and an RTL-SDR dongle all scan into one session at the same time.
-- **Setup:** plug it in, choose OUI-APEX when Android asks, and tick "Use by default for this USB device". It appears on the Home screen with its own START control and waits there — it does not scan until you start it.
-- **Reclaim:** with "use by default" set, the app grabs the adapter again after a restart, so you don't have to unplug and replug it.
+- **Setup:** plug it in, choose OUI-APEX when Android asks, and tick "Use by default for this USB device". The app then reclaims it after a restart. It shows on Home with its own START control.
+- **Several at once:** the phone's radios, a USB Wi-Fi adapter and an RTL-SDR scan into one session.
 
 ### Wi-Fi adapters
 
-- **Receive only:** the adapter scans in monitor mode; the app never transmits through it.
-- **Firmware:** on first use the app downloads the chipset's firmware from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/), checks it against a pinned SHA-256, and caches it on the phone.
-- **Per AP:** each access point is recorded with its channel and security from the beacon — open, WEP, WPA, WPA2, or WPA3.
+- **Receive only:** the adapter scans in monitor mode and never transmits.
+- **Firmware:** on first use, the app downloads it from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/), checks a pinned SHA-256, and caches it.
+- **Per AP:** each access point is logged with its channel and security (open, WEP, WPA, WPA2 or WPA3).
 
 | Chipset | Scans |
 |---|---|
@@ -126,11 +121,11 @@ Plug a USB Wi-Fi adapter or an RTL-SDR dongle into an Android phone and OUI-APEX
 | Atheros AR9271 | Wi-Fi (2.4 GHz) |
 | Ralink RT3070 | Wi-Fi (2.4 GHz) |
 
-**The MT7921AU (Alfa AWUS036AXM) is the only adapter here that also scans Bluetooth LE** — pick BLE or WiFi+BLE on the radio control and it runs the Bluetooth radio next to the Wi-Fi capture. Its Wi-Fi hits are tagged `USB WIFI` and its Bluetooth hits `USB-BLE`, so you can tell them from the phone's own radios.
+On the MT7921AU (Alfa AWUS036AXM), pick BLE or WiFi+BLE on the radio control to scan Bluetooth LE. Its hits are tagged `USB WIFI` and `USB-BLE`.
 
 ### RTL-SDR
 
-An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the phone into a software-defined radio receiver. Open it from the SDR screen and pick a mode.
+Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR screen and pick a mode.
 
 | Mode | Frequency | What it receives |
 |---|---|---|
@@ -152,18 +147,12 @@ An RTL-SDR dongle, an RTL2832U with USB ID `0bda:2832` or `0bda:2838`, turns the
 </table>
 </div>
 
-In SCAN mode you pick which categories to decode: **Weather, Home, Meters, Security, Remotes**. The app runs only those decoders, so a narrower scan does less work on the phone.
+SCAN runs only the categories you pick: **Weather, Home, Meters, Security, Remotes**. The info button explains each one.
 
-- The info button at the top explains each category, and every list row shows its icon.
-- Each decoder checks the device's checksum and drops readings that fail it, so noise doesn't show up as a device.
-- Decoded devices save to History under an SDR filter, and you can foxhunt one by its signal strength.
-- Tire sensors have their own **TPMS** tab, which reads them more reliably than SCAN.
-
-On the **ADS-B** tab:
-
-- Each aircraft is a card with callsign, altitude, speed, heading, and a photo looked up online by its ICAO address.
-- The map view draws each aircraft's flight path from the positions it has broadcast.
-- One button uploads the aircraft you've heard to WDGWars.
+- Decoders drop readings that fail their checksum.
+- Decoded devices save to History under an SDR filter, and you can foxhunt them by signal strength.
+- The **TPMS** tab reads tire sensors more reliably than SCAN.
+- **ADS-B** shows each aircraft's callsign, altitude, speed, heading and photo, and maps its flight path. One button uploads heard aircraft to WDGWars.
 
 ## Engines
 
@@ -207,16 +196,16 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 </div>
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
-- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (each device classified by vendor, Bluetooth data and signatures), HISTORY (stored log, CSV export). Tap a hit to open its detail: a plain-English identification with the reason, the signal strength, the decoded advertisement, the services it offers, and when it was first and last seen, plus buttons to foxhunt or map it. SHOW ALL on the map shows its whole class.
-- **Classification**: OUI vendor categories, Bluetooth SIG company and service IDs, AntiHunter tables, Fieldwatch signatures. Each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …), a confidence dot, and its decoded advertisement (Apple Continuity type, manufacturer data, service UUIDs). Class alerts are on by default.
-- **Phone scan**: phone icon in the status bar, off at launch. Android scans Bluetooth and Wi-Fi, with or without a board; iPhone and Mac scan Bluetooth only. Hits show as node PHONE. iOS hides MACs, so iPhone hits skip WiGLE CSV.
-- **USB radios**: on Android, an external USB Wi-Fi adapter or an RTL-SDR plugs into the phone and scans in user space, no root needed. See [USB radios on Android](#usb-radios-on-android).
+- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export). A hit's detail says what it is and why, with signal strength, decoded advertisement, services, first and last seen, and buttons to foxhunt or map it. SHOW ALL maps its whole class.
+- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …) and a confidence dot. Sources: OUI vendor categories, Bluetooth SIG IDs, AntiHunter tables, Fieldwatch signatures. Class alerts are on by default.
+- **Phone scan**: phone icon in the status bar, off at launch. Hits show as node PHONE. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
+- **USB radios**: see [USB radios on Android](#usb-radios-on-android).
 - **Notifications**: title is the matched target (watchlist name, signature, probed SSID); body is RSSI, channel, name, MAC.
 - **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
 - **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
 - **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m), querying `overpass-api.de` (fallback `overpass.private.coffee`). *WDG TERRITORY* shows a linked account's WDGWars territory.
-- **Geofences**: inside a zone, detections drop from feed, log and notifications; the board stops beeping and auto-PCAP. A map session also turns its radios off until you leave (**RADIOS OFF — INSIDE EXCLUSION ZONE**). HOME-started engines keep scanning; a T-Dongle still writes to SD.
+- **Geofences**: inside a zone, detections drop from feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
 - **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
 - **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
 - **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
@@ -305,14 +294,13 @@ Detector MAC, OUI and UUID targets and signatures set in the app stay on the boa
 - Default is plaintext broadcast. SETTINGS → NODE → MESH can switch to AES-256-GCM with a shared key.
 - Boards use a random MAC each boot; the node ID stays fixed.
 - A node silent for 45 s drops off and rejoins when back in range.
-- Buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings set on the manager are pushed to every node.
-- Any mix of node boards works under one manager (e.g. T-Dongle-S3 + T-Dongle-C5 + XIAO).
-- Each node reports its board to the manager; the app shows it on every node row.
-- Fleet update (SETTINGS → NODE → FIRMWARE) updates every node over Wi-Fi, and each node downloads the image for its own board. Nodes older than v0.6.1 do not report a board and take the image for the board picked in the app.
+- The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
+- Any mix of node boards works under one manager. The app shows each node's board.
+- Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 
 ## Optional GPS module
 
-A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. A module fix takes priority; with no data for 5 s the board falls back to phone GPS.
+A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its fix overrides phone GPS. After 5 s with no module data, the board uses phone GPS.
 
 | GPS | XIAO ESP32-S3 | T-Dongle-S3 | T-Dongle-C5 | M5Stick |
 |---|---|---|---|---|
@@ -341,11 +329,9 @@ cd companion && flutter pub get && flutter build apk --release   # or ipa / maco
 
 ### Signed updates
 
-Boards accept an over-the-air update only if the image carries a valid ECDSA P-256 signature from the release key. The app checks the signature before it sends an image over Bluetooth, including a local `.bin` you pick. The board checks it again on Bluetooth, Wi-Fi and mesh updates, and it does not mark an image bootable until the check passes.
+Boards accept an over-the-air update only with a valid ECDSA P-256 signature from the release key. The app checks it before sending, including a local `.bin`. The board checks it again before marking the image bootable. USB flashing skips the check. Any signed image is accepted, including an older release.
 
-USB flashing does not check signatures. A board accepts any image signed with the key, including an older release.
-
-The release workflow builds unsigned images, because the private key stays on your computer. Sign the images before you publish the draft release:
+The release workflow builds unsigned images because the private key stays on your computer. Sign them before you publish the draft release:
 
 ```bash
 python3 sign_ota.py keygen                                # once; writes ~/.config/oui-spy/ota_signing_key.pem
