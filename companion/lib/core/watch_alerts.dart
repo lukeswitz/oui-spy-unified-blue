@@ -7,9 +7,9 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/stops_report.dart' show StopsReport;
+import 'package:oui_spy/core/watch_alert_log.dart';
 
 class _Cooldown {
   _Cooldown(this.ms);
@@ -209,13 +209,13 @@ class WatchAlerts extends ChangeNotifier {
 
 final watchAlertsProvider = ChangeNotifierProvider<WatchAlerts>((ref) {
   final w = WatchAlerts();
-  final notif = ref.read(notificationServiceProvider);
+  final log = ref.read(watchAlertLogProvider);
   final gps = ref.read(gpsProvider);
   final sdr = ref.read(sdrControllerProvider);
   final ble = ref.read(bleManagerProvider);
-  void alert(String kind, String title, String? warning, {String? mac}) {
+  void alert(String kind, String title, String? warning, {required String subject, bool isBle = false}) {
     if (warning == null) return;
-    notif.onWatchAlert(kind: kind, title: title, subtitle: warning, body: warning, mac: mac);
+    log(kind: kind, title: title, reason: warning, subject: subject, isBle: isBle);
   }
 
   final subs = <StreamSubscription<dynamic>>[
@@ -230,7 +230,7 @@ final watchAlertsProvider = ChangeNotifierProvider<WatchAlerts>((ref) {
       if (d.kind == 'tpms' && w.isOn('car_follow')) {
         final id = '${d.fields['model']}|${d.fields['id']}';
         final owned = w.car.ownCars.length;
-        alert('car_follow', 'Car following you', w.car.onTire(id, now, here?.latitude, here?.longitude));
+        alert('car_follow', 'Car following you', w.car.onTire(id, now, here?.latitude, here?.longitude), subject: id);
         if (w.car.ownCars.length != owned) w.saveOwnCars();
       } else if (d.kind == 'adsb' && w.isOn('aircraft_circle')) {
         final icao = (d.fields['icao'] as String?)?.toUpperCase() ?? '';
@@ -242,6 +242,7 @@ final watchAlertsProvider = ChangeNotifierProvider<WatchAlerts>((ref) {
           w.aircraft.onAircraft(icao, cs.isEmpty ? icao : '$cs ($icao)', now, (d.fields['lat'] as num?)?.toDouble(),
               (d.fields['lon'] as num?)?.toDouble(), (d.fields['heading'] as num?)?.toDouble(), here?.latitude,
               here?.longitude),
+          subject: icao,
         );
       }
     }),
@@ -255,12 +256,12 @@ final watchAlertsProvider = ChangeNotifierProvider<WatchAlerts>((ref) {
           'Drone near you',
           w.drone.onDrone(odid.uavId ?? d.macAddress, now, odid.droneLat, odid.droneLon, odid.pilotLat, odid.pilotLon,
               here?.latitude, here?.longitude),
-          mac: d.macAddress,
+          subject: odid.uavId ?? d.macAddress,
         );
       }
       if (w.isOn('mesh_crossing') && d.sourceNodeId.isNotEmpty && d.isBleDetection && d.macAddress.isNotEmpty) {
         alert('mesh_crossing', 'Device crossing your mesh', w.mesh.onSighting(d.macAddress.toUpperCase(), d.sourceNodeId, now),
-            mac: d.macAddress);
+            subject: d.macAddress.toUpperCase(), isBle: true);
       }
     }),
   ];

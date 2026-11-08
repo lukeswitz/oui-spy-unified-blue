@@ -10,8 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
-import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/stops_report.dart' show StopsReport;
+import 'package:oui_spy/core/watch_alert_log.dart';
 
 class CellReading {
   final String rat;
@@ -193,12 +193,12 @@ class PhoneWatch extends ChangeNotifier {
   static const _gnss = EventChannel('ouispy/phone_watch/gnss');
   static const cellPoll = Duration(seconds: 30);
 
-  PhoneWatch(this._gps, this._notif) {
+  PhoneWatch(this._gps, this._log) {
     if (supported) _load();
   }
 
   final GpsProvider _gps;
-  final NotificationService _notif;
+  final WatchAlertLog _log;
   final cell = CellWatch();
   final gps = GpsWatch();
   bool cellOn = false;
@@ -245,12 +245,12 @@ class PhoneWatch extends ChangeNotifier {
       _gnssSub = _gnss.receiveBroadcastStream().listen(
         (e) {
           final cn0 = [for (final c in ((e as Map)['cn0'] as List? ?? const [])) (c as num).toDouble()];
-          _alert('gps_watch', 'GPS warning', gps.onSatellites(cn0, DateTime.now().millisecondsSinceEpoch));
+          _alert('gps_watch', 'GPS warning', 'GPS', gps.onSatellites(cn0, DateTime.now().millisecondsSinceEpoch));
         },
         onError: (Object e) => DebugLog.log('PHONEWATCH: gnss $e'),
       );
       _fixSub = _gps.phoneFixes.listen(
-        (f) => _alert('gps_watch', 'GPS warning', gps.onFix(f.$1, f.$2, DateTime.now().millisecondsSinceEpoch)),
+        (f) => _alert('gps_watch', 'GPS warning', 'GPS', gps.onFix(f.$1, f.$2, DateTime.now().millisecondsSinceEpoch)),
       );
     }
     notifyListeners();
@@ -263,7 +263,8 @@ class PhoneWatch extends ChangeNotifier {
       if (c == null) return;
       final here = _gps.recentPosition();
       final w = cell.check(c, here?.latitude, here?.longitude, DateTime.now().millisecondsSinceEpoch);
-      _alert('cell_watch', 'Cell network warning', w, body: '${c.label} cell ${c.cid} · network ${c.plmn}');
+      _alert('cell_watch', 'Cell network warning', 'CELL ${c.plmn} ${c.cid}', w,
+          body: '${c.label} cell ${c.cid} · network ${c.plmn}', lat: here?.latitude, lon: here?.longitude);
       if (cell.places.length != _savedPlaces || w != null) await _savePlaces();
     } on PlatformException catch (e) {
       DebugLog.log('PHONEWATCH: cell ${e.message}');
@@ -276,10 +277,9 @@ class PhoneWatch extends ChangeNotifier {
     await prefs.setString(_placesKey, jsonEncode([for (final p in cell.places) p.toJson()]));
   }
 
-  void _alert(String kind, String title, String? warning, {String? body}) {
+  void _alert(String kind, String title, String subject, String? warning, {String? body, double? lat, double? lon}) {
     if (warning == null) return;
-    DebugLog.log('PHONEWATCH: $kind $warning');
-    _notif.onWatchAlert(kind: kind, title: title, subtitle: warning, body: body ?? warning);
+    _log(kind: kind, title: title, reason: warning, subject: subject, body: body, lat: lat, lon: lon);
   }
 
   @override
@@ -292,5 +292,5 @@ class PhoneWatch extends ChangeNotifier {
 }
 
 final phoneWatchProvider = ChangeNotifierProvider<PhoneWatch>(
-  (ref) => PhoneWatch(ref.read(gpsProvider), ref.read(notificationServiceProvider)),
+  (ref) => PhoneWatch(ref.read(gpsProvider), ref.read(watchAlertLogProvider)),
 );

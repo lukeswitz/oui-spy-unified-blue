@@ -26,6 +26,7 @@ import 'package:oui_spy/core/classify/vendor_class.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/watch_alert_log.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
 import 'beacon_flood.dart';
@@ -611,6 +612,7 @@ class DeviceRegistry extends ChangeNotifier {
   final String? Function(String mac)? vendorOf;
   void Function(ClassifiedDevice)? onClassified;
   void Function(Observation o, String Function() vendor, GpsSample? at)? onAp;
+  void Function(FloodNotice notice)? onBeaconFlood;
 
   SignatureEngine? _engine;
   final _devices = <String, ClassifiedDevice>{};
@@ -780,6 +782,8 @@ class DeviceRegistry extends ChangeNotifier {
     final now = DateTime.now().millisecondsSinceEpoch;
     pairingFlood.tick(now);
     beaconFlood.tick(now);
+    final beacon = beaconFlood.notice;
+    if (hadBeacon == null && beacon != null) onBeaconFlood?.call(beacon);
     if (_dirty || !identical(had, pairingFlood.notice) || !identical(hadBeacon, beaconFlood.notice)) {
       _dirty = false;
       notifyListeners();
@@ -891,9 +895,11 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
         alertedAt: now,
         latitude: trail.isNotEmpty ? trail.last.lat : pos?.latitude,
         longitude: trail.isNotEmpty ? trail.last.lon : pos?.longitude,
-      ).catchError((Object e) => DebugLog.log('CLASSIFY: alert log failed: $e'));
+      ).then((_) => ref.read(alertsFeedProvider).changed())
+          .catchError((Object e) => DebugLog.log('CLASSIFY: alert log failed: $e'));
     };
   final trusted = ref.read(trustedNetworksProvider);
+  final logAlert = ref.read(watchAlertLogProvider);
   reg.onAp = (o, vendor, at) {
     if (!trusted.isTrusted(o.name)) return;
     final mac = MacUtil.normalize(o.mac);
@@ -903,14 +909,26 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
       DateTime.now().millisecondsSinceEpoch,
     );
     if (reasons == null) return;
-    notif.onWatchAlert(
+    logAlert(
       kind: 'trusted_network',
       title: 'Possible evil twin of "${o.name}"',
-      subtitle: reasons.join(', '),
+      reason: reasons.join(', '),
+      subject: mac,
+      name: o.name,
       body: 'Access point $mac · ${o.rssi} dBm',
-      mac: mac,
+      rssi: o.rssi,
+      channel: o.channel,
+      lat: at?.lat,
+      lon: at?.lon,
     );
   };
+  reg.onBeaconFlood = (n) => logAlert(
+        kind: 'beacon_flood',
+        title: 'Wi-Fi beacon flood',
+        reason: n.families.isEmpty ? n.line() : '${n.line()} · ${n.families.join(', ')}',
+        subject: 'BEACON FLOOD ${n.families.isEmpty ? '' : n.families.first}'.trim(),
+        rssi: n.medianRssi ?? 0,
+      );
   reg.beaconFlood.enabled = ref.read(detectorSigMaskProvider) & sigBeaconFlood != 0;
   ref.listen(detectorSigMaskProvider, (_, mask) => reg.beaconFlood.enabled = mask & sigBeaconFlood != 0);
   reg.loadCatalog();

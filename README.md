@@ -331,21 +331,7 @@ C5 builds use the pioarduino platform in a separate core dir (`~/.platformio-c5`
 cd companion && flutter pub get && flutter build apk --release   # or ipa / macos
 ```
 
-### Signed updates
-
-Boards accept an over-the-air update only with a valid ECDSA P-256 signature from the release key. The app checks it before sending, including a local `.bin`. The board checks it again before marking the image bootable. USB flashing skips the check. Any signed image is accepted, including an older release.
-
-The release workflow builds unsigned images because the private key stays on your computer. Sign them before you publish the draft release:
-
-```bash
-python3 sign_ota.py keygen                                # once; writes ~/.config/oui-spy/ota_signing_key.pem
-gh release download v1.2.3 -p 'oui-spy-*.bin' -D dist/v1.2.3
-python3 sign_ota.py sign dist/v1.2.3/*.bin                # appends the signature in place
-python3 sign_ota.py verify dist/v1.2.3/*.bin
-gh release upload v1.2.3 dist/v1.2.3/*.bin --clobber
-```
-
-`keygen` prints the public key. Put it in `src/ota_pubkey.h` and `companion/lib/core/ota/ota_signature.dart`. Back up the private key and never commit it. If you lose it, boards can only move to a new key by USB flashing.
+Over-the-air updates must be signed with the release key. A board flashed over USB takes any image.
 
 ## Credits
 

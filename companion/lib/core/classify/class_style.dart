@@ -53,6 +53,17 @@ IconData classIcon(SignatureClass c) => switch (c) {
       SignatureClass.other => Icons.devices_other,
     };
 
+const _watchKinds = <String, (String, IconData)>{
+  'trusted_network': ('LOOKALIKE WI-FI', Icons.wifi_lock),
+  'cell_watch': ('CELL NETWORK', Icons.cell_tower),
+  'gps_watch': ('GPS', Icons.gps_off),
+  'car_follow': ('CAR FOLLOWING', Icons.directions_car),
+  'aircraft_circle': ('AIRCRAFT CIRCLING', Icons.connecting_airports),
+  'drone_loiter': ('DRONE NEAR YOU', Icons.flight_land),
+  'mesh_crossing': ('MESH CROSSING', Icons.route),
+  'beacon_flood': ('BEACON FLOOD', Icons.wifi_channel),
+};
+
 SignatureClass? _classOfKind(String? kind) {
   for (final c in SignatureClass.values) {
     if (c.name == kind) return c;
@@ -68,12 +79,14 @@ Color alertKindColor(String? kind) {
 
 IconData alertKindIcon(String? kind) {
   if (kind == 'flock') return Icons.videocam;
+  if (_watchKinds[kind] case (_, final icon)) return icon;
   final c = _classOfKind(kind);
   return c == null ? Icons.warning_amber : classIcon(c);
 }
 
 String alertKindLabel(String? kind) {
   if (kind == 'flock') return 'FLOCK';
+  if (_watchKinds[kind] case (final label, _)) return label;
   final c = _classOfKind(kind);
   return c == null ? 'SIGNATURE' : c.label.toUpperCase();
 }
