@@ -1,6 +1,6 @@
 <div align="center">
 
-[![Release](https://img.shields.io/github/v/release/lukeswitz/oui-spy-unified-blue?include_prereleases&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases)
+[![Release](https://img.shields.io/github/v/tag/lukeswitz/oui-spy-unified-blue?sort=semver&label=pre-release&color=green)](https://github.com/lukeswitz/oui-spy-unified-blue/releases)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-blue.svg?logo=apple)](https://testflight.apple.com/join/5RCKgnJ2)
 ![Platforms](https://img.shields.io/badge/iOS%20%7C%20macOS%20%7C%20Android-1BA1E2)
 ![Firmware](https://img.shields.io/badge/firmware-ESP32-ff6600)
@@ -8,20 +8,16 @@
 
 # OUI-APEX
 
-**"Snoop unto them - as they snoop unto us".**
+***Snoop unto them, as they snoop unto us.***
 
 </div>
 
 
-Firmware and app for detecting surveillance hardware, trackers and drones, and for wardriving. One firmware runs every detection engine; maps results, and uploads to WiGLE and WDGWars. The phone is a radio too — run it alone, or have a board detect while the phone foxhunts. **Android scans Bluetooth and Wi-Fi; iPhone and MacOS scan BLE only.**
+**OUI-APEX** detects surveillance hardware, trackers and drones. It also works as a wardriving and recon tool.
 
-**On Android**, extend the phone further with an RTL-SDR dongle or most USB Wi-Fi adapter chipsets.
-
-> [!NOTE]
-> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks with additional features.
->
-> **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
-
+- **Firmware (ESP32):** one board runs every detector. Add more boards to form an ESP-NOW mesh, up to 200 m apart.
+- **App:** controls the boards, maps detections, and exports or uploads to WiGLE and WDGWars.
+- **Phone:** scans by itself, or foxhunts (tracks a signal to its source) while the boards keep detecting.
 
 <div align="center">
 <table>
@@ -31,6 +27,19 @@ Firmware and app for detecting surveillance hardware, trackers and drones, and f
   </tr>
 </table>
 </div>
+
+| Platform | Phone scans | Add-ons |
+|---|---|---|
+| Android | Bluetooth, Wi-Fi | ESP32 board, RTL-SDR, USB Wi-Fi adapter |
+| iPhone / macOS | BLE | ESP32 board (adds Wi-Fi) |
+
+
+> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks with additional features.
+>
+> **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
+
+
+
 
 
 > [!IMPORTANT]
