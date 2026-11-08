@@ -141,6 +141,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           for (final c in w.classes) c.name,
           if (w.flock) 'flock',
           if (w.drone) 'drone',
+          if (w.bits & sigBeaconFlood != 0) 'beacon_flood',
           if (w.methods case final ms?)
             for (final m in ms) 'det:$m'
           else

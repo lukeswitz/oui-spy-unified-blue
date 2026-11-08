@@ -25046,51 +25046,11 @@
                     "enabled": true
                 },
                 {
-                    "kind": "OUI",
-                    "text": "04:0D:84",
+                    "kind": "NAME_GLOB",
+                    "text": "FS Ext*",
                     "companyId": 0,
                     "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "OUI",
-                    "text": "1C:34:F1",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "OUI",
-                    "text": "38:5B:44",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "OUI",
-                    "text": "94:34:69",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "OUI",
-                    "text": "B4:E3:F9",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "OUI",
-                    "text": "F0:82:C0",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
+                    "radio": "BLE",
                     "enabled": true
                 }
             ],
@@ -25098,8 +25058,8 @@
             "peerWindowSec": 60,
             "clusterByOui": false,
             "sequentialMac": false,
-            "notes": "External battery pack usually associated with a Flock-style camera pole. Name hits are stronger. Current poles are often quiet on Wi-Fi and BLE.",
-            "attentionNote": "Usually associated with a Flock-style camera — an external battery pack on the pole. Name hits are stronger. Current poles are often quiet on Wi-Fi and BLE. Pattern match, not that camera. Look with your eyes.",
+            "notes": "External battery pack usually associated with a Flock-style camera pole. Matched by a name that starts with FS Ext. Its Silicon Labs radio prefix is shared by many other products, so the prefix alone does not match. Current poles are often quiet on Wi-Fi and BLE.",
+            "attentionNote": "Usually associated with a Flock-style camera — an external battery pack on the pole. Matched by its name only. Current poles are often quiet on Wi-Fi and BLE. Pattern match, not that camera. Look with your eyes.",
             "builtIn": true,
             "kind": "SURVEILLANCE"
         },
@@ -45702,14 +45662,6 @@
                 {
                     "kind": "OUI",
                     "text": "80:30:49",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "OUI",
-                    "text": "B8:35:32",
                     "companyId": 0,
                     "dataPrefixHex": "",
                     "radio": null,

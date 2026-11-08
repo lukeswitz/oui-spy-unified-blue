@@ -104,6 +104,16 @@ void main() {
     expect(ids(ble(mfg: const [MfgRecord(0x0075, '0100')])), isNot(contains('fleet-smarttag')));
   });
 
+  test('a Silicon Labs radio is not a Flock battery; the battery name is', () {
+    List<String> ids(Observation o) => [for (final s in engine.match(o)) s.id];
+    for (final mac in ['94:34:69:00:00:01', '04:0D:84:00:00:01', 'F0:82:C0:00:00:01']) {
+      expect(ids(Observation(key: 'BLE:$mac', kind: RadioKind.ble, mac: mac)), isNot(contains('fleet-fs-ext-battery')));
+    }
+    expect(ids(const Observation(key: 'BLE:X', kind: RadioKind.ble, mac: '', name: 'FS Ext 12')), contains('fleet-fs-ext-battery'));
+    const lite = Observation(key: 'WIFI:B8:35:32:00:00:01', kind: RadioKind.wifi, mac: 'B8:35:32:00:00:01');
+    expect(ids(lite), isNot(contains('fleet-liteon-camera-radio')));
+  });
+
   test('phone-scanned watch name classifies as wearable', () {
     const o = Observation(key: 'BLE:A967F874', kind: RadioKind.ble, mac: '', name: 'Brian’s Samsung Watch');
     final hits = engine.match(o);
