@@ -102,6 +102,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     final targets = watchlist.entries.length;
     final ignoring = ignore.entries.where((e) => e.enabled).length;
     final trustedCount = ref.watch(trustedNetworksProvider).networks.length;
+    final watch = ref.watch(phoneWatchProvider);
     final moreClasses = [for (final (_, cs) in _moreGroups) ...cs];
     final moreOn = moreClasses.where(notif.classAlerts.contains).length;
 
@@ -274,6 +275,24 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           value: phoneScan,
           onChanged: _setPhoneScan,
         ),
+        if (PhoneWatch.supported) ...[
+          ConfigToggleRow(
+            icon: Icons.cell_tower,
+            label: 'Cell network watch',
+            subtitle: 'Warns on a drop to 2G or 3G, or a new tower at a known place',
+            color: AppTheme.detector,
+            value: watch.cellOn,
+            onChanged: watch.setCell,
+          ),
+          ConfigToggleRow(
+            icon: Icons.gps_off,
+            label: 'GPS spoofing & jamming',
+            subtitle: 'Warns when GPS looks faked or jammed',
+            color: AppTheme.detector,
+            value: watch.gpsOn,
+            onChanged: watch.setGps,
+          ),
+        ],
         const SizedBox(height: 20),
         ...widget.footer,
       ],

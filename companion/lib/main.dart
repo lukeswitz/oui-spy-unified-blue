@@ -20,6 +20,7 @@ import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/core/phone_watch.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,6 +86,7 @@ void main() async {
   container.read(melodyProvider);
   container.read(usbAutoConnectProvider);
   container.read(wifiAdapterControllerProvider);
+  container.read(phoneWatchProvider);
 
   runApp(UncontrolledProviderScope(
     container: container,

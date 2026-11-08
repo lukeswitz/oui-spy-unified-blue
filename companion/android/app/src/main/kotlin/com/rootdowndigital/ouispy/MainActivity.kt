@@ -9,6 +9,7 @@ class MainActivity : FlutterActivity() {
     private var usbLink: UsbLinkChannel? = null
     private var wifiAdapter: WifiAdapterChannel? = null
     private var phoneScan: PhoneScanChannel? = null
+    private var phoneWatch: PhoneWatchChannel? = null
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -21,6 +22,7 @@ class MainActivity : FlutterActivity() {
         usbLink = UsbLinkChannel(applicationContext, messenger)
         wifiAdapter = WifiAdapterChannel(applicationContext, messenger)
         phoneScan = PhoneScanChannel(applicationContext, messenger)
+        phoneWatch = PhoneWatchChannel(applicationContext, messenger)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -36,6 +38,8 @@ class MainActivity : FlutterActivity() {
         wifiAdapter = null
         phoneScan?.dispose()
         phoneScan = null
+        phoneWatch?.dispose()
+        phoneWatch = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 }

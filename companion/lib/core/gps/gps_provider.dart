@@ -27,8 +27,10 @@ class GpsProvider {
   GpsPosition? _lastPosition;
   GpsPosition? _phonePosition;
   final _positionController = StreamController<GpsPosition>.broadcast();
+  final _phoneFixController = StreamController<(GpsPosition, bool)>.broadcast();
 
   Stream<GpsPosition> get positionStream => _positionController.stream;
+  Stream<(GpsPosition, bool)> get phoneFixes => _phoneFixController.stream;
   GpsPosition? get lastPosition => _lastPosition;
 
   GpsPosition? recentPosition([Duration maxAge = const Duration(minutes: 3)]) {
@@ -216,6 +218,7 @@ class GpsProvider {
   void dispose() {
     stop();
     _positionController.close();
+    _phoneFixController.close();
     _hwGpsController.close();
   }
 
@@ -230,6 +233,7 @@ class GpsProvider {
       satelliteCount: pos.isMocked ? 0 : -1,
       timestamp: pos.timestamp,
     );
+    _phoneFixController.add((_phonePosition!, pos.isMocked));
     if (!usingHardware) _publish(_phonePosition!);
   }
 
