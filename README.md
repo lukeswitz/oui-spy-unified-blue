@@ -274,6 +274,8 @@ A tap of **A** acts after 0.35 s and does nothing on the detections screen.
 
 Foxhunt picks, in order: the target set in the app, else the last Detector / Flock / Sky Spy / UniPwn alert seen by this board.
 
+Detector MAC, OUI and UUID targets and signatures set in the app stay on the board through a reboot. Name targets match in the app only.
+
 ### Detections screen (both)
 
 - **Rows:** the 4 latest detections, newest on top.

@@ -725,24 +725,48 @@ static void statusHeartbeatTask(void* param) {
         bleGattSecurityTick();
         enowHubTick();
 
-        if (bleGattOfflineScanEnabled() && !meshManagerJoined()) {
-            static uint8_t lastMask = 0xFF;
+        {
+            static bool detSeeded = false;
             static uint8_t lastFilt[512];
             static size_t lastFiltLen = 0;
-            uint8_t m = (uint8_t)((engineGetActiveMask() | engineGetAutoPcapPausedMask()) & ~ENGINE_BITMASK(ENGINE_PCAP));
-            int fc = detectorFilterCount();
+            static uint16_t lastSig = 0;
+            static bool lastSigSet = false;
+            if (!detSeeded) {
+                Preferences po;
+                po.begin("ouispy-off", true);
+                lastFiltLen = po.getBytes("det_filt", lastFilt, sizeof(lastFilt));
+                lastSigSet = po.isKey("det_sig");
+                lastSig = po.getUShort("det_sig", 0);
+                po.end();
+                detSeeded = true;
+            }
             uint8_t fb[512];
             size_t fn = detectorSerialize(fb, sizeof(fb));
-            if (m != lastMask || fn != lastFiltLen || memcmp(fb, lastFilt, fn) != 0) {
+            uint16_t sg = detectorGetSigMask();
+            if (fn != lastFiltLen || memcmp(fb, lastFilt, fn) != 0 || !lastSigSet || sg != lastSig) {
+                Preferences po;
+                po.begin("ouispy-off", false);
+                po.putBytes("det_filt", fb, fn);
+                po.putUShort("det_sig", sg);
+                po.end();
+                memcpy(lastFilt, fb, fn);
+                lastFiltLen = fn;
+                lastSig = sg;
+                lastSigSet = true;
+                Serial.printf("[DETCFG] persisted filt=%d sig=0x%03X\n", detectorFilterCount(), (unsigned)sg);
+            }
+        }
+
+        if (bleGattOfflineScanEnabled() && !meshManagerJoined()) {
+            static uint8_t lastMask = 0xFF;
+            uint8_t m = (uint8_t)((engineGetActiveMask() | engineGetAutoPcapPausedMask()) & ~ENGINE_BITMASK(ENGINE_PCAP));
+            if (m != lastMask) {
                 Preferences po;
                 po.begin("ouispy-off", false);
                 po.putUChar("eng_mask", m);
-                po.putBytes("det_filt", fb, fn);
                 po.end();
                 lastMask = m;
-                memcpy(lastFilt, fb, fn);
-                lastFiltLen = fn;
-                Serial.printf("[OFFLINE] persisted eng=0x%02X filt=%d\n", m, fc);
+                Serial.printf("[OFFLINE] persisted eng=0x%02X filt=%d\n", m, detectorFilterCount());
             }
         }
 
@@ -1774,15 +1798,19 @@ void setup() {
     Serial.println("[INIT] ENGINE SELF-TEST mode (mesh disabled)");
 #endif
 
-    if (bleGattOfflineScanEnabled()) {
+    {
         Preferences po;
         po.begin("ouispy-off", true);
         uint8_t savedMask = po.getUChar("eng_mask", 0);
         uint8_t fb[512];
         size_t fn = po.getBytes("det_filt", fb, sizeof(fb));
+        bool haveSig = po.isKey("det_sig");
+        uint16_t savedSig = po.getUShort("det_sig", 0);
         po.end();
         if (fn > 0) detectorSetFilters(fb, fn);
-        if (savedMask != 0) {
+        if (haveSig) detectorSetSigMask(savedSig);
+        Serial.printf("[DETCFG] restored filt=%uB sig=0x%03X\n", (unsigned)fn, (unsigned)savedSig);
+        if (bleGattOfflineScanEnabled() && savedMask != 0) {
             for (int i = 0; i < ENGINE_COUNT; i++) {
                 if ((savedMask & (1 << i)) && engineSpoolable((uint8_t)i)) {
                     engineEnable((EngineId)i);
