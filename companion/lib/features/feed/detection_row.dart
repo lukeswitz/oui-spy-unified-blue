@@ -29,6 +29,7 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
+import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -811,6 +812,8 @@ class _DetailSummary extends ConsumerWidget {
     if (odid != null) {
       if (odid.uavId != null && odid.uavId!.isNotEmpty) {
         rows.add(_detailRow(context, 'UAV ID', odid.uavId!));
+        final maker = cta2063Maker(odid.uavId!, idType: odid.idType);
+        if (maker != null) rows.add(_detailRow(context, 'Maker (from serial)', maker));
       }
       if (odid.operatorId != null && odid.operatorId!.isNotEmpty) {
         rows.add(_detailRow(context, 'Operator ID', odid.operatorId!));

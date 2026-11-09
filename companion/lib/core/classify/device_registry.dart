@@ -935,9 +935,11 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
   reg.attach(EspDetectionSource(ref.read(bleManagerProvider).detections));
   reg.attach(ref.read(phoneBleSourceProvider));
   final gps = ref.read(gpsProvider);
-  final sub = gps.positionStream.listen(
-    (p) => reg.recordPhoneFix(p.latitude, p.longitude, DateTime.now().millisecondsSinceEpoch),
-  );
+  final sub = gps.positionStream.listen((p) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    reg.recordPhoneFix(p.latitude, p.longitude, now);
+    reg.pairingFlood.setSpeed(p.speed, now);
+  });
   ref.onDispose(sub.cancel);
   return reg;
 });

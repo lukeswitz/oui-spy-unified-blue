@@ -96,6 +96,22 @@ void main() {
       expect(f.notice, isNull);
     });
 
+    test('a weak burst while driving is a pass-by; a loud one still flags', () {
+      PairingFlood burst(int rssi, double speed) {
+        final f = PairingFlood()..setSpeed(speed, 0);
+        for (var i = 0; i < PairingFlood.popupMin; i++) {
+          f.consider(_prox(i, rssi: rssi), 0);
+        }
+        f.setSpeed(speed, PairingFlood.confirmMs);
+        _settle(f, PairingFlood.confirmMs);
+        return f;
+      }
+
+      expect(burst(-85, 15).notice, isNull);
+      expect(burst(-50, 15).notice, isNotNull);
+      expect(burst(-85, 1).notice, isNotNull);
+    });
+
     test('same address counted once', () {
       final f = PairingFlood();
       for (var i = 0; i < 8; i++) {

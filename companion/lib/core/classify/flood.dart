@@ -77,8 +77,22 @@ class PairingFlood {
   static const _easyBuds = [0x42, 0x09, 0x81, 0x02, 0x14, 0x15, 0x03, 0x21, 0x01, 0x09];
   static const _easyWatch = [0x01, 0x00, 0x02, 0x00, 0x01, 0x01, 0xFF, 0x00, 0x00, 0x43];
 
+  static const driveMps = 5.0;
+  static const driveWeakDbm = -75;
+  static const speedFreshMs = 30000;
+
+  double _speedMps = 0;
+  int _speedAtMs = 0;
   final _window = ListQueue<_Hit>();
   final _macs = <String>{};
+
+  void setSpeed(double mps, int now) {
+    if (!mps.isFinite || mps < 0) return;
+    _speedMps = mps;
+    _speedAtMs = now;
+  }
+
+  bool _driving(int now) => _speedMps >= driveMps && now - _speedAtMs <= speedFreshMs;
   final _seen = <String, int>{};
   final _admitted = <int, int>{};
   final _arrived = <int, int>{};
@@ -158,7 +172,8 @@ class PairingFlood {
       return n.round();
     }
     final popCount = scaled(pop.hits);
-    if (popCount < popupMin) {
+    final median = pop.median;
+    if (popCount < popupMin || (_driving(now) && median != null && median < driveWeakDbm)) {
       _finish();
       return;
     }
