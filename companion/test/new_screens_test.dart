@@ -17,6 +17,8 @@ import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
+import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
+import 'package:flutter_map/flutter_map.dart' show FlutterMap;
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_tabs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -222,6 +224,41 @@ void main() {
     expect((rule.matchType, rule.identifier), (WatchlistMatchType.serviceUuid, 'FFE0'));
     await tester.pumpWidget(const SizedBox());
     c.dispose();
+  });
+
+  testWidgets('Wardrive report renders a session with no route and shares text', (tester) async {
+    const storage = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(storage, (call) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(storage, null));
+    final (c, db) = await _container();
+    await _pump(
+      tester,
+      c,
+      const WardriveReportScreen(
+        session: Session(
+          id: 's1',
+          name: 'Drive',
+          nodeId: 'default',
+          startedAt: 0,
+          endedAt: 125000,
+          enginesActive: 0,
+          detectionCount: 0,
+          uniqueMacCount: 0,
+          distanceKm: 0,
+          exported: false,
+          isWardrive: true,
+        ),
+      ),
+    );
+    await _settle(tester);
+    expect(find.text('Wardrive report'), findsOneWidget);
+    expect(find.text('Seen before'), findsOneWidget);
+    expect(find.text('Flock cameras'), findsOneWidget);
+    expect(find.text('Uploads'), findsOneWidget);
+    expect(find.byType(FlutterMap), findsNothing);
+    expect(find.byTooltip('Share as text'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await db.close();
   });
 
   testWidgets('Seen at your stops shows its empty state on an empty database', (tester) async {

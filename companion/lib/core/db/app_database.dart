@@ -354,6 +354,47 @@ class AppDatabase extends _$AppDatabase {
     return (wifi: wifi, ble: ble);
   }
 
+  Future<List<({String mac, String ssid, int auth, int channel, bool seenBefore})>> sessionAps(
+      String sessionId, int startedAt) async {
+    final rows = await customSelect(
+      'SELECT d.mac_address AS mac, MAX(d.ssid) AS ssid, MAX(d.auth_mode) AS auth, MAX(d.channel) AS ch, '
+      'EXISTS(SELECT 1 FROM detections e WHERE e.mac_address = d.mac_address '
+      'AND e.session_id != ? AND e.app_timestamp < ?) AS seen '
+      "FROM detections d WHERE d.session_id = ? AND d.detection_method = 'wifi_ap' GROUP BY d.mac_address",
+      variables: [Variable.withString(sessionId), Variable.withInt(startedAt), Variable.withString(sessionId)],
+    ).get();
+    return [
+      for (final r in rows)
+        (
+          mac: r.read<String>('mac'),
+          ssid: r.readNullable<String>('ssid') ?? '',
+          auth: r.read<int>('auth'),
+          channel: r.read<int>('ch'),
+          seenBefore: r.read<int>('seen') != 0,
+        ),
+    ];
+  }
+
+  Future<List<(double, double)>> sessionRoute(String sessionId) async {
+    final rows = await customSelect(
+      'SELECT app_timestamp / 10000 AS b, AVG(latitude) AS la, AVG(longitude) AS lo FROM detections '
+      'WHERE session_id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL '
+      'AND (approx_gps IS NULL OR approx_gps = 0) AND NOT (latitude = 0 AND longitude = 0) '
+      'GROUP BY b ORDER BY b',
+      variables: [Variable.withString(sessionId)],
+    ).get();
+    return [for (final r in rows) (r.read<double>('la'), r.read<double>('lo'))];
+  }
+
+  Future<Map<String, int>> classAlertCountsBetween(int fromMs, int toMs) async {
+    final rows = await customSelect(
+      'SELECT alert_class AS k, COUNT(DISTINCT mac_address) AS n FROM class_alerts '
+      'WHERE alerted_at >= ? AND alerted_at <= ? GROUP BY alert_class',
+      variables: [Variable.withInt(fromMs), Variable.withInt(toMs)],
+    ).get();
+    return {for (final r in rows) r.read<String>('k'): r.read<int>('n')};
+  }
+
   Future<ArchiveOverview> archiveOverview() async {
     final t = await customSelect(
       "SELECT COUNT(*) AS n, "

@@ -38,6 +38,7 @@ import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
+import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/deflock/deflock_api.dart';

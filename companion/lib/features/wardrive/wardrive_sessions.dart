@@ -838,6 +838,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
                             }
                           },
                           onShare: () => _shareSession(context, ref, sid),
+                          onReport: () => showWardriveReport(context, sessions[i]),
                           onDelete: () => _deleteSession(context, ref, sessions[i]),
                           onUploadWigle: wigle.isLoggedIn
                               ? () => _uploadToWigle(context, ref, sid)
@@ -1177,6 +1178,7 @@ class _SessionRow extends ConsumerWidget {
     required this.onTap,
     required this.onShare,
     required this.onDelete,
+    this.onReport,
     this.onLongPress,
     this.selectable = false,
     this.selected = false,
@@ -1196,6 +1198,7 @@ class _SessionRow extends ConsumerWidget {
   final VoidCallback onTap;
   final VoidCallback onShare;
   final VoidCallback onDelete;
+  final VoidCallback? onReport;
   final VoidCallback? onLongPress;
   final bool selectable;
   final bool selected;
@@ -1317,6 +1320,11 @@ class _SessionRow extends ConsumerWidget {
                           fontFamily: AppTheme.mono,
                         ),
                       ),
+                      if (onReport != null && !selectable)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: _ToolbarChip(label: 'REPORT', color: AppTheme.accent, onTap: onReport),
+                        ),
                     ],
                   ),
                   if (isRescanning) ...[
