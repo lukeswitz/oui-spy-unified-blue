@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oui_spy/core/classify/device_explain.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
 
@@ -102,6 +103,14 @@ void main() {
     expect(ids(wifi('', ies: ['26:37:12'])), contains('fleet-dji'));
     expect(ids(ble(uuids: ['FD5A'])), contains('fleet-smarttag'));
     expect(ids(ble(mfg: const [MfgRecord(0x0075, '0100')])), isNot(contains('fleet-smarttag')));
+  });
+
+  test('new rows get a plain explanation, not just their name', () {
+    const o = Observation(key: 'WIFI:X', kind: RadioKind.wifi, mac: '', name: 'EZVIZ_123456789', isAp: true);
+    expect(DeviceExplain.guess(o, ['EZVIZ']).headline, contains('EZVIZ camera or doorbell'));
+    const p = Observation(key: 'BLE:X', kind: RadioKind.ble, mac: '');
+    expect(DeviceExplain.guess(p, ['Polar']).headline, contains('Polar heart-rate strap'));
+    expect(DeviceExplain.guess(p, ['Bitchat']).headline, contains('Bitchat'));
   });
 
   test('a Silicon Labs radio is not a Flock battery; the battery name is', () {
