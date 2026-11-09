@@ -14,6 +14,25 @@ void main() {
     expect(byId.values.where((s) => s.decode != null).length, 19);
   });
 
+  test('Remote ID location height reference and EU system fields decode', () {
+    Map<String, String> decode(String hex) => {
+          for (final d in FleetDecode.decode(
+              byId['fleet-remote-id']!.decode!,
+              Observation(key: 'B:R', kind: RadioKind.ble, mac: '', serviceData: [ServiceDataRecord('FFFA', hex)])))
+            d.label: d.display,
+        };
+    final loc = decode('0D011224${'00' * 23}');
+    expect(loc['Height above'], 'Ground');
+    final eu = decode('0D014205${'00' * 15}239808${'00' * 5}');
+    expect(eu['Operator position'], 'Live GNSS');
+    expect(eu['EU category'], 'Specific');
+    expect(eu['EU class'], 'C2');
+    expect(eu['Operator altitude (HAE)'], startsWith('100'));
+    final us = decode('0D014201${'00' * 15}230000${'00' * 5}');
+    expect(us.containsKey('EU category'), isFalse);
+    expect(us.containsKey('Operator altitude (HAE)'), isFalse);
+  });
+
   test('Ruuvi RAWv5 published vector decodes temperature/humidity/pressure', () {
     const o = Observation(
       key: 'B:1',

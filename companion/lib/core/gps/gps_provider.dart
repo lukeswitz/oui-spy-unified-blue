@@ -130,6 +130,7 @@ class GpsProvider {
   bool _hasAlwaysPermission = false;
   bool _running = false;
   bool get hasAlwaysPermission => _hasAlwaysPermission;
+  bool get streaming => _positionSub != null;
 
   Future<bool> start() async {
     _running = true;

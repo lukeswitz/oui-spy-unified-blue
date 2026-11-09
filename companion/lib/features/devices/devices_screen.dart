@@ -18,6 +18,8 @@ import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/core/privacy.dart';
+import 'package:oui_spy/core/trusted_networks.dart';
+import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
 
@@ -1242,6 +1244,21 @@ class DeviceDetailSheet extends ConsumerWidget {
                     ],
                   ),
                 ),
+                if (o.isAp && o.name.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Builder(builder: (_) {
+                    final trusted = ref.watch(trustedNetworksProvider).isTrusted(o.name);
+                    return OutlinedButton(
+                      onPressed: trusted ? null : () => trustNetwork(ref, o.name),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(trusted ? 'Trusted network' : 'Trust this network')),
+                          Icon(trusted ? Icons.verified_user : Icons.verified_user_outlined, size: 18),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
               ],
             ),
           ),

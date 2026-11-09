@@ -224,9 +224,18 @@ class PhoneWatch extends ChangeNotifier {
     await setGps(prefs.getBool(_gpsKey) ?? false, save: false);
   }
 
+  void _ensureGps() {
+    if (_gps.streaming) return;
+    _gps.start().catchError((Object e) {
+      DebugLog.log('PHONEWATCH: gps start failed: $e');
+      return false;
+    });
+  }
+
   Future<void> setCell(bool on, {bool save = true}) async {
     if (!supported) return;
     cellOn = on;
+    if (on) _ensureGps();
     _cellTimer?.cancel();
     _cellTimer = on ? Timer.periodic(cellPoll, (_) => _pollCell()) : null;
     if (on) _pollCell();
@@ -242,6 +251,7 @@ class PhoneWatch extends ChangeNotifier {
     _gnssSub = null;
     _fixSub = null;
     if (on) {
+      _ensureGps();
       _gnssSub = _gnss.receiveBroadcastStream().listen(
         (e) {
           final cn0 = [for (final c in ((e as Map)['cn0'] as List? ?? const [])) (c as num).toDouble()];
