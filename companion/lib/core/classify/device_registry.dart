@@ -38,6 +38,7 @@ import 'kin_index.dart';
 import 'smarttag.dart';
 import 'observation.dart';
 import 'signature_engine.dart';
+import 'user_signatures.dart';
 
 abstract class ObservationSource {
   String get name;
@@ -608,7 +609,31 @@ class DeviceRegistry extends ChangeNotifier {
   static const catalogAsset = 'assets/fieldwatch-signatures-v2.json';
   static const _trailCap = 48;
 
-  DeviceRegistry({SignatureEngine? engine, this.vendorOf}) : _engine = engine;
+  DeviceRegistry({SignatureEngine? engine, this.vendorOf}) : _engine = engine, _base = engine?.signatures;
+
+  List<Signature>? _base;
+  List<Signature> _user = const [];
+
+  void setUserSignatures(List<Signature> user) {
+    _user = List.unmodifiable(user);
+    final base = _base;
+    if (base == null) return;
+    final engine = SignatureEngine([...base, ..._user]);
+    _engine = engine;
+    for (final e in _devices.entries.toList()) {
+      final d = e.value;
+      _devices[e.key] = _withKin(ClassifiedDevice(
+        d.obs,
+        {...engine.match(d.obs), ...d.signatures.where((s) => s.cluster)}.toList(),
+        d.sources,
+        vendor: d.vendor,
+        baseVendor: d.baseVendor,
+      ));
+    }
+    _dirty = true;
+    _rev++;
+    notifyListeners();
+  }
 
   final String? Function(String mac)? vendorOf;
   void Function(ClassifiedDevice)? onClassified;
@@ -638,7 +663,9 @@ class DeviceRegistry extends ChangeNotifier {
   Future<void> loadCatalog() async {
     if (_engine != null) return;
     try {
-      _engine = SignatureEngine(Signature.parseCatalog(await rootBundle.loadString(catalogAsset)));
+      final base = Signature.parseCatalog(await rootBundle.loadString(catalogAsset));
+      _base = base;
+      _engine = SignatureEngine([...base, ..._user]);
       BtSigRegistry.load(
         await rootBundle.loadString(BtSigRegistry.companyAsset),
         await rootBundle.loadString(BtSigRegistry.memberAsset),
@@ -933,6 +960,8 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
       );
   reg.beaconFlood.enabled = ref.read(detectorSigMaskProvider) & sigBeaconFlood != 0;
   ref.listen(detectorSigMaskProvider, (_, mask) => reg.beaconFlood.enabled = mask & sigBeaconFlood != 0);
+  reg.setUserSignatures(ref.read(userSignaturesProvider).items);
+  ref.listen(userSignaturesProvider, (_, next) => reg.setUserSignatures(next.items));
   reg.loadCatalog();
   reg.attach(EspDetectionSource(ref.read(bleManagerProvider).detections));
   reg.attach(ref.read(phoneBleSourceProvider));

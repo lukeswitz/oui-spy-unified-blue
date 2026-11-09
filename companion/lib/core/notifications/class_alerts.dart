@@ -71,7 +71,7 @@ ClassAlert? classAlertOf(ClassifiedDevice d, Set<SignatureClass> enabled, {requi
 SignatureClass? alertClassOf(ClassifiedDevice d, Set<SignatureClass> enabled) {
   for (final s in d.signatures) {
     if (isFlockSignature(s)) continue;
-    if (enabled.contains(s.kind.folded)) return s.kind.folded;
+    if (s.alert || enabled.contains(s.kind.folded)) return s.kind.folded;
   }
   if (d.signatures.isNotEmpty) return null;
   final g = d.guess;

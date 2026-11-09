@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -12,9 +13,11 @@ import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/alerts/alerts_view.dart';
 import 'package:oui_spy/features/config/device_config.dart';
-import 'package:oui_spy/core/watchlist_state.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/classify/user_signatures.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/devices/suggestions_sheet.dart';
+import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
@@ -85,6 +88,7 @@ void main() {
       'Crossing your mesh',
       'About Privacy screen',
       'About Alert threshold',
+      'My signatures',
       'Trusted networks',
     ]) {
       final target = label.startsWith('About ') ? find.byTooltip(label) : find.text(label);
@@ -192,10 +196,10 @@ void main() {
     expect(viewForAlertKind('foxhunt'), isNull);
   });
 
-  testWidgets('Suggested rules: WATCH adds a service rule, name groups have no button', (tester) async {
+  testWidgets('Suggested signatures: SAVE on a name group saves a signature that reclassifies its radios', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    final reg = DeviceRegistry();
+    final reg = DeviceRegistry(engine: SignatureEngine(const []));
     for (var n = 1; n <= 3; n++) {
       reg.ingest(Observation(
         key: 'BLE:02:00:00:00:00:0$n',
@@ -209,19 +213,56 @@ void main() {
     }
     final c = ProviderContainer(overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
-      deviceRegistryProvider.overrideWith((ref) => reg),
+      deviceRegistryProvider.overrideWith((ref) {
+        reg.setUserSignatures(const []);
+        ref.listen(userSignaturesProvider, (_, next) => reg.setUserSignatures(next.items));
+        return reg;
+      }),
     ]);
     await _pump(tester, c, const Scaffold(body: SuggestionsSheet()));
     await tester.pumpAndSettle();
     expect(find.text('3 radios · Service FFE0'), findsOneWidget);
     expect(find.text('Also share: Name like "Zyx-01"'), findsOneWidget);
     expect(find.text('3 radios · Name like "Qrs-01"'), findsOneWidget);
-    expect(find.text('WATCH'), findsOneWidget);
-    await tester.tap(find.text('WATCH'));
+    expect(find.text('SAVE'), findsNWidgets(2));
+    await tester.tap(find.text('SAVE').last);
     await tester.pumpAndSettle();
-    expect(find.text('ON WATCHLIST'), findsOneWidget);
-    final rule = c.read(watchlistProvider).entries.single;
-    expect((rule.matchType, rule.identifier), (WatchlistMatchType.serviceUuid, 'FFE0'));
+    expect(find.text('Save signature'), findsOneWidget);
+    expect(find.text('Name Qrs-*'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Qrs sensors');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'SAVE'));
+    await tester.pumpAndSettle();
+    expect(find.text('SAVED'), findsOneWidget);
+    final sig = c.read(userSignaturesProvider).items.single;
+    expect((sig.name, sig.alert, sig.rules.single.text), ('Qrs sensors', true, 'Qrs-*'));
+    expect(reg.devices.where((d) => d.signatures.any((s) => s.name == 'Qrs sensors')), hasLength(3));
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+
+  testWidgets('My signatures lists a saved signature, toggles its alert and removes it', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      UserSignatures.prefsKey: jsonEncode([
+        const Signature(
+          id: 'user-1',
+          name: 'Qrs sensors',
+          kind: SignatureClass.other,
+          rules: [MatchRule(RuleKind.nameGlob, text: 'Qrs-*')],
+          alert: true,
+        ).toJson(),
+      ]),
+    });
+    final c = ProviderContainer();
+    await _pump(tester, c, const UserSignaturesScreen());
+    await _settle(tester);
+    expect(find.text('Qrs sensors'), findsOneWidget);
+    expect(find.text('Name Qrs-* · Other'), findsOneWidget);
+    await tester.tap(find.byType(Switch));
+    await _settle(tester);
+    expect(c.read(userSignaturesProvider).items.single.alert, isFalse);
+    await tester.tap(find.byTooltip('Remove Qrs sensors'));
+    await _settle(tester);
+    expect(find.text('No signatures yet'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     c.dispose();
   });

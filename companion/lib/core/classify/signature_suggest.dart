@@ -1,11 +1,11 @@
 import 'package:oui_spy/core/privacy.dart';
-import 'package:oui_spy/core/watchlist_state.dart';
 
 import 'bt_sig_registry.dart';
 import 'device_explain.dart';
 import 'device_registry.dart';
 import 'kin_index.dart';
 import 'observation.dart';
+import 'signature_engine.dart';
 
 enum SuggestionKind { uuid, oui, name, company }
 
@@ -29,16 +29,41 @@ class Suggestion {
     };
   }
 
-  WatchlistEntry? get rule {
-    final (type, desc) = switch (kind) {
-      SuggestionKind.uuid => (WatchlistMatchType.serviceUuid, owner ?? 'Service $key'),
-      SuggestionKind.oui => (WatchlistMatchType.oui, owner ?? 'Prefix $key'),
-      SuggestionKind.name || SuggestionKind.company => (null, ''),
-    };
-    if (type == null) return null;
-    final parsed = parseWatchlistImport('$key,$desc,${type.name}');
-    return parsed.entries.isEmpty ? null : parsed.entries.first;
+  RadioKind? get _radio {
+    final kinds = {for (final d in devices) d.obs.kind};
+    return kinds.length == 1 ? kinds.single : null;
   }
+
+  String get nameGlob {
+    final s = sample.trim();
+    if (s.length < key.length || s.substring(0, key.length).toLowerCase() != key) return '$key*';
+    final next = s.length > key.length ? s[key.length] : '';
+    return '${s.substring(0, key.length)}${next.isNotEmpty && ' -_:#'.contains(next) ? next : ''}*';
+  }
+
+  MatchRule get matchRule => switch (kind) {
+        SuggestionKind.uuid => MatchRule(RuleKind.serviceUuid, text: key, radio: RadioKind.ble),
+        SuggestionKind.oui => MatchRule(RuleKind.macPrefix, text: key, radio: _radio),
+        SuggestionKind.name => MatchRule(RuleKind.nameGlob, text: nameGlob, radio: _radio),
+        SuggestionKind.company =>
+          MatchRule(RuleKind.manufacturerId, companyId: int.parse(key, radix: 16), radio: RadioKind.ble),
+      };
+
+  String get defaultName => switch (kind) {
+        SuggestionKind.uuid => owner ?? 'Service $key',
+        SuggestionKind.oui => owner ?? 'Prefix $key',
+        SuggestionKind.name => '${nameGlob.replaceFirst(RegExp(r'[ \-_:#]?\*$'), '')} devices',
+        SuggestionKind.company => owner ?? 'Company 0x$key',
+      };
+
+  Signature toSignature({required String name, required SignatureClass kind, required bool alert}) => Signature(
+        id: 'user-${DateTime.now().microsecondsSinceEpoch}',
+        name: name,
+        kind: kind,
+        rules: [matchRule],
+        notes: 'Saved from a suggested group of ${devices.length} radios.',
+        alert: alert,
+      );
 }
 
 class SignatureSuggest {
@@ -52,6 +77,14 @@ class SignatureSuggest {
 
   static String _hex4(int v) => v.toRadixString(16).padLeft(4, '0').toUpperCase();
 
+  static String? _uuidKey(String raw) {
+    final u16 = uuid16(raw);
+    if (u16 != null) return u16 >= 0x1800 && u16 <= 0x18FF ? null : _hex4(u16);
+    final h = hexOnly(raw).toUpperCase();
+    if (h.length != 32 || h.endsWith('00001000800000805F9B34FB')) return null;
+    return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
+  }
+
   static List<Suggestion> of(Iterable<ClassifiedDevice> devices) {
     final members = <(SuggestionKind, String), List<ClassifiedDevice>>{};
     void add(SuggestionKind k, String key, ClassifiedDevice d) => (members[(k, key)] ??= []).add(d);
@@ -64,8 +97,8 @@ class SignatureSuggest {
         add(SuggestionKind.oui, MacUtil.prefixBytes(o.mac).toUpperCase(), d);
       }
       if (o.kind != RadioKind.ble) continue;
-      for (final u in {for (final s in o.serviceUuids) ?uuid16(s)}) {
-        if (u < 0x1800 || u > 0x18FF) add(SuggestionKind.uuid, _hex4(u), d);
+      for (final u in {for (final s in [...o.serviceUuids, ...o.serviceData.map((x) => x.uuid)]) ?_uuidKey(s)}) {
+        add(SuggestionKind.uuid, u, d);
       }
       for (final c in {for (final m in o.mfgRecords) m.companyId}) {
         if (!KinIndex.platformCompanies.contains(c)) add(SuggestionKind.company, _hex4(c), d);
@@ -93,7 +126,8 @@ class SignatureSuggest {
   }
 
   static Suggestion _build(SuggestionKind kind, String key, List<ClassifiedDevice> ds) => switch (kind) {
-        SuggestionKind.uuid => Suggestion(kind, key, ds, owner: BtSigRegistry.memberUuids[int.parse(key, radix: 16)]),
+        SuggestionKind.uuid => Suggestion(kind, key, ds,
+            owner: key.length == 4 ? BtSigRegistry.memberUuids[int.parse(key, radix: 16)] : null),
         SuggestionKind.oui => Suggestion(kind, key, ds,
             owner: ds.map((d) => d.vendor).firstWhere((v) => v != null && v.isNotEmpty, orElse: () => null)),
         SuggestionKind.name => Suggestion(kind, key, ds,
@@ -101,3 +135,11 @@ class SignatureSuggest {
         SuggestionKind.company => Suggestion(kind, key, ds, owner: BtSigRegistry.companies[int.parse(key, radix: 16)]),
       };
 }
+
+String ruleSummary(MatchRule r, {bool masked = false}) => switch (r.kind) {
+      RuleKind.nameGlob || RuleKind.nameContains => 'Name ${maskName(r.text, masked)}',
+      RuleKind.serviceUuid => 'Service ${r.text}',
+      RuleKind.macPrefix || RuleKind.oui => 'Prefix ${masked && r.text.length >= 5 ? '${r.text.substring(0, 5)}:XX' : r.text}',
+      RuleKind.manufacturerId => 'Company 0x${r.companyId.toRadixString(16).padLeft(4, '0').toUpperCase()}',
+      _ => r.kind.name,
+    };

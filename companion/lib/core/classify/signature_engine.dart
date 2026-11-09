@@ -98,7 +98,22 @@ class MatchRule {
       enabled: j['enabled'] as bool? ?? true,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'kind': _wire(kind.name),
+    'text': text,
+    'companyId': companyId,
+    'dataPrefixHex': dataPrefixHex,
+    'radio': switch (radio) {
+      RadioKind.wifi => 'WIFI',
+      RadioKind.ble => 'BLE',
+      null => null,
+    },
+    'enabled': enabled,
+  };
 }
+
+String _wire(String camel) => camel.replaceAllMapped(RegExp('[A-Z]'), (m) => '_${m[0]}').toUpperCase();
 
 class Signature {
   final String id;
@@ -114,6 +129,7 @@ class Signature {
   final bool clusterByOui;
   final bool sequentialMac;
   final Map<String, dynamic>? decode;
+  final bool alert;
 
   const Signature({
     required this.id,
@@ -129,6 +145,7 @@ class Signature {
     this.clusterByOui = false,
     this.sequentialMac = false,
     this.decode,
+    this.alert = false,
   });
 
   bool get cluster => minPeers > 0 || clusterByOui || sequentialMac;
@@ -147,7 +164,19 @@ class Signature {
     clusterByOui: j['clusterByOui'] as bool? ?? false,
     sequentialMac: j['sequentialMac'] as bool? ?? false,
     decode: j['decode'] as Map<String, dynamic>?,
+    alert: j['alert'] as bool? ?? false,
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'kind': _wire(kind.name),
+    'enabled': enabled,
+    'matchAny': matchAny,
+    'rules': [for (final r in rules) r.toJson()],
+    'notes': notes,
+    'alert': alert,
+  };
 
   static List<Signature> parseCatalog(String json) {
     final d = jsonDecode(json) as Map<String, dynamic>;

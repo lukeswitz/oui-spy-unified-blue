@@ -111,6 +111,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     final targets = watchlist.entries.length;
     final ignoring = ignore.entries.where((e) => e.enabled).length;
     final trustedCount = ref.watch(trustedNetworksProvider).networks.length;
+    final userSigCount = ref.watch(userSignaturesProvider).items.length;
     final watch = ref.watch(phoneWatchProvider);
     final moreClasses = [for (final (_, cs) in _moreGroups) ...cs];
     final moreOn = moreClasses.where(notif.classAlerts.contains).length;
@@ -260,6 +261,15 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               : '$targets device${targets == 1 ? '' : 's'} · add or import',
           color: AppTheme.detector,
           onTap: () => _pushPage(context, 'Watchlist', const SingleChildScrollView(child: WatchlistPanel())),
+        ),
+        ConfigActionRow(
+          icon: Icons.fingerprint,
+          label: 'My signatures',
+          subtitle: userSigCount == 0
+              ? 'Saved from suggested groups in DEVICES'
+              : '$userSigCount saved · from DEVICES suggestions',
+          color: AppTheme.detector,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UserSignaturesScreen())),
         ),
         ConfigActionRow(
           icon: Icons.wifi_lock,

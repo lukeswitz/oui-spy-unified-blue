@@ -448,8 +448,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
               },
             ),
             CommandSheetTile(
-              icon: Icons.rule,
-              label: 'SUGGESTED RULES',
+              icon: Icons.fingerprint,
+              label: 'SUGGESTED SIGNATURES',
               subtitle: switch (SignatureSuggest.of(ref.read(deviceRegistryProvider).devices).length) {
                 0 => 'No look-alike unclassified radios yet',
                 1 => '1 group of unclassified radios looks alike',
