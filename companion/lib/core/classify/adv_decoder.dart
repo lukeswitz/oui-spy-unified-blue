@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'fast_pair_models.dart';
 import 'observation.dart';
 import 'signature_engine.dart' show teslaIBeaconMfgPrefix;
 import 'smarttag.dart';
@@ -151,13 +152,22 @@ class AdvPayloadDecoder {
           final bytes = hexToBytes(sd.dataHex);
           if (bytes == null) continue;
           if (bytes.length == 3) {
+            final m = FastPairModels.models[_modelId24(bytes)];
             out.add(
-              RoleHint(
-                'audio-personal',
-                'a Fast Pair accessory (often earbuds or a speaker)',
-                'Google Fast Pair model 0x${_hex(_modelId24(bytes), 6)}, in pairing mode.',
-                6,
-              ),
+              m == null
+                  ? RoleHint(
+                      'audio-personal',
+                      'a Fast Pair accessory (often earbuds or a speaker)',
+                      'Google Fast Pair model 0x${_hex(_modelId24(bytes), 6)}, in pairing mode.',
+                      6,
+                    )
+                  : RoleHint(
+                      m.bucket,
+                      m.name,
+                      'Google Fast Pair model 0x${_hex(_modelId24(bytes), 6)} is listed as ${m.name}'
+                      '${m.maker.isEmpty ? '' : ' by ${m.maker}'}. It is in pairing mode.',
+                      8,
+                    ),
             );
           } else {
             out.add(
@@ -527,9 +537,17 @@ class AdvPayloadDecoder {
 
   static List<AdvField> _decodeFastPair(Uint8List bytes) {
     if (bytes.length == 3) {
+      final id = _modelId24(bytes);
+      final m = FastPairModels.models[id];
       return [
         const AdvField('Google Fast Pair', 'In pairing mode — Android will pop a tap-to-pair card.'),
-        AdvField('Model ID', '0x${_hex(_modelId24(bytes), 6)} (not in the local name list)'),
+        if (m == null) AdvField('Model ID', '0x${_hex(id, 6)} (not in the local name list)'),
+        if (m != null) ...[
+          AdvField('Model', m.name),
+          if (m.maker.isNotEmpty) AdvField('Maker', m.maker),
+          AdvField('Model ID', '0x${_hex(id, 6)}'),
+          if (m.tracking) const AdvField('Tracking', 'This model is listed as supporting location tracking.'),
+        ],
       ];
     }
     if (bytes.isEmpty) return const [];

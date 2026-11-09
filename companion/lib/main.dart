@@ -32,7 +32,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(
-      const ['Fieldwatch', 'buttplug.io', 'Theengs Decoder', 'Home Assistant'],
+      const ['Fieldwatch', 'buttplug.io', 'Theengs Decoder', 'WhisperPair', 'Home Assistant'],
       await rootBundle.loadString('NOTICE'),
     );
   });

@@ -88,4 +88,5 @@ flutter:
     - NOTICE
     - assets/bt_sig/
     - assets/classify/
+    - assets/fast_pair/
     - assets/icons/

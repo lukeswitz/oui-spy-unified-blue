@@ -97,6 +97,16 @@ device definitions. Only those identifiers are used. No Theengs Decoder code or
 text is included. Theengs Decoder is licensed under GPL-3.0.
 
 --------------------------------------------------------------------------------
+WhisperPair
+https://github.com/KULeuven-COSIC/WhisperPair
+KU Leuven COSIC
+Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+
+assets/fast_pair/model_ids.csv is model_ids.csv from WhisperPair commit
+266e39fcc421, unchanged. The app uses it to name Google Fast Pair devices.
+
+--------------------------------------------------------------------------------
 Home Assistant
 https://github.com/home-assistant/core
 Apache License 2.0 (text below)

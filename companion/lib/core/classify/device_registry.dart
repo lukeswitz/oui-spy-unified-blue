@@ -32,6 +32,7 @@ import 'package:wifi_scan/wifi_scan.dart';
 import 'beacon_flood.dart';
 import 'co_travel.dart';
 import 'device_explain.dart';
+import 'fast_pair_models.dart';
 import 'flood.dart';
 import 'kin_index.dart';
 import 'smarttag.dart';
@@ -643,6 +644,7 @@ class DeviceRegistry extends ChangeNotifier {
         await rootBundle.loadString(BtSigRegistry.memberAsset),
       );
       VendorClass.loadTable([for (final a in VendorClass.tableAssets) await rootBundle.loadString(a)]);
+      FastPairModels.load(await rootBundle.loadString(FastPairModels.asset));
       DebugLog.log('CLASSIFY: catalog ${_engine!.signatures.length} signatures, '
           'SIG ${BtSigRegistry.companies.length} companies / ${BtSigRegistry.memberUuids.length} member UUIDs');
       notifyListeners();
