@@ -12,7 +12,9 @@ import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/alerts/alerts_view.dart';
 import 'package:oui_spy/features/config/device_config.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
+import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -186,6 +188,40 @@ void main() {
     expect(viewForAlertKind('trusted_network'), DetectionsView.alerts);
     expect(viewForAlertKind('finder'), DetectionsView.alerts);
     expect(viewForAlertKind('foxhunt'), isNull);
+  });
+
+  testWidgets('Suggested rules: WATCH adds a service rule, name groups have no button', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final reg = DeviceRegistry();
+    for (var n = 1; n <= 3; n++) {
+      reg.ingest(Observation(
+        key: 'BLE:02:00:00:00:00:0$n',
+        kind: RadioKind.ble,
+        mac: '02:00:00:00:00:0$n',
+        name: 'Zyx-0$n',
+        serviceUuids: const ['FFE0'],
+        lastSeenMs: n,
+      ));
+      reg.ingest(Observation(key: 'BLE:02:00:00:00:01:0$n', kind: RadioKind.ble, mac: '02:00:00:00:01:0$n', name: 'Qrs-0$n', lastSeenMs: n));
+    }
+    final c = ProviderContainer(overrides: [
+      sharedPreferencesProvider.overrideWithValue(prefs),
+      deviceRegistryProvider.overrideWith((ref) => reg),
+    ]);
+    await _pump(tester, c, const Scaffold(body: SuggestionsSheet()));
+    await tester.pumpAndSettle();
+    expect(find.text('3 radios · Service FFE0'), findsOneWidget);
+    expect(find.text('Also share: Name like "Zyx-01"'), findsOneWidget);
+    expect(find.text('3 radios · Name like "Qrs-01"'), findsOneWidget);
+    expect(find.text('WATCH'), findsOneWidget);
+    await tester.tap(find.text('WATCH'));
+    await tester.pumpAndSettle();
+    expect(find.text('ON WATCHLIST'), findsOneWidget);
+    final rule = c.read(watchlistProvider).entries.single;
+    expect((rule.matchType, rule.identifier), (WatchlistMatchType.serviceUuid, 'FFE0'));
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
   });
 
   testWidgets('Seen at your stops shows its empty state on an empty database', (tester) async {

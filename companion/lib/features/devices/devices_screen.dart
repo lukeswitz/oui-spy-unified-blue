@@ -13,12 +13,14 @@ import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/presence_class.dart';
 import 'package:oui_spy/core/db/app_database.dart' show databaseProvider;
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/classify/signature_suggest.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
+import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
@@ -443,6 +445,19 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                   await _ensurePhoneScan(context);
                 }
                 if (mounted) setState(() {});
+              },
+            ),
+            CommandSheetTile(
+              icon: Icons.rule,
+              label: 'SUGGESTED RULES',
+              subtitle: switch (SignatureSuggest.of(ref.read(deviceRegistryProvider).devices).length) {
+                0 => 'No look-alike unclassified radios yet',
+                1 => '1 group of unclassified radios looks alike',
+                final n => '$n groups of unclassified radios look alike',
+              },
+              onTap: () {
+                Navigator.pop(ctx);
+                showSuggestionsSheet(context);
               },
             ),
             CommandSheetTile(

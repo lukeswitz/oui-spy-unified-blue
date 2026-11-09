@@ -8,6 +8,7 @@ class KinIndex {
   final _byKey = <String, (String, String, Guess)>{};
 
   static const _platformCompanies = {0x004C, 0x0006, 0x00E0, 0x0075};
+  static const platformCompanies = _platformCompanies;
 
   static String? nameStem(String name) {
     var s = name.trim().toLowerCase();
