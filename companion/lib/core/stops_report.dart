@@ -89,12 +89,25 @@ class StopsReport {
     return merged;
   }
 
+  static const _gridDeg = 0.002;
+
   static List<StopsHit> build(List<TrackPoint> track, List<CellSighting> cells) {
     final places = stops(track);
     if (places.length < minStops) return const [];
+    final grid = <(int, int), List<int>>{};
+    for (var i = 0; i < places.length; i++) {
+      (grid[((places[i].lat / _gridDeg).floor(), (places[i].lon / _gridDeg).floor())] ??= []).add(i);
+    }
     final byMac = <String, (String, bool, Set<int>, int)>{};
     for (final c in cells) {
-      for (var i = 0; i < places.length; i++) {
+      final gy = (c.lat / _gridDeg).floor();
+      final gx = (c.lon / _gridDeg).floor();
+      final span = (1 / math.max(math.cos(c.lat * math.pi / 180).abs(), 0.05)).ceil();
+      final near = <int>[
+        for (var dy = -1; dy <= 1; dy++)
+          for (var dx = -span; dx <= span; dx++) ...?grid[(gy + dy, gx + dx)],
+      ];
+      for (final i in near) {
         if (meters(places[i].lat, places[i].lon, c.lat, c.lon) > heardAtStopM) continue;
         final cur = byMac[c.mac];
         final name = cur == null || cur.$1.isEmpty ? c.name : cur.$1;
