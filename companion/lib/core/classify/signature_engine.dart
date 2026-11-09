@@ -175,6 +175,11 @@ class Signature {
     'matchAny': matchAny,
     'rules': [for (final r in rules) r.toJson()],
     'notes': notes,
+    'attentionNote': attentionNote,
+    'minPeers': minPeers,
+    'peerWindowSec': peerWindowSec,
+    'clusterByOui': clusterByOui,
+    'sequentialMac': sequentialMac,
     'alert': alert,
   };
 

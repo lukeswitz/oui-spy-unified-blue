@@ -38,6 +38,7 @@ import 'kin_index.dart';
 import 'smarttag.dart';
 import 'observation.dart';
 import 'signature_engine.dart';
+import 'signature_sets.dart';
 import 'user_signatures.dart';
 
 abstract class ObservationSource {
@@ -614,8 +615,9 @@ class DeviceRegistry extends ChangeNotifier {
   List<Signature>? _base;
   List<Signature> _user = const [];
 
-  void setUserSignatures(List<Signature> user) {
-    _user = List.unmodifiable(user);
+  void setExtraSignatures(List<Signature> extra) {
+    if (listEquals(extra, _user)) return;
+    _user = List.unmodifiable(extra);
     final base = _base;
     if (base == null) return;
     final engine = SignatureEngine([...base, ..._user]);
@@ -960,8 +962,12 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
       );
   reg.beaconFlood.enabled = ref.read(detectorSigMaskProvider) & sigBeaconFlood != 0;
   ref.listen(detectorSigMaskProvider, (_, mask) => reg.beaconFlood.enabled = mask & sigBeaconFlood != 0);
-  reg.setUserSignatures(ref.read(userSignaturesProvider).items);
-  ref.listen(userSignaturesProvider, (_, next) => reg.setUserSignatures(next.items));
+  void applyExtra() => reg.setExtraSignatures(
+        [...ref.read(signatureSetsProvider).signatures, ...ref.read(userSignaturesProvider).items],
+      );
+  applyExtra();
+  ref.listen(userSignaturesProvider, (_, _) => applyExtra());
+  ref.listen(signatureSetsProvider, (_, _) => applyExtra());
   reg.loadCatalog();
   reg.attach(EspDetectionSource(ref.read(bleManagerProvider).detections));
   reg.attach(ref.read(phoneBleSourceProvider));

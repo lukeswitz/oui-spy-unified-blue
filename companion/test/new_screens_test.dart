@@ -18,6 +18,8 @@ import 'package:oui_spy/core/classify/user_signatures.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
+import 'package:oui_spy/features/signatures/signature_sets_screen.dart';
+import 'package:oui_spy/core/classify/signature_sets.dart';
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
@@ -66,6 +68,14 @@ Future<void> _pump(WidgetTester tester, ProviderContainer c, Widget home) async 
   ));
 }
 
+Future<void> _until(WidgetTester tester, bool Function() done) async {
+  for (var i = 0; i < 100 && !done(); i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  }
+  await tester.pump();
+}
+
 Future<void> _settle(WidgetTester tester) async {
   await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
   await tester.pumpAndSettle();
@@ -89,6 +99,7 @@ void main() {
       'About Privacy screen',
       'About Alert threshold',
       'My signatures',
+      'Signature sets',
       'Trusted networks',
     ]) {
       final target = label.startsWith('About ') ? find.byTooltip(label) : find.text(label);
@@ -214,8 +225,7 @@ void main() {
     final c = ProviderContainer(overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
       deviceRegistryProvider.overrideWith((ref) {
-        reg.setUserSignatures(const []);
-        ref.listen(userSignaturesProvider, (_, next) => reg.setUserSignatures(next.items));
+        ref.listen(userSignaturesProvider, (_, next) => reg.setExtraSignatures(next.items));
         return reg;
       }),
     ]);
@@ -236,6 +246,49 @@ void main() {
     final sig = c.read(userSignaturesProvider).items.single;
     expect((sig.name, sig.alert, sig.rules.single.text), ('Qrs sensors', true, 'Qrs-*'));
     expect(reg.devices.where((d) => d.signatures.any((s) => s.name == 'Qrs sensors')), hasLength(3));
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+  });
+
+  testWidgets('Signature sets: turning on Home Assistant downloads it once and shows what it adds', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final dir = Directory.systemTemp.createTempSync('sets_ui');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final asked = <Uri>[];
+    final c = ProviderContainer(overrides: [
+      signatureSetsProvider.overrideWith((ref) => SignatureSets(
+            fetch: (u) async {
+              asked.add(u);
+              return '''
+BLUETOOTH: Final[list[dict[str, bool | str | int | list[int]]]] = [
+    {
+        "domain": "example_ble",
+        "local_name": "EXM-*",
+    },
+]
+''';
+            },
+            dir: () async => dir,
+            builtIn: () async => const [],
+          )),
+    ]);
+    await _pump(tester, c, const SignatureSetsScreen());
+    final store = c.read(signatureSetsProvider);
+    var loaded = false;
+    store.loaded.then((_) => loaded = true);
+    await _until(tester, () => loaded);
+    expect(find.text('Fieldwatch stock catalog'), findsOneWidget);
+    expect(find.text('Home Assistant Bluetooth devices'), findsOneWidget);
+    expect(find.text('Add a link or a file with +.'), findsOneWidget);
+    await tester.tap(find.byType(Switch).at(1));
+    await _until(tester, () => store.sets[1].updatedAt != null && store.busy.isEmpty);
+    expect(asked.single.path, endsWith('homeassistant/generated/bluetooth.py'));
+    expect(find.textContaining('Adds 1 signature ·'), findsOneWidget);
+    expect(c.read(signatureSetsProvider).signatures.single.name, 'Example');
+    await tester.tap(find.byTooltip('Add a set'));
+    await tester.pumpAndSettle();
+    expect(find.text('ADD A LINK'), findsOneWidget);
+    expect(find.text('IMPORT A FILE'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     c.dispose();
   });

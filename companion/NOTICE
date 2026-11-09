@@ -24,6 +24,10 @@ These files in lib/core/classify/ are Dart ports of Fieldwatch source:
 
 The other classify files are our own.
 
+The Fieldwatch stock catalog set (Settings > Signature sets) downloads
+dist/fieldwatch-signatures-v2.json from the Fieldwatch repository when the user
+turns it on.
+
 Not included from Fieldwatch: Fast Pair model names (FastPairModels.kt), the
 packed IEEE and Bluetooth SIG tables (radiodb.bin, ApVendorOuis.kt), and the
 operator names in CellPlmnData.kt. Fieldwatch's MIT grant does not cover them.
@@ -114,6 +118,10 @@ Apache License 2.0 (text below)
 The 35 catalog entries whose ids start with fleet-ha- use Bluetooth matchers
 from homeassistant/generated/bluetooth.py. Each entry's notes name the
 integration it comes from.
+
+The Home Assistant Bluetooth devices set (Settings > Signature sets) downloads
+homeassistant/generated/bluetooth.py when the user turns it on, and converts
+its matchers on the phone.
 
                                  Apache License
                            Version 2.0, January 2004

@@ -50694,6 +50694,14 @@
                     "enabled": true
                 },
                 {
+                    "kind": "NAME_GLOB",
+                    "text": "Meta RB Display*",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                },
+                {
                     "kind": "SERVICE_UUID",
                     "text": "FEB7",
                     "companyId": 0,

@@ -146,7 +146,7 @@ void main() {
     }
     expect(fired, 3);
     final sig = SignatureSuggest.of(reg.devices).single.toSignature(name: 'Mine', kind: SignatureClass.other, alert: true);
-    reg.setUserSignatures([sig]);
+    reg.setExtraSignatures([sig]);
     expect(reg.devices.every((d) => d.signatures.single.name == 'Mine'), isTrue);
     reg.ingest(_obs(1, uuids: const ['FFE0']));
     expect(fired, 3);
@@ -154,7 +154,7 @@ void main() {
     expect(fired, 4);
     final fresh = reg.devices.firstWhere((d) => d.obs.mac.endsWith(':09'));
     expect(classAlertOf(fresh, const {}, flock: false)?.kind, SignatureClass.other.name);
-    reg.setUserSignatures([]);
+    reg.setExtraSignatures([]);
     expect(reg.devices.every((d) => d.signatures.isEmpty), isTrue);
     reg.dispose();
   });

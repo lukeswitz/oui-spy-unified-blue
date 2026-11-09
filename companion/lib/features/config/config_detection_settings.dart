@@ -112,6 +112,7 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     final ignoring = ignore.entries.where((e) => e.enabled).length;
     final trustedCount = ref.watch(trustedNetworksProvider).networks.length;
     final userSigCount = ref.watch(userSignaturesProvider).items.length;
+    final setsOn = ref.watch(signatureSetsProvider).enabledCount;
     final watch = ref.watch(phoneWatchProvider);
     final moreClasses = [for (final (_, cs) in _moreGroups) ...cs];
     final moreOn = moreClasses.where(notif.classAlerts.contains).length;
@@ -270,6 +271,15 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               : '$userSigCount saved · from DEVICES suggestions',
           color: AppTheme.detector,
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UserSignaturesScreen())),
+        ),
+        ConfigActionRow(
+          icon: Icons.library_books_outlined,
+          label: 'Signature sets',
+          subtitle: setsOn == 0
+              ? 'Built-in catalog · add online or your own sets'
+              : '$setsOn extra set${setsOn == 1 ? '' : 's'} on',
+          color: AppTheme.detector,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SignatureSetsScreen())),
         ),
         ConfigActionRow(
           icon: Icons.wifi_lock,
