@@ -178,6 +178,16 @@ void main() {
     await db.close();
   });
 
+  test('a tapped notification opens the tab that holds its alert', () {
+    expect(viewForAlertKind('detector'), DetectionsView.history);
+    expect(viewForAlertKind('flock'), DetectionsView.history);
+    expect(viewForAlertKind('drone'), DetectionsView.history);
+    expect(viewForAlertKind('gps_watch'), DetectionsView.alerts);
+    expect(viewForAlertKind('trusted_network'), DetectionsView.alerts);
+    expect(viewForAlertKind('finder'), DetectionsView.alerts);
+    expect(viewForAlertKind('foxhunt'), isNull);
+  });
+
   testWidgets('Seen at your stops shows its empty state on an empty database', (tester) async {
     final (c, db) = await _container();
     await _pump(tester, c, const StopsScreen());

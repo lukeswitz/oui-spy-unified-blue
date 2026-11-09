@@ -16,6 +16,12 @@ enum DetectionsView { live, devices, history, alerts }
 
 final detectionsViewProvider = StateProvider<DetectionsView>((ref) => DetectionsView.live);
 
+DetectionsView? viewForAlertKind(String kind) => switch (kind) {
+      'foxhunt' => null,
+      'detector' || 'flock' || 'drone' => DetectionsView.history,
+      _ => DetectionsView.alerts,
+    };
+
 class DetectionsScreen extends ConsumerWidget {
   const DetectionsScreen({super.key});
 

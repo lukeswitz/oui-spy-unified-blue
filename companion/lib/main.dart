@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/app.dart';
+import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/bench_hook.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
@@ -95,6 +96,13 @@ void main() async {
     child: const OuiSpyApp(),
   ));
 
+  final notif = container.read(notificationServiceProvider);
+  notif.onTap = (kind) => _openFromNotification(container, kind);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final kind = notif.takeLaunchKind();
+    if (kind != null) _openFromNotification(container, kind);
+  });
+
   runBenchIfEnabled(container);
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -108,6 +116,13 @@ void main() async {
       }
     });
   });
+}
+
+void _openFromNotification(ProviderContainer container, String kind) {
+  final view = viewForAlertKind(kind);
+  if (view == null) return;
+  container.read(detectionsViewProvider.notifier).state = view;
+  container.read(routerProvider).go('/detections');
 }
 
 Future<void> _forceCleanBleState() async {

@@ -121,6 +121,16 @@ class NotificationService extends ChangeNotifier {
         settings,
         onDidReceiveNotificationResponse: _onNotificationTap,
       );
+      final launch = await _plugin.getNotificationAppLaunchDetails();
+      final launchKind = launch?.notificationResponse?.payload;
+      if ((launch?.didNotificationLaunchApp ?? false) && launchKind != null && launchKind.isNotEmpty) {
+        final cb = onTap;
+        if (cb == null) {
+          _launchKind = launchKind;
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) => cb(launchKind));
+        }
+      }
 
       await _createAndroidChannels();
       _initialized = true;
@@ -716,7 +726,7 @@ class NotificationService extends ChangeNotifier {
       macOS: darwinDetails,
     );
 
-    await _plugin.show(id, title, body, details);
+    await _plugin.show(id, title, body, details, payload: alertKind);
   }
 
   @override
@@ -734,9 +744,25 @@ class NotificationService extends ChangeNotifier {
     }
   }
 
+  void Function(String kind)? onTap;
+  String? _launchKind;
+
+  String? takeLaunchKind() {
+    final k = _launchKind;
+    _launchKind = null;
+    return k;
+  }
+
   void _onNotificationTap(NotificationResponse response) {
     DebugLog.log('NOTIF: tapped ${response.id} payload=${response.payload}');
-    // Navigation handled by app-level callback if needed
+    final kind = response.payload;
+    if (kind == null || kind.isEmpty) return;
+    final cb = onTap;
+    if (cb == null) {
+      _launchKind = kind;
+      return;
+    }
+    cb(kind);
   }
 
   /// Incrementing notification ID scoped per channel.
