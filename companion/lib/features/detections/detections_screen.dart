@@ -52,7 +52,7 @@ class DetectionsScreen extends ConsumerWidget {
                 counts: {
                   DetectionsView.live: liveCount,
                   DetectionsView.devices: deviceCount,
-                  DetectionsView.alerts: alertCount,
+                  if (alertCount > 0) DetectionsView.alerts: alertCount,
                 },
                 onSelect: (v) => ref.read(detectionsViewProvider.notifier).state = v,
               ),

@@ -41,7 +41,7 @@ class DUnderlineTabs<T> extends StatelessWidget {
                           constraints: const BoxConstraints(minHeight: 48),
                           alignment: Alignment.bottomLeft,
                           padding: const EdgeInsets.fromLTRB(0, 12, 0, 10),
-                          margin: const EdgeInsets.only(right: 20),
+                          margin: const EdgeInsets.only(right: 14),
                           decoration: BoxDecoration(
                             border: Border(
                               bottom: BorderSide(
@@ -60,7 +60,7 @@ class DUnderlineTabs<T> extends StatelessWidget {
                                 ),
                               ),
                               if (counts[value] != null) ...[
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4),
                                 Text(
                                   '${counts[value]}',
                                   style: TextStyle(
