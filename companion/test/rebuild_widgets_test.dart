@@ -52,4 +52,33 @@ void main() {
     expect(find.text('Edit Target'), findsOneWidget);
     expect(find.text('Enabled'), findsOneWidget);
   });
+
+  testWidgets('Add Target dismissed by tapping outside closes without errors', (tester) async {
+    await tester.pumpWidget(_host(const WatchlistPanel()));
+    await tester.tap(find.byTooltip('Add target'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '00:11');
+    await tester.tapAt(const Offset(5, 5));
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('Add Target'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Add Target saves an OUI with its description', (tester) async {
+    await tester.pumpWidget(_host(const WatchlistPanel()));
+    await tester.tap(find.byTooltip('Add target'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(0), '00:11:22');
+    await tester.enterText(find.byType(TextField).at(1), 'Bench cam');
+    await tester.tap(find.text('ADD'));
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(tester.element(find.byType(WatchlistPanel)));
+    final e = container.read(watchlistProvider).entries.single;
+    expect(e.identifier.toUpperCase(), '00:11:22');
+    expect(e.description, 'Bench cam');
+    expect(tester.takeException(), isNull);
+  });
 }

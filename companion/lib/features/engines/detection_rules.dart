@@ -106,103 +106,119 @@ class _WatchlistPanelState extends ConsumerState<WatchlistPanel> {
   }
 
   void _showEditDialog([WatchlistEntry? existing]) {
-    final t = AppTheme.of(context);
-    final idController = TextEditingController(text: existing?.identifier ?? '');
-    final descController = TextEditingController(text: existing?.description ?? '');
-    var type = existing?.matchType ?? WatchlistMatchType.oui;
-    var enabled = existing?.enabled ?? true;
-    String? error;
+    showDialog(context: context, builder: (_) => _TargetDialog(existing: existing));
+  }
+}
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: t.surface,
-          title: Text(existing == null ? 'Add Target' : 'Edit Target', style: TextStyle(color: t.textPrimary)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SegmentedButton<WatchlistMatchType>(
-                segments: [
-                  for (final m in WatchlistMatchType.values)
-                    if (m != WatchlistMatchType.name)
-                      ButtonSegment(value: m, label: Text(m.label, style: const TextStyle(fontSize: 11))),
-                ],
-                selected: {type},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) => setDialogState(() {
-                  type = s.first;
-                  error = null;
-                }),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: idController,
-                style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono),
-                decoration: InputDecoration(
-                  hintText: switch (type) {
-                    WatchlistMatchType.oui => 'AA:BB:CC',
-                    WatchlistMatchType.fullMac => 'AA:BB:CC:DD:EE:FF',
-                    WatchlistMatchType.serviceUuid => 'FD5F',
-                    WatchlistMatchType.name => 'Device name',
-                  },
-                  labelText: switch (type) {
-                    WatchlistMatchType.oui => 'OUI prefix (first 3 bytes)',
-                    WatchlistMatchType.fullMac => 'Full MAC address',
-                    WatchlistMatchType.serviceUuid => '16-bit BLE service UUID',
-                    WatchlistMatchType.name => 'Name contains',
-                  },
-                  errorText: error,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: descController,
-                style: TextStyle(color: t.textPrimary),
-                decoration: const InputDecoration(hintText: 'e.g. Flock Safety, My tracker', labelText: 'Description'),
-              ),
-              if (existing != null)
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('Enabled', style: TextStyle(color: t.textSecondary, fontSize: 12)),
-                  value: enabled,
-                  onChanged: (v) => setDialogState(() => enabled = v),
-                ),
+class _TargetDialog extends ConsumerStatefulWidget {
+  const _TargetDialog({this.existing});
+
+  final WatchlistEntry? existing;
+
+  @override
+  ConsumerState<_TargetDialog> createState() => _TargetDialogState();
+}
+
+class _TargetDialogState extends ConsumerState<_TargetDialog> {
+  late final idController = TextEditingController(text: widget.existing?.identifier ?? '');
+  late final descController = TextEditingController(text: widget.existing?.description ?? '');
+  late var type = widget.existing?.matchType ?? WatchlistMatchType.oui;
+  late var enabled = widget.existing?.enabled ?? true;
+  String? error;
+
+  @override
+  void dispose() {
+    idController.dispose();
+    descController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final existing = widget.existing;
+    return AlertDialog(
+      backgroundColor: t.surface,
+      title: Text(existing == null ? 'Add Target' : 'Edit Target', style: TextStyle(color: t.textPrimary)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SegmentedButton<WatchlistMatchType>(
+            segments: [
+              for (final m in WatchlistMatchType.values)
+                if (m != WatchlistMatchType.name)
+                  ButtonSegment(value: m, label: Text(m.label, style: const TextStyle(fontSize: 11))),
             ],
+            selected: {type},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => setState(() {
+              type = s.first;
+              error = null;
+            }),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
-            ElevatedButton(
-              onPressed: () {
-                final parsed = parseWatchlistImport(
-                  '${idController.text.trim()},${descController.text.trim()},${type.name}',
-                );
-                if (parsed.entries.isEmpty) {
-                  setDialogState(() => error = 'Invalid ${type.label}');
-                  return;
-                }
-                final wl = ref.read(watchlistProvider);
-                final e = parsed.entries.first..enabled = enabled;
-                if (wl.entries.any((x) => !identical(x, existing) && watchlistKey(x) == watchlistKey(e))) {
-                  setDialogState(() => error = 'Already on watchlist');
-                  return;
-                }
-                if (existing == null) {
-                  wl.add(e);
-                } else {
-                  wl.update(existing, e);
-                }
-                Navigator.pop(ctx);
+          const SizedBox(height: 8),
+          TextField(
+            controller: idController,
+            style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono),
+            decoration: InputDecoration(
+              hintText: switch (type) {
+                WatchlistMatchType.oui => 'AA:BB:CC',
+                WatchlistMatchType.fullMac => 'AA:BB:CC:DD:EE:FF',
+                WatchlistMatchType.serviceUuid => 'FD5F',
+                WatchlistMatchType.name => 'Device name',
               },
-              child: Text(existing == null ? 'ADD' : 'SAVE'),
+              labelText: switch (type) {
+                WatchlistMatchType.oui => 'OUI prefix (first 3 bytes)',
+                WatchlistMatchType.fullMac => 'Full MAC address',
+                WatchlistMatchType.serviceUuid => '16-bit BLE service UUID',
+                WatchlistMatchType.name => 'Name contains',
+              },
+              errorText: error,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: descController,
+            style: TextStyle(color: t.textPrimary),
+            decoration: const InputDecoration(hintText: 'e.g. Flock Safety, My tracker', labelText: 'Description'),
+          ),
+          if (existing != null)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('Enabled', style: TextStyle(color: t.textSecondary, fontSize: 12)),
+              value: enabled,
+              onChanged: (v) => setState(() => enabled = v),
+            ),
+        ],
       ),
-    ).then((_) {
-      idController.dispose();
-      descController.dispose();
-    });
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+        ElevatedButton(
+          onPressed: () {
+            final parsed = parseWatchlistImport(
+              '${idController.text.trim()},${descController.text.trim()},${type.name}',
+            );
+            if (parsed.entries.isEmpty) {
+              setState(() => error = 'Invalid ${type.label}');
+              return;
+            }
+            final wl = ref.read(watchlistProvider);
+            final e = parsed.entries.first..enabled = enabled;
+            if (wl.entries.any((x) => !identical(x, existing) && watchlistKey(x) == watchlistKey(e))) {
+              setState(() => error = 'Already on watchlist');
+              return;
+            }
+            if (existing == null) {
+              wl.add(e);
+            } else {
+              wl.update(existing, e);
+            }
+            Navigator.pop(context);
+          },
+          child: Text(existing == null ? 'ADD' : 'SAVE'),
+        ),
+      ],
+    );
   }
 }
 
