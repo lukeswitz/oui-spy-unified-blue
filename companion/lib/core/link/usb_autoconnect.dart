@@ -24,6 +24,7 @@ class UsbAutoConnect {
   NetLinkTarget? _net;
   DateTime? _netFailedAt;
   bool _busy = false;
+  int _stopsSeen = 0;
 
   List<UsbSerialDevice> get attached => _attached;
   Stream<List<UsbSerialDevice>> get devices => _devices.stream;
@@ -103,6 +104,7 @@ class UsbAutoConnect {
       DebugLog.log('USB: interface list failed ${e.message}');
     }
     if ((found == null) != (_net == null)) _netTargets.add(found);
+    if (found != null && _net == null) _stopsSeen = _ble.stopCount;
     _net = found;
     return found;
   }
@@ -110,6 +112,7 @@ class UsbAutoConnect {
   Future<void> _pollNet() async {
     final target = await _findNet();
     if (target == null || _busy || _ble.isConnected || _ble.isUsbLinked) return;
+    if (_ble.stopCount != _stopsSeen) return;
     final failed = _netFailedAt;
     if (failed != null && DateTime.now().difference(failed) < netRetryAfter) return;
     await connectNet(target);

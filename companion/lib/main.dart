@@ -156,6 +156,12 @@ Future<void> _autoConnect(ProviderContainer container) async {
     }
 
     container.read(bleManagerProvider).signalAutoReconnect(true);
+    final stops = container.read(bleManagerProvider).stopCount;
+    bool stopped() {
+      final s = container.read(bleManagerProvider).stopCount != stops;
+      if (s) DebugLog.log('AUTO: stopped by user');
+      return s;
+    }
 
     final prefs = await SharedPreferences.getInstance();
     final lastPrimaryId = prefs.getString('lastPrimaryDeviceId');
@@ -189,6 +195,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
         await _onConnected(container, pick.id);
         return;
       }
+      if (stopped()) return;
       DebugLog.log('AUTO: paired board not reachable — scanning for boards open to pairing');
     }
 
@@ -256,6 +263,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
     fallbackGrace?.cancel();
     await sub.cancel();
     await FlutterBluePlus.stopScan();
+    if (stopped()) return;
 
     if (found == null &&
         lastPrimaryIsManager &&
@@ -271,6 +279,7 @@ Future<void> _autoConnect(ProviderContainer container) async {
         return;
       }
       DebugLog.log('AUTO: reconnect by id failed');
+      if (stopped()) return;
     }
 
     if (found != null) {

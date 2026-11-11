@@ -180,6 +180,8 @@ class BleManager {
   String? _primaryDeviceId;
   bool _userInitiatedDisconnect = false;
   bool _isReconnect = false;
+  int _stops = 0;
+  int get stopCount => _stops;
 
   // -- Public streams --
 
@@ -778,12 +780,18 @@ class BleManager {
     _subscriptions.clear();
     _reconnectTimer?.cancel();
 
+    final stops = _stops;
     _sessionId = sessionId;
     _userInitiatedDisconnect = false;
     _currentState = NodeConnectionState.connecting;
     _connectionState.add(NodeConnectionState.connecting);
     DebugLog.log('USB: opening $label');
     final session = LinkSession(await open());
+    if (_stops != stops) {
+      DebugLog.log('USB: stop requested while opening $label — closing');
+      await session.close();
+      return;
+    }
     _usbSession = session;
     _usbDevice = usb;
     if (usb != null) _lastUsbDevice = usb;
@@ -791,6 +799,10 @@ class BleManager {
     _currentState = NodeConnectionState.negotiating;
     _connectionState.add(NodeConnectionState.negotiating);
     await session.open();
+    if (_stops != stops) {
+      DebugLog.log('USB: stop requested during link setup — aborting');
+      return;
+    }
     _mtu = 247;
     DebugLog.log('USB: link up, ${session.ids.length} characteristics, max payload ${session.maxPayload}');
 
@@ -1967,6 +1979,8 @@ class BleManager {
   // -- Disconnect --
 
   Future<void> disconnect() async {
+    _stops++;
+    _lastDevice = null;
     _userInitiatedDisconnect = true;
     _reconnectTimer?.cancel();
     DebugLog.log('BLE: disconnect — leaving engine state to firmware (offline-scan aware)');
