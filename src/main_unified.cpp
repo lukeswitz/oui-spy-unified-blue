@@ -731,6 +731,7 @@ static void statusHeartbeatTask(void* param) {
             static size_t lastFiltLen = 0;
             static uint16_t lastSig = 0;
             static bool lastSigSet = false;
+            static uint32_t lastLbl = 0;
             if (!detSeeded) {
                 Preferences po;
                 po.begin("ouispy-off", true);
@@ -738,22 +739,33 @@ static void statusHeartbeatTask(void* param) {
                 lastSigSet = po.isKey("det_sig");
                 lastSig = po.getUShort("det_sig", 0);
                 po.end();
+                lastLbl = detectorLabelsHash();
                 detSeeded = true;
             }
             uint8_t fb[512];
             size_t fn = detectorSerialize(fb, sizeof(fb));
             uint16_t sg = detectorGetSigMask();
-            if (fn != lastFiltLen || memcmp(fb, lastFilt, fn) != 0 || !lastSigSet || sg != lastSig) {
+            uint32_t lh = detectorLabelsHash();
+            bool cfgChanged = fn != lastFiltLen || memcmp(fb, lastFilt, fn) != 0 || !lastSigSet || sg != lastSig;
+            if (cfgChanged || lh != lastLbl) {
+                uint8_t* lb = (uint8_t*)malloc(DETECTOR_LABELS_MAX);
+                size_t ln = lb ? detectorSerializeLabels(lb, DETECTOR_LABELS_MAX) : 0;
                 Preferences po;
                 po.begin("ouispy-off", false);
-                po.putBytes("det_filt", fb, fn);
-                po.putUShort("det_sig", sg);
+                if (cfgChanged) {
+                    po.putBytes("det_filt", fb, fn);
+                    po.putUShort("det_sig", sg);
+                }
+                if (lb) po.putBytes("det_lbl", lb, ln);
                 po.end();
+                free(lb);
                 memcpy(lastFilt, fb, fn);
                 lastFiltLen = fn;
                 lastSig = sg;
                 lastSigSet = true;
-                Serial.printf("[DETCFG] persisted filt=%d sig=0x%03X\n", detectorFilterCount(), (unsigned)sg);
+                if (lb) lastLbl = lh;
+                Serial.printf("[DETCFG] persisted filt=%d sig=0x%03X labels=%uB\n", detectorFilterCount(),
+                              (unsigned)sg, (unsigned)ln);
             }
         }
 
@@ -1806,10 +1818,15 @@ void setup() {
         size_t fn = po.getBytes("det_filt", fb, sizeof(fb));
         bool haveSig = po.isKey("det_sig");
         uint16_t savedSig = po.getUShort("det_sig", 0);
+        uint8_t* lb = (uint8_t*)malloc(DETECTOR_LABELS_MAX);
+        size_t ln = lb ? po.getBytes("det_lbl", lb, DETECTOR_LABELS_MAX) : 0;
         po.end();
         if (fn > 0) detectorSetFilters(fb, fn);
+        bool lblOk = ln > 0 && detectorSetLabels(lb, ln);
+        free(lb);
         if (haveSig) detectorSetSigMask(savedSig);
-        Serial.printf("[DETCFG] restored filt=%uB sig=0x%03X\n", (unsigned)fn, (unsigned)savedSig);
+        Serial.printf("[DETCFG] restored filt=%uB sig=0x%03X labels=%uB%s\n", (unsigned)fn, (unsigned)savedSig,
+                      (unsigned)ln, lblOk ? "" : " (not applied)");
         if (bleGattOfflineScanEnabled() && savedMask != 0) {
             for (int i = 0; i < ENGINE_COUNT; i++) {
                 if ((savedMask & (1 << i)) && engineSpoolable((uint8_t)i)) {

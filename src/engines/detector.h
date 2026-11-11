@@ -19,6 +19,10 @@ int detectorFilterCount(void);
 const char* detectorLookupDesc(const uint8_t* mac);
 size_t detectorSerialize(uint8_t* out, size_t maxLen);
 void detectorSetFilters(const uint8_t* data, size_t len);
+#define DETECTOR_LABELS_MAX (2 + 100 * 32)
+size_t detectorSerializeLabels(uint8_t* out, size_t maxLen);
+bool detectorSetLabels(const uint8_t* data, size_t len);
+uint32_t detectorLabelsHash(void);
 void detectorSetSigMask(uint16_t mask);
 uint16_t detectorGetSigMask(void);
 bool detectorUsesWifi(void);

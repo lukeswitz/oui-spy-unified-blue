@@ -1049,6 +1049,53 @@ size_t detectorSerialize(uint8_t* out, size_t maxLen) {
     return off;
 }
 
+static char* labelAt(int i) {
+    return i < filterCount ? filters[i].desc : uuidFilters[i - filterCount].desc;
+}
+
+size_t detectorSerializeLabels(uint8_t* out, size_t maxLen) {
+    if (out == nullptr || maxLen < 2) return 0;
+    out[0] = (uint8_t)filterCount;
+    out[1] = (uint8_t)uuidFilterCount;
+    size_t off = 2;
+    for (int i = 0; i < filterCount + uuidFilterCount; i++) {
+        const char* d = labelAt(i);
+        size_t n = strnlen(d, sizeof(filters[0].desc) - 1);
+        if (off + 1 + n > maxLen) return 0;
+        out[off++] = (uint8_t)n;
+        memcpy(out + off, d, n);
+        off += n;
+    }
+    return off;
+}
+
+uint32_t detectorLabelsHash(void) {
+    uint32_t h = 2166136261u ^ (uint32_t)filterCount ^ ((uint32_t)uuidFilterCount << 8);
+    for (int i = 0; i < filterCount + uuidFilterCount; i++) {
+        for (const char* p = labelAt(i); *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+        h = (h ^ 0xFFu) * 16777619u;
+    }
+    return h;
+}
+
+bool detectorSetLabels(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < 2 || data[0] != filterCount || data[1] != uuidFilterCount) return false;
+    size_t off = 2;
+    for (int i = 0; i < filterCount + uuidFilterCount; i++) {
+        if (off >= len || data[off] >= sizeof(filters[0].desc) || off + 1 + data[off] > len) return false;
+        off += 1 + data[off];
+    }
+    off = 2;
+    for (int i = 0; i < filterCount + uuidFilterCount; i++) {
+        size_t n = data[off++];
+        char* d = labelAt(i);
+        memcpy(d, data + off, n);
+        d[n] = 0;
+        off += n;
+    }
+    return true;
+}
+
 void detectorSetFilters(const uint8_t* data, size_t len) {
     if (data == nullptr || len < 1) return;
     static uint8_t lastFilters[512]; static size_t lastFilterLen = 0; static bool haveFilters = false;
@@ -1279,6 +1326,28 @@ int detectorPortSelfTest(void) {
     pstCheck("tlv_second_record", appleFindMySeparated(md));
     pstCheck("tlv_nearby_only", !appleFindMySeparated(std::string("\x4c\x00\x10\x02\x01\x02", 6)));
     pstCheck("tlv_truncated", !appleFindMySeparated(std::string("\x4c\x00\x12\x19\x01\x02", 6)));
+
+    if (uint8_t* lbl = (uint8_t*)heap_caps_malloc(DETECTOR_LABELS_MAX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                           ?: (uint8_t*)malloc(DETECTOR_LABELS_MAX)) {
+        uint8_t blob[512];
+        const uint8_t lm[6] = {0x40, 0x48, 0x6E, 0x00, 0x00, 0x00};
+        detectorClearFilters();
+        detectorAddFilter(lm, 3, "Kitchen cam");
+        detectorAddUuidFilter(0xFD5A, "Tag");
+        size_t bn = detectorSerialize(blob, sizeof(blob));
+        size_t ln = detectorSerializeLabels(lbl, DETECTOR_LABELS_MAX);
+        uint32_t h = detectorLabelsHash();
+        detectorSetFilters(blob, bn);
+        pstCheck("labels_cleared_by_wire_blob", detectorLookupDesc(lm)[0] == 0);
+        pstCheck("labels_restore", detectorSetLabels(lbl, ln) && strcmp(detectorLookupDesc(lm), "Kitchen cam") == 0 &&
+                                       strcmp(uuidFilters[0].desc, "Tag") == 0 && detectorLabelsHash() == h);
+        lbl[0] = 2;
+        pstCheck("labels_count_mismatch_refused", !detectorSetLabels(lbl, ln));
+        lbl[0] = 1;
+        pstCheck("labels_truncated_refused", !detectorSetLabels(lbl, ln - 1));
+        detectorClearFilters();
+        free(lbl);
+    }
 
     sigMask = SIG_TRACKER;
     pstDrain();

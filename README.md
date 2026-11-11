@@ -268,7 +268,7 @@ Modes: `DETECT FLOCKB FLOCKW FOXHNT SKYSPY UNIPWN`. Wardrive and PCAP need the a
 
 Foxhunt picks, in order: the target set in the app, else the last Detector / Flock / Sky Spy / UniPwn alert seen by this board.
 
-Detector MAC, OUI and UUID targets and signatures set in the app stay on the board through a reboot. Name targets match in the app only.
+Detector MAC, OUI and UUID targets, their labels, and signatures set in the app stay on the board through a reboot. Name targets match in the app only.
 
 ### Detections screen (both)
 
