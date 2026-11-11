@@ -260,9 +260,14 @@ static uint32_t s_btnTapDeadline = 0;
 #define DONGLE_ENG_SEEN_BYTES 256
 #define DONGLE_ENG_SEEN_BITS  (DONGLE_ENG_SEEN_BYTES * 8)
 
-static uint8_t s_wifiSeen[DONGLE_SEEN_BYTES];
-static uint8_t s_bleSeen[DONGLE_SEEN_BYTES];
-static uint8_t s_engSeen[ENGINE_COUNT][DONGLE_ENG_SEEN_BYTES];
+static uint8_t* s_wifiSeen = nullptr;
+static uint8_t* s_bleSeen = nullptr;
+static uint8_t (*s_engSeen)[DONGLE_ENG_SEEN_BYTES] = nullptr;
+
+static void* seenAlloc(size_t n) {
+    void* p = heap_caps_calloc(1, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    return p ? p : calloc(1, n);
+}
 static uint32_t s_engCount[ENGINE_COUNT];
 
 static uint32_t macHash(const uint8_t* mac) {
@@ -275,6 +280,7 @@ static uint32_t macHash(const uint8_t* mac) {
 }
 
 static bool markSeen(uint8_t* set, uint32_t bits, const uint8_t* mac) {
+    if (!set) return false;
     uint32_t h1 = macHash(mac);
     uint32_t h2 = (h1 ^ (h1 >> 13)) * 2654435761u;
     uint32_t i1 = h1 % bits;
@@ -528,6 +534,14 @@ static uint32_t chanToFreq(uint8_t ch) {
     return 0u;
 }
 
+#define DONGLE_LOG_FILE_BUF 512
+
+static File sdOpenLog(const char* path, const char* mode) {
+    File f = DONGLE_SD.open(path, mode);
+    if (f) f.setBufferSize(DONGLE_LOG_FILE_BUF);
+    return f;
+}
+
 static uint16_t nextSeq(void) {
     uint16_t n = 1;
     File f = DONGLE_SD.open(DONGLE_SEQ_PATH, FILE_READ);
@@ -550,7 +564,7 @@ static uint16_t nextSeq(void) {
 static void openCsvFiles(void) {
     char path[48];
     snprintf(path, sizeof(path), DONGLE_DIR "/det_%04u.csv", (unsigned)s_seq);
-    s_detCsv = DONGLE_SD.open(path, FILE_WRITE);
+    s_detCsv = sdOpenLog(path, FILE_WRITE);
     if (s_detCsv) {
         s_detCsv.println("timestamp_ms,utc,engine,method,mac,rssi,channel,name,"
                          "lat,lon,alt,acc,node");
@@ -558,7 +572,7 @@ static void openCsvFiles(void) {
     }
 
     snprintf(path, sizeof(path), DONGLE_DIR "/wigle_%04u.csv", (unsigned)s_seq);
-    s_wigleCsv = DONGLE_SD.open(path, FILE_WRITE);
+    s_wigleCsv = sdOpenLog(path, FILE_WRITE);
     if (s_wigleCsv) {
         s_wigleCsv.printf("WigleWifi-1.6,appRelease=%s,model=OUI-SPY,release=%s,"
                           "device=%s,display=firmware,board=%s,brand=colonelpanic,"
@@ -593,17 +607,17 @@ static void stampFileNames(void) {
     snprintf(oldPath, sizeof(oldPath), DONGLE_DIR "/det_%04u.csv", (unsigned)s_seq);
     snprintf(newPath, sizeof(newPath), DONGLE_DIR "/det_%s.csv", compact);
     if (DONGLE_SD.rename(oldPath, newPath)) {
-        s_detCsv = DONGLE_SD.open(newPath, FILE_APPEND);
+        s_detCsv = sdOpenLog(newPath, FILE_APPEND);
     } else {
-        s_detCsv = DONGLE_SD.open(oldPath, FILE_APPEND);
+        s_detCsv = sdOpenLog(oldPath, FILE_APPEND);
     }
 
     snprintf(oldPath, sizeof(oldPath), DONGLE_DIR "/wigle_%04u.csv", (unsigned)s_seq);
     snprintf(newPath, sizeof(newPath), DONGLE_DIR "/wigle_%s.csv", compact);
     if (DONGLE_SD.rename(oldPath, newPath)) {
-        s_wigleCsv = DONGLE_SD.open(newPath, FILE_APPEND);
+        s_wigleCsv = sdOpenLog(newPath, FILE_APPEND);
     } else {
-        s_wigleCsv = DONGLE_SD.open(oldPath, FILE_APPEND);
+        s_wigleCsv = sdOpenLog(oldPath, FILE_APPEND);
     }
     sdUnlock();
 
@@ -1319,6 +1333,9 @@ static void buttonTick(uint32_t now) {
 
 void dongleInit(void) {
     if (!s_sdMutex) s_sdMutex = xSemaphoreCreateMutex();
+    if (!s_wifiSeen) s_wifiSeen = (uint8_t*)seenAlloc(DONGLE_SEEN_BYTES);
+    if (!s_bleSeen) s_bleSeen = (uint8_t*)seenAlloc(DONGLE_SEEN_BYTES);
+    if (!s_engSeen) s_engSeen = (uint8_t (*)[DONGLE_ENG_SEEN_BYTES])seenAlloc((size_t)ENGINE_COUNT * DONGLE_ENG_SEEN_BYTES);
 
     Serial.println("[DONGLE] init: pwr hold"); Serial.flush();
 #if DONGLE_PWR_HOLD >= 0
@@ -1472,7 +1489,7 @@ void dongleOnDetection(const DetectionEvent* evt) {
     } else {
         if (markSeen(s_wifiSeen, DONGLE_SEEN_BITS, evt->mac)) s_wifiHits++;
     }
-    if (evt->engine_id < ENGINE_COUNT &&
+    if (evt->engine_id < ENGINE_COUNT && s_engSeen &&
         markSeen(s_engSeen[evt->engine_id], DONGLE_ENG_SEEN_BITS, evt->mac)) {
         s_engCount[evt->engine_id]++;
     }
@@ -1542,7 +1559,7 @@ void donglePcapOpen(uint16_t linktype) {
         snprintf(path, sizeof(path), DONGLE_DIR "/cap_%04u_%02u_%s.pcap", (unsigned)s_seq,
                  (unsigned)(++s_pcapIdx), linktype == 256 ? "ble" : "wifi");
     }
-    s_pcapFile = DONGLE_SD.open(path, FILE_WRITE);
+    s_pcapFile = sdOpenLog(path, FILE_WRITE);
     s_pcapBytes = 0;
     if (s_pcapFile) {
         uint8_t hdr[24];
