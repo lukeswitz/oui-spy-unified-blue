@@ -1826,7 +1826,7 @@ void setup() {
         free(lb);
         if (haveSig) detectorSetSigMask(savedSig);
         Serial.printf("[DETCFG] restored filt=%uB sig=0x%03X labels=%uB%s\n", (unsigned)fn, (unsigned)savedSig,
-                      (unsigned)ln, lblOk ? "" : " (not applied)");
+                      (unsigned)ln, lblOk || ln == 0 ? "" : " (not applied)");
         if (bleGattOfflineScanEnabled() && savedMask != 0) {
             for (int i = 0; i < ENGINE_COUNT; i++) {
                 if ((savedMask & (1 << i)) && engineSpoolable((uint8_t)i)) {
