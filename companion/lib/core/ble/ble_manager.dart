@@ -404,6 +404,7 @@ class BleManager {
   bool get isC5 => _board.endsWith('c5');
   String get role => _role;
   String? get connectedDeviceId => _primaryDeviceId ?? _lastDeviceId;
+  String? get targetDeviceId => _device?.remoteId.toString();
   bool get isManagerConnected =>
       _role == 'mgr' ||
       (_role.isEmpty &&

@@ -98,9 +98,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     super.dispose();
   }
 
-  Future<void> _startScan() async {
+  Future<void> _startScan({bool user = false}) async {
     if (_scanning) return;
-    if (ref.read(bleManagerProvider).isLinkSetup) return;
+    final ble = ref.read(bleManagerProvider);
+    final pending = ble.isLinkSetup ||
+        ble.currentConnectionState == NodeConnectionState.reconnecting;
+    if (pending) {
+      if (!user) return;
+      DebugLog.log('SCAN: user scan stops the pending connection to ${ble.targetDeviceId}');
+      await ble.disconnect();
+      if (!mounted) return;
+    }
 
     final perm = await BlePermissions.ensureForScan();
     if (!mounted) return;
@@ -245,6 +253,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       ),
     );
     if (ok != true) return;
+    final ble = ref.read(bleManagerProvider);
+    if (ble.targetDeviceId == b.id) {
+      DebugLog.log('SCAN: forgetting ${b.id} stops its pending connection');
+      await ble.disconnect();
+    }
     try {
       await BleManager.forgetPaired(b.id);
     } on Exception catch (e) {
@@ -511,7 +524,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             DEyebrow(_scanning ? 'Searching for nodes...' : 'Scan for nearby nodes to connect'),
             const SizedBox(height: 28),
             ElevatedButton(
-              onPressed: _scanning ? null : _startScan,
+              onPressed: _scanning ? null : () => _startScan(user: true),
               child: Text(_scanning ? 'SCANNING...' : 'Scan for devices'),
             ),
             const Spacer(flex: 2),
@@ -527,7 +540,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   const Spacer(),
                   if (!_scanning)
                     GestureDetector(
-                      onTap: _startScan,
+                      onTap: () => _startScan(user: true),
                       child: Text('RESCAN', style: TextStyle(color: AppTheme.accent, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
                     ),
                   if (_scanning)
