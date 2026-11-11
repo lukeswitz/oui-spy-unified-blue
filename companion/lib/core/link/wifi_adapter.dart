@@ -61,8 +61,10 @@ class WifiAdapterBleReport {
 }
 
 class WifiAdapterEvent {
-  const WifiAdapterEvent({this.status, this.aps, this.bleReports});
+  const WifiAdapterEvent({this.id, this.stopped = false, this.status, this.aps, this.bleReports});
 
+  final String? id;
+  final bool stopped;
   final String? status;
   final List<WifiAdapterAp>? aps;
   final List<WifiAdapterBleReport>? bleReports;
@@ -96,8 +98,8 @@ class WifiAdapter {
   static Future<bool> requestPermission() async =>
       supported ? (await _methods.invokeMethod<bool>('requestPermission') ?? false) : false;
 
-  static Future<void> stop() async {
-    if (supported) await _methods.invokeMethod<void>('stop');
+  static Future<void> stop({String? id}) async {
+    if (supported) await _methods.invokeMethod<void>('stop', id == null ? null : {'id': id});
   }
 
   static Stream<WifiAdapterEvent> get events => !supported
@@ -107,6 +109,8 @@ class WifiAdapter {
           final aps = m['aps'] as List<Object?>?;
           final ble = m['ble'] as List<Object?>?;
           return WifiAdapterEvent(
+            id: m['id'] as String?,
+            stopped: (m['stopped'] as bool?) ?? false,
             status: m['status'] as String?,
             aps: aps == null
                 ? null

@@ -20,6 +20,7 @@ internal class Rtl8814auAdapter(
     private val intf: UsbInterface,
     private val fw: RtlFirmwareStore.Blobs,
     private val log: (String) -> Unit,
+    private val withFirmware: Boolean = false,
 ) {
     @Volatile private var stop = false
     private val io = RtlIo(conn)
@@ -93,6 +94,12 @@ internal class Rtl8814auAdapter(
         cut = (io.r32(R.SYS_CFG1) ushr 12) and 0xf
         log("RTL8814AU: chip cut $cut")
         macPowerOn()
+        if (withFirmware) {
+            downloadFirmware()
+            log("RTL8814AU: firmware running")
+        } else {
+            log("RTL8814AU: no firmware (register-only)")
+        }
         // unverified: efuse is read straight after MAC power-on with no firmware running, rtw88 reads it with the MAC powered via its own on/off cycle
         parseEfuse(RtlEfuse.dump(io, Rtl8814auRegs.PHY_EFUSE_SIZE, Rtl8814auRegs.LOG_EFUSE_SIZE))
         val tbl = RtlPhyTables(fw.tables)

@@ -8,6 +8,14 @@ import 'package:oui_spy/core/link/wifi_adapter.dart';
 
 enum WifiAdapterState { absent, present, starting, running, error }
 
+WifiAdapterState aggregateAdapterState(Iterable<WifiAdapterState> perDevice, {required bool attached}) {
+  final s = perDevice.toSet();
+  if (s.contains(WifiAdapterState.running)) return WifiAdapterState.running;
+  if (s.contains(WifiAdapterState.starting)) return WifiAdapterState.starting;
+  if (s.contains(WifiAdapterState.error)) return WifiAdapterState.error;
+  return attached ? WifiAdapterState.present : WifiAdapterState.absent;
+}
+
 class WifiAdapterController {
   WifiAdapterController(this._ble);
 
@@ -19,13 +27,22 @@ class WifiAdapterController {
   List<WifiAdapterDevice> _list = const [];
   WifiAdapterState _current = WifiAdapterState.absent;
   String _status = '';
-  int _apCount = 0;
+  final Map<String, WifiAdapterState> _deviceState = {};
+  final Map<String, Set<String>> _deviceBssids = {};
   final Set<String> _seenBssids = {};
 
   List<WifiAdapterDevice> get devices => _list;
   WifiAdapterState get state => _current;
   String get status => _status;
-  int get apCount => _apCount;
+  int get apCount => _seenBssids.length;
+  WifiAdapterState stateOf(String id) =>
+      _deviceState[id] ?? (_list.any((d) => d.id == id) ? WifiAdapterState.present : WifiAdapterState.absent);
+  bool isActive(String id) {
+    final s = stateOf(id);
+    return s == WifiAdapterState.running || s == WifiAdapterState.starting;
+  }
+
+  int apCountOf(String id) => _deviceBssids[id]?.length ?? 0;
   Stream<WifiAdapterState> get stateStream => _state.stream;
   Stream<List<WifiAdapterDevice>> get deviceStream => _devices.stream;
 
@@ -37,14 +54,8 @@ class WifiAdapterController {
   }
 
   Future<void> _onAttach(WifiAdapterAttach e) async {
-    if (e.attached) {
-      await refresh();
-    } else {
-      await refresh();
-      final gone = _list.isEmpty;
-      final active = _current == WifiAdapterState.running || _current == WifiAdapterState.starting;
-      if (gone && active) await stop();
-    }
+    await refresh();
+    if (!e.attached && isActive(e.device.id)) await stop(id: e.device.id);
   }
 
   Future<List<WifiAdapterDevice>> refresh() async {
@@ -55,56 +66,77 @@ class WifiAdapterController {
       _list = const [];
     }
     _devices.add(_list);
-    if (_current == WifiAdapterState.absent && _list.isNotEmpty) _set(WifiAdapterState.present);
-    if (_current == WifiAdapterState.present && _list.isEmpty) _set(WifiAdapterState.absent);
+    _update();
     return _list;
   }
 
   Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async {
-    _set(WifiAdapterState.starting);
-    _sub?.cancel();
-    _sub = WifiAdapter.events.listen(_onEvent, onError: (Object e) {
+    _sub ??= WifiAdapter.events.listen(_onEvent, onError: (Object e) {
       _status = e.toString();
-      _set(WifiAdapterState.error);
+      for (final id in _deviceState.keys.toList()) {
+        if (isActive(id)) _deviceState[id] = WifiAdapterState.error;
+      }
+      _update();
     });
+    if (isActive(device.id)) return true;
+    _deviceState[device.id] = WifiAdapterState.starting;
+    _update();
     try {
       final ok = await WifiAdapter.start(device, radioMask: radioMask);
       if (!ok) {
-        _set(WifiAdapterState.error);
-        await _sub?.cancel();
-        _sub = null;
+        _deviceState[device.id] = WifiAdapterState.error;
+        _update();
       }
       return ok;
     } on PlatformException catch (e) {
       DebugLog.log('WIFIADAPTER: start failed ${e.message}');
       _status = e.message ?? 'start failed';
-      _set(WifiAdapterState.error);
+      _deviceState[device.id] = WifiAdapterState.error;
+      _update();
       return false;
     }
   }
 
-  Future<void> stop() async {
-    await _sub?.cancel();
-    _sub = null;
-    _apCount = 0;
-    await WifiAdapter.stop();
-    _set(_list.isEmpty ? WifiAdapterState.absent : WifiAdapterState.present);
+  Future<void> stop({String? id}) async {
+    await WifiAdapter.stop(id: id);
+    if (id == null) {
+      _deviceState.clear();
+      _deviceBssids.clear();
+      _seenBssids.clear();
+    } else {
+      _deviceState.remove(id);
+      _deviceBssids.remove(id);
+      _seenBssids
+        ..clear()
+        ..addAll(_deviceBssids.values.expand((s) => s));
+    }
+    _update();
   }
 
   void _onEvent(WifiAdapterEvent e) {
+    final id = e.id;
+    if (e.stopped && id != null) {
+      if (isActive(id)) _deviceState[id] = WifiAdapterState.error;
+      DebugLog.log('WIFIADAPTER: $id stopped');
+      _update();
+      return;
+    }
+    if (id != null && !_deviceState.containsKey(id)) return;
     if (e.status != null) {
       _status = e.status!;
       DebugLog.log('WIFIADAPTER: ${e.status}');
-      if (_status.contains('receiver live')) _set(WifiAdapterState.running);
+      if (id != null && _status.contains('receiver live')) _markRunning(id);
     }
     final aps = e.aps;
     if (aps != null && aps.isNotEmpty) {
-      if (_current != WifiAdapterState.running) _set(WifiAdapterState.running);
+      if (id != null) _markRunning(id);
+      final mine = id == null ? null : _deviceBssids.putIfAbsent(id, () => <String>{});
       for (final ap in aps) {
         _seenBssids.add(ap.bssid);
+        mine?.add(ap.bssid);
       }
-      _apCount = _seenBssids.length;
-      DebugLog.log('WIFIADAPTER: batch ${aps.length} fresh, ${_seenBssids.length} unique aps');
+      DebugLog.log('WIFIADAPTER: batch ${aps.length} fresh, ${mine?.length ?? 0} unique aps on $id, '
+          '${_seenBssids.length} total');
       for (final ap in aps) {
         _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, ap.authMode,
             nodeId: BleManager.usbWifiNodeId, client: ap.client);
@@ -112,12 +144,20 @@ class WifiAdapterController {
     }
     final ble = e.bleReports;
     if (ble != null && ble.isNotEmpty) {
-      if (_current != WifiAdapterState.running) _set(WifiAdapterState.running);
+      if (id != null) _markRunning(id);
       for (final r in ble) {
         _ble.addPhoneDetection(r.mac, r.name, r.rssi, r.adv, nodeId: BleManager.usbBleNodeId);
       }
     }
   }
+
+  void _markRunning(String id) {
+    if (_deviceState[id] == WifiAdapterState.running) return;
+    _deviceState[id] = WifiAdapterState.running;
+    _update();
+  }
+
+  void _update() => _set(aggregateAdapterState(_deviceState.values, attached: _list.isNotEmpty));
 
   void _set(WifiAdapterState s) {
     _current = s;
@@ -143,4 +183,4 @@ final wifiAdapterStateProvider = StreamProvider<WifiAdapterState>((ref) {
   return ref.watch(wifiAdapterControllerProvider).stateStream;
 });
 
-final usbAdapterScanProvider = StateProvider<bool>((ref) => true);
+final usbAdapterOffProvider = StateProvider<Set<String>>((ref) => const {});

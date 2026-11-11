@@ -18,6 +18,7 @@ internal class Rtl8821auAdapter(
     private val intf: UsbInterface,
     private val fw: RtlFirmwareStore.Blobs,
     private val log: (String) -> Unit,
+    private val withFirmware: Boolean = false,
 ) {
     @Volatile private var stop = false
     private val io = RtlIo(conn)
@@ -104,6 +105,13 @@ internal class Rtl8821auAdapter(
         rsvdBoundary = acqPg
         lltInit(rsvdBoundary)
         io.s32(R.TXDMA_OFFSET_CHK, 1 shl 9)
+        if (withFirmware) {
+            downloadFirmware()
+            log("RTL8821AU: firmware running")
+            io.w8(R.HMETFR, 0xf)
+        } else {
+            log("RTL8821AU: no firmware (register-only)")
+        }
         val tbl = RtlPhyTables(fw.tables)
         val drv = phyDrv()
         tbl.load(tbl.array(Rtl8821auRegs.TBL_MAC), drv) { a, d -> io.w8(a, d) }

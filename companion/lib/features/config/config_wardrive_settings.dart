@@ -253,7 +253,6 @@ class _WifiAdapterSectionState extends ConsumerState<_WifiAdapterSection> {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    final running = _c.state == WifiAdapterState.running || _c.state == WifiAdapterState.starting;
     final busy = _c.state == WifiAdapterState.starting;
 
     return Column(
@@ -299,13 +298,13 @@ class _WifiAdapterSectionState extends ConsumerState<_WifiAdapterSection> {
                                 fontWeight: FontWeight.w600, fontFamily: AppTheme.mono,
                               )),
                           const SizedBox(height: 2),
-                          Text('USB  ${d.vidPid}',
+                          Text('USB  ${d.vidPid}${_c.isActive(d.id) ? '  ·  ${_c.apCountOf(d.id)} APs' : ''}',
                               style: TextStyle(color: t.textDim, fontSize: 11)),
                         ],
                       ),
                     ),
-                    if (running)
-                      _button('STOP', () => _c.stop(), AppTheme.error)
+                    if (_c.isActive(d.id))
+                      _button('STOP', () => _c.stop(id: d.id), AppTheme.error)
                     else
                       _button('START', () => _c.start(d), AppTheme.accent),
                   ],

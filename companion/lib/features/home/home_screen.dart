@@ -727,28 +727,29 @@ class _UsbScanSources extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final wifiState = ref.watch(wifiAdapterStateProvider).valueOrNull ??
-        ref.watch(wifiAdapterControllerProvider).state;
+    ref.watch(wifiAdapterStateProvider);
     final ctl = ref.read(wifiAdapterControllerProvider);
     final sdrState = ref.watch(sdrStateProvider).valueOrNull ?? SdrState.idle;
     final sdrActive = sdrState == SdrState.running || sdrState == SdrState.starting;
     final sdrPresent = ref.watch(sdrPresentProvider).valueOrNull ?? false;
-    final selected = ref.watch(usbAdapterScanProvider);
-    final wifiRunning =
-        wifiState == WifiAdapterState.running || wifiState == WifiAdapterState.starting;
+    final off = ref.watch(usbAdapterOffProvider);
+    final sessionRunning = ref.watch(wardriveProvider).isRunning;
 
     final tiles = <Widget>[
       for (final d in ctl.devices)
         _SourceTile(
           icon: Icons.wifi,
           title: d.name.isNotEmpty ? d.name : 'USB Wi-Fi',
-          subtitle: wifiRunning ? 'Scanning' : 'USB ${d.vidPid}',
-          on: selected,
+          subtitle: ctl.isActive(d.id) ? 'Scanning' : 'USB ${d.vidPid}',
+          on: !off.contains(d.id),
           trailing: Switch(
-            value: selected,
+            value: !off.contains(d.id),
             onChanged: (v) {
-              ref.read(usbAdapterScanProvider.notifier).state = v;
-              if (!v && wifiRunning) ctl.stop();
+              final next = {...off};
+              v ? next.remove(d.id) : next.add(d.id);
+              ref.read(usbAdapterOffProvider.notifier).state = next;
+              if (!v && ctl.isActive(d.id)) ctl.stop(id: d.id);
+              if (v && sessionRunning) startSelectedUsbAdapters(ref, only: d.id);
             },
           ),
         ),

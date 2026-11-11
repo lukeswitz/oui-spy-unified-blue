@@ -312,22 +312,24 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
     DebugLog.log('WARDRIVE: start aborted — radio roles canceled');
     return false;
   }
-  final wd = ref.read(wardriveProvider);
-  final usb = ref.read(wifiAdapterControllerProvider);
-  final usbScan = ref.read(usbAdapterScanProvider);
-  await wd.startSession();
-  if (usbScan &&
-      usb.devices.isNotEmpty &&
-      usb.state != WifiAdapterState.running &&
-      usb.state != WifiAdapterState.starting) {
-    final mask = switch (wd.radio) {
-      WardriveRadio.wifi => 0x01,
-      WardriveRadio.ble => 0x02,
-      WardriveRadio.both => 0x03,
-    };
-    await usb.start(usb.devices.first, radioMask: mask);
-  }
+  await ref.read(wardriveProvider).startSession();
+  await startSelectedUsbAdapters(ref);
   return true;
+}
+
+Future<void> startSelectedUsbAdapters(WidgetRef ref, {String? only}) async {
+  final usb = ref.read(wifiAdapterControllerProvider);
+  final off = ref.read(usbAdapterOffProvider);
+  final mask = switch (ref.read(wardriveProvider).radio) {
+    WardriveRadio.wifi => 0x01,
+    WardriveRadio.ble => 0x02,
+    WardriveRadio.both => 0x03,
+  };
+  for (final d in usb.devices) {
+    if (only != null && d.id != only) continue;
+    if (off.contains(d.id) || usb.isActive(d.id)) continue;
+    await usb.start(d, radioMask: mask);
+  }
 }
 
 Future<void> stopWardriveSession(WidgetRef ref) async {

@@ -23,6 +23,7 @@ internal class Rtl8812auAdapter(
     private val intf: UsbInterface,
     private val fw: ByteArray,
     private val log: (String) -> Unit,
+    private val withFirmware: Boolean = false,
 ) {
     @Volatile private var stop = false
     private lateinit var epRx: UsbEndpoint
@@ -474,7 +475,13 @@ internal class Rtl8812auAdapter(
         initLlt(boundary)
         set32(Rg.REG_TXDMA_OFFSET_CHK, Rg.BIT_DROP_DATA_EN)
 
-        // unverified: no MCU firmware is downloaded; derived from the register-only RTL8814AU/RTL8821AU bring-up, never run on an RTL8812AU
+        if (withFirmware) {
+            downloadFirmware()
+            w8(Rg.REG_HMETFR, 0xf)
+            log("RTL8812AU: firmware running")
+        } else {
+            log("RTL8812AU: no firmware (register-only)")
+        }
         loadTable(Rg.MAC_TBL) { a, d -> w8(a, d) }
         initQueues(acqPages, boundary)
         w16(Rg.REG_TRXFF_BNDY + 2, Rg.RXFF_SIZE - Rg.REPORT_BUF - 1)
