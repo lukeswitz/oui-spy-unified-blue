@@ -71,6 +71,8 @@ sdkconfig.v3_app_controlled_c5
 managed_components/
 
 .dummy/
+/CMakeLists.txt
+/dependencies.lock
 sdkconfig.*
 
 logs/
