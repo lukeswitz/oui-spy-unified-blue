@@ -877,6 +877,7 @@ class BleManager {
     _currentState = NodeConnectionState.connecting; _connectionState.add(NodeConnectionState.connecting);
 
     _lastDeviceId = device.remoteId.toString();
+    if (!device.isConnected) await device.disconnect(queue: false);
     DebugLog.log('BLE: connecting to ${device.remoteId}${autoConnect ? ' (OS autoConnect)' : ''}');
     if (autoConnect) {
       try {
