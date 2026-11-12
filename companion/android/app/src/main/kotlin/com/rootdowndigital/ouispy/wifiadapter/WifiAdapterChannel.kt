@@ -57,6 +57,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     private val sessions = HashMap<String, Session>()
     private val pending = HashMap<String, Pair<MethodChannel.Result, Int>>()
     private var pendingSdr: (() -> Unit)? = null
+    private var sdrGen = 0
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context, intent: Intent) {
@@ -143,7 +144,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         sdrSink = null
         sink = null
         eventSink = null
-        sessions.keys.toList().forEach(::stopSession)
+        stopSessions(sessions.keys.toList())
         main.removeCallbacksAndMessages(null)
         try {
             context.unregisterReceiver(receiver)
@@ -186,8 +187,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
             }
             "stop" -> {
                 val id = call.argument<String>("id")
-                if (id != null) stopSession(id) else sessions.keys.filter { it != SDR_ID }.forEach(::stopSession)
-                result.success(null)
+                stopSessions(if (id != null) listOf(id) else sessions.keys.filter { it != SDR_ID }) { result.success(null) }
             }
             "sdrList" -> result.success(candidates().filter { kindOf(it) == Kind.RTLSDR }.map { describe(it) })
             "sdrStart" -> {
@@ -213,8 +213,8 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 }
             }
             "sdrStop" -> {
-                stopSession(SDR_ID)
-                result.success(null)
+                sdrGen++
+                stopSessions(listOf(SDR_ID)) { result.success(null) }
             }
             else -> result.notImplemented()
         }
@@ -447,13 +447,20 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         return false
     }
 
-    private fun stopSession(id: String) {
-        val s = sessions.remove(id) ?: return
-        s.stopFn?.invoke()
-        s.thread?.let { w ->
-            w.interrupt()
-            w.join(2000)
+    private fun stopSessions(ids: List<String>, then: (() -> Unit)? = null) {
+        val workers = ids.mapNotNull { sessions.remove(it) }.mapNotNull { s ->
+            s.stopFn?.invoke()
+            s.thread?.also { it.interrupt() }
         }
+        if (then == null) return
+        if (workers.isEmpty()) {
+            then()
+            return
+        }
+        Thread {
+            workers.forEach { it.join(2000) }
+            main.post(then)
+        }.start()
     }
 
     private fun emitStatus(msg: String, id: String? = null) {
@@ -480,7 +487,11 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
 
     private fun startSdr(device: UsbDevice, mode: String, freqHz: Long, rate: Int, hopHz: List<Long> = emptyList(), raw: Boolean = false, categories: List<String> = Rtl433Categories.ALL_CATEGORIES) {
-        stopSession(SDR_ID)
+        val gen = ++sdrGen
+        stopSessions(listOf(SDR_ID)) { if (gen == sdrGen) launchSdr(device, mode, freqHz, rate, hopHz, raw, categories) }
+    }
+
+    private fun launchSdr(device: UsbDevice, mode: String, freqHz: Long, rate: Int, hopHz: List<Long>, raw: Boolean, categories: List<String>) {
         val conn = usb.openDevice(device)
         if (conn == null) {
             main.post { emitStatus("RTL-SDR: open failed") }
