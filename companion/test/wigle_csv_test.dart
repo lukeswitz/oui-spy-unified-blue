@@ -35,6 +35,15 @@ void main() {
     expect(_rows(csv).length, 5);
   });
 
+  test('a Bluetooth hit without a MAC address, such as an iPhone device ID, stays out', () {
+    final rows = _rows(WigleCsv.generate([
+      _d('8C4F1A2B-0000-4000-8000-000000000001', 'ble_adv', ssid: ''),
+      _d('02:00:00:00:00:07', 'ble_adv', ssid: ''),
+    ]));
+    expect(rows.length, 1);
+    expect(rows.single, startsWith('02:00:00:00:00:07,'));
+  });
+
   test('a detection without a fix is still exported with blank coordinates', () {
     final noFix = _d('02:00:00:00:00:06', 'wifi_ap', auth: 3).copyWith(latitude: null, longitude: null);
     final row = _rows(WigleCsv.generate([noFix])).single.split(',');

@@ -113,6 +113,6 @@
 - Forgetting a board left the app retrying it.
 - Switching boards could leave the old board connected in the background, so a mesh node ignored its manager.
 - A failed connect could leave Android reconnecting to the board many times a second.
-- WiGLE CSV left out Wi-Fi clients, detector hits, and rows without a GPS fix. It now writes every detection except those inside an exclusion zone. Rows with no fix have blank coordinates.
+- WiGLE CSV left out Wi-Fi clients, detector hits, and rows without a GPS fix. It now writes every detection except those inside an exclusion zone and iPhone hits, which have no MAC address. Rows with no fix have blank coordinates.
 - Some access points from a USB Wi-Fi adapter were missing from the session's WiGLE CSV.
 - The app asked to turn on Bluetooth when it was already on.

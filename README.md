@@ -128,7 +128,7 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export), ALERTS (every alert, newest first). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
 - **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it. A Google Fast Pair device in pairing mode shows its model name.
-- **Phone scan**: phone icon in the status bar, off at launch. iOS hides MAC addresses, so iPhone hits carry an iOS device ID in WiGLE CSV.
+- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
 - **Suggested signatures** (DEVICES → More): groups of 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** makes one your own signature, with an optional alert on new matches (SETTINGS → Detection & alerts → My signatures).
 - **Signature sets** (SETTINGS → Detection & alerts): turn on the Fieldwatch stock catalog or Home Assistant's Bluetooth device list, or add your own set by https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
 - **Seen at your stops** (HISTORY → More): radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
