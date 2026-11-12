@@ -76,8 +76,28 @@ internal class Rtl8821auAdapter(
     private fun powerDown() {
         io.canceled = false
         try {
+            val cr = io.r8(R.CR)
+            if (cr == 0 || cr == 0xEA) return
+            if (!btcoex) io.c16(R.GPIO_MUXCFG, BIT_EN_SIC)
+            if (superSpeed) io.s8(R.USB_MOD, 0x18)
+            io.w32(R.HISR0, -1)
+            io.w32(R.HISR1, -1)
+            io.w32(R.HIMR0, 0)
+            io.w32(R.HIMR1, 0)
+            val fsmco = io.r16(R.APS_FSMCO)
+            io.w16(R.APS_FSMCO, fsmco and APS_FSMCO_HW_POWERDOWN.inv())
+            io.c8(R.TX_RPT_CTRL, 1 shl 1)
             io.w8(R.CR, 0)
+            try {
+                runPwrSeq(io, Rtl8821auRegs.ENTER_LPS)
+            } catch (e: IllegalStateException) {
+                log("RTL8821AU: enter LPS incomplete: ${e.message}")
+            }
+            if ((io.r8(R.MCUFW_CTRL) and (1 shl 7)) != 0) reset8051()
+            io.c8(R.SYS_FUNC_EN + 1, 1 shl 2)
+            io.w8(R.MCUFW_CTRL, 0)
             runPwrSeq(io, Rtl8821auRegs.PWR_OFF)
+            if ((fsmco and APS_FSMCO_HW_POWERDOWN) != 0) io.s16(R.APS_FSMCO, APS_FSMCO_HW_POWERDOWN)
         } catch (e: IOException) {
             log("RTL8821AU: power-down skipped: ${e.message}")
         } catch (e: IllegalStateException) {
@@ -766,6 +786,8 @@ internal class Rtl8821auAdapter(
 
     companion object {
         private const val MAC_TRX_INIT = 0x63F
+        private const val BIT_EN_SIC = 1 shl 12
+        private const val APS_FSMCO_HW_POWERDOWN = 1 shl 15
         private const val LDO_SEL = 0xC3
         private const val SPS_SEL = 0x83
         private const val FW_READY_LEGACY = 0xC6

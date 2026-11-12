@@ -27,7 +27,9 @@ internal object Rtl88Regs {
     const val LDO_SWR_CTRL = 0x007C
     const val MCUFW_CTRL = 0x0080
     const val HIMR0 = 0x00B0
+    const val HISR0 = 0x00B4
     const val HIMR1 = 0x00B8
+    const val HISR1 = 0x00BC
     const val EFUSE_ACCESS = 0x00CF
     const val WLRF1 = 0x00EC
     const val SYS_CFG1 = 0x00F0
@@ -81,6 +83,7 @@ internal object Rtl88Regs {
     const val SINGLE_AMPDU_CTRL = 0x04C7
     const val MAX_AGGR_NUM = 0x04CA
     const val BAR_MODE_CTRL = 0x04CC
+    const val TX_RPT_CTRL = 0x04EC
     const val TX_RPT_TIME = 0x04F0
     const val EDCA_VO_PARAM = 0x0500
     const val EDCA_VI_PARAM = 0x0504
