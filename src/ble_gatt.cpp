@@ -26,6 +26,7 @@
 #define SEC_W (NIMBLE_PROPERTY::WRITE_ENC)
 extern "C" void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 extern "C" int ble_hs_set_rpa_timeout(uint16_t timeout);
+extern "C" void ble_svc_gatt_changed(uint16_t start_handle, uint16_t end_handle);
 extern "C" void ble_gap_preempt(void);
 extern "C" void ble_gap_preempt_done(void);
 #else
@@ -1167,6 +1168,15 @@ struct BleServerGapAccess {
 template struct BleServerGapAccess<&NimBLEServer::handleGapEvent>;
 
 static int bleConnGapGuard(struct ble_gap_event* event, void* arg) {
+    if (event->type == BLE_GAP_EVENT_IDENTITY_RESOLVED) {
+        struct ble_store_key_sec key = {};
+        struct ble_store_value_sec old = {};
+        key.peer_addr = event->identity_resolved.peer_id_addr;
+        if (ble_store_read_peer_sec(&key, &old) == 0) {
+            int rc = ble_store_util_delete_peer(&key.peer_addr);
+            Serial.printf("[BLE] new pairing replaces stored bond rc=%d\n", rc);
+        }
+    }
     if (event->type == BLE_GAP_EVENT_REPEAT_PAIRING && !blePairingOpen()) {
         Serial.println("[BLE] repeat pairing refused, pairing closed");
         if (pServer) pServer->disconnect(event->repeat_pairing.conn_handle);
@@ -1201,6 +1211,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         uint16_t h = info.getConnHandle();
         BlePeer* pe = blePeerFind(h);
         if (!info.isEncrypted() || !info.isBonded()) {
+            if (blePairingOpen()) {
+                Serial.printf("[BLE] encryption failed handle=%u, pairing open: waiting for re-pair\n", (unsigned)h);
+                return;
+            }
             Serial.printf("[BLE] pairing failed or not bonded handle=%u, disconnecting\n", (unsigned)h);
             if (pServer) pServer->disconnect(h);
             return;
@@ -3025,6 +3039,20 @@ void bleGattInit(void) {
     if (!bleAdvStart()) {
         Serial.println("[BLE] WARNING: advertising failed to start");
     }
+#if OUISPY_BLE_SECURE
+    {
+        char fp[64];
+        snprintf(fp, sizeof(fp), "%s|%s %s", FW_VERSION, __DATE__, __TIME__);
+        Preferences p;
+        p.begin("ouispy-ble", false);
+        if (p.getString("gattfp", "") != fp) {
+            ble_svc_gatt_changed(0x0001, 0xffff);
+            p.putString("gattfp", fp);
+            Serial.println("[BLE] firmware changed: service-changed queued for bonded phones");
+        }
+        p.end();
+    }
+#endif
     Serial.println("[BLE] GATT server started");
 #ifdef OUISPY_USB_LINK
     usbLinkInit();
