@@ -121,7 +121,7 @@ class WifiAdapter {
           );
         });
 
-  static Stream<WifiAdapterAttach> get attachEvents => !supported
+  static final Stream<WifiAdapterAttach> attachEvents = !supported
       ? const Stream.empty()
       : _attach.receiveBroadcastStream().map((e) {
           final m = e as Map<Object?, Object?>;
