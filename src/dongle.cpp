@@ -534,14 +534,6 @@ static uint32_t chanToFreq(uint8_t ch) {
     return 0u;
 }
 
-#define DONGLE_LOG_FILE_BUF 512
-
-static File sdOpenLog(const char* path, const char* mode) {
-    File f = DONGLE_SD.open(path, mode);
-    if (f) f.setBufferSize(DONGLE_LOG_FILE_BUF);
-    return f;
-}
-
 static uint16_t nextSeq(void) {
     uint16_t n = 1;
     File f = DONGLE_SD.open(DONGLE_SEQ_PATH, FILE_READ);
@@ -564,7 +556,7 @@ static uint16_t nextSeq(void) {
 static void openCsvFiles(void) {
     char path[48];
     snprintf(path, sizeof(path), DONGLE_DIR "/det_%04u.csv", (unsigned)s_seq);
-    s_detCsv = sdOpenLog(path, FILE_WRITE);
+    s_detCsv = DONGLE_SD.open(path, FILE_WRITE);
     if (s_detCsv) {
         s_detCsv.println("timestamp_ms,utc,engine,method,mac,rssi,channel,name,"
                          "lat,lon,alt,acc,node");
@@ -572,7 +564,7 @@ static void openCsvFiles(void) {
     }
 
     snprintf(path, sizeof(path), DONGLE_DIR "/wigle_%04u.csv", (unsigned)s_seq);
-    s_wigleCsv = sdOpenLog(path, FILE_WRITE);
+    s_wigleCsv = DONGLE_SD.open(path, FILE_WRITE);
     if (s_wigleCsv) {
         s_wigleCsv.printf("WigleWifi-1.6,appRelease=%s,model=OUI-SPY,release=%s,"
                           "device=%s,display=firmware,board=%s,brand=colonelpanic,"
@@ -607,17 +599,17 @@ static void stampFileNames(void) {
     snprintf(oldPath, sizeof(oldPath), DONGLE_DIR "/det_%04u.csv", (unsigned)s_seq);
     snprintf(newPath, sizeof(newPath), DONGLE_DIR "/det_%s.csv", compact);
     if (DONGLE_SD.rename(oldPath, newPath)) {
-        s_detCsv = sdOpenLog(newPath, FILE_APPEND);
+        s_detCsv = DONGLE_SD.open(newPath, FILE_APPEND);
     } else {
-        s_detCsv = sdOpenLog(oldPath, FILE_APPEND);
+        s_detCsv = DONGLE_SD.open(oldPath, FILE_APPEND);
     }
 
     snprintf(oldPath, sizeof(oldPath), DONGLE_DIR "/wigle_%04u.csv", (unsigned)s_seq);
     snprintf(newPath, sizeof(newPath), DONGLE_DIR "/wigle_%s.csv", compact);
     if (DONGLE_SD.rename(oldPath, newPath)) {
-        s_wigleCsv = sdOpenLog(newPath, FILE_APPEND);
+        s_wigleCsv = DONGLE_SD.open(newPath, FILE_APPEND);
     } else {
-        s_wigleCsv = sdOpenLog(oldPath, FILE_APPEND);
+        s_wigleCsv = DONGLE_SD.open(oldPath, FILE_APPEND);
     }
     sdUnlock();
 
@@ -1559,7 +1551,7 @@ void donglePcapOpen(uint16_t linktype) {
         snprintf(path, sizeof(path), DONGLE_DIR "/cap_%04u_%02u_%s.pcap", (unsigned)s_seq,
                  (unsigned)(++s_pcapIdx), linktype == 256 ? "ble" : "wifi");
     }
-    s_pcapFile = sdOpenLog(path, FILE_WRITE);
+    s_pcapFile = DONGLE_SD.open(path, FILE_WRITE);
     s_pcapBytes = 0;
     if (s_pcapFile) {
         uint8_t hdr[24];
