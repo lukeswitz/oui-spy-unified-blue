@@ -255,9 +255,42 @@ class AppState extends ChangeNotifier {
     final stored = _nodeLabels[canon];
     if (stored != null && stored.isNotEmpty) return stored;
     if (canon.isEmpty || id == 'LOCAL') return 'LOCAL';
+    final auto = _nodeAutoNames[canon];
+    if (auto != null) return 'OUISPY-$auto';
     return 'OUISPY-$canon';
   }
 
+  static String? chipCode(String board) => switch (board) {
+        'xiao_c5' || 'tdongle_c5' => 'C5',
+        'xiao_c3' => 'C3',
+        'xiao_s3' || 's3_devkitc' || 'tdongle_s3' => 'S3',
+        'stickc' || 'stickc_plus' || 'stickc_plus2' || 'wroom' => '32',
+        _ => null,
+      };
+
+  static String nextAutoName(String code, Iterable<String> taken) {
+    var n = 0;
+    for (final v in taken) {
+      if (v.length != code.length + 2 || !v.startsWith(code)) continue;
+      final k = int.tryParse(v.substring(code.length));
+      if (k != null && k > n) n = k;
+    }
+    return '$code${(n + 1).toString().padLeft(2, '0')}';
+  }
+
+  void _assignAutoName(String canon, String board) {
+    if (!_autoNamesLoaded || canon.isEmpty || canon == 'LOCAL' || _nodeAutoNames.containsKey(canon)) return;
+    final code = chipCode(board);
+    if (code == null) return;
+    _nodeAutoNames[canon] = nextAutoName(code, _nodeAutoNames.values);
+    SharedPreferences.getInstance().then((p) => p.setStringList(
+          'nodeAutoNames',
+          _nodeAutoNames.entries.map((e) => '${e.key}=${e.value}').toList(),
+        ));
+  }
+
+  final Map<String, String> _nodeAutoNames = {};
+  bool _autoNamesLoaded = false;
   final Map<String, String> _nodeLabels = {};
   final Set<String> _seenNodes = {};
   final Map<String, int> _nodeLastSeenMs = {};
@@ -432,6 +465,15 @@ class AppState extends ChangeNotifier {
       if (canon != rawKey) migrated = true;
       _nodeLabels[canon] = label;
     }
+    for (final e in p.getStringList('nodeAutoNames') ?? const []) {
+      final i = e.indexOf('=');
+      if (i <= 0) continue;
+      final canon = canonicalNodeId(e.substring(0, i));
+      if (canon.isNotEmpty) _nodeAutoNames[canon] = e.substring(i + 1);
+    }
+    _autoNamesLoaded = true;
+    _nodeBoard.forEach(_assignAutoName);
+    if (connectionState == NodeConnectionState.ready) _assignAutoName(nodeId, _ble.board);
     for (final raw in p.getStringList('seenNodes') ?? const []) {
       final canon = canonicalNodeId(raw);
       if (canon.isEmpty || canon == 'LOCAL') { migrated = true; continue; }
@@ -482,6 +524,7 @@ class AppState extends ChangeNotifier {
       connectionState = state;
       if (state == NodeConnectionState.ready) {
         nodeId = canonicalNodeId(_ble.nodeId);
+        _assignAutoName(nodeId, _ble.board);
         if (nodeId.isNotEmpty) _recordSeenNode(nodeId);
         sessionStartTime = DateTime.now();
         _ble.setIgnoreList(_ignoreList.serializeForFirmware());
@@ -587,7 +630,10 @@ class AppState extends ChangeNotifier {
         if (entry.role == 1) managers.add(canon);
         _nodeLastSeenMs[canon] = now;
         if (entry.fwVersion != 0) _nodeFwVersion[canon] = entry.fwVersion;
-        if (entry.board.isNotEmpty) _nodeBoard[canon] = entry.board;
+        if (entry.board.isNotEmpty) {
+          _nodeBoard[canon] = entry.board;
+          _assignAutoName(canon, entry.board);
+        }
         final tempC = entry.tempC;
         if (tempC != null) _nodeTempC[canon] = tempC;
       }

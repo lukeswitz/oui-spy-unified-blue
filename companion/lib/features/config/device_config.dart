@@ -321,7 +321,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       2 => 'What to watch for, notifications, your lists',
       3 => ble.currentConnectionState != NodeConnectionState.ready
           ? (ble.isConnected ? 'Connecting…' : 'Not connected')
-          : '${boardDisplayName(ble.board)} · $_nodeId\n${[
+          : '${boardDisplayName(ble.board)} · ${ref.read(appStateProvider).labelForNode(_nodeId)}\n${[
               'fw $_fwVersion',
               if (temp != null) formatTempC(temp, ref.read(unitSystemProvider)),
             ].join(' · ')}',
