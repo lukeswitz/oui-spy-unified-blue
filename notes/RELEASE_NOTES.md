@@ -116,3 +116,4 @@
 - WiGLE CSV left out Wi-Fi clients, detector hits, and rows without a GPS fix. It now writes every detection except those inside an exclusion zone and iPhone hits, which have no MAC address. Rows with no fix have blank coordinates.
 - Some access points from a USB Wi-Fi adapter were missing from the session's WiGLE CSV.
 - The app asked to turn on Bluetooth when it was already on.
+- Stopping a USB adapter or the SDR froze the app for up to 2 seconds.
