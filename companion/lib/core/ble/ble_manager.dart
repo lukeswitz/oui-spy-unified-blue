@@ -705,6 +705,12 @@ class BleManager {
     try {
       await _doConnect(device, sessionId: sessionId, autoConnect: autoConnect);
     } catch (e) {
+      final used = _device ?? device;
+      try {
+        await used.disconnect(queue: false);
+      } on Exception catch (de) {
+        DebugLog.log('BLE: release failed client ${used.remoteId}: $de');
+      }
       if (!_isReconnect && isLinkSetup) {
         _currentState = NodeConnectionState.disconnected;
         _connectionState.add(NodeConnectionState.disconnected);
