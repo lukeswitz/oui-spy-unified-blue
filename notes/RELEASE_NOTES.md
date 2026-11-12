@@ -53,6 +53,7 @@
 - T-Dongle and M5Stick boards add a detections screen with the 4 latest hits.
 - Several USB Wi-Fi adapters can run at once, each with its own switch and STOP.
 - Open-source licenses page in Settings.
+- Boards show names by chip, such as OUISPY-C501 and OUISPY-S301, until you rename them.
 
 ## Changed
 
