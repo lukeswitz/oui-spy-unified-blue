@@ -9,7 +9,6 @@ class WigleCsv {
   const WigleCsv._();
 
   static const _version = '1.0.0';
-  static final _macPattern = RegExp(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$');
   static final _dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
   static String generate(List<Detection> detections, {IgnoreListState? ignoreList, GeofenceFilter? geofenceFilter, String board = ''}) {
@@ -45,19 +44,13 @@ class WigleCsv {
 
     // Data rows
     for (final d in detections) {
-      if (_notSelfIdentity.contains(d.method)) continue;
-      if (d.latitude == null || d.longitude == null) continue;
-      if (d.approxGps) continue;
-
-      if (ignoreList != null) {
-        final isBle = d.isBleDetection;
-        if (ignoreList.shouldSuppress(
-          mac: d.macAddress,
-          ssid: d.ssid.isNotEmpty ? d.ssid : d.deviceName,
-          isBle: isBle,
-        )) {
-          continue;
-        }
+      if (ignoreList != null &&
+          ignoreList.shouldSuppress(
+            mac: d.macAddress,
+            ssid: d.ssid.isNotEmpty ? d.ssid : d.deviceName,
+            isBle: d.isBleDetection,
+          )) {
+        continue;
       }
 
       // Geofence exclusion: skip detections inside wardrive-exclusion zones
@@ -68,7 +61,6 @@ class WigleCsv {
 
       final mac = d.macAddress;
       final isBleDevice = d.isBleDetection;
-      if (isBleDevice && !_macPattern.hasMatch(mac)) continue;
       final String rawSsid;
       if (d.engine == Engine.skySpy) {
         rawSsid = d.odid?.uavId ?? d.deviceName;
@@ -83,8 +75,8 @@ class WigleCsv {
       final channel = isBleDevice || d.channel <= 0 ? '' : '${d.channel}';
       final frequency = _frequency(d);
       final rssi = d.rssi;
-      final lat = d.latitude!;
-      final lon = d.longitude!;
+      final lat = d.latitude ?? '';
+      final lon = d.longitude ?? '';
       final alt = d.altitude ?? 0.0;
       final acc = d.accuracy ?? 0.0;
       final type = _type(d);
@@ -116,7 +108,6 @@ class WigleCsv {
     };
   }
 
-  static const _notSelfIdentity = {'wifi_client', 'probe_ssid', 'deauth_storm', 'karma', 'join_flood', 'tag_flood', 'beacon_flood'};
 
   static String _frequency(Detection d) {
     final isBle = d.isBleDetection;

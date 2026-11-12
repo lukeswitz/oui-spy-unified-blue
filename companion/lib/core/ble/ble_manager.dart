@@ -975,6 +975,13 @@ class BleManager {
     // Discover services
     _currentState = NodeConnectionState.syncing; _connectionState.add(NodeConnectionState.syncing);
     DebugLog.log('BLE: discovering services...');
+    if (Platform.isAndroid) {
+      try {
+        await device.clearGattCache();
+      } on FlutterBluePlusException catch (e) {
+        DebugLog.log('BLE: clearGattCache: ${e.description}');
+      }
+    }
     final services = await device.discoverServices();
 
     for (final s in services) {

@@ -133,6 +133,34 @@ Future<void> reconcileDanglingWardriveSessions(AppDatabase db) async {
 
 enum WifiBand { band24, band5, both }
 
+Detection mergeWardriveSighting(Detection existing, Detection detection) {
+  WardriveExtension? mergedWardrive = detection.wardrive ?? existing.wardrive;
+  if (detection.wardrive != null && existing.wardrive != null) {
+    final newAuth = detection.wardrive!.authMode;
+    final oldAuth = existing.wardrive!.authMode;
+    mergedWardrive = detection.wardrive!.copyWith(
+      authMode: newAuth > 0 ? newAuth : oldAuth,
+      ssid: detection.wardrive!.ssid.isNotEmpty
+          ? detection.wardrive!.ssid
+          : existing.wardrive!.ssid,
+      deviceName: detection.wardrive!.deviceName.isNotEmpty
+          ? detection.wardrive!.deviceName
+          : existing.wardrive!.deviceName,
+    );
+  }
+  final hasFix = detection.latitude != null && detection.longitude != null;
+  final keepAp = existing.method == 'wifi_ap' && detection.method == 'wifi_client';
+  return detection.copyWith(
+    count: existing.count + 1,
+    rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
+    wardrive: mergedWardrive,
+    method: keepAp ? existing.method : detection.method,
+    latitude: hasFix ? detection.latitude : existing.latitude,
+    longitude: hasFix ? detection.longitude : existing.longitude,
+    accuracy: hasFix ? detection.accuracy : existing.accuracy,
+  );
+}
+
 class WardriveController extends ChangeNotifier {
   WardriveController(this._ble, this._gps, this._db, this._ignoreList, this._geofenceFilter, this._notificationService, this._liveActivity) {
     _connSub = _ble.connectionState.listen((connState) {
@@ -1857,25 +1885,7 @@ class WardriveController extends ChangeNotifier {
     if (existing != null) {
       final rssiDelta = (detection.rssi - existing.rssi).abs();
       final shouldRelog = rssiDelta >= threshold;
-      WardriveExtension? mergedWardrive = detection.wardrive ?? existing.wardrive;
-      if (detection.wardrive != null && existing.wardrive != null) {
-        final newAuth = detection.wardrive!.authMode;
-        final oldAuth = existing.wardrive!.authMode;
-        mergedWardrive = detection.wardrive!.copyWith(
-          authMode: newAuth > 0 ? newAuth : oldAuth,
-          ssid: detection.wardrive!.ssid.isNotEmpty
-              ? detection.wardrive!.ssid
-              : existing.wardrive!.ssid,
-          deviceName: detection.wardrive!.deviceName.isNotEmpty
-              ? detection.wardrive!.deviceName
-              : existing.wardrive!.deviceName,
-        );
-      }
-      final updated = detection.copyWith(
-        count: existing.count + 1,
-        rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
-        wardrive: mergedWardrive,
-      );
+      final updated = mergeWardriveSighting(existing, detection);
       _dedupedByMac.remove(key);
       _dedupedByMac[key] = updated;
       _newestFirst = null;

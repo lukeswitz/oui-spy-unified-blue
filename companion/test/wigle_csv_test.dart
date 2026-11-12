@@ -24,7 +24,7 @@ Detection _d(String mac, String method, {Engine engine = Engine.wardrive, int ch
 List<String> _rows(String csv) => csv.split('\n').skip(2).where((l) => l.isNotEmpty).toList();
 
 void main() {
-  test('rows that are not a transmitter announcing itself stay out', () {
+  test('every detection is exported, clients and detector rows included', () {
     final csv = WigleCsv.generate([
       _d('02:00:00:00:00:01', 'wifi_ap', auth: 3),
       _d('02:00:00:00:00:02', 'wifi_client', auth: 3),
@@ -32,9 +32,14 @@ void main() {
       _d('02:00:00:00:00:04', 'deauth_storm', engine: Engine.detector),
       _d('02:00:00:00:00:05', 'karma', engine: Engine.detector),
     ]);
-    final rows = _rows(csv);
-    expect(rows.length, 1);
-    expect(rows.single, startsWith('02:00:00:00:00:01,'));
+    expect(_rows(csv).length, 5);
+  });
+
+  test('a detection without a fix is still exported with blank coordinates', () {
+    final noFix = _d('02:00:00:00:00:06', 'wifi_ap', auth: 3).copyWith(latitude: null, longitude: null);
+    final row = _rows(WigleCsv.generate([noFix])).single.split(',');
+    expect(row[7], '');
+    expect(row[8], '');
   });
 
   test('auth is written as observed, never guessed', () {
