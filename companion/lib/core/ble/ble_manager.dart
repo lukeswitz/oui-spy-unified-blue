@@ -554,7 +554,10 @@ class BleManager {
   /// Scan for OUI-SPY devices. Results arrive on FlutterBluePlus.onScanResults.
   Future<void> startScan({Duration timeout = const Duration(seconds: 10)}) async {
     // Ensure BLE adapter is on
-    if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+    final adapter = await FlutterBluePlus.adapterState
+        .firstWhere((s) => s != BluetoothAdapterState.unknown)
+        .timeout(const Duration(seconds: 2), onTimeout: () => FlutterBluePlus.adapterStateNow);
+    if (adapter == BluetoothAdapterState.off) {
       await FlutterBluePlus.turnOn();
     }
 

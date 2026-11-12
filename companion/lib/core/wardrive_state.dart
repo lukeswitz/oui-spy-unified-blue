@@ -1193,7 +1193,7 @@ class WardriveController extends ChangeNotifier {
       final dir = await _wardriveDir();
       final filename = await _csvFilename(sid);
       final file = File(path.join(dir.path, filename));
-      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList, geofenceFilter: _geofenceFilter, board: _ble.board);
+      final csv = WigleCsv.generate(dets, geofenceFilter: _geofenceFilter, board: _ble.board);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV saved ${file.path}');
       return file.path;
@@ -1252,7 +1252,7 @@ class WardriveController extends ChangeNotifier {
       final dbRows = await _db.getDetectionMapsForSession(sid);
       if (dbRows.isEmpty) return null;
       final dets = dbRows.map(_detectionFromDb).toList();
-      final csv = WigleCsv.generate(dets, ignoreList: _ignoreList, geofenceFilter: _geofenceFilter, board: _ble.board);
+      final csv = WigleCsv.generate(dets, geofenceFilter: _geofenceFilter, board: _ble.board);
       await file.writeAsString(csv);
       DebugLog.log('WARDRIVE: CSV regenerated from DB for $sid (${dets.length} det)');
       return file;

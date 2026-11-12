@@ -7,7 +7,6 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart' show bleManagerProvider;
 import 'package:oui_spy/core/db/app_database.dart' show AppDatabase, databaseProvider;
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
-import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -54,7 +53,7 @@ class ExportScreen extends ConsumerWidget {
               label: 'WIGLE CSV 1.6',
               description: 'Compatible with wigle.net upload',
               icon: Icons.table_chart,
-              onTap: count > 0 ? () => _exportWigleCsv(context, state.recentDetections, ref.read(ignoreListProvider), ref.read(geofenceFilterProvider), ref.read(bleManagerProvider).board) : null,
+              onTap: count > 0 ? () => _exportWigleCsv(context, state.recentDetections, ref.read(geofenceFilterProvider), ref.read(bleManagerProvider).board) : null,
             ),
             _ExportButton(
               label: 'JSON',
@@ -187,8 +186,8 @@ class ExportScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportWigleCsv(BuildContext context, List<Detection> detections, IgnoreListState ignoreList, GeofenceFilter geofence, String board) async {
-    final csv = WigleCsv.generate(detections, ignoreList: ignoreList, geofenceFilter: geofence, board: board);
+  Future<void> _exportWigleCsv(BuildContext context, List<Detection> detections, GeofenceFilter geofence, String board) async {
+    final csv = WigleCsv.generate(detections, geofenceFilter: geofence, board: board);
     await _shareFile(context, csv, 'oui_spy_wigle.csv');
   }
 

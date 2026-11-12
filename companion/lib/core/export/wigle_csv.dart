@@ -1,6 +1,5 @@
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
-import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -11,7 +10,7 @@ class WigleCsv {
   static const _version = '1.0.0';
   static final _dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
-  static String generate(List<Detection> detections, {IgnoreListState? ignoreList, GeofenceFilter? geofenceFilter, String board = ''}) {
+  static String generate(List<Detection> detections, {GeofenceFilter? geofenceFilter, String board = ''}) {
     final buffer = StringBuffer();
 
     final b = board.toLowerCase();
@@ -44,15 +43,6 @@ class WigleCsv {
 
     // Data rows
     for (final d in detections) {
-      if (ignoreList != null &&
-          ignoreList.shouldSuppress(
-            mac: d.macAddress,
-            ssid: d.ssid.isNotEmpty ? d.ssid : d.deviceName,
-            isBle: d.isBleDetection,
-          )) {
-        continue;
-      }
-
       // Geofence exclusion: skip detections inside wardrive-exclusion zones
       if (geofenceFilter != null &&
           geofenceFilter.isExcludedNullable(d.latitude, d.longitude)) {
