@@ -8,37 +8,29 @@
 
 # OUI-APEX
 
-***Snoop unto them, as they snoop unto us.***
+***"Snoop unto them, as they snoop unto us"***
 
 </div>
 
-
-**OUI-APEX** detects surveillance hardware, trackers and drones. It also works as a wardriving and recon tool.
-
-- **Firmware (ESP32):** one board runs every detector. Add more boards to form an ESP-NOW mesh, up to 200 m apart.
-- **App:** controls the boards, maps detections, and exports or uploads to WiGLE and WDGWars.
-- **Phone:** scans by itself, or foxhunts (tracks a signal to its source) while the boards keep detecting.
-
 <div align="center">
+<b>OUI-APEX detects surveillance hardware, trackers and drones.</b> It also works as a wardriving and recon tool.
+<p>
+  
 <table>
   <tr>
     <td><img width="194" src="docs/screenshots/ui/overview.png" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" /></td>
     <td><img width="349" src="docs/screenshots/ui/home-photo.jpg" alt="Phone running OUI-APEX on the Home screen with an RTL-SDR connected" /></td>
   </tr>
 </table>
-</div>
 
 | Platform | Phone scans | Add-ons |
 |---|---|---|
-| Android | Bluetooth, Wi-Fi | ESP32 board, RTL-SDR, USB Wi-Fi adapter |
-| iPhone / macOS | BLE | ESP32 board (adds Wi-Fi) |
+| Android | Bluetooth, Wi-Fi | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
+| iPhone / macOS | BLE | ESP32 board(s) |
 
+</div>
 
-> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks with additional features.
->
-> **Not affiliated with OUI-SPY.** Beta, bugs can exist. 
-
-**Contents**
+## Contents
 
 - [Quick start](#quick-start)
 - [Engines](#engines)
@@ -52,9 +44,16 @@
 - [Internet services](#internet-services)
 - [Build](#build)
 - [Credits](#credits)
+  
 
 ## Quick start
 
+_How it Works:_
+- **Firmware (ESP32):** Runs combined OUI-SPY firmware. Add more boards to form an ESP-NOW mesh perimeter (up to 200m apart).
+- **App:** controls the firmware, maps detections, and exports or uploads to WiGLE and WDGWars.
+- **Phone:** scans by itself (limited), or foxhunts (tracks a signal to its source) while the boards keep detecting.
+
+_Getting Started:_
 1. Flash a board from the [web flasher](https://lukeswitz.github.io/oui-spy-unified-blue/) (Chrome or Edge, USB). Pick the **NODE** target for your board. Later updates come from the app.
 2. Install the app: [Android / macOS](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) or [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
 3. Open the app, tap **CONNECT**, pick the board.
@@ -85,7 +84,7 @@
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
 
-In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off.
+In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off. **OUI-based detection is an optional setting.**
 
 ### Flock confidence
 
@@ -95,7 +94,7 @@ In SETTINGS → **Detection & alerts**, each type can **alert** (notification pl
 | **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe |
 | **SUSPECTED** | A listed OUI only |
 
-DETECTIONS → HISTORY can filter by tier.
+DETECTIONS → HISTORY can filter by tier. 
 
 ## Ways to run
 
@@ -113,8 +112,6 @@ DETECTIONS → HISTORY can filter by tier.
 
 ## App
 
-Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
-
 <div align="center">
 <table>
   <tr>
@@ -127,7 +124,10 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 
 - **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
 - **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export), ALERTS (every alert, newest first). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
-- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it. A Google Fast Pair device in pairing mode shows its model name.
+- **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
+- **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
+  
+- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
 - **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
 - **Suggested signatures** (DEVICES → More): groups of 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** makes one your own signature, with an optional alert on new matches (SETTINGS → Detection & alerts → My signatures).
 - **Signature sets** (SETTINGS → Detection & alerts): turn on the Fieldwatch stock catalog or Home Assistant's Bluetooth device list, or add your own set by https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
@@ -137,11 +137,11 @@ Bottom tabs: **HOME · DETECTIONS · MAP · SETTINGS**.
 - **Movement alerts** (Detection & alerts, off by default): a car following you (its RTL-SDR tire sensors heard over 2+ km and 10+ min; your own car is learned), an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another.
 - **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
 - **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
-- **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map. **REPORT** on a saved session shows its networks, security, bands, top makers, detections and route. Share it as text.
+
 - **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m). *WDG TERRITORY* shows a linked account's WDGWars territory.
 - **Geofences**: inside a zone, detections drop from feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
 - **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
-- **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
+
 - **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
 - **Android**: during a session, an ongoing notification shows live counts and the last alert.
 
@@ -337,6 +337,10 @@ cd companion && flutter pub get && flutter build apk --release   # or ipa / maco
 Over-the-air updates must be signed with the release key. A board flashed over USB takes any image.
 
 ## Credits
+
+> Runs the [OUI-SPY ecosystem](https://github.com/colonelpanichacks) by colonelpanichacks with additional features.
+>
+> **Not affiliated with OUI-SPY.**
 
 - Upstream engines: [Detector](https://github.com/colonelpanichacks/ouispy-detector), [Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter), [Flock You](https://github.com/colonelpanichacks/flock-you), [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy), [UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) by **colonelpanichacks**.
 - **Will Greenberg** ([flock-you](https://github.com/wgreenberg/flock-you)): XUNTONG `0x09C8` detection.
