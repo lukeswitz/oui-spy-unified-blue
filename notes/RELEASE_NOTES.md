@@ -117,3 +117,5 @@
 - Some access points from a USB Wi-Fi adapter were missing from the session's WiGLE CSV.
 - The app asked to turn on Bluetooth when it was already on.
 - Stopping a USB adapter or the SDR froze the app for up to 2 seconds.
+- An RTL8811AU or RTL8821AU adapter found no networks after STOP and START until you replugged it.
+- Home kept showing a USB adapter after you unplugged it, and missed one plugged in while the app was open.
