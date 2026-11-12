@@ -1173,6 +1173,11 @@ static int bleConnGapGuard(struct ble_gap_event* event, void* arg) {
         struct ble_store_value_sec old = {};
         key.peer_addr = event->identity_resolved.peer_id_addr;
         if (ble_store_read_peer_sec(&key, &old) == 0) {
+            if (!blePairingOpen()) {
+                Serial.println("[BLE] bond replace refused, pairing closed");
+                if (pServer) pServer->disconnect(event->identity_resolved.conn_handle);
+                return 0;
+            }
             int rc = ble_store_util_delete_peer(&key.peer_addr);
             Serial.printf("[BLE] new pairing replaces stored bond rc=%d\n", rc);
         }
