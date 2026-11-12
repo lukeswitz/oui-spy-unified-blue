@@ -37,6 +37,22 @@
 - Detects Bluetooth adult toys as their own class.
 - USB Wi-Fi adapters on Android (MediaTek, Realtek, Atheros, Ralink) scan in monitor mode, user space, no root; the MT7921AU also scans Bluetooth LE.
 - Tap a Bluetooth or Wi-Fi detection to see a plain-English identification, why the app thinks that, the signal strength, the decoded advertisement, and when the device was first and last seen.
+- ALERTS tab in DETECTIONS lists every alert, newest first. Tapping a notification opens it.
+- Seen at your stops: radios heard at 2 or more of your stops in 7 days.
+- Trusted networks: warns when a lookalike of your Wi-Fi shows up.
+- Cell network watch and GPS spoofing & jamming warnings on Android.
+- Movement alerts: drone loitering, aircraft circling you, car following you, device crossing your mesh.
+- Wi-Fi beacon flood detection: one radio faking a crowd of networks.
+- Samsung SmartTag decoding. A tag away from its owner keeps its path when its address changes.
+- Google Fast Pair devices in pairing mode show their model name.
+- Suggested signatures in DEVICES: save a group of look-alike radios as your own signature, with an optional alert.
+- Signature sets: add the Fieldwatch stock catalog, Home Assistant's Bluetooth list, or your own set by link or file.
+- Wardrive report for each saved session, with a route map and a share button.
+- Drone details show the maker from the serial number.
+- Remote ID adds height, operator position, EU category and class, and operator altitude.
+- T-Dongle and M5Stick boards add a detections screen with the 4 latest hits.
+- Several USB Wi-Fi adapters can run at once, each with its own switch and STOP.
+- Open-source licenses page in Settings.
 
 ## Changed
 
@@ -50,6 +66,12 @@
 - Shorter notification body: RSSI, channel, name, MAC.
 - The board advertises a rotating private Bluetooth address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN, because the board has no screen to show one. On XIAO C5, S3 and C3 the chip's own address resolver does this.
 - The status bar shows a board icon while connected and a clearer GPS label. The connection timer is gone.
+- A wardrive keeps recording on the phone and USB adapters when the board drops.
+- The app no longer caps devices or unique addresses per engine.
+- iPhone and Mac ask for notification permission when first needed, not at launch.
+- The Android background-running step is gone from setup.
+- Pairing floods are not raised for weak bursts while driving.
+- Detector targets, their labels and signatures stay on the board through a reboot.
 
 ## Fixed
 
@@ -79,3 +101,18 @@
 - A board paired but then dropped to "not connected" right after. The link now stays up after pairing.
 - The scan picker (Flock, Drone, Scan, Detect) looked like it changed your selection after you pressed START. The chips now stay on what you chose.
 - A board used on its own did not appear in the connect list after you disconnected from a manager. Solo boards show up again.
+- Silicon Labs radios showed as a Flock battery, and one LiteOn prefix as a camera.
+- The bell mute did not silence beacon flood alerts.
+- Cancel did not stop every reconnect attempt.
+- The Add Target dialog could crash when dismissed.
+- LilyGO T-Dongle-C5: the phone could not connect or pair, or dropped seconds after connecting. The board ran out of the memory its Bluetooth radio needs.
+- A paired phone was refused after the board rebooted, until its 2-minute pairing window reopened. Pairing again after forgetting a board now saves the new keys.
+- After a firmware update, a paired phone could connect but get no data. The board now tells paired phones to refresh, and Android reads the board's services fresh on every connect.
+- If the phone still held old keys for a board, the board dropped it before it could pair again. While pairing is open, it now waits for the phone to pair.
+- Tapping Scan did nothing while the app was retrying a board in the background. Scan now stops the retry.
+- Forgetting a board left the app retrying it.
+- Switching boards could leave the old board connected in the background, so a mesh node ignored its manager.
+- A failed connect could leave Android reconnecting to the board many times a second.
+- WiGLE CSV left out Wi-Fi clients, detector hits, and rows without a GPS fix. It now writes every detection except those inside an exclusion zone. Rows with no fix have blank coordinates.
+- Some access points from a USB Wi-Fi adapter were missing from the session's WiGLE CSV.
+- The app asked to turn on Bluetooth when it was already on.
