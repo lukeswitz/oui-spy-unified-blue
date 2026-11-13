@@ -317,7 +317,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final temp = _selfTempC;
     return switch (i) {
       0 => 'Theme, units, auto-connect',
-      1 => 'Re-log thresholds, scan timing, channels',
+      1 => 'Re-log thresholds, scan timing, channels, adapters',
       2 => 'What to watch for, notifications, lists, privacy',
       3 => ble.currentConnectionState != NodeConnectionState.ready
           ? (ble.isConnected ? 'Connecting…' : 'Not connected')
@@ -373,6 +373,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       });
 
   List<(String, String, IconData, Widget Function())>? _subPages(int i) => switch (i) {
+        1 => [
+            ('Timing & Re-log', 'Re-log thresholds, scan timing', Icons.timer, () => _buildScanTab(_ScanPart.relog)),
+            ('Channels & Band', ref.read(bleManagerProvider).isC5 ? 'Wi-Fi band, channel range' : 'Channel range', Icons.tune, () => _buildScanTab(_ScanPart.channels)),
+            ('External Adapters', 'USB Wi-Fi adapters and RTL-SDR', Icons.usb, () => _buildScanTab(_ScanPart.adapters)),
+          ],
         2 => [
             ('What to Watch For', 'Surveillance, trackers, attacks, alert threshold', Icons.radar, () => const _DetectionSettingsTab(part: _DetPart.watch)),
             ('Notifications', 'Sound, vibration, rate limits, muted types', Icons.notifications_active, () => ListView(
@@ -384,17 +389,21 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Privacy', 'Receive only, mask identifiers on screen', Icons.privacy_tip_outlined, () => const _DetectionSettingsTab(part: _DetPart.privacy)),
           ],
         3 => [
-            ('Hardware', 'Sound, lights, GPS source, Flock detection, offline scan', Icons.memory, _buildHardwareTab),
+            ('Sound & Lights', _hasBuzzer ? 'Buzzer, alert sounds, status LED, NeoPixel' : 'Status LED, NeoPixel', Icons.volume_up, () => _buildHardwareTab(_HwPart.sound)),
+            ('GPS Source', 'Phone or on-board GPS module', Icons.satellite_alt, () => _buildHardwareTab(_HwPart.gps)),
+            ('Flock Detection', 'Extended OUI set, OUI-only Wi-Fi hits', Icons.camera_outdoor, () => _buildHardwareTab(_HwPart.flock)),
+            ('Radio Privacy', 'Active Wi-Fi probing, passive Bluetooth', Icons.cell_tower, () => _buildHardwareTab(_HwPart.radio)),
+            ('Offline Scan', 'Keep scanning while disconnected', Icons.cloud_off, () => _buildHardwareTab(_HwPart.offline)),
             ('Mesh', 'Mode, status, key, nodes with board and temperature', Icons.hub, _buildMeshTab),
             ('Firmware', 'Device info, Wi-Fi network, updates', Icons.system_update, _buildFirmwareTab),
-            ('JCMK Node Hub','Collect from Piglet / JCMK ESP-NOW wardriver nodes', Icons.router, () => ListView(
+            ('JCMK Node Hub', 'Collect from Piglet / JCMK ESP-NOW wardriver nodes', Icons.router, () => ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: const [_EnowHubSection()],
                 )),
           ],
         4 => [
             ('Accounts', 'WiGLE and WDGWars upload accounts', Icons.cloud_upload, () => const _WardriveConfigTab(showAccounts: true)),
-            ('Capture Database','Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
+            ('Capture Database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
             ('Export', 'Data and backup, OUI database', Icons.ios_share, _buildExportTab),
           ],
@@ -408,28 +417,34 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final title = subs != null && sub != null ? subs[sub].$1 : _sectionTitles[i];
     final Widget body = switch (i) {
       0 => _buildAppTab(),
-      1 => _buildScanTab(),
       _aboutIndex => _buildAboutTab(),
       _ when sub != null => subs![sub].$4(),
-      _ => ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            if (i == 3 && !ref.read(bleManagerProvider).isConnected)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-                child: Text('Connect an OUI-SPY board to change its settings.',
-                    style: TextStyle(color: t.textDim, fontSize: 14)),
-              ),
-            for (var s = 0; s < subs!.length; s++)
-              ConfigActionRow(
-                icon: subs[s].$3,
-                label: subs[s].$1,
-                subtitle: subs[s].$2,
-                color: AppTheme.accent,
-                onTap: () => setState(() => _sub = s),
-              ),
-          ],
-        ),
+      _ => LayoutBuilder(builder: (context, box) {
+          final rowH = ((box.maxHeight - 36) / subs!.length).clamp(64.0, 120.0);
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
+              if (i == 3 && !ref.read(bleManagerProvider).isConnected)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                  child: Text('Connect an OUI-SPY board to change its settings.',
+                      style: TextStyle(color: t.textDim, fontSize: 14)),
+                ),
+              for (var s = 0; s < subs.length; s++)
+                ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: rowH),
+                  child: ConfigActionRow(
+                    icon: subs[s].$3,
+                    label: subs[s].$1,
+                    subtitle: subs[s].$2,
+                    color: AppTheme.accent,
+                    prominent: true,
+                    onTap: () => setState(() => _sub = s),
+                  ),
+                ),
+            ],
+          );
+        }),
     };
     return Column(
       children: [
@@ -563,12 +578,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     );
   }
 
-  Widget _buildScanTab() {
+  Widget _buildScanTab(_ScanPart part) {
     final t = AppTheme.of(context);
     final isC5 = ref.watch(bleManagerProvider).isC5;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
+        if (part == _ScanPart.relog) ...[
         const ConfigSectionHeader(label: 'Wardrive RSSI'),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
@@ -590,9 +606,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ),
         const _ScanTimingSliders(),
+        ],
 
+        if (part == _ScanPart.channels) ...[
         if (isC5) ...[
-          const SizedBox(height: 16),
           const ConfigSectionHeader(label: 'WiFi band'),
           Padding(
             padding: const EdgeInsets.only(bottom: 8, left: 2),
@@ -602,9 +619,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ),
           ),
           const _WifiBandSelector(),
+          const SizedBox(height: 16),
         ],
-
-        const SizedBox(height: 16),
         ConfigSectionHeader(label: 'Channel range'),
         Padding(
           padding: const EdgeInsets.only(bottom: 8, left: 2),
@@ -614,10 +630,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ),
         const _ChannelRangeSlider(),
+        ],
 
-        const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'External Adapters'),
-        const _WifiAdapterSection(),
+        if (part == _ScanPart.adapters) const _WifiAdapterSection(),
       ],
     );
   }
@@ -760,17 +775,19 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     );
   }
 
-  Widget _buildHardwareTab() {
+  bool get _hasBuzzer => !const {'tdongle_s3', 'tdongle_c5', 'stickc'}.contains(ref.read(bleManagerProvider).board);
+
+  Widget _buildHardwareTab(_HwPart part) {
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
-    final hasBuzzer = !const {'tdongle_s3', 'tdongle_c5', 'stickc'}
-        .contains(ref.read(bleManagerProvider).board);
+    final hasBuzzer = _hasBuzzer;
     final rxOnly = ref.watch(rxOnlyProvider) == true;
     final policy = _radioPolicy == null ? 0 : (rxOnly ? BleManager.rxOnlyPolicy(_radioPolicy!) : _radioPolicy!);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
+        if (part == _HwPart.sound) ...[
         if (hasBuzzer) const ConfigSectionHeader(label: 'Audio'),
         if (hasBuzzer) ConfigToggleRow(
           icon: Icons.volume_up,
@@ -832,9 +849,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           onChanged: (v) => setState(() => _neopixelBrightness = v.round()),
           onChangeEnd: (_) => _writeHardwareConfig(),
         ),
+        ],
 
-        const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'GPS source'),
+        if (part == _HwPart.gps) ...[
         ConfigInfoRow(
           icon: _hwGps.active ? Icons.satellite_alt : Icons.satellite_alt_outlined,
           label: 'On-board GPS module',
@@ -861,9 +878,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           'On-board GPS module',
           'Record from the module, falling back to the phone whenever it has no fix.',
         ),
+        ],
 
-        const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'Flock detection'),
+        if (part == _HwPart.flock) ...[
         ConfigToggleRow(
           icon: Icons.lan,
           label: 'Extended Repo OUI set',
@@ -886,10 +903,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             _writeHardwareConfig();
           },
         ),
+        ],
 
-        if (_radioPolicy != null) ...[
-          const SizedBox(height: 16),
-          ConfigSectionHeader(label: 'Radio privacy'),
+        if (part == _HwPart.radio && _radioPolicy == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+            child: Text("This board's firmware does not report radio privacy settings.",
+                style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 14)),
+          ),
+        if (part == _HwPart.radio && _radioPolicy != null) ...[
           if (rxOnly)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -924,8 +946,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ],
 
-        const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'Offline scan (experimental)'),
+        if (part == _HwPart.offline) ...[
         ConfigToggleRow(
           icon: Icons.cloud_off,
           label: 'Keep scanning while disconnected (EXPERIMENTAL)',
@@ -949,6 +970,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               ref.read(sharedPreferencesProvider).setBool('offlineGpsTagEnabled', v);
             },
           ),
+        ],
       ],
     );
   }

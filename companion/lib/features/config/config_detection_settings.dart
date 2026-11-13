@@ -88,6 +88,10 @@ void _pushPage(BuildContext context, String title, Widget body) {
 
 enum _DetPart { watch, lists, phone, privacy }
 
+enum _ScanPart { relog, channels, adapters }
+
+enum _HwPart { sound, gps, flock, radio, offline }
+
 class _DetectionSettingsTab extends ConsumerStatefulWidget {
   const _DetectionSettingsTab({required this.part});
   final _DetPart part;

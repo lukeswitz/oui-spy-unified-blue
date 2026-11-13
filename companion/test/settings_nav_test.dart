@@ -49,5 +49,26 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('Settings'), findsOneWidget);
+
+    await tester.tap(find.text('Scanning'));
+    await tester.pumpAndSettle();
+    for (final sub in ['Timing & Re-log', 'Channels & Band', 'External Adapters']) {
+      expect(find.text(sub), findsOneWidget, reason: sub);
+    }
+    await tester.tap(find.text('Timing & Re-log'));
+    await tester.pumpAndSettle();
+    expect(find.text('Wardrive RSSI'), findsOneWidget);
+    expect(find.text('Channel range'), findsNothing);
+    await tester.tap(find.byTooltip('Scanning'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Node'));
+    await tester.pumpAndSettle();
+    for (final sub in ['Sound & Lights', 'GPS Source', 'Flock Detection', 'Radio Privacy', 'Offline Scan', 'Mesh', 'Firmware', 'JCMK Node Hub']) {
+      await tester.scrollUntilVisible(find.text(sub), 200);
+      expect(find.text(sub), findsOneWidget, reason: sub);
+    }
   });
 }
