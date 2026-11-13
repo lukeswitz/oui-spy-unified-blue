@@ -636,12 +636,40 @@ class BleManager {
         pairedEntriesWith(p.getStringList(_pairedBoardsPref) ?? const [], id, name));
   }
 
-  static Future<void> forgetPaired(String id) async {
-    if (Platform.isAndroid) {
-      await BluetoothDevice.fromId(id).removeBond();
-      return;
-    }
+  static const _pairedNodesPref = 'pairedNodeIds';
+
+  static List<String> staleBondsFor(List<String> nodeEntries, String id, String nodeId) => [
+        for (final e in parsePairedEntries(nodeEntries))
+          if (e.name == nodeId && e.id != id) e.id,
+      ];
+
+  static Future<Map<String, String>> pairedNodeIds() async {
     final p = await SharedPreferences.getInstance();
+    return {for (final e in parsePairedEntries(p.getStringList(_pairedNodesPref) ?? const [])) e.id: e.name};
+  }
+
+  Future<void> _bindPairedNode(String id, String nodeId) async {
+    if (nodeId.isEmpty) return;
+    final p = await SharedPreferences.getInstance();
+    var entries = p.getStringList(_pairedNodesPref) ?? const <String>[];
+    for (final old in staleBondsFor(entries, id, nodeId)) {
+      try {
+        await forgetPaired(old);
+        entries = pairedEntriesWithout(entries, old);
+        DebugLog.log('BLE: $nodeId paired again, forgot its old bond $old');
+      } on Exception catch (e) {
+        DebugLog.log('BLE: forget old bond $old: $e');
+      }
+    }
+    await p.setStringList(_pairedNodesPref, pairedEntriesWith(entries, id, nodeId));
+  }
+
+  static Future<void> forgetPaired(String id) async {
+    if (Platform.isAndroid) await BluetoothDevice.fromId(id).removeBond();
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(_pairedNodesPref,
+        pairedEntriesWithout(p.getStringList(_pairedNodesPref) ?? const [], id));
+    if (Platform.isAndroid) return;
     await p.setStringList(_pairedBoardsPref,
         pairedEntriesWithout(p.getStringList(_pairedBoardsPref) ?? const [], id));
   }
@@ -1013,6 +1041,7 @@ class BleManager {
     }
 
     await _finishConnect(linkName: device.platformName, dropLink: device.disconnect);
+    unawaited(_bindPairedNode(device.remoteId.toString(), _nodeId));
   }
 
   void _clearCharacteristics() {

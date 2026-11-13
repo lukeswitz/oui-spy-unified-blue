@@ -14,6 +14,13 @@ void main() {
     expect(entries, ['B|OUI-SPY']);
   });
 
+  test('a board pairing under a new address marks only its old bonds stale', () {
+    final nodes = ['A|OUISPY-0001', 'B|OUISPY-0002', 'C|OUISPY-0001'];
+    expect(BleManager.staleBondsFor(nodes, 'D', 'OUISPY-0001'), ['A', 'C']);
+    expect(BleManager.staleBondsFor(nodes, 'A', 'OUISPY-0001'), ['C']);
+    expect(BleManager.staleBondsFor(nodes, 'E', 'OUISPY-0003'), isEmpty);
+  });
+
   test('parsing skips malformed entries', () {
     final boards = BleManager.parsePairedEntries(['A|OUI-SPY', 'broken', 'B|C|D']);
     expect(boards, [(id: 'A', name: 'OUI-SPY')]);

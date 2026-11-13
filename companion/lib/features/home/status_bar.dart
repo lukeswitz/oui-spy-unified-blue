@@ -108,12 +108,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
                 tooltip: state.isConnected ? 'Switch device' : 'Connect a device',
                 icon: Icon(state.isConnected ? Icons.swap_horiz : Icons.devices_outlined),
                 color: nameColor,
-                onPressed: state.isConnected
-                    ? () async {
-                        await ref.read(bleManagerProvider).disconnect();
-                        if (context.mounted) context.push('/onboarding');
-                      }
-                    : () => context.push('/onboarding'),
+                onPressed: () => context.push('/onboarding'),
               ),
               if (state.isConnected)
                 Padding(

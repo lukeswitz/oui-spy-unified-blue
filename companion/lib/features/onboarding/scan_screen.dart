@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
@@ -11,6 +12,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/link_net.dart';
 import 'package:oui_spy/core/link/usb_autoconnect.dart';
 import 'package:oui_spy/core/link/usb_serial.dart';
+import 'package:oui_spy/features/config/device_config.dart' show boardDisplayName;
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
@@ -38,11 +40,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   NetLinkTarget? _net;
   String? _rememberedMgrId;
   List<({String id, String name})> _paired = const [];
+  Map<String, String> _pairedNodes = const {};
 
   Future<void> _loadPaired() async {
     try {
       final paired = await BleManager.pairedBoards();
-      if (mounted) setState(() => _paired = paired);
+      final nodes = await BleManager.pairedNodeIds();
+      if (mounted) {
+        setState(() {
+          _paired = paired;
+          _pairedNodes = nodes;
+        });
+      }
     } on Exception catch (e) {
       DebugLog.log('SCAN: paired boards: $e');
     }
@@ -60,12 +69,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   void initState() {
     super.initState();
     final ble = ref.read(bleManagerProvider);
-    if (ble.isConnected) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go('/home');
-      });
-      return;
-    }
     _loadRememberedManager();
     _loadPaired();
     final usb = ref.read(usbAutoConnectProvider);
@@ -79,8 +82,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     });
     usb.refresh();
     _connSub = ble.connectionState.listen((state) {
-      if (state == NodeConnectionState.ready && mounted) {
+      if (!mounted) return;
+      if (state == NodeConnectionState.ready) {
         context.go('/home');
+      } else {
+        setState(() {});
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -284,6 +290,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       DebugLog.log('SCAN: stopScan: $e');
     }
     _scanSub?.cancel();
+    final ble = ref.read(bleManagerProvider);
+    if (ble.isConnected && ble.targetDeviceId != id) await ble.disconnect();
     final ok = await connect();
     if (!mounted) return;
     setState(() {
@@ -320,6 +328,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       required VoidCallback onTap,
       VoidCallback? onLongPress,
       IconData icon = Icons.usb,
+      bool active = false,
       String busyLabel = 'CONNECTING OVER USB...'}) {
     final busy = _connecting && _connectingId == id;
     return GestureDetector(
@@ -330,7 +339,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.surface,
-          border: Border.all(color: busy ? AppTheme.accent : t.border),
+          border: Border.all(color: busy || active ? AppTheme.accent : t.border),
         ),
         child: Row(
           children: [
@@ -444,6 +453,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final pairedIds = {for (final b in _paired) b.id};
     final sorted = filtered.where((r) => !pairedIds.contains(r.device.remoteId.toString())).toList()
       ..sort((a, b) => displayName(a).compareTo(displayName(b)));
+    final ble = ref.read(bleManagerProvider);
+    final liveId = ble.currentConnectionState == NodeConnectionState.ready ? ble.targetDeviceId : null;
+    final otherPaired = _paired.where((b) => b.id != liveId).toList();
 
     return Scaffold(
       backgroundColor: t.background,
@@ -480,6 +492,25 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               ),
             ),
 
+          if (liveId != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('CONNECTED', style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
+                  const SizedBox(height: 8),
+                  _linkTile(t,
+                      id: liveId,
+                      title: ref.watch(appStateProvider).labelForNode(ble.nodeId),
+                      subtitle: '${boardDisplayName(ble.board)} · $liveId',
+                      icon: Icons.bluetooth_connected,
+                      active: true,
+                      onTap: () => context.go('/home')),
+                ],
+              ),
+            ),
+
           if (_usb.isNotEmpty || _net != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -494,7 +525,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               ),
             ),
 
-          if (_paired.isNotEmpty)
+          if (otherPaired.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Column(
@@ -502,11 +533,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 children: [
                   Text('PAIRED', style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
                   const SizedBox(height: 8),
-                  for (final b in _paired)
+                  for (final b in otherPaired)
                     _linkTile(t,
                         id: b.id,
-                        title: b.name,
-                        subtitle: b.id,
+                        title: switch (_pairedNodes[b.id]) {
+                          final n? => ref.watch(appStateProvider).labelForNode(n),
+                          null => b.name,
+                        },
+                        subtitle: _pairedNodes.containsKey(b.id) ? b.id : 'Not identified yet · ${b.id}',
                         icon: Icons.bluetooth_connected,
                         busyLabel: 'CONNECTING...',
                         onTap: () => _connectPaired(b),
