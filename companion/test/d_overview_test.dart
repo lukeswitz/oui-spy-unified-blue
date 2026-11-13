@@ -20,8 +20,10 @@ import 'package:oui_spy/widgets/d/d_stats_strip.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakePhoneSource extends ChangeNotifier implements PhoneBleSource {
+  _FakePhoneSource([this.active = false]);
+
   @override
-  bool get active => false;
+  final bool active;
 
   @override
   bool get scanning => false;
@@ -67,6 +69,7 @@ Future<ProviderContainer> _pump(
   Map<Engine, EngineState> states = const {},
   NodeConnectionState conn = NodeConnectionState.ready,
   String nodeId = '',
+  bool phoneSource = false,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -77,7 +80,7 @@ Future<ProviderContainer> _pump(
   final container = ProviderContainer(overrides: [
     sharedPreferencesProvider.overrideWithValue(prefs),
     databaseProvider.overrideWithValue(db),
-    phoneBleSourceProvider.overrideWith((ref) => _FakePhoneSource()),
+    phoneBleSourceProvider.overrideWith((ref) => _FakePhoneSource(phoneSource)),
     if (manager)
       bleManagerProvider.overrideWith((ref) {
         final m = _ManagerBle();
@@ -473,5 +476,36 @@ void main() {
     expect(AppTheme.contrast(word.style!.color!, p.surface), greaterThanOrEqualTo(4.5));
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 30));
+  });
+
+  testWidgets('flock owned by a running session without a board says Scanning, not Off', (tester) async {
+    final c = await _pump(tester,
+        conn: NodeConnectionState.disconnected, phoneSource: true, wardriveRunning: true);
+    final wd = c.read(wardriveProvider)
+      ..selectedTargets.clear()
+      ..selectedTargets.add(WardriveTarget.flock)
+      ..radio = WardriveRadio.both;
+    wd.notifyListeners();
+    await tester.pump();
+    for (final e in [Engine.flockWifi, Engine.flockBle]) {
+      expect(_word(tester, e).text, 'Scanning');
+      expect(tester.widget<Switch>(find.descendant(of: _cardFinder(e), matching: find.byType(Switch))).value,
+          isTrue);
+    }
+
+    wd.radio = WardriveRadio.wifi;
+    wd.notifyListeners();
+    await tester.pump();
+    expect(_word(tester, Engine.flockWifi).text, 'Scanning');
+    expect(_word(tester, Engine.flockBle).text, 'Off');
+    expect(
+        tester.widget<Switch>(find.descendant(of: _cardFinder(Engine.flockBle), matching: find.byType(Switch))).value,
+        isFalse);
+
+    wd.state = WardriveState.paused;
+    wd.notifyListeners();
+    await tester.pump();
+    expect(_word(tester, Engine.flockWifi).text, 'Idle');
+    await _release(tester);
   });
 }

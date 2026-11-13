@@ -351,9 +351,7 @@ class WardriveController extends ChangeNotifier {
   WardriveTarget get target => primaryTarget;
   bool get includesFlock => selectedTargets.any((t) => t.includesFlock);
 
-  bool ownsEngine(Engine e) =>
-      isActive &&
-      (activeEngines.contains(e) || (includesFlock && (e == Engine.flockBle || e == Engine.flockWifi)));
+  bool ownsEngine(Engine e) => isActive && _fleetEngines.contains(e);
   String get activeLabel => selectableTargets
       .where(selectedTargets.contains)
       .map((t) => t.label)

@@ -489,12 +489,20 @@ class _ConnectedView extends ConsumerWidget {
     return state.isEngineActive(engine);
   }
 
+  EngineState _engineState(Engine engine, AppState state, WardriveController wd) {
+    final fw = state.getEngineState(engine);
+    if (fw != EngineState.disabled || !_isEngineOn(engine, state, wd)) return fw;
+    if (state.isEngineActive(engine)) return EngineState.scanning;
+    if (!wd.isRunning || wd.inExclusion) return EngineState.idle;
+    return state.isConnected ? fw : EngineState.scanning;
+  }
+
   Widget _engineCard(Engine e, AppState state, WardriveController wd) {
     return EngineCard(
       engine: e,
       detectionCount: state.countForEngine(e),
       isActive: _isEngineOn(e, state, wd),
-      engineState: state.getEngineState(e),
+      engineState: _engineState(e, state, wd),
       lastDetection: state.lastDetectionTime[e],
       rate: state.detectionRate(e),
       nodeCount: 0,
