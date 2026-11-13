@@ -756,6 +756,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
     final hasBuzzer = !const {'tdongle_s3', 'tdongle_c5', 'stickc'}
         .contains(ref.read(bleManagerProvider).board);
+    final rxOnly = ref.watch(rxOnlyProvider) == true;
+    final policy = _radioPolicy == null ? 0 : (rxOnly ? BleManager.rxOnlyPolicy(_radioPolicy!) : _radioPolicy!);
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -879,13 +881,19 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         if (_radioPolicy != null) ...[
           const SizedBox(height: 16),
           ConfigSectionHeader(label: 'Radio privacy'),
+          if (rxOnly)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('Set by Receive only (SETTINGS → Detection & alerts).',
+                  style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
+            ),
           ConfigToggleRow(
             icon: Icons.cell_tower,
             label: 'Active Wi-Fi probing',
             subtitle: 'Off: the board only listens. On: wardrive and Flock Wi-Fi send wildcard probe requests (random source MAC) to find hidden and slow-beaconing APs. Any transmission makes the board detectable.',
             color: AppTheme.error,
-            value: (_radioPolicy! & BleProtocol.radioPolicyActiveProbe) != 0,
-            onChanged: (v) {
+            value: (policy & BleProtocol.radioPolicyActiveProbe) != 0,
+            onChanged: rxOnly ? null : (v) {
               setState(() => _radioPolicy = v
                   ? (_radioPolicy! | BleProtocol.radioPolicyActiveProbe)
                   : (_radioPolicy! & ~BleProtocol.radioPolicyActiveProbe));
@@ -897,8 +905,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             label: 'Passive Bluetooth scanning',
             subtitle: 'On: the board never sends scan requests, so detected devices never see its address. Fewer device names (names often arrive only in scan responses). Applies when an engine next starts.',
             color: AppTheme.accent,
-            value: (_radioPolicy! & BleProtocol.radioPolicyPassiveBle) != 0,
-            onChanged: (v) {
+            value: (policy & BleProtocol.radioPolicyPassiveBle) != 0,
+            onChanged: rxOnly ? null : (v) {
               setState(() => _radioPolicy = v
                   ? (_radioPolicy! | BleProtocol.radioPolicyPassiveBle)
                   : (_radioPolicy! & ~BleProtocol.radioPolicyPassiveBle));
@@ -1518,7 +1526,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             extendedOui: _flockExtendedOui,
             allowOuiOnly: _flockAllowOuiOnly,
             offlineScan: _offlineScanEnabled,
-            radioPolicy: _radioPolicy,
+            radioPolicy: _radioPolicy == null || ref.read(rxOnlyProvider) != true
+                ? _radioPolicy
+                : BleManager.rxOnlyPolicy(_radioPolicy!),
           );
       ref.read(sharedPreferencesProvider)
           .setBool('offlineScanEnabled', _offlineScanEnabled);

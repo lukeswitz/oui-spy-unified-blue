@@ -123,6 +123,32 @@ void main() {
     expect(ids(lite), isNot(contains('fleet-liteon-camera-radio')));
   });
 
+  test('iOS-scanned Apple adverts without a MAC classify', () {
+    List<String> ids(String hex) =>
+        [for (final s in engine.match(Observation(key: 'BLE:UUID', kind: RadioKind.ble, mac: '', mfgRecords: [MfgRecord(0x004C, hex)]))) s.id];
+    expect(ids('1005431C1A2B3C'), contains('fleet-apple-device'));
+    expect(ids('0C0E00AABBCCDD'), contains('fleet-apple-device'));
+    expect(ids('07190110200455AA'), contains('fleet-apple-audio'));
+    expect(ids('0B0501020304'), contains('fleet-apple-watch'));
+    expect(ids('1219' '00' * 25), isNotEmpty);
+  });
+
+  test('blank connectable iOS advert is a hidden Apple device until a GATT probe says which', () {
+    List<String> ids(Observation o) => [for (final s in engine.match(o)) s.id];
+    const blank = Observation(key: 'BLE:U1', kind: RadioKind.ble, mac: '', iosConnectable: true);
+    expect(ids(blank), ['ios-apple-hidden']);
+    expect(ids(const Observation(key: 'BLE:U2', kind: RadioKind.ble, mac: '')), isEmpty);
+    expect(ids(const Observation(key: 'BLE:U3', kind: RadioKind.ble, mac: '', iosConnectable: true, name: 'Thing')), isEmpty);
+    Observation probed(List<String> svcs, [String model = '']) =>
+        blank.merge(Observation(key: 'BLE:U1', kind: RadioKind.ble, mac: '', gattServices: svcs, gattModel: model));
+    expect(ids(probed(['0000FD44-0000-1000-8000-00805F9B34FB'])), ['fleet-airtag']);
+    expect(ids(probed(['0000FD43-0000-1000-8000-00805F9B34FB', gattFindMyInfoService], 'left')), ['fleet-apple-audio']);
+    expect(ids(probed([gattFindMyInfoService], 'AirPods Pro')), ['fleet-apple-audio']);
+    expect(ids(probed(['00001800-0000-1000-8000-00805F9B34FB', gattAncsService])), ['fleet-apple-device']);
+    expect(ids(probed(['00001800-0000-1000-8000-00805F9B34FB'])), ['ios-apple-hidden']);
+    expect(probed([gattAmsService]).iosConnectable, isTrue);
+  });
+
   test('phone-scanned watch name classifies as wearable', () {
     const o = Observation(key: 'BLE:A967F874', kind: RadioKind.ble, mac: '', name: 'Brian’s Samsung Watch');
     final hits = engine.match(o);

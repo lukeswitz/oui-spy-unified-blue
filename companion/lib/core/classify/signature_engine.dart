@@ -196,6 +196,34 @@ const _appleContinuityPrefixes = {'05', '07', '08', '09', '0A', '0B', '0C', '0D'
 bool isAppleContinuity(Observation o) =>
     o.mfgRecords.any((r) => r.companyId == 0x004C && _appleContinuityPrefixes.contains(_take2(r.dataHex)));
 
+const iosHiddenAppleSignature = Signature(
+  id: 'ios-apple-hidden',
+  name: 'Apple, kind hidden by iOS',
+  kind: SignatureClass.other,
+  notes: 'iOS removes Apple manufacturer data from scan results, so an Apple advert reaches the app with no name, '
+      'services or data. A connectable advert that empty is most likely an iPhone, Mac, Watch, AirPods or AirTag.',
+);
+
+const gattFindMyService = 'FD43';
+const gattAirTagService = 'FD44';
+const gattFindMyInfoService = '87290102-3C51-43B1-A1A9-11B9DC38478B';
+const gattFindMyNameChar = '6AA50003-6352-4D57-A7B4-003A416FBB0B';
+const gattAncsService = '7905F431-B5CE-4E99-A40F-4B1E122D00D0';
+const gattAmsService = '89D3502B-0F36-433A-8EF4-C502AD55F8DC';
+
+bool advertEmpty(Observation o) =>
+    o.name.isEmpty && o.serviceUuids.isEmpty && o.serviceData.isEmpty && o.mfgRecords.isEmpty;
+
+String? gattClassId(Observation o) {
+  bool has(String u) => o.gattServices.any((g) => uuidAliases(g).contains(u));
+  final m = o.gattModel.toLowerCase();
+  if (m.startsWith('watch')) return 'fleet-apple-watch';
+  if (RegExp(r'airpods|beats|^left$|^right$').hasMatch(m)) return 'fleet-apple-audio';
+  if (has(gattAirTagService) || has(gattFindMyService) || has(gattFindMyInfoService)) return 'fleet-airtag';
+  if (has(gattAncsService) || has(gattAmsService)) return 'fleet-apple-device';
+  return null;
+}
+
 bool isFindMyPayload(Observation o) =>
     !isAppleContinuity(o) && o.mfgRecords.any((r) => r.companyId == 0x004C && _take2(r.dataHex) == '12');
 
@@ -394,6 +422,9 @@ class SignatureEngine {
         (hits.contains('fleet-apple-device') || hits.contains('fleet-apple-audio') || isAppleContinuity(o))) {
       hits.remove('fleet-airtag');
     }
+    final gattId = gattClassId(o);
+    if (gattId != null && !hits.contains(gattId) && byId.containsKey(gattId)) hits.add(gattId);
+    if (hits.isEmpty && o.iosConnectable && advertEmpty(o)) return const [iosHiddenAppleSignature];
     return [for (final id in hits) byId[id]!];
   }
 

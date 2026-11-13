@@ -41,6 +41,7 @@
 - [Standalone controls](#standalone-controls)
 - [Mesh](#mesh)
 - [Optional GPS module](#optional-gps-module)
+- [Privacy](#privacy)
 - [Internet services](#internet-services)
 - [Build](#build)
 - [Credits](#credits)
@@ -128,7 +129,8 @@ DETECTIONS → HISTORY can filter by tier.
 - **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
   
 - **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
-- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses.
+- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses. iOS also strips Apple's manufacturer data, so a nearby iPhone, AirPods or AirTag arrives as a blank advert and shows as *Apple, kind hidden by iOS*. The iPhone app then connects to it for a moment and checks its services (Find My, AirTag, iPhone notification service) to name the kind.
+- **Receive only** (SETTINGS → Detection & alerts, top): one switch that stops every scan from transmitting. Each connected board stops Wi-Fi probe requests and Bluetooth scan requests, and a manager passes this to its mesh nodes. The phone makes no connections and no Wi-Fi scan requests. On Android it only hears scans other apps already run, so it finds far fewer devices. On iPhone the phone scan pauses, because iOS always sends scan requests. Tracker ring is off. Boards still advertise so the phone can reach them, and mesh nodes still talk to each other. Turning it off puts each board back to its own setting.
 - **Suggested signatures** (DEVICES → More): groups of 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** makes one your own signature, with an optional alert on new matches (SETTINGS → Detection & alerts → My signatures).
 - **Signature sets** (SETTINGS → Detection & alerts): turn on the Fieldwatch stock catalog or Home Assistant's Bluetooth device list, or add your own set by https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
 - **Seen at your stops** (HISTORY → More): radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
@@ -297,6 +299,19 @@ A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its 
 | RX ← | GPIO43 | GPIO43 | GPIO11 | GPIO32 |
 
 Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
+
+## Privacy
+
+These settings limit what the boards and the phone send over the air and what the app shows on screen.
+
+- **Receive only** (SETTINGS → Detection & alerts): one switch for every scan. See [App](#app).
+- **Board radio privacy** (SETTINGS → NODE → HARDWARE → Radio privacy): **Active Wi-Fi probing** is off by default. When on, each probe request uses a new random MAC. **Passive Bluetooth scanning** stops the board's scan requests. Receive only turns on both and locks them.
+- **Private Bluetooth link:** the board's Bluetooth address rotates, and after pairing it advertises no name or services. See [Ways to run](#ways-to-run).
+- **Random MAC each boot:** the board's Wi-Fi and mesh MAC changes at every power-on and stays the same until the next one.
+- **Mesh encryption** is off by default. See [Mesh](#mesh) to turn on AES-256-GCM.
+- **Mask identifiers on screen** (SETTINGS → Detection & alerts → Privacy screen): shows only the first two MAC bytes and the first three characters of names. The database, exports and uploads keep full values.
+- **No analytics or crash reporting.** See [Internet services](#internet-services).
+- **Tested:** the board self-test (`v3_app_controlled_porttest`) checks that the Bluetooth address is private, rotates and still lets the paired phone reconnect, and that the closed advert carries only flags. It passed on a XIAO ESP32-S3 on 2026-11-13. An earlier S3 run failed the private-address check, cause unknown. Wi-Fi probe MACs and the mesh MAC are not yet checked with an outside receiver.
 
 ## Internet services
 

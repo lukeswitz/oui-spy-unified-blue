@@ -27,6 +27,7 @@ import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/watch_alert_log.dart';
+import 'package:oui_spy/core/privacy.dart';
 import 'package:wifi_scan/wifi_scan.dart';
 
 import 'beacon_flood.dart';
@@ -242,7 +243,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   bool get active => _active;
 
   bool _boardAllows = true;
-  bool get scanning => _active && _boardAllows;
+  static bool get osForcesActiveScan => Platform.isIOS || Platform.isMacOS;
+  bool get blockedByRxOnly => rxOnly && osForcesActiveScan;
+  bool get scanning => _active && _boardAllows && !blockedByRxOnly;
 
   void setActive(bool on) {
     if (on == _active) return;
@@ -331,7 +334,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   Future<void> _wifiKick() async {
     if ((!scanning && _foxTarget == null) || !canScanWifi) return;
     try {
-      if (await WiFiScan.instance.canStartScan() == CanStartScan.yes) {
+      if (!rxOnly && await WiFiScan.instance.canStartScan() == CanStartScan.yes) {
         await WiFiScan.instance.startScan();
         await Future<void>.delayed(const Duration(seconds: 4));
       }
@@ -374,8 +377,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     if (_nativeSupported) {
       _nativeOn = true;
       try {
-        final started = await NativePhoneScan.start(
-            _boardLinked ? NativePhoneScan.modeBalanced : NativePhoneScan.modeLowLatency);
+        final started = await NativePhoneScan.start(rxOnly
+            ? NativePhoneScan.modeOpportunistic
+            : (_boardLinked ? NativePhoneScan.modeBalanced : NativePhoneScan.modeLowLatency));
         if (started) {
           _lastKick = DateTime.now();
           _ownScan = true;
@@ -396,7 +400,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     notifyListeners();
     try {
       await FlutterBluePlus.startScan(
-        androidScanMode: _boardLinked ? AndroidScanMode.balanced : AndroidScanMode.lowLatency,
+        androidScanMode: rxOnly
+            ? AndroidScanMode.opportunistic
+            : (_boardLinked ? AndroidScanMode.balanced : AndroidScanMode.lowLatency),
         continuousUpdates: true,
         oneByOne: true,
       );
@@ -513,7 +519,10 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       if (_foxTarget == null) return;
       _ownScan = true;
       notifyListeners();
-      await FlutterBluePlus.startScan(continuousUpdates: true);
+      await FlutterBluePlus.startScan(
+        continuousUpdates: true,
+        androidScanMode: rxOnly ? AndroidScanMode.opportunistic : AndroidScanMode.lowLatency,
+      );
     } on Exception catch (e) {
       _ownScan = false;
       notifyListeners();
@@ -567,8 +576,96 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         ],
         appearance: adv.appearance,
         gpsTrail: fix == null ? const [] : [GpsSample(now, fix.lat, fix.lon, r.rssi)],
+        iosConnectable: Platform.isIOS && adv.connectable,
       ));
+      if (canProbe && _rxOnlyKnown && !rxOnly && _hiddenAdvert(r) && r.rssi >= probeRssiFloor) _probe(id, now, r.rssi);
     }
+  }
+
+  static bool get canProbe => Platform.isIOS;
+  static const probeRssiFloor = -80;
+  static const probeGap = Duration(seconds: 2);
+  static const probeConnectTimeout = Duration(seconds: 5);
+  static const _probedCap = 2000;
+  final Set<String> _probed = {};
+  bool _probing = false;
+  int _lastProbeMs = 0;
+  BluetoothDevice? _probeDev;
+  bool _rxOnlyKnown = false;
+  bool rxOnly = false;
+
+  void setRxOnly(bool? on) {
+    if (on == null || (_rxOnlyKnown && on == rxOnly)) return;
+    _rxOnlyKnown = true;
+    rxOnly = on;
+    final probing = _probeDev;
+    if (on && probing != null) {
+      probing.disconnect(queue: false).catchError((Object e) => DebugLog.log('CLASSIFY: probe abort failed: $e'));
+    }
+    if (_ownScan) _stopOwn();
+    if (_foxTarget != null) {
+      _foxScan();
+    } else {
+      _apply();
+    }
+  }
+
+  static bool _hiddenAdvert(ScanResult r) {
+    final a = r.advertisementData;
+    return a.connectable &&
+        a.advName.isEmpty &&
+        r.device.platformName.isEmpty &&
+        a.serviceUuids.isEmpty &&
+        a.serviceData.isEmpty &&
+        a.manufacturerData.isEmpty;
+  }
+
+  Future<void> _probe(String id, int now, int rssi) async {
+    if (_probing || rxOnly || _linkBusy || _foxTarget != null || !scanning || _probed.contains(id)) return;
+    if (now - _lastProbeMs < probeGap.inMilliseconds) return;
+    _probing = true;
+    _lastProbeMs = now;
+    if (_probed.length >= _probedCap) _probed.remove(_probed.first);
+    _probed.add(id);
+    final dev = BluetoothDevice.fromId(id);
+    _probeDev = dev;
+    final services = <String>[];
+    var model = '';
+    try {
+      await dev.connect(timeout: probeConnectTimeout, mtu: null);
+      final list = await dev.discoverServices(subscribeToServicesChanged: false, timeout: 8);
+      services.addAll([for (final s in list) s.serviceUuid.str128.toUpperCase()]);
+      for (final s in list) {
+        if (!uuidAliases(s.serviceUuid.str128).contains(gattFindMyInfoService)) continue;
+        for (final c in s.characteristics) {
+          if (!uuidAliases(c.characteristicUuid.str128).contains(gattFindMyNameChar) || !c.properties.read) continue;
+          model = utf8.decode(await c.read(timeout: 3), allowMalformed: true).replaceAll('\u0000', '').trim();
+        }
+      }
+    } on Exception catch (e) {
+      DebugLog.log('CLASSIFY: gatt probe $id failed: $e');
+    } finally {
+      try {
+        await dev.disconnect(queue: false);
+      } on Exception catch (e) {
+        DebugLog.log('CLASSIFY: gatt probe $id disconnect failed: $e');
+      }
+      _probing = false;
+      _probeDev = null;
+    }
+    if (services.isEmpty || !scanning || rxOnly) return;
+    final at = DateTime.now().millisecondsSinceEpoch;
+    _out.add(Observation(
+      key: 'BLE:$id',
+      kind: RadioKind.ble,
+      mac: '',
+      rssi: rssi,
+      firstSeenMs: at,
+      lastSeenMs: at,
+      iosConnectable: true,
+      gattServices: services,
+      gattModel: model,
+    ));
   }
 
   static String _hex(List<int> b) => b.map((x) => x.toRadixString(16).padLeft(2, '0')).join().toUpperCase();
@@ -737,6 +834,7 @@ class DeviceRegistry extends ChangeNotifier {
         prev.signatures.length != sigs.length ||
         prev.obs.mfgRecords.length != merged.mfgRecords.length ||
         prev.obs.serviceUuids.length != merged.serviceUuids.length ||
+        prev.obs.gattServices.length != merged.gattServices.length ||
         prev.obs.detectorMethod != merged.detectorMethod) {
       onClassified?.call(dev);
     }
@@ -856,6 +954,8 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;
   src.onWifi = ref.read(bleManagerProvider).addPhoneWifiDetection;
   src.onFoxRssi = ref.read(bleManagerProvider).addPhoneFoxRssi;
+  src.setRxOnly(ref.read(rxOnlyProvider));
+  ref.listen<bool?>(rxOnlyProvider, (_, on) => src.setRxOnly(on));
   final ble = ref.read(bleManagerProvider);
   src.setLinkBusy(ble.phoneScanMustYield);
   final linkSub = ble.connectionState.listen((_) => src.setLinkBusy(ble.phoneScanMustYield));

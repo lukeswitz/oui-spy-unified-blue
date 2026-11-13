@@ -174,6 +174,26 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
             ),
           ],
         ),
+        _InfoHeader(
+          label: 'Radio privacy',
+          lines: const [
+            'Receive only stops every scan from transmitting. It applies to each board you connect, and a manager passes it to its mesh nodes.',
+            'Boards send no Wi-Fi probe requests and no Bluetooth scan requests. They still advertise so this phone can reach them, and mesh nodes still talk to each other.',
+            'Android phones only hear scans that other apps already run, so the phone finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.',
+            'iPhones always send scan requests while an app scans, so the phone scan pauses on iOS.',
+            'This phone never connects to nearby devices, and "Make it play a sound" is off.',
+            'USB Wi-Fi adapters and RTL-SDR dongles only receive.',
+          ],
+        ),
+        ConfigToggleRow(
+          icon: Icons.hearing,
+          label: 'Receive only',
+          subtitle: 'Nothing transmits while scanning: boards, mesh nodes and this phone only listen',
+          color: AppTheme.detector,
+          value: ref.watch(rxOnlyProvider) ?? false,
+          onChanged: (v) => ref.read(rxOnlyProvider.notifier).set(v),
+        ),
+        const SizedBox(height: 12),
         for (final (title, items) in _watchGroups) ...[
           ConfigSectionHeader(label: title, topPadding: 6),
           for (final w in items) ...[
@@ -188,13 +208,45 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               onNotify: w.watch != null ? null : (v) => notif.setMuted(muteKeys(w), !v),
             ),
             if (w.flock && isOn(w))
-              ConfigToggleRow(
-                icon: Icons.fingerprint,
-                label: 'OUI-only matches (phone/USB)',
-                subtitle: 'Flag as Suspected. More false positives.',
-                color: AppTheme.error,
-                value: notif.flockOuiOnly,
-                onChanged: notif.setFlockOuiOnly,
+              _SubItem(
+                child: ConfigToggleRow(
+                  icon: Icons.fingerprint,
+                  label: 'OUI-only matches (phone/USB)',
+                  subtitle: 'Flag as Suspected. More false positives.',
+                  color: AppTheme.error,
+                  value: notif.flockOuiOnly,
+                  onChanged: notif.setFlockOuiOnly,
+                ),
+              ),
+            if (w.bits & sigTracker != 0)
+              _SubItem(
+                child: Column(
+                  children: [
+                    _InfoHeader(
+                      label: 'Alert threshold',
+                      lines: const [
+                        'Board detector hits report how strong the evidence is: trackers, cameras, police gear, smart glasses, mesh radios and others. Flock hits are not affected.',
+                        'Suspected: one weak signal, such as a vendor OUI or a tracker seen for seconds.',
+                        'High: one specific signal. Verified: two independent signals.',
+                        'Hits below the threshold are still logged. Suspected hits arrive silently.',
+                      ],
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<int>(
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('All')),
+                          ButtonSegment(value: NotificationService.confHigh, label: Text('High+')),
+                          ButtonSegment(value: NotificationService.confVerified, label: Text('Verified')),
+                        ],
+                        selected: {notif.minDetectorConfidence <= NotificationService.confSuspected ? 0 : notif.minDetectorConfidence},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (s) => notif.setMinDetectorConfidence(s.first),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
           ],
           const SizedBox(height: 12),
@@ -213,29 +265,6 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           color: AppTheme.detector,
           value: ref.watch(privacyScreenProvider),
           onChanged: (v) => ref.read(privacyScreenProvider.notifier).set(v),
-        ),
-        const SizedBox(height: 12),
-        _InfoHeader(
-          label: 'Alert threshold',
-          lines: const [
-            'Board signatures report how strong the evidence is.',
-            'Suspected: one weak signal, such as a vendor OUI or a tracker seen for seconds.',
-            'High: one specific signal. Verified: two independent signals.',
-            'Hits below the threshold are still logged. Suspected hits arrive silently.',
-          ],
-        ),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('All')),
-              ButtonSegment(value: NotificationService.confHigh, label: Text('High+')),
-              ButtonSegment(value: NotificationService.confVerified, label: Text('Verified')),
-            ],
-            selected: {notif.minDetectorConfidence <= NotificationService.confSuspected ? 0 : notif.minDetectorConfidence},
-            showSelectedIcon: false,
-            onSelectionChanged: (s) => notif.setMinDetectorConfidence(s.first),
-          ),
         ),
         const SizedBox(height: 12),
         ConfigActionRow(
@@ -309,6 +338,14 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           value: phoneScan,
           onChanged: _setPhoneScan,
         ),
+        if (phoneScan && ref.watch(phoneBleSourceProvider).blockedByRxOnly)
+          _SubItem(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text('Paused by Receive only. iOS sends scan requests whenever an app scans.',
+                  style: TextStyle(color: t.textDim, fontSize: 13)),
+            ),
+          ),
         if (PhoneWatch.supported) ...[
           ConfigToggleRow(
             icon: Icons.cell_tower,
@@ -332,6 +369,14 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
       ],
     );
   }
+}
+
+class _SubItem extends StatelessWidget {
+  const _SubItem({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(left: 36), child: child);
 }
 
 class _InfoHeader extends StatelessWidget {

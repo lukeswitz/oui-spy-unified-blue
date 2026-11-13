@@ -23,6 +23,27 @@ class PrivacyScreenNotifier extends StateNotifier<bool> {
 final privacyScreenProvider =
     StateNotifierProvider<PrivacyScreenNotifier, bool>((ref) => PrivacyScreenNotifier());
 
+class RxOnlyNotifier extends StateNotifier<bool?> {
+  RxOnlyNotifier() : super(null) {
+    _load();
+  }
+
+  static const _key = 'radio_rx_only';
+
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    state = p.getBool(_key) ?? false;
+  }
+
+  Future<void> set(bool on) async {
+    state = on;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_key, on);
+  }
+}
+
+final rxOnlyProvider = StateNotifierProvider<RxOnlyNotifier, bool?>((ref) => RxOnlyNotifier());
+
 String maskMac(String mac, bool on) {
   if (!on) return mac;
   final hex = mac.replaceAll(RegExp('[^0-9A-Fa-f]'), '').toUpperCase();

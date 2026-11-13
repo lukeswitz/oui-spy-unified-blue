@@ -44,6 +44,9 @@ class Observation {
   final String? detectorDesc;
   final String? detectorNode;
   final int detectorConfidence;
+  final bool iosConnectable;
+  final List<String> gattServices;
+  final String gattModel;
 
   const Observation({
     required this.key,
@@ -69,6 +72,9 @@ class Observation {
     this.detectorDesc,
     this.detectorNode,
     this.detectorConfidence = 0,
+    this.iosConnectable = false,
+    this.gattServices = const [],
+    this.gattModel = '',
   }) : rssiMin = rssiMin ?? rssi,
        rssiMax = rssiMax ?? rssi;
 
@@ -99,6 +105,9 @@ class Observation {
     detectorDesc: detectorDesc,
     detectorNode: detectorNode,
     detectorConfidence: detectorConfidence,
+    iosConnectable: iosConnectable,
+    gattServices: gattServices,
+    gattModel: gattModel,
   );
 
   Observation merge(Observation next) => Observation(
@@ -125,6 +134,9 @@ class Observation {
     detectorDesc: next.detectorMethod != null ? next.detectorDesc : detectorDesc,
     detectorNode: next.detectorMethod != null ? next.detectorNode : detectorNode,
     detectorConfidence: next.detectorMethod != null ? next.detectorConfidence : detectorConfidence,
+    iosConnectable: iosConnectable || next.iosConnectable,
+    gattServices: next.gattServices.isNotEmpty ? next.gattServices : gattServices,
+    gattModel: next.gattModel.isNotEmpty ? next.gattModel : gattModel,
   );
 }
 

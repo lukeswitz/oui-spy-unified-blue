@@ -9,7 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/db/app_database.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/prefs.dart';
+import 'package:oui_spy/core/privacy.dart';
+import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/alerts/alerts_view.dart';
 import 'package:oui_spy/features/config/device_config.dart';
@@ -94,10 +98,10 @@ void main() {
       'Wi-Fi beacon floods',
       'Drone loitering',
       'Aircraft circling you',
+      'About Alert threshold',
       'Car following you',
       'Crossing your mesh',
       'About Privacy screen',
-      'About Alert threshold',
       'My signatures',
       'Signature sets',
       'Trusted networks',
@@ -108,9 +112,38 @@ void main() {
     }
     expect(find.textContaining('Display only. The database'), findsNothing);
     await tester.scrollUntilVisible(find.byTooltip('About Alert threshold'), -200, scrollable: list);
+    await tester.ensureVisible(find.byTooltip('About Alert threshold'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('About Alert threshold'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Verified: two independent signals'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await db.close();
+  });
+
+  test('receive only clears Wi-Fi probing and forces passive Bluetooth', () {
+    for (final p in [0, 1, 2, 3, 0x83]) {
+      final r = BleManager.rxOnlyPolicy(p);
+      expect(r & BleProtocol.radioPolicyActiveProbe, 0, reason: '$p');
+      expect(r & BleProtocol.radioPolicyPassiveBle, BleProtocol.radioPolicyPassiveBle, reason: '$p');
+      expect(r & 0x80, p & 0x80, reason: '$p');
+    }
+  });
+
+  testWidgets('Receive only switch is at the top of Detection & alerts and persists', (tester) async {
+    final (c, db) = await _container();
+    await _pump(tester, c, const DeviceConfigScreen());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Detection & alerts'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('About Radio privacy'), findsOneWidget);
+    final row = find.ancestor(of: find.text('Receive only'), matching: find.byType(ConfigToggleRow));
+    expect(row, findsOneWidget);
+    expect(c.read(rxOnlyProvider), isFalse);
+    await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
+    await tester.pumpAndSettle();
+    expect(c.read(rxOnlyProvider), isTrue);
+    expect((await SharedPreferences.getInstance()).getBool('radio_rx_only'), isTrue);
     await tester.pumpWidget(const SizedBox());
     await db.close();
   });

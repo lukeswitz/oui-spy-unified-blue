@@ -21,6 +21,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/flock_oui.dart';
+import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 
@@ -1438,7 +1439,7 @@ class BleManager {
   }
 
   Future<bool> ringTracker(String mac) async {
-    if (_systemControl == null) return false;
+    if (_systemControl == null || rxOnly) return false;
     final hex = mac.replaceAll(RegExp(r'[^0-9A-Fa-f]'), '');
     if (hex.length != 12) return false;
     final bytes = [for (var i = 0; i < 12; i += 2) int.parse(hex.substring(i, i + 2), radix: 16)];
@@ -1889,6 +1890,45 @@ class BleManager {
     } on Exception catch (e) {
       DebugLog.log('BLE: hardwareConfig read failed: $e');
       _offlineScanEnabled = false;
+    }
+    await applyRxOnly();
+  }
+
+  bool? Function() _rxOnly = () => null;
+  void setRxOnlyGetter(bool? Function() getter) => _rxOnly = getter;
+  bool get rxOnly => _rxOnly() ?? false;
+
+  static int rxOnlyPolicy(int policy) =>
+      (policy & ~BleProtocol.radioPolicyActiveProbe) | BleProtocol.radioPolicyPassiveBle;
+
+  Future<void> applyRxOnly() async {
+    final on = _rxOnly();
+    final c = _hardwareConfig;
+    final id = _nodeId;
+    if (on == null || c == null || id.isEmpty) return;
+    try {
+      final v = await c.read();
+      if (v.length < 8) {
+        if (on) DebugLog.log('BLE: receive only not supported by this firmware (hw len=${v.length})');
+        return;
+      }
+      final p = await SharedPreferences.getInstance();
+      final key = 'radio_policy_before_$id';
+      final int want;
+      if (on) {
+        want = rxOnlyPolicy(v[7]);
+        if (want != v[7]) await p.setInt(key, v[7]);
+      } else {
+        final before = p.getInt(key);
+        if (before == null) return;
+        want = before;
+        await p.remove(key);
+      }
+      if (want == v[7]) return;
+      await c.write(Uint8List.fromList([...v.sublist(0, 7), want, ...v.sublist(8)]));
+      DebugLog.log('BLE: radio policy ${v[7]} -> $want (receive only ${on ? 'on' : 'off'})');
+    } on Exception catch (e) {
+      DebugLog.log('BLE: receive only apply failed: $e');
     }
   }
 
@@ -2442,6 +2482,10 @@ final bleManagerProvider = Provider<BleManager>((ref) {
     if (manager.currentConnectionState == NodeConnectionState.ready) {
       manager.setDetectorSigMask(next);
     }
+  });
+  manager.setRxOnlyGetter(() => ref.read(rxOnlyProvider));
+  ref.listen(rxOnlyProvider, (prev, next) {
+    if (manager.currentConnectionState == NodeConnectionState.ready) manager.applyRxOnly();
   });
   ref.onDispose(manager.dispose);
   return manager;

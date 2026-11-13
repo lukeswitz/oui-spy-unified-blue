@@ -54,6 +54,8 @@
 - Several USB Wi-Fi adapters can run at once, each with its own switch and STOP.
 - Open-source licenses page in Settings.
 - Boards show names by chip, such as OUISPY-C501 and OUISPY-S301, until you rename them.
+- Receive only (SETTINGS → Detection & alerts): one switch stops every scan from transmitting on connected boards, their mesh nodes and the phone.
+- iPhone phone scan: Apple devices show as "Apple, kind hidden by iOS", then a short connection names AirTags, AirPods, Apple Watch and iPhone or iPad. Receive only turns this off.
 
 ## Changed
 
@@ -65,7 +67,8 @@
 - WiGLE sessions start without waiting for a GPS fix.
 - Classifier: iBeacon now "Beacons", Honeywell moved to industrial.
 - Shorter notification body: RSSI, channel, name, MAC.
-- The board advertises a rotating private Bluetooth address, so it is not trackable. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN, because the board has no screen to show one. On XIAO C5, S3 and C3 the chip's own address resolver does this.
+- The board advertises a rotating private Bluetooth address. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN, because the board has no screen to show one.
+- Settings: OUI-only matches now sits under Flock, and the alert threshold sits under Trackers.
 - The status bar shows a board icon while connected and a clearer GPS label. The connection timer is gone.
 - A wardrive keeps recording on the phone and USB adapters when the board drops.
 - The app no longer caps devices or unique addresses per engine.
@@ -98,6 +101,7 @@
 - Spectrum view shows frequency labels along the bottom axis again.
 - A connected phone dropped a few seconds after its screen went idle.
 - Connecting to a board stalled when a phone scan was running at the same time.
+- iPhone phone scan left Apple devices unclassified, because iOS removes their manufacturer data.
 - Pairing a board asked for a PIN the board had no screen to show, so pairing could not finish. The board now pairs with no PIN.
 - A board paired but then dropped to "not connected" right after. The link now stays up after pairing.
 - The scan picker (Flock, Drone, Scan, Detect) looked like it changed your selection after you pressed START. The chips now stay on what you chose.

@@ -504,8 +504,8 @@ void showDetectionDetails(
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.volume_up, size: 18),
-                      label: const Text('Make it play a sound'),
-                      onPressed: () => _ringTracker(ctx, ref, detection.macAddress),
+                      label: Text(ref.read(rxOnlyProvider) == true ? 'Play a sound (off: Receive only)' : 'Make it play a sound'),
+                      onPressed: ref.read(rxOnlyProvider) == true ? null : () => _ringTracker(ctx, ref, detection.macAddress),
                     ),
                   ],
                   const SizedBox(height: 10),

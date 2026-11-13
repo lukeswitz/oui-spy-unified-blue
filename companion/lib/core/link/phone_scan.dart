@@ -6,6 +6,7 @@ class NativePhoneScan {
 
   static const modeBalanced = 1;
   static const modeLowLatency = 2;
+  static const modeOpportunistic = -1;
   static const _method = MethodChannel('ouispy/phone_scan');
   static const _events = EventChannel('ouispy/phone_scan/results');
 
