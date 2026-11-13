@@ -606,6 +606,21 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
         ),
         const _ScanTimingSliders(),
+        if (ref.watch(appStateProvider).isConnected) ...[
+          const SizedBox(height: 16),
+          const ConfigSectionHeader(label: 'Re-log time'),
+          ConfigSliderRow(
+            icon: Icons.refresh,
+            label: 'Log the same device again after',
+            valueLabel: '${(max(_cooldownMs, _rediscoverMs) / 1000).round()}s',
+            min: 1,
+            max: 60,
+            divisions: 59,
+            value: (max(_cooldownMs, _rediscoverMs) / 1000).clamp(1, 60).toDouble(),
+            onChanged: (v) => setState(() => _cooldownMs = _rediscoverMs = v.round() * 1000),
+            onChangeEnd: (_) => _writeAlertConfig(),
+          ),
+        ],
         ],
 
         if (part == _ScanPart.channels) ...[
@@ -975,52 +990,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     );
   }
 
-  Widget _buildAlertsTab() {
-    final appState = ref.watch(appStateProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const NotificationSettingsBody(
-          shrinkWrap: true,
-          physics: NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-        ),
-        if (appState.isConnected) ...[
-          const Padding(
-            padding: EdgeInsets.only(top: 16),
-            child: ConfigSectionHeader(label: 'Firmware timing'),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                ConfigNumberField(
-                  icon: Icons.hourglass_empty,
-                  label: 'Cooldown', suffix: 'ms', value: _cooldownMs,
-                  onChanged: (v) { setState(() => _cooldownMs = v); _writeAlertConfig(); },
-                ),
-                ConfigNumberField(
-                  icon: Icons.favorite,
-                  label: 'Heartbeat', suffix: 'ms', value: _heartbeatMs,
-                  onChanged: (v) { setState(() => _heartbeatMs = v); _writeAlertConfig(); },
-                ),
-                ConfigNumberField(
-                  icon: Icons.refresh,
-                  label: 'Rediscover', suffix: 'ms', value: _rediscoverMs,
-                  onChanged: (v) { setState(() => _rediscoverMs = v); _writeAlertConfig(); },
-                ),
-                ConfigNumberField(
-                  icon: Icons.bolt,
-                  label: 'HB Active', suffix: 'ms', value: _hbActiveMs,
-                  onChanged: (v) { setState(() => _hbActiveMs = v); _writeAlertConfig(); },
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
+  Widget _buildAlertsTab() => const NotificationSettingsBody(
+        shrinkWrap: true,
+        physics: NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+      );
 
   final _ssidController = TextEditingController();
   final _passController = TextEditingController();

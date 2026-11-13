@@ -92,10 +92,10 @@ class NotificationSettingsBody extends ConsumerWidget {
         ),
 
         const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'Behavior'),
+        ConfigSectionHeader(label: 'Limits'),
         ConfigSliderRow(
           icon: Icons.timer,
-          label: 'Cooldown per device',
+          label: 'Repeat for a device',
           valueLabel: _formatCooldown(notif.cooldownSeconds),
           min: 30,
           max: 1800,
@@ -105,7 +105,7 @@ class NotificationSettingsBody extends ConsumerWidget {
         ),
         ConfigSliderRow(
           icon: Icons.speed,
-          label: 'Max alerts per minute',
+          label: 'Max per minute',
           valueLabel: '${notif.maxPerMinute}',
           min: 1,
           max: 30,
