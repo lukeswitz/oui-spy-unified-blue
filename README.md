@@ -139,7 +139,7 @@ Tap any hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps e
 Every device the app hears gets a class, such as tracker, camera, public safety & fleet, drone, glasses, hacking tool, router, or home & office.
 
 - Class alerts are on by default.
-- A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
+- A Samsung SmartTag away from its owner keeps its path when its address changes. The **WITH YOU** filter still finds it.
 - **Suggested signatures** (DEVICES → More) groups 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** turns a group into your own signature, with an optional alert on new matches.
 - **Signature sets** (SETTINGS → Detection & alerts) adds the Fieldwatch stock catalog, Home Assistant's Bluetooth device list, or your own set from an https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
 
@@ -165,14 +165,14 @@ Turning it off puts each board back to its own setting.
 
 ### Watches and alerts
 
-These features warn you about patterns over time, not single hits.
+These features add their own alerts and set how alerts sound.
 
 - **Seen at your stops** (HISTORY → More) lists radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
 - **Trusted networks** (SETTINGS → Detection & alerts, or **Trust this network** on an access point) learns your Wi-Fi for a day. It then warns when the network's name shows up with weaker security, from another maker, or far from its usual places.
 - **Cell and GPS watch** (Android, SETTINGS → Detection & alerts → This phone) warns when the phone drops to 2G or 3G, meets a new tower at a known place, or its GPS looks faked or jammed.
 - **Movement alerts** (Detection & alerts, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
 - **Watchlist** imports and exports as CSV or JSON in SETTINGS → RULES.
-- **Alert sounds** lets you pick a built-in melody or compose your own for each alert type, and preview it on the board.
+- **Alert sounds** plays a built-in melody or one you compose for each alert type. You can preview it on the board.
 
 ### Map layers and geofences
 
@@ -354,10 +354,10 @@ These settings limit what the boards and the phone send over the air and what th
 - **Board radio privacy** (SETTINGS → NODE → HARDWARE → Radio privacy): **Active Wi-Fi probing** is off by default. When on, each probe request uses a new random MAC. **Passive Bluetooth scanning** stops the board's scan requests. Receive only turns on both and locks them.
 - **Private Bluetooth link:** the board's Bluetooth address rotates, and after pairing it advertises no name or services. See [Ways to run](#ways-to-run).
 - **Random MAC each boot:** the board's Wi-Fi and mesh MAC changes at every power-on and stays the same until the next one.
-- **Mesh encryption** is off by default. See [Mesh](#mesh) to turn on AES-256-GCM.
+- **Mesh encryption** is off by default. [Mesh](#mesh) says how to turn on AES-256-GCM.
 - **Mask identifiers on screen** (SETTINGS → Detection & alerts → Privacy screen): shows only the first two MAC bytes and the first three characters of names. The database, exports and uploads keep full values.
 - **No analytics or crash reporting.** See [Internet services](#internet-services).
-- **Tested:** the board self-test (`v3_app_controlled_porttest`) checks that the Bluetooth address is private, rotates and still lets the paired phone reconnect, and that the closed advert carries only flags. It passed on a XIAO ESP32-S3 on 2026-11-13. An earlier S3 run failed the private-address check, cause unknown. Wi-Fi probe MACs and the mesh MAC are not yet checked with an outside receiver.
+- **Tested:** the board self-test (`v3_app_controlled_porttest`) checks that the Bluetooth address is private, rotates and still lets the paired phone reconnect, and that the closed advert carries only flags. It passed on a XIAO ESP32-S3 on 2026-11-13. An earlier S3 run failed the private-address check, and the cause is still unknown. Wi-Fi probe MACs and the mesh MAC have not been checked yet with an outside receiver.
 
 ## Internet services
 
