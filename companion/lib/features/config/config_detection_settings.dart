@@ -86,9 +86,11 @@ void _pushPage(BuildContext context, String title, Widget body) {
   ));
 }
 
+enum _DetPart { watch, lists, phone, privacy }
+
 class _DetectionSettingsTab extends ConsumerStatefulWidget {
-  const _DetectionSettingsTab({this.footer = const []});
-  final List<Widget> footer;
+  const _DetectionSettingsTab({required this.part});
+  final _DetPart part;
 
   @override
   ConsumerState<_DetectionSettingsTab> createState() => _DetectionSettingsTabState();
@@ -152,9 +154,11 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
                 for (final m in e.value) 'det:$m',
         ];
 
+    final part = widget.part;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
+        if (part == _DetPart.watch) ...[
         Row(
           children: [
             Expanded(
@@ -165,9 +169,10 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               ),
             ),
             IconButton(
-              icon: Icon(Icons.info_outline, color: t.textSecondary),
+              icon: Icon(Icons.info_outline, size: 18, color: t.textSecondary),
+              visualDensity: VisualDensity.compact,
               tooltip: 'About detection & alerts',
-              onPressed: () => showInfoSheet(context, t, 'Detection & alerts', const [
+              onPressed: () => showInfoSheet(context, t, 'Detection & Alerts', const [
                 'A switch turns a type on. A find gives a notification and a pin on the map.',
                 'Tap the bell on a row to log that type without notifying.',
               ]),
@@ -175,23 +180,26 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           ],
         ),
         _InfoHeader(
-          label: 'Radio privacy',
+          label: 'Alert threshold',
           lines: const [
-            'Receive only stops every scan from transmitting. It applies to each board you connect, and a manager passes it to its mesh nodes.',
-            'Boards send no Wi-Fi probe requests and no Bluetooth scan requests. They still advertise so this phone can reach them, and mesh nodes still talk to each other.',
-            'Android phones only hear scans that other apps already run, so the phone finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.',
-            'iPhones always send scan requests while an app scans, so the phone scan pauses on iOS.',
-            'This phone never connects to nearby devices, and "Make it play a sound" is off.',
-            'USB Wi-Fi adapters and RTL-SDR dongles only receive.',
+            'Board detector hits report how strong the evidence is: trackers, cameras, police gear, smart glasses, mesh radios and others. Flock hits are not affected.',
+            'Suspected: one weak signal, such as a vendor OUI or a tracker seen for seconds.',
+            'High: one specific signal. Verified: two independent signals.',
+            'Hits below the threshold are still logged. Suspected hits arrive silently.',
           ],
         ),
-        ConfigToggleRow(
-          icon: Icons.hearing,
-          label: 'Receive only',
-          subtitle: 'Nothing transmits while scanning: boards, mesh nodes and this phone only listen',
-          color: AppTheme.detector,
-          value: ref.watch(rxOnlyProvider) ?? false,
-          onChanged: (v) => ref.read(rxOnlyProvider.notifier).set(v),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('All')),
+              ButtonSegment(value: NotificationService.confHigh, label: Text('High+')),
+              ButtonSegment(value: NotificationService.confVerified, label: Text('Verified')),
+            ],
+            selected: {notif.minDetectorConfidence <= NotificationService.confSuspected ? 0 : notif.minDetectorConfidence},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => notif.setMinDetectorConfidence(s.first),
+          ),
         ),
         const SizedBox(height: 12),
         for (final (title, items) in _watchGroups) ...[
@@ -211,46 +219,45 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               _SubItem(
                 child: ConfigToggleRow(
                   icon: Icons.fingerprint,
-                  label: 'OUI-only matches (phone/USB)',
+                  label: 'OUI-only matches',
                   subtitle: 'Flag as Suspected. More false positives.',
                   color: AppTheme.error,
                   value: notif.flockOuiOnly,
                   onChanged: notif.setFlockOuiOnly,
                 ),
               ),
-            if (w.bits & sigTracker != 0)
-              _SubItem(
-                child: Column(
-                  children: [
-                    _InfoHeader(
-                      label: 'Alert threshold',
-                      lines: const [
-                        'Board detector hits report how strong the evidence is: trackers, cameras, police gear, smart glasses, mesh radios and others. Flock hits are not affected.',
-                        'Suspected: one weak signal, such as a vendor OUI or a tracker seen for seconds.',
-                        'High: one specific signal. Verified: two independent signals.',
-                        'Hits below the threshold are still logged. Suspected hits arrive silently.',
-                      ],
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: 0, label: Text('All')),
-                          ButtonSegment(value: NotificationService.confHigh, label: Text('High+')),
-                          ButtonSegment(value: NotificationService.confVerified, label: Text('Verified')),
-                        ],
-                        selected: {notif.minDetectorConfidence <= NotificationService.confSuspected ? 0 : notif.minDetectorConfidence},
-                        showSelectedIcon: false,
-                        onSelectionChanged: (s) => notif.setMinDetectorConfidence(s.first),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
           ],
           const SizedBox(height: 12),
         ],
+        ConfigActionRow(
+          icon: Icons.tune,
+          label: 'More device types',
+          subtitle: moreOn == 0 ? 'Phones, home gear, vehicles, routers and more' : '$moreOn on',
+          color: AppTheme.detector,
+          onTap: () => _pushPage(context, 'More Device Types', const _MoreTypesPage()),
+        ),
+        ],
+        if (part == _DetPart.privacy) ...[
+        _InfoHeader(
+          label: 'Radio privacy',
+          lines: const [
+            'Receive only stops every scan from transmitting. It applies to each board you connect, and a manager passes it to its mesh nodes.',
+            'Boards send no Wi-Fi probe requests and no Bluetooth scan requests. They still advertise so this phone can reach them, and mesh nodes still talk to each other.',
+            'Android phones only hear scans that other apps already run, so the phone finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.',
+            'iPhones always send scan requests while an app scans, so the phone scan pauses on iOS.',
+            'This phone never connects to nearby devices, and "Make it play a sound" is off.',
+            'USB Wi-Fi adapters and RTL-SDR dongles only receive.',
+          ],
+        ),
+        ConfigToggleRow(
+          icon: Icons.hearing,
+          label: 'Receive only',
+          subtitle: 'Nothing transmits while scanning: boards, mesh nodes and this phone only listen',
+          color: AppTheme.detector,
+          value: ref.watch(rxOnlyProvider) ?? false,
+          onChanged: (v) => ref.read(rxOnlyProvider.notifier).set(v),
+        ),
+        const SizedBox(height: 20),
         _InfoHeader(
           label: 'Privacy screen',
           lines: const [
@@ -266,23 +273,8 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
           value: ref.watch(privacyScreenProvider),
           onChanged: (v) => ref.read(privacyScreenProvider.notifier).set(v),
         ),
-        const SizedBox(height: 12),
-        ConfigActionRow(
-          icon: Icons.tune,
-          label: 'More device types',
-          subtitle: moreOn == 0 ? 'Phones, home gear, vehicles, routers and more' : '$moreOn on',
-          color: AppTheme.detector,
-          onTap: () => _pushPage(context, 'More device types', const _MoreTypesPage()),
-        ),
-        const SizedBox(height: 20),
-        ConfigSectionHeader(label: 'Your lists'),
-        ConfigActionRow(
-          icon: Icons.manage_search,
-          label: 'Search all captures',
-          subtitle: 'Counts, GPS coverage and a search over every stored session and import, on this phone only',
-          color: AppTheme.detector,
-          onTap: () => context.push('/analysis'),
-        ),
+        ],
+        if (part == _DetPart.lists) ...[
         ConfigActionRow(
           icon: Icons.list_alt,
           label: 'Watchlist',
@@ -326,10 +318,17 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               ? 'Devices to never log or alert on'
               : '$ignoring ignored · never logged or alerted',
           color: AppTheme.accent,
-          onTap: () => _pushPage(context, 'Ignore list', const SingleChildScrollView(child: _IgnoreListTab())),
+          onTap: () => _pushPage(context, 'Ignore List', const SingleChildScrollView(child: _IgnoreListTab())),
         ),
-        const SizedBox(height: 20),
-        ConfigSectionHeader(label: 'This phone'),
+        ConfigActionRow(
+          icon: Icons.manage_search,
+          label: 'Search all captures',
+          subtitle: 'Counts, GPS coverage and a search over every stored session and import, on this phone only',
+          color: AppTheme.detector,
+          onTap: () => context.push('/analysis'),
+        ),
+        ],
+        if (part == _DetPart.phone) ...[
         ConfigToggleRow(
           icon: Icons.bluetooth_searching,
           label: 'Also scan with this phone',
@@ -364,8 +363,8 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
             onChanged: watch.setGps,
           ),
         ],
+        ],
         const SizedBox(height: 20),
-        ...widget.footer,
       ],
     );
   }
@@ -387,16 +386,17 @@ class _InfoHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return Row(
-      children: [
-        Expanded(child: ConfigSectionHeader(label: label)),
-        IconButton(
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 6),
+      child: DSectionHeader(
+        label: label,
+        trailing: IconButton(
           icon: Icon(Icons.info_outline, size: 18, color: t.textSecondary),
           tooltip: 'About $label',
           visualDensity: VisualDensity.compact,
           onPressed: () => showInfoSheet(context, t, label, lines),
         ),
-      ],
+      ),
     );
   }
 }

@@ -17,19 +17,19 @@ void main() {
       child: MaterialApp(theme: AppTheme.darkTheme, home: const DeviceConfigScreen()),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Detection & alerts'), findsOneWidget);
+    expect(find.text('Detection & Alerts'), findsOneWidget);
     expect(find.text('Alerts'), findsNothing);
 
     await tester.tap(find.text('Data'));
     await tester.pumpAndSettle();
-    expect(find.text('Capture database'), findsOneWidget);
+    expect(find.text('Capture Database'), findsOneWidget);
     expect(find.text('Settings'), findsNothing);
 
     final nav = tester.state<NavigatorState>(find.byType(Navigator).last);
     nav.maybePop();
     await tester.pumpAndSettle();
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Capture database'), findsNothing);
+    expect(find.text('Capture Database'), findsNothing);
 
     await tester.tap(find.text('App'));
     await tester.pumpAndSettle();

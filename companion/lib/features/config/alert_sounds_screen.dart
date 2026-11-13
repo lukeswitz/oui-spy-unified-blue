@@ -19,7 +19,7 @@ class AlertSoundsScreen extends ConsumerWidget {
     final supported = ref.read(bleManagerProvider).hasMelodySupport;
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(title: const Text('Alert sounds')),
+      appBar: AppBar(title: const Text('Alert Sounds')),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [

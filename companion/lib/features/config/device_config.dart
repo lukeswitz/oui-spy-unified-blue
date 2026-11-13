@@ -309,7 +309,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     }
   }
 
-  static const _sectionTitles = ['App', 'Scanning', 'Detection & alerts', 'Node', 'Data', 'About'];
+  static const _sectionTitles = ['App', 'Scanning', 'Detection & Alerts', 'Node', 'Data', 'About'];
   static const _aboutIndex = 5;
 
   String _sectionSummary(int i) {
@@ -318,7 +318,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return switch (i) {
       0 => 'Theme, units, auto-connect',
       1 => 'Re-log thresholds, scan timing, channels',
-      2 => 'What to watch for, notifications, your lists',
+      2 => 'What to watch for, notifications, lists, privacy',
       3 => ble.currentConnectionState != NodeConnectionState.ready
           ? (ble.isConnected ? 'Connecting…' : 'Not connected')
           : '${boardDisplayName(ble.board)} · ${ref.read(appStateProvider).labelForNode(_nodeId)}\n${[
@@ -373,18 +373,28 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       });
 
   List<(String, String, IconData, Widget Function())>? _subPages(int i) => switch (i) {
+        2 => [
+            ('What to Watch For', 'Surveillance, trackers, attacks, alert threshold', Icons.radar, () => const _DetectionSettingsTab(part: _DetPart.watch)),
+            ('Notifications', 'Sound, vibration, rate limits, muted types', Icons.notifications_active, () => ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  children: [_buildAlertsTab()],
+                )),
+            ('Your Lists', 'Watchlist, signatures, trusted networks, ignore list', Icons.list_alt, () => const _DetectionSettingsTab(part: _DetPart.lists)),
+            ('This Phone', PhoneWatch.supported ? 'Phone Bluetooth scan, cell and GPS watch' : 'Phone Bluetooth scan', Icons.smartphone, () => const _DetectionSettingsTab(part: _DetPart.phone)),
+            ('Privacy', 'Receive only, mask identifiers on screen', Icons.privacy_tip_outlined, () => const _DetectionSettingsTab(part: _DetPart.privacy)),
+          ],
         3 => [
             ('Hardware', 'Sound, lights, GPS source, Flock detection, offline scan', Icons.memory, _buildHardwareTab),
             ('Mesh', 'Mode, status, key, nodes with board and temperature', Icons.hub, _buildMeshTab),
             ('Firmware', 'Device info, Wi-Fi network, updates', Icons.system_update, _buildFirmwareTab),
-            ('JCMK node hub', 'Collect from Piglet / JCMK ESP-NOW wardriver nodes', Icons.router, () => ListView(
+            ('JCMK Node Hub','Collect from Piglet / JCMK ESP-NOW wardriver nodes', Icons.router, () => ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: const [_EnowHubSection()],
                 )),
           ],
         4 => [
             ('Accounts', 'WiGLE and WDGWars upload accounts', Icons.cloud_upload, () => const _WardriveConfigTab(showAccounts: true)),
-            ('Capture database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
+            ('Capture Database','Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
             ('Export', 'Data and backup, OUI database', Icons.ios_share, _buildExportTab),
           ],
@@ -399,7 +409,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final Widget body = switch (i) {
       0 => _buildAppTab(),
       1 => _buildScanTab(),
-      2 => _DetectionSettingsTab(footer: [_buildAlertsTab()]),
       _aboutIndex => _buildAboutTab(),
       _ when sub != null => subs![sub].$4(),
       _ => ListView(
@@ -884,7 +893,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           if (rxOnly)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
-              child: Text('Set by Receive only (SETTINGS → Detection & alerts).',
+              child: Text('Set by Receive only (SETTINGS → Detection & Alerts → Privacy).',
                   style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
             ),
           ConfigToggleRow(

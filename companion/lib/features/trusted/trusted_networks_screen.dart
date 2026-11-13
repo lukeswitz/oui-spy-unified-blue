@@ -87,7 +87,7 @@ class TrustedNetworksScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: const Text('Trusted networks'),
+        title: const Text('Trusted Networks'),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),

@@ -36,7 +36,7 @@ class UserSignaturesScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: const Text('My signatures'),
+        title: const Text('My Signatures'),
         actions: [
           Builder(
             builder: (context) => IconButton(

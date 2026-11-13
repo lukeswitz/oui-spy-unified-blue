@@ -80,7 +80,7 @@ class SignatureSetsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: const Text('Signature sets'),
+        title: const Text('Signature Sets'),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),

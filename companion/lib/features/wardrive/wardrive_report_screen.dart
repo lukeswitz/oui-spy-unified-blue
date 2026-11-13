@@ -56,7 +56,7 @@ class _WardriveReportScreenState extends ConsumerState<WardriveReportScreen> {
         return Scaffold(
           backgroundColor: t.background,
           appBar: AppBar(
-            title: const Text('Wardrive report'),
+            title: const Text('Wardrive Report'),
             actions: [
               Builder(
                 builder: (context) => IconButton(

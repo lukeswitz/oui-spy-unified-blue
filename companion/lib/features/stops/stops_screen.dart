@@ -64,7 +64,7 @@ class _StopsScreenState extends ConsumerState<StopsScreen> {
     return Scaffold(
       backgroundColor: t.background,
       appBar: AppBar(
-        title: const Text('Seen at your stops'),
+        title: const Text('Seen at Your Stops'),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),

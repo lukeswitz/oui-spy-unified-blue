@@ -74,8 +74,8 @@ _Getting Started:_
 
 | Engine | Finds |
 |---|---|
-| **Detector** | Your watchlist (MAC, OUI prefix, name, 16-bit BLE service UUID), plus built-in signatures, all off by default: Find My / AirTag following you, floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, Pwnagotchi, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE |
-| **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras and Raven gunshot sensors. Optional OUI-only Wi-Fi hits |
+| **Detector** | Your watchlist (MAC, OUI prefix, name, 16-bit BLE service UUID), plus built-in signatures, all off by default: Find My / AirTag following you, floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, evil-twin and KARMA rogue access points, Pwnagotchi, Meshtastic and MeshCore mesh radios, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, police and fleet vehicle routers, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE |
+| **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras, Raven gunshot sensors, Penguin and Pigvision. Optional OUI-only Wi-Fi hits |
 | **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
 | **Foxhunter** | One target device. Beep rate (or the RSSI meter on boards without a buzzer) rises as you get closer |
 | **UniPwn** | Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …) |
@@ -85,7 +85,7 @@ _Getting Started:_
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
 
-In SETTINGS → **Detection & alerts**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off. **OUI-based detection is an optional setting.**
+In SETTINGS → **Detection & Alerts** → **What to Watch For**, each type can **alert** (notification plus a map pin), **log only** (tap the bell to record it without notifying), or be off. **OUI-based detection is an optional setting.** **Alert threshold** at the top sets how strong a detector hit must be to notify. **More device types** adds everyday radios: wearables, health, audio, phones / PCs, home IoT, thermostats, access control, vehicles, ISP / routers, mesh, beacons, signage and other.
 
 ### Flock confidence
 
@@ -117,7 +117,7 @@ DETECTIONS → HISTORY can filter by tier.
 <table>
   <tr>
     <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /><br><sub>Settings</sub></td>
-    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" /><br><sub>Detection &amp; alerts</sub></td>
+    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" /><br><sub>Detection &amp; Alerts</sub></td>
     <td align="center" width="34%"><img width="176" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" /><br><sub>Map</sub></td>
   </tr>
 </table>
@@ -130,7 +130,7 @@ The app controls your boards, shows what they find, and can scan with the phone'
 | **Home** | The session bar (targets, radio, START / PAUSE / STOP) and one card per engine. The status bar shows the link, GPS fix and node count. |
 | **Detections** | LIVE lists every hit, with filter, sort, search and export. DEVICES lists classified devices. HISTORY is the stored log, with CSV export. ALERTS lists every alert, newest first. |
 | **Map** | Choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then tap START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map. |
-| **SETTINGS** | APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT). |
+| **SETTINGS** | APP, SCANNING, DETECTION & ALERTS (WHAT TO WATCH FOR, NOTIFICATIONS, YOUR LISTS, THIS PHONE, PRIVACY), NODE (HARDWARE, MESH, FIRMWARE, JCMK NODE HUB), DATA (ACCOUNTS, CAPTURE DATABASE, CAPTURES, EXPORT). |
 
 Tap any hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps every hit of that class.
 
@@ -141,7 +141,7 @@ Every device the app hears gets a class, such as tracker, camera, public safety 
 - Class alerts are on by default.
 - A Samsung SmartTag away from its owner keeps its path when its address changes. The **WITH YOU** filter still finds it.
 - **Suggested signatures** (DEVICES → More) groups 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** turns a group into your own signature, with an optional alert on new matches.
-- **Signature sets** (SETTINGS → Detection & alerts) adds the Fieldwatch stock catalog, Home Assistant's Bluetooth device list, or your own set from an https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
+- **Signature sets** (SETTINGS → Detection & Alerts → Your Lists) adds the Fieldwatch stock catalog, Home Assistant's Bluetooth device list, or your own set from an https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
 
 ### Phone scan
 
@@ -153,7 +153,7 @@ The phone can scan with its own radios, with or without a board. Tap the phone i
 
 ### Receive only
 
-One switch at the top of SETTINGS → Detection & alerts stops every scan from transmitting.
+One switch in SETTINGS → Detection & Alerts → Privacy stops every scan from transmitting.
 
 - **Boards:** each connected board stops Wi-Fi probe requests and Bluetooth scan requests. A manager passes this to its mesh nodes.
 - **Android phone:** the phone only hears scans that other apps already run, so it finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.
@@ -168,10 +168,10 @@ Turning it off puts each board back to its own setting.
 These features add their own alerts and set how alerts sound.
 
 - **Seen at your stops** (HISTORY → More) lists radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
-- **Trusted networks** (SETTINGS → Detection & alerts, or **Trust this network** on an access point) learns your Wi-Fi for a day. It then warns when the network's name shows up with weaker security, from another maker, or far from its usual places.
-- **Cell and GPS watch** (Android, SETTINGS → Detection & alerts → This phone) warns when the phone drops to 2G or 3G, meets a new tower at a known place, or its GPS looks faked or jammed.
-- **Movement alerts** (Detection & alerts, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
-- **Watchlist** imports and exports as CSV or JSON in SETTINGS → RULES.
+- **Trusted networks** (SETTINGS → Detection & Alerts → Your Lists, or **Trust this network** on an access point) learns your Wi-Fi for a day. It then warns when the network's name shows up with weaker security, from another maker, or far from its usual places.
+- **Cell and GPS watch** (Android, SETTINGS → Detection & Alerts → This Phone) warns when the phone drops to 2G or 3G, meets a new tower at a known place, or its GPS looks faked or jammed.
+- **Movement alerts** (Detection & Alerts → What to Watch For, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
+- **Watchlist** imports and exports as CSV or JSON in SETTINGS → Detection & Alerts → Your Lists.
 - **Alert sounds** plays a built-in melody or one you compose for each alert type. You can preview it on the board.
 
 ### Map layers and geofences
@@ -350,12 +350,12 @@ Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
 
 These settings limit what the boards and the phone send over the air and what the app shows on screen.
 
-- **Receive only** (SETTINGS → Detection & alerts): one switch for every scan. See [Receive only](#receive-only).
+- **Receive only** (SETTINGS → Detection & Alerts → Privacy): one switch for every scan. See [Receive only](#receive-only).
 - **Board radio privacy** (SETTINGS → NODE → HARDWARE → Radio privacy): **Active Wi-Fi probing** is off by default. When on, each probe request uses a new random MAC. **Passive Bluetooth scanning** stops the board's scan requests. Receive only turns on both and locks them.
 - **Private Bluetooth link:** the board's Bluetooth address rotates, and after pairing it advertises no name or services. See [Ways to run](#ways-to-run).
 - **Random MAC each boot:** the board's Wi-Fi and mesh MAC changes at every power-on and stays the same until the next one.
 - **Mesh encryption** is off by default. [Mesh](#mesh) says how to turn on AES-256-GCM.
-- **Mask identifiers on screen** (SETTINGS → Detection & alerts → Privacy screen): shows only the first two MAC bytes and the first three characters of names. The database, exports and uploads keep full values.
+- **Mask identifiers on screen** (SETTINGS → Detection & Alerts → Privacy): shows only the first two MAC bytes and the first three characters of names. The database, exports and uploads keep full values.
 - **No analytics or crash reporting.** See [Internet services](#internet-services).
 - **Tested:** the board self-test (`v3_app_controlled_porttest`) checks that the Bluetooth address is private, rotates and still lets the paired phone reconnect, and that the closed advert carries only flags. It passed on a XIAO ESP32-S3 on 2026-11-13. An earlier S3 run failed the private-address check, and the cause is still unknown. Wi-Fi probe MACs and the mesh MAC have not been checked yet with an outside receiver.
 
@@ -373,7 +373,7 @@ These settings limit what the boards and the phone send over the air and what th
 | [OpenFreeMap](https://openfreemap.org) styles: Dark (default), Fiord, Liberty, Bright, Positron | A map is on screen | Tile numbers in view | No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap". |
 | [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map): Satellite (US) | You pick Satellite (US) | Tile numbers in view | Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit. |
 | [GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) | You tap **Check for Update** (Settings → Node → Firmware) | Nothing about you or your board | UA `oui-spy-companion/1.0`. 60 checks/hour per IP; pauses to GitHub's reset. Firmware comes from the same release. |
-| Signature sets: [Fieldwatch](https://github.com/OffGridPete/Fieldwatch), [Home Assistant](https://github.com/home-assistant/core), or a link you add | You turn a set on or tap **Update** (Settings → Detection & alerts → Signature sets) | Nothing | UA `oui-spy-companion/1.0`. https only, 8 MB limit. No background checks. |
+| Signature sets: [Fieldwatch](https://github.com/OffGridPete/Fieldwatch), [Home Assistant](https://github.com/home-assistant/core), or a link you add | You turn a set on or tap **Update** (Settings → Detection & Alerts → Your Lists → Signature sets) | Nothing | UA `oui-spy-companion/1.0`. https only, 8 MB limit. No background checks. |
 | [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** (Settings → Data → Export → OUI DATABASE) | Nothing | Fetches the MAC vendor list at most every 7 days. UA `oui-spy-companion/1.0`. |
 | [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** on a drone | The drone's Remote ID serial | UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×. |
 

@@ -87,32 +87,48 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('Detection & alerts lists the new rows and moves long text behind info buttons', (tester) async {
+  testWidgets('Detection & Alerts splits into sub-pages and moves long text behind info buttons', (tester) async {
     final (c, db) = await _container();
     await _pump(tester, c, const DeviceConfigScreen());
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Detection & alerts'));
+    await tester.tap(find.text('Detection & Alerts'));
     await tester.pumpAndSettle();
+    for (final sub in ['What to Watch For', 'Notifications', 'Your Lists', 'This Phone', 'Privacy']) {
+      expect(find.text(sub), findsOneWidget, reason: sub);
+    }
+    Future<void> openSub(String sub) async {
+      await tester.tap(find.text(sub));
+      await tester.pumpAndSettle();
+    }
+    Future<void> back() async {
+      await tester.tap(find.byTooltip('Detection & Alerts'));
+      await tester.pumpAndSettle();
+    }
+    await openSub('Your Lists');
+    for (final label in ['Watchlist', 'My signatures', 'Signature sets', 'Trusted networks', 'Ignore list', 'Search all captures']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    await back();
+    await openSub('Privacy');
+    expect(find.byTooltip('About Privacy screen'), findsOneWidget);
+    expect(find.textContaining('Display only. The database'), findsNothing);
+    await back();
+    await openSub('What to Watch For');
     expect(find.byTooltip('About detection & alerts'), findsOneWidget);
-    final list = find.ancestor(of: find.text('Wi-Fi beacon floods'), matching: find.byType(Scrollable)).first;
+    final list = find.ancestor(of: find.text('Flock'), matching: find.byType(Scrollable)).first;
     for (final label in [
-      'Wi-Fi beacon floods',
+      'About Alert threshold',
       'Drone loitering',
       'Aircraft circling you',
-      'About Alert threshold',
       'Car following you',
       'Crossing your mesh',
-      'About Privacy screen',
-      'My signatures',
-      'Signature sets',
-      'Trusted networks',
+      'Wi-Fi beacon floods',
+      'More device types',
     ]) {
       final target = label.startsWith('About ') ? find.byTooltip(label) : find.text(label);
       await tester.scrollUntilVisible(target, 200, scrollable: list);
       expect(target, findsOneWidget, reason: label);
     }
-    expect(find.textContaining('Display only. The database'), findsNothing);
-    await tester.scrollUntilVisible(find.byTooltip('About Alert threshold'), -200, scrollable: list);
     await tester.ensureVisible(find.byTooltip('About Alert threshold'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('About Alert threshold'));
@@ -155,11 +171,13 @@ void main() {
     }
   });
 
-  testWidgets('Receive only switch is at the top of Detection & alerts and persists', (tester) async {
+  testWidgets('Receive only switch is at the top of Detection & Alerts → Privacy and persists', (tester) async {
     final (c, db) = await _container();
     await _pump(tester, c, const DeviceConfigScreen());
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Detection & alerts'));
+    await tester.tap(find.text('Detection & Alerts'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Privacy'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('About Radio privacy'), findsOneWidget);
     final row = find.ancestor(of: find.text('Receive only'), matching: find.byType(ConfigToggleRow));
@@ -403,7 +421,7 @@ BLUETOOTH: Final[list[dict[str, bool | str | int | list[int]]]] = [
       ),
     );
     await _settle(tester);
-    expect(find.text('Wardrive report'), findsOneWidget);
+    expect(find.text('Wardrive Report'), findsOneWidget);
     expect(find.text('Seen before'), findsOneWidget);
     expect(find.text('Flock cameras'), findsOneWidget);
     expect(find.text('Uploads'), findsOneWidget);

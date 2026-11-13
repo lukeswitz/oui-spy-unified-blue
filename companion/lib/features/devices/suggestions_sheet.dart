@@ -47,7 +47,7 @@ class _SuggestionsSheetState extends ConsumerState<SuggestionsSheet> {
           'Groups of 3 or more unclassified radios that share a name, a Bluetooth service, a vendor prefix or a Bluetooth company ID.',
           'SAVE makes the group a signature of your own. The app then classifies every matching radio it hears, from the node and this phone.',
           'With alerts on, a new match sends a notification and goes in the Alerts list.',
-          'Edit or remove them in Settings → Detection & alerts → My signatures.',
+          'Edit or remove them in Settings → Detection & Alerts → Your Lists → My signatures.',
         ]),
       ),
       child: _groups.isEmpty
