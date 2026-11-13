@@ -55,7 +55,7 @@
 - Open-source licenses page in Settings.
 - Boards show names by chip, such as OUISPY-C501 and OUISPY-S301, until you rename them.
 - Receive only (SETTINGS → Detection & alerts): one switch stops every scan from transmitting on connected boards, their mesh nodes and the phone.
-- iPhone phone scan: Apple devices show as "Apple, kind hidden by iOS", then a short connection names AirTags, AirPods, Apple Watch and iPhone or iPad. Receive only turns this off.
+- iPhone phone scan: blank adverts show as "Possibly Apple, hidden by iOS", then a short connection names AirTags, AirPods, Apple Watch and iPhone or iPad. Your own boards are never probed. Receive only turns this off.
 
 ## Changed
 

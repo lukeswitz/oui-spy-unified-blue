@@ -198,10 +198,10 @@ bool isAppleContinuity(Observation o) =>
 
 const iosHiddenAppleSignature = Signature(
   id: 'ios-apple-hidden',
-  name: 'Apple, kind hidden by iOS',
+  name: 'Possibly Apple, hidden by iOS',
   kind: SignatureClass.other,
   notes: 'iOS removes Apple manufacturer data from scan results, so an Apple advert reaches the app with no name, '
-      'services or data. A connectable advert that empty is most likely an iPhone, Mac, Watch, AirPods or AirTag.',
+      'services or data. Other devices that send only flags look the same until a short connection checks their services.',
 );
 
 const gattFindMyService = 'FD43';
@@ -424,7 +424,9 @@ class SignatureEngine {
     }
     final gattId = gattClassId(o);
     if (gattId != null && !hits.contains(gattId) && byId.containsKey(gattId)) hits.add(gattId);
-    if (hits.isEmpty && o.iosConnectable && advertEmpty(o)) return const [iosHiddenAppleSignature];
+    if (hits.isEmpty && o.iosConnectable && advertEmpty(o) && o.gattServices.isEmpty) {
+      return const [iosHiddenAppleSignature];
+    }
     return [for (final id in hits) byId[id]!];
   }
 

@@ -145,7 +145,7 @@ void main() {
     expect(ids(probed(['0000FD43-0000-1000-8000-00805F9B34FB', gattFindMyInfoService], 'left')), ['fleet-apple-audio']);
     expect(ids(probed([gattFindMyInfoService], 'AirPods Pro')), ['fleet-apple-audio']);
     expect(ids(probed(['00001800-0000-1000-8000-00805F9B34FB', gattAncsService])), ['fleet-apple-device']);
-    expect(ids(probed(['00001800-0000-1000-8000-00805F9B34FB'])), ['ios-apple-hidden']);
+    expect(ids(probed(['00001800-0000-1000-8000-00805F9B34FB'])), isEmpty);
     expect(probed([gattAmsService]).iosConnectable, isTrue);
   });
 

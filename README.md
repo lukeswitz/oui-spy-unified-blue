@@ -123,29 +123,75 @@ DETECTIONS → HISTORY can filter by tier.
 </table>
 </div>
 
-- **Home**: session bar (targets, radio, START / PAUSE / STOP) and one card per engine. Status bar shows link, GPS fix and node count.
-- **Detections**: LIVE (every hit; filter, sort, search, export), DEVICES (classified devices), HISTORY (stored log, CSV export), ALERTS (every alert, newest first). Tap a hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps its whole class.
-- **SETTINGS**: APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT).
-- **Map**: choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
-  
-- **Classification**: each device gets a class (trackers, cameras, public safety & fleet, drones, glasses, hacking tools, routers, home & office, …). Class alerts are on by default. A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
-- **Phone scan**: phone icon in the status bar, off at launch. iPhone hits skip WiGLE CSV because iOS hides MAC addresses. iOS also strips Apple's manufacturer data, so a nearby iPhone, AirPods or AirTag arrives as a blank advert and shows as *Apple, kind hidden by iOS*. The iPhone app then connects to it for a moment and checks its services (Find My, AirTag, iPhone notification service) to name the kind.
-- **Receive only** (SETTINGS → Detection & alerts, top): one switch that stops every scan from transmitting. Each connected board stops Wi-Fi probe requests and Bluetooth scan requests, and a manager passes this to its mesh nodes. The phone makes no connections and no Wi-Fi scan requests. On Android it only hears scans other apps already run, so it finds far fewer devices. On iPhone the phone scan pauses, because iOS always sends scan requests. Tracker ring is off. Boards still advertise so the phone can reach them, and mesh nodes still talk to each other. Turning it off puts each board back to its own setting.
-- **Suggested signatures** (DEVICES → More): groups of 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** makes one your own signature, with an optional alert on new matches (SETTINGS → Detection & alerts → My signatures).
-- **Signature sets** (SETTINGS → Detection & alerts): turn on the Fieldwatch stock catalog or Home Assistant's Bluetooth device list, or add your own set by https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
-- **Seen at your stops** (HISTORY → More): radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
-- **Trusted networks** (SETTINGS → Detection & alerts, or **Trust this network** on an access point): learns your Wi-Fi for a day, then warns when its name shows up with weaker security, from another maker, or far from usual places.
-- **Cell and GPS watch** (Android, SETTINGS → Detection & alerts → This phone): warns when the phone drops to 2G or 3G, meets a new tower at a known place, or its GPS looks faked or jammed.
-- **Movement alerts** (Detection & alerts, off by default): a car following you (its RTL-SDR tire sensors heard over 2+ km and 10+ min; your own car is learned), an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another.
-- **Watchlist**: import and export as CSV or JSON in SETTINGS → RULES.
-- **Alert sounds**: choose a built-in melody or compose your own for each alert type, and preview it on the board.
+The app controls your boards, shows what they find, and can scan with the phone's own radios. It has four main screens.
 
-- **Map layers**: *MAPPED ALPRs* scores each Flock hit against OpenStreetMap cameras (`ON MAP` ≤75 m, `UNMAPPED` >250 m). *WDG TERRITORY* shows a linked account's WDGWars territory.
-- **Geofences**: inside a zone, detections drop from feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
-- **PCAP**: capture Wi-Fi or BLE; pause and resume. Auto-PCAP records 3–120 s whenever an engine fires. SETTINGS → DATA → PCAPS lists saved captures.
+| Screen | What it shows |
+|---|---|
+| **Home** | The session bar (targets, radio, START / PAUSE / STOP) and one card per engine. The status bar shows the link, GPS fix and node count. |
+| **Detections** | LIVE lists every hit, with filter, sort, search and export. DEVICES lists classified devices. HISTORY is the stored log, with CSV export. ALERTS lists every alert, newest first. |
+| **Map** | Choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then tap START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map. |
+| **SETTINGS** | APP, SCANNING, RULES (watchlist, signatures, ignore list), ALERTS, NODE (HARDWARE, MESH, FIRMWARE), DATA (ACCOUNTS, PCAPS, EXPORT). |
 
-- **iOS**: live counts and alerts on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
-- **Android**: during a session, an ongoing notification shows live counts and the last alert.
+Tap any hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps every hit of that class.
+
+### Classification
+
+Every device the app hears gets a class, such as tracker, camera, public safety & fleet, drone, glasses, hacking tool, router, or home & office.
+
+- Class alerts are on by default.
+- A Samsung SmartTag away from its owner keeps its path when its address changes, so the **WITH YOU** filter still finds it.
+- **Suggested signatures** (DEVICES → More) groups 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** turns a group into your own signature, with an optional alert on new matches.
+- **Signature sets** (SETTINGS → Detection & alerts) adds the Fieldwatch stock catalog, Home Assistant's Bluetooth device list, or your own set from an https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
+
+### Phone scan
+
+The phone can scan with its own radios, with or without a board. Tap the phone icon in the status bar to start it. It is off at launch.
+
+- iPhone hits skip WiGLE CSV, because iOS hides MAC addresses.
+- iOS also removes Apple's manufacturer data, so a nearby iPhone, AirPods or AirTag arrives as a blank advert. It shows as *Possibly Apple, hidden by iOS*.
+- The iPhone app then connects to that device for a moment and checks its services (Find My, AirTag, iPhone notification service) to name the kind. It never connects to your own boards.
+
+### Receive only
+
+One switch at the top of SETTINGS → Detection & alerts stops every scan from transmitting.
+
+- **Boards:** each connected board stops Wi-Fi probe requests and Bluetooth scan requests. A manager passes this to its mesh nodes.
+- **Android phone:** the phone only hears scans that other apps already run, so it finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.
+- **iPhone:** the phone scan pauses, because iOS sends scan requests whenever an app scans.
+- **Turned off:** connections to nearby devices and **Make it play a sound**.
+- **Still on:** boards keep advertising so the phone can reach them, and mesh nodes keep talking to each other.
+
+Turning it off puts each board back to its own setting.
+
+### Watches and alerts
+
+These features warn you about patterns over time, not single hits.
+
+- **Seen at your stops** (HISTORY → More) lists radios heard at 2+ of your stops in the last 7 days. A stop is 5+ minutes in one place.
+- **Trusted networks** (SETTINGS → Detection & alerts, or **Trust this network** on an access point) learns your Wi-Fi for a day. It then warns when the network's name shows up with weaker security, from another maker, or far from its usual places.
+- **Cell and GPS watch** (Android, SETTINGS → Detection & alerts → This phone) warns when the phone drops to 2G or 3G, meets a new tower at a known place, or its GPS looks faked or jammed.
+- **Movement alerts** (Detection & alerts, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
+- **Watchlist** imports and exports as CSV or JSON in SETTINGS → RULES.
+- **Alert sounds** lets you pick a built-in melody or compose your own for each alert type, and preview it on the board.
+
+### Map layers and geofences
+
+- **MAPPED ALPRs** checks each Flock hit against license plate cameras mapped in OpenStreetMap. It marks a hit `ON MAP` within 75 m and `UNMAPPED` beyond 250 m.
+- **WDG TERRITORY** shows a linked account's WDGWars territory.
+- **Geofences:** inside a zone, detections drop from the feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
+
+### Packet capture
+
+The app saves Wi-Fi or BLE traffic as PCAP files that Wireshark opens.
+
+- Start, pause and resume a capture by hand.
+- Auto-PCAP records 3–120 s whenever an engine fires.
+- SETTINGS → DATA → PCAPS lists saved captures.
+
+### Lock screen and notifications
+
+- **iOS:** live counts and alerts show on the Lock Screen and Dynamic Island during a session, and in CarPlay on iOS 26.
+- **Android:** during a session, an ongoing notification shows live counts and the last alert.
 
 ## USB radios on Android
 
@@ -304,7 +350,7 @@ Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
 
 These settings limit what the boards and the phone send over the air and what the app shows on screen.
 
-- **Receive only** (SETTINGS → Detection & alerts): one switch for every scan. See [App](#app).
+- **Receive only** (SETTINGS → Detection & alerts): one switch for every scan. See [Receive only](#receive-only).
 - **Board radio privacy** (SETTINGS → NODE → HARDWARE → Radio privacy): **Active Wi-Fi probing** is off by default. When on, each probe request uses a new random MAC. **Passive Bluetooth scanning** stops the board's scan requests. Receive only turns on both and locks them.
 - **Private Bluetooth link:** the board's Bluetooth address rotates, and after pairing it advertises no name or services. See [Ways to run](#ways-to-run).
 - **Random MAC each boot:** the board's Wi-Fi and mesh MAC changes at every power-on and stays the same until the next one.

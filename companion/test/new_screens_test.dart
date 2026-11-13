@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
@@ -119,6 +120,30 @@ void main() {
     expect(find.textContaining('Verified: two independent signals'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await db.close();
+  });
+
+  test('iOS probe only targets blank connectable adverts that are not our board', () {
+    ScanResult r({bool connectable = true, String name = '', Map<int, List<int>> mfg = const {}, int rssi = -60}) =>
+        ScanResult(
+          device: BluetoothDevice.fromId('00000000-0000-0000-0000-000000000001'),
+          advertisementData: AdvertisementData(
+            advName: name,
+            txPowerLevel: null,
+            appearance: null,
+            connectable: connectable,
+            manufacturerData: mfg,
+            serviceData: const {},
+            serviceUuids: const [],
+          ),
+          rssi: rssi,
+          timeStamp: DateTime(2026),
+        );
+    expect(PhoneBleSource.probeCandidate(r(), ownBoard: false), isTrue);
+    expect(PhoneBleSource.probeCandidate(r(), ownBoard: true), isFalse);
+    expect(PhoneBleSource.probeCandidate(r(connectable: false), ownBoard: false), isFalse);
+    expect(PhoneBleSource.probeCandidate(r(name: 'Thing'), ownBoard: false), isFalse);
+    expect(PhoneBleSource.probeCandidate(r(mfg: {0x0075: [1]}), ownBoard: false), isFalse);
+    expect(PhoneBleSource.probeCandidate(r(rssi: PhoneBleSource.probeRssiFloor - 1), ownBoard: false), isFalse);
   });
 
   test('receive only clears Wi-Fi probing and forces passive Bluetooth', () {

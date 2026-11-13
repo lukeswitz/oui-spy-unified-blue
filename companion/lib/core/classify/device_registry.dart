@@ -576,9 +576,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         ],
         appearance: adv.appearance,
         gpsTrail: fix == null ? const [] : [GpsSample(now, fix.lat, fix.lon, r.rssi)],
-        iosConnectable: Platform.isIOS && adv.connectable,
+        iosConnectable: Platform.isIOS && adv.connectable && !ownBoard(id),
       ));
-      if (canProbe && _rxOnlyKnown && !rxOnly && _hiddenAdvert(r) && r.rssi >= probeRssiFloor) _probe(id, now, r.rssi);
+      if (canProbe && _rxOnlyKnown && !rxOnly && probeCandidate(r, ownBoard: ownBoard(id))) _probe(id, now, r.rssi);
     }
   }
 
@@ -610,6 +610,13 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     }
   }
 
+  bool Function(String id) isOwnBoard = (_) => false;
+
+  bool ownBoard(String id) => isOwnBoard(id.toUpperCase());
+
+  static bool probeCandidate(ScanResult r, {required bool ownBoard}) =>
+      !ownBoard && _hiddenAdvert(r) && r.rssi >= probeRssiFloor;
+
   static bool _hiddenAdvert(ScanResult r) {
     final a = r.advertisementData;
     return a.connectable &&
@@ -622,6 +629,8 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
 
   Future<void> _probe(String id, int now, int rssi) async {
     if (_probing || rxOnly || _linkBusy || _foxTarget != null || !scanning || _probed.contains(id)) return;
+    final up = id.toUpperCase();
+    if (ownBoard(id) || FlutterBluePlus.connectedDevices.any((d) => d.remoteId.str.toUpperCase() == up)) return;
     if (now - _lastProbeMs < probeGap.inMilliseconds) return;
     _probing = true;
     _lastProbeMs = now;
@@ -957,8 +966,20 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   src.setRxOnly(ref.read(rxOnlyProvider));
   ref.listen<bool?>(rxOnlyProvider, (_, on) => src.setRxOnly(on));
   final ble = ref.read(bleManagerProvider);
+  var paired = <String>{};
+  void loadPaired() => BleManager.pairedBoards()
+      .then((l) => paired = {for (final b in l) b.id.toUpperCase()})
+      .catchError((Object e) {
+        DebugLog.log('CLASSIFY: paired board list failed: $e');
+        return paired;
+      });
+  loadPaired();
+  src.isOwnBoard = (id) => paired.contains(id) || ble.connectedDeviceId?.toUpperCase() == id;
   src.setLinkBusy(ble.phoneScanMustYield);
-  final linkSub = ble.connectionState.listen((_) => src.setLinkBusy(ble.phoneScanMustYield));
+  final linkSub = ble.connectionState.listen((_) {
+    src.setLinkBusy(ble.phoneScanMustYield);
+    loadPaired();
+  });
   ref.onDispose(linkSub.cancel);
   ref.read(wardriveProvider).recordsWithoutBoard = () =>
       src.scanning || ref.read(wifiAdapterControllerProvider).state == WifiAdapterState.running;
