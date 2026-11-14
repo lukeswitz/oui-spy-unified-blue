@@ -70,6 +70,10 @@ internal class Mt7921Adapter(
         val nic = mcuCmd(Mt7921Regs.MCU_CE_GET_NIC_CAPAB, ByteArray(0), true, setQuery = Mt7921Regs.MCU_Q_SET)
         setEeprom()
         log("MT7921: nic-capab resp=%d, efuse pushed".format(nic?.size ?: -1))
+        val mac = mcuCmd(Mt7921Regs.MCU_EXT_CID, byteArrayOf(1, 0, 0, 0), true,
+            extCid = Mt7921Regs.MCU_EXT_MAC_INIT_CTRL, setQuery = Mt7921Regs.MCU_Q_SET)
+        val path = setChanInfo(CHANNELS[0], CHANNELS[0], 0, 0, true, Mt7921Regs.MCU_EXT_SET_RX_PATH)
+        log("MT7921: mac enable resp=%d, rx path resp=%d".format(mac?.size ?: -1, path?.size ?: -1))
 
         setRxFilter(Mt7921Regs.FILTER_MONITOR, 0, 0)
         setRxFilter(0, Mt7921Regs.FIF_BIT_CLR, Mt7921Regs.MONITOR_DROP_CLEAR)
@@ -162,16 +166,23 @@ internal class Mt7921Adapter(
         mcuCmd(Mt7921Regs.MCU_CE_SET_RX_FILTER, d, false, setQuery = Mt7921Regs.MCU_Q_SET)
     }
 
-    private fun setChanInfo(controlCh: Int, centerCh: Int, bw: Int, band: Int, wait: Boolean = true) {
+    private fun setChanInfo(
+        controlCh: Int,
+        centerCh: Int,
+        bw: Int,
+        band: Int,
+        wait: Boolean = true,
+        cmd: Int = Mt7921Regs.MCU_EXT_CHANNEL_SWITCH,
+    ): ByteArray? {
         val d = ByteArray(76)
         d[0] = controlCh.toByte()
         d[1] = centerCh.toByte()
         d[2] = bw.toByte()
-        d[3] = 2
-        d[4] = 2
+        d[3] = Integer.bitCount(Mt7921Regs.ANTENNA_MASK).toByte()
+        d[4] = (if (cmd == Mt7921Regs.MCU_EXT_CHANNEL_SWITCH) Integer.bitCount(Mt7921Regs.ANTENNA_MASK)
+            else Mt7921Regs.ANTENNA_MASK).toByte()
         d[10] = band.toByte()
-        mcuCmd(Mt7921Regs.MCU_EXT_CID, d, wait,
-            extCid = Mt7921Regs.MCU_EXT_CHANNEL_SWITCH, setQuery = Mt7921Regs.MCU_Q_SET)
+        return mcuCmd(Mt7921Regs.MCU_EXT_CID, d, wait, extCid = cmd, setQuery = Mt7921Regs.MCU_Q_SET)
     }
 
     private fun setSniffer(enable: Boolean) {

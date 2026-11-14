@@ -89,6 +89,9 @@ internal object Mt7921Regs {
     const val MCU_CE_GET_NIC_CAPAB = 0x8a
     const val MCU_EXT_CHANNEL_SWITCH = 0x08
     const val MCU_EXT_EFUSE_BUFFER_MODE = 0x21
+    const val MCU_EXT_MAC_INIT_CTRL = 0x46
+    const val MCU_EXT_SET_RX_PATH = 0x4e
+    const val ANTENNA_MASK = 0x3
     const val MCU_UNI_SNIFFER = 0x24
     val FILTER_MONITOR = (1 shl 31) or (1 shl 6) or (1 shl 5) or (1 shl 2)
     val FIF_BIT_CLR = 1 shl 1
