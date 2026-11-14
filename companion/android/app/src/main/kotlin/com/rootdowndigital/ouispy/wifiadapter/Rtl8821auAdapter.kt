@@ -534,7 +534,6 @@ internal class Rtl8821auAdapter(
         var hopAt = start
         var emitAt = start
         var diagAt = start
-        var exploreAt = start
         val hopper = AdaptiveHop(Mt76Regs.CHANNELS)
         var lastRxAt = start
         var rxBytes = 0L
@@ -566,9 +565,7 @@ internal class Rtl8821auAdapter(
         private fun hop(now: Long) {
             val chans = Mt76Regs.CHANNELS
             val active = table.values.mapTo(HashSet()) { it.channel }
-            val explore = now - exploreAt > EXPLORE_MS
-            if (explore) exploreAt = now
-            hopIdx = hopper.next(hopIdx, active, explore)
+            hopIdx = hopper.next(hopIdx, active, now)
             runCatching { setChannel(chans[hopIdx]) }
             hopAt = now
         }
@@ -784,7 +781,6 @@ internal class Rtl8821auAdapter(
         private const val SPS_SEL = 0x83
         private const val FW_READY_LEGACY = 0xC6
         private const val HOP_DWELL_MS = 150L
-        private const val EXPLORE_MS = 2000L
         private const val REARM_MS = 4000L
         private const val NBUF = 16
         private const val BUF_SZ = 16384

@@ -433,7 +433,7 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
       nodes: nodes,
       labelFor: (id) {
         final d = usbDual[id];
-        return d == null ? app.labelForNode(id) : (d.name.isEmpty ? 'USB ${d.vidPid}' : d.name);
+        return d == null ? app.labelForNode(id) : d.title;
       },
       hubId: hubId,
       hubNodes: hubNodes,

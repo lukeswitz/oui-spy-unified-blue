@@ -18,9 +18,7 @@ internal class UsbIo(private val conn: UsbDeviceConnection) {
     fun cfgWrite(addr: Int, value: Int) =
         ctrlOut(Mt76Regs.VENDOR_WRITE_CFG, addr, le32(value))
 
-    fun cfgRead(addr: Int): Int =
-        conn.controlTransfer(Mt76Regs.DIR_IN, Mt76Regs.VENDOR_READ_CFG, hi(addr), lo(addr), read4, 4, TIMEOUT)
-            .let { if (it == 4) le32(read4) else 0 }
+    fun cfgRead(addr: Int): Int = ctrlIn(Mt76Regs.VENDOR_READ_CFG, addr)
 
     fun cfgSet(addr: Int, bits: Int) = cfgWrite(addr, cfgRead(addr) or bits)
     fun cfgClear(addr: Int, bits: Int) = cfgWrite(addr, cfgRead(addr) and bits.inv())
@@ -59,11 +57,26 @@ internal class UsbIo(private val conn: UsbDeviceConnection) {
     fun clearHalt(epAddr: Int): Int =
         conn.controlTransfer(0x02, 0x01, 0x00, epAddr, null, 0, TIMEOUT)
 
+    var fails = 0
+        private set
+    var firstFail: String? = null
+        private set
+
+    fun failSummary(): String = "ctrl fails=$fails first=${firstFail ?: "-"}"
+
+    private fun note(n: Int, want: Int, req: Int, addr: Int): Int {
+        if (n != want) {
+            fails++
+            if (firstFail == null) firstFail = "req=0x%02x addr=0x%x n=%d".format(req, addr, n)
+        }
+        return n
+    }
+
     private fun ctrlOut(req: Int, addr: Int, data: ByteArray) =
-        conn.controlTransfer(Mt76Regs.DIR_OUT, req, hi(addr), lo(addr), data, data.size, TIMEOUT)
+        note(conn.controlTransfer(Mt76Regs.DIR_OUT, req, hi(addr), lo(addr), data, data.size, TIMEOUT), data.size, req, addr)
 
     private fun ctrlIn(req: Int, addr: Int): Int =
-        conn.controlTransfer(Mt76Regs.DIR_IN, req, hi(addr), lo(addr), read4, 4, TIMEOUT)
+        note(conn.controlTransfer(Mt76Regs.DIR_IN, req, hi(addr), lo(addr), read4, 4, TIMEOUT), 4, req, addr)
             .let { if (it == 4) le32(read4) else 0 }
 
     private val read4 = ByteArray(4)

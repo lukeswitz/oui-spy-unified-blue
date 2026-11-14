@@ -813,7 +813,6 @@ internal class Rtl8812auAdapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
-        var exploreAt = hopAt
         var lastRxAt = hopAt
         try {
             while (!stop) {
@@ -847,9 +846,7 @@ internal class Rtl8812auAdapter(
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
                 if (now - hopAt > DWELL_MS) {
-                    val explore = now - exploreAt > EXPLORE_MS
-                    if (explore) exploreAt = now
-                    hopIdx = nextHop(hopIdx, table, explore)
+                    hopIdx = nextHop(hopIdx, table, now)
                     setChannel(Rg.CHANNELS[hopIdx])
                     hopAt = now
                 }
@@ -866,7 +863,6 @@ internal class Rtl8812auAdapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
-        var exploreAt = hopAt
         var lastRxAt = hopAt
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
@@ -879,9 +875,7 @@ internal class Rtl8812auAdapter(
             }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
             if (now - hopAt > DWELL_MS) {
-                val explore = now - exploreAt > EXPLORE_MS
-                if (explore) exploreAt = now
-                hopIdx = nextHop(hopIdx, table, explore)
+                hopIdx = nextHop(hopIdx, table, now)
                 setChannel(Rg.CHANNELS[hopIdx])
                 hopAt = now
             }
@@ -891,8 +885,8 @@ internal class Rtl8812auAdapter(
 
     private val hopper = AdaptiveHop(Rg.CHANNELS)
 
-    private fun nextHop(cur: Int, table: SightingTable, explore: Boolean): Int =
-        hopper.next(cur, table.map.values.mapTo(HashSet()) { it.channel }, explore)
+    private fun nextHop(cur: Int, table: SightingTable, now: Long): Int =
+        hopper.next(cur, table.map.values.mapTo(HashSet()) { it.channel }, now)
 
     // unverified: RX DMA and MAC RX are toggled through REG_CR bits only, no register is read to prove the stall
     private fun reKickRx() {
@@ -1047,7 +1041,6 @@ internal class Rtl8812auAdapter(
 
     companion object {
         const val DWELL_MS = 150L
-        const val EXPLORE_MS = 2000L
         const val RX_STALL_MS = 4000L
 
         fun loadFirmware(ctx: Context): ByteArray {

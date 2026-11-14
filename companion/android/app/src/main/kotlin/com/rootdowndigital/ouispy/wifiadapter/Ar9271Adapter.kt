@@ -53,7 +53,6 @@ internal class Ar9271Adapter(
     private var rxPartial: ByteArray? = null
     private var rxPartialLen = 0
     private val table = LinkedHashMap<String, Entry>()
-    private var exploreAt = 0L
     private val hopper = AdaptiveHop(Ar9271Regs.CHANNELS)
 
     fun abort() { stop = true }
@@ -966,7 +965,6 @@ internal class Ar9271Adapter(
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
         var lastRxAt = hopAt
-        exploreAt = hopAt
         try {
             while (!stop) {
                 val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
@@ -1002,9 +1000,7 @@ internal class Ar9271Adapter(
 
     private fun nextHop(cur: Int, now: Long): Int {
         val active = table.values.mapTo(HashSet()) { it.channel }
-        val explore = now - exploreAt > EXPLORE_MS
-        if (explore) exploreAt = now
-        return hopper.next(cur, active, explore)
+        return hopper.next(cur, active, now)
     }
 
     private fun reKickRx() {
@@ -1035,7 +1031,6 @@ internal class Ar9271Adapter(
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
         var lastRxAt = hopAt
-        exploreAt = hopAt
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, 100)
             val now = System.currentTimeMillis()
@@ -1209,7 +1204,6 @@ internal class Ar9271Adapter(
 
     companion object {
         const val DWELL_MS = 150L
-        const val EXPLORE_MS = 2000L
         private const val STALL_MS = 4000L
         private const val RESET_POWER_ON = 0
         private const val RESET_WARM = 1

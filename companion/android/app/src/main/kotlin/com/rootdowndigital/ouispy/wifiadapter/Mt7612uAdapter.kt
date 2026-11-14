@@ -57,9 +57,12 @@ internal class Mt7612uAdapter(
         if (!waitForMac()) {
             throw IllegalStateException("MT7612U: MAC not ready after power-on")
         }
-        uploadRomPatch()
-        uploadFirmware()
-        log("MT7612U: firmware running")
+        val resident = io.regRead(Mt76Regs.MCU_COM_REG0) and 0x1 != 0
+        if (!resident) {
+            uploadRomPatch()
+            uploadFirmware()
+        }
+        log("MT7612U: firmware running (resident=$resident), ${io.failSummary()}")
         io.pollReg(Mt76Regs.WPDMA_GLO_CFG, Mt76Regs.WPDMA_TX_BUSY or Mt76Regs.WPDMA_RX_BUSY, 0, 100)
         if (!waitForMac()) {
             throw IllegalStateException("MT7612U: MAC not ready after firmware load")
@@ -78,8 +81,19 @@ internal class Mt7612uAdapter(
         tuneChannel(Mt76Regs.CHANNELS[0], scan = false)
         io.regWrite(Mt76Regs.RX_FILTR_CFG, Mt76Regs.FILTR_CRC_ERR or Mt76Regs.FILTR_PHY_ERR)
         macStart()
-        log("MT7612U: receiver live")
-        rxLoop(onBatch)
+        log("MT7612U: receiver live, ${io.failSummary()}")
+        try {
+            rxLoop(onBatch)
+        } finally {
+            runCatching { cleanup() }.onFailure { log("MT7612U: cleanup failed: ${it.message}") }
+        }
+    }
+
+    private fun cleanup() {
+        mcuCmd(Mt76Regs.CMD_POWER_SAVING_OP, le32words(Mt76Regs.RADIO_OFF, 0), false)
+        io.regClear(Mt76Regs.MAC_SYS_CTRL, Mt76Regs.SYS_CTRL_ENABLE_TX or Mt76Regs.SYS_CTRL_ENABLE_RX)
+        val idle = io.pollReg(Mt76Regs.MAC_STATUS, Mt76Regs.MAC_STATUS_RX, 0, 2000)
+        log("MT7612U: radio off, mac stopped (rx idle=$idle)")
     }
 
     private fun findEndpoints(): Boolean {
@@ -387,7 +401,6 @@ internal class Mt7612uAdapter(
         var rxBytes = 0L
         var rxBufs = 0L
         var lastRxAt = hopAt
-        var exploreAt = hopAt
         val hopper = AdaptiveHop(Mt76Regs.CHANNELS)
         var phoneCh = emptySet<Int>()
         var phoneChAt = 0L
@@ -421,7 +434,7 @@ internal class Mt7612uAdapter(
                 if (now - diagAt > 3000) {
                     val busy = io.regRead(Mt76Regs.CH_BUSY)
                     val rs0 = io.regRead(Mt76Regs.RX_STAT_0)
-                    log("MT7612U rx: bufs=$rxBufs bytes=$rxBytes tracked=${table.map.size} ch=${Mt76Regs.CHANNELS[hopIdx]} CH_BUSY=$busy STAT0(crc=${rs0 and 0xffff} phy=${(rs0 ushr 16) and 0xffff})")
+                    log("MT7612U rx: bufs=$rxBufs bytes=$rxBytes tracked=${table.map.size} ch=${Mt76Regs.CHANNELS[hopIdx]} CH_BUSY=$busy STAT0(crc=${rs0 and 0xffff} phy=${(rs0 ushr 16) and 0xffff}) ${io.failSummary()}")
                     diagAt = now
                     if (now - lastRxAt > 4000 && (busy > 50000 || rxBufs == 0L)) {
                         reKickRx()
@@ -432,9 +445,7 @@ internal class Mt7612uAdapter(
                 if (now - hopAt > DWELL_MS) {
                     if (now - phoneChAt > 5000) { phoneCh = phoneChannels(); phoneChAt = now }
                     val active = table.map.values.mapTo(HashSet(phoneCh)) { it.channel }
-                    val explore = now - exploreAt > EXPLORE_MS
-                    if (explore) exploreAt = now
-                    hopIdx = hopper.next(hopIdx, active, explore)
+                    hopIdx = hopper.next(hopIdx, active, now)
                     runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                     drainCmdResp()
                     hopAt = now
@@ -688,6 +699,5 @@ internal class Mt7612uAdapter(
 
     companion object {
         const val DWELL_MS = 125L
-        const val EXPLORE_MS = 2000L
     }
 }

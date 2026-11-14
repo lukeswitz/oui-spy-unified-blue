@@ -349,7 +349,6 @@ internal class Rt3070Adapter(
         var rxBytes = 0L
         var rxBufs = 0L
         var lastRxAt = hopAt
-        var exploreAt = hopAt
         try {
             while (!stop) {
                 val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
@@ -389,7 +388,7 @@ internal class Rt3070Adapter(
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
                 if (now - hopAt > DWELL_MS) {
-                    hopIdx = nextHop(hopIdx, table, now, exploreAt).also { if (now - exploreAt > EXPLORE_MS) exploreAt = now }
+                    hopIdx = nextHop(hopIdx, table, now)
                     runCatching { configChannel(Rg.HOP[hopIdx]) }
                     hopAt = now
                 }
@@ -406,7 +405,6 @@ internal class Rt3070Adapter(
         var hopIdx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
-        var exploreAt = hopAt
         var lastRxAt = hopAt
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
@@ -415,7 +413,7 @@ internal class Rt3070Adapter(
             else if (now - lastRxAt > 4000) { runCatching { reKickRx() }; lastRxAt = now }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
             if (now - hopAt > DWELL_MS) {
-                hopIdx = nextHop(hopIdx, table, now, exploreAt).also { if (now - exploreAt > EXPLORE_MS) exploreAt = now }
+                hopIdx = nextHop(hopIdx, table, now)
                 runCatching { configChannel(Rg.HOP[hopIdx]) }
                 hopAt = now
             }
@@ -425,9 +423,9 @@ internal class Rt3070Adapter(
 
     private val hopper = AdaptiveHop(Rg.HOP)
 
-    private fun nextHop(hopIdx: Int, table: SightingTable, now: Long, exploreAt: Long): Int {
+    private fun nextHop(hopIdx: Int, table: SightingTable, now: Long): Int {
         val active = table.map.values.mapTo(HashSet()) { it.channel }
-        return hopper.next(hopIdx, active, now - exploreAt > EXPLORE_MS)
+        return hopper.next(hopIdx, active, now)
     }
 
     // unverified: RX layout (rxinfo word 0 = pkt len, RXWI 16 B, rxd trailer at 4+pktLen) per Wardrive Go; one MPDU per bulk buffer.
@@ -599,7 +597,6 @@ internal class Rt3070Adapter(
 
     companion object {
         const val DWELL_MS = 350L
-        const val EXPLORE_MS = 2000L
         const val FRESH_MS = 8000L
     }
 }

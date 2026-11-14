@@ -747,8 +747,8 @@ class _UsbScanSources extends ConsumerWidget {
       for (final d in ctl.devices)
         _SourceTile(
           icon: Icons.wifi,
-          title: d.name.isNotEmpty ? d.name : 'USB Wi-Fi',
-          subtitle: ctl.isActive(d.id) ? 'Scanning' : 'USB ${d.vidPid}',
+          title: d.title,
+          subtitle: ctl.isActive(d.id) ? 'Scanning · ${ctl.apCountOf(d.id)} APs' : 'USB ${d.vidPid}',
           on: !off.contains(d.id),
           trailing: Switch(
             value: !off.contains(d.id),

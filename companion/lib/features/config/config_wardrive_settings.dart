@@ -292,7 +292,7 @@ class _WifiAdapterSectionState extends ConsumerState<_WifiAdapterSection> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(d.name.isNotEmpty ? d.name : 'USB WiFi adapter',
+                          Text(d.title,
                               style: TextStyle(
                                 color: t.textPrimary, fontSize: 14,
                                 fontWeight: FontWeight.w600, fontFamily: AppTheme.mono,

@@ -729,7 +729,6 @@ internal class Rtl8814auAdapter(
     private var hopIdx = 0
     private var hopAt = 0L
     private var emitAt = 0L
-    private var exploreAt = 0L
     private val hopper = AdaptiveHop(Mt76Regs.CHANNELS)
     private var lastRxAt = 0L
     private var rxBufs = 0L
@@ -747,7 +746,7 @@ internal class Rtl8814auAdapter(
             reqs.add(r)
         }
         val start = System.currentTimeMillis()
-        hopAt = start; emitAt = start; exploreAt = start; lastRxAt = start
+        hopAt = start; emitAt = start; lastRxAt = start
         if (!ok) {
             reqs.forEach { runCatching { it.cancel() }; runCatching { it.close() } }
             rxLoopSync(onBatch)
@@ -812,9 +811,7 @@ internal class Rtl8814auAdapter(
         if (now - hopAt > DWELL_MS) {
             val chs = Mt76Regs.CHANNELS
             val active = table.values.mapTo(HashSet()) { it.channel }
-            val explore = now - exploreAt > Mt7612uAdapter.EXPLORE_MS
-            if (explore) exploreAt = now
-            hopIdx = hopper.next(hopIdx, active, explore)
+            hopIdx = hopper.next(hopIdx, active, now)
             runCatching { setChannel(chs[hopIdx]) }
             hopAt = now
         }

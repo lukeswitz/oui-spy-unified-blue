@@ -4,12 +4,15 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 class WifiAdapterDevice {
-  const WifiAdapterDevice({required this.id, required this.vendorId, required this.productId, required this.name});
+  const WifiAdapterDevice({required this.id, required this.vendorId, required this.productId, required this.name, this.chip = ''});
 
   final String id;
   final int vendorId;
   final int productId;
   final String name;
+  final String chip;
+
+  String get title => chip.isNotEmpty ? chip : (name.trim().isNotEmpty ? name.trim() : 'USB Wi-Fi');
 
   String get vidPid =>
       '${vendorId.toRadixString(16).padLeft(4, '0')}:${productId.toRadixString(16).padLeft(4, '0')}';
@@ -19,6 +22,7 @@ class WifiAdapterDevice {
         vendorId: m['vid']! as int,
         productId: m['pid']! as int,
         name: (m['name'] as String?) ?? '',
+        chip: (m['chip'] as String?) ?? '',
       );
 }
 

@@ -281,6 +281,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         "vid" to d.vendorId,
         "pid" to d.productId,
         "name" to (d.productName ?: (kindOf(d)?.name ?: "USB WiFi adapter")),
+        "chip" to (kindOf(d)?.name ?: ""),
     )
 
     private fun startAdapter(device: UsbDevice, result: MethodChannel.Result, radioMask: Int) {

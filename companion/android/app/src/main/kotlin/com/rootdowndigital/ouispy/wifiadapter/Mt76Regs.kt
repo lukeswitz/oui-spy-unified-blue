@@ -106,6 +106,8 @@ internal object Mt76Regs {
 
     const val Q_SELECT = 1
     const val RADIO_ON = 0x31
+    const val RADIO_OFF = 0x30
+    const val MAC_STATUS_RX = 1 shl 1
     const val MT_RF_BBP_CR = 2
 
     const val MCU_CAL_TEMP = 2
