@@ -13,7 +13,7 @@
 </div>
 
 <div align="center">
-<b>OUI-APEX detects surveillance hardware, trackers and drones.</b> It also works as a wardriving and recon tool.
+<b>OUI-APEX detects surveillance hardware, trackers and drones.</b> It also works as a wardriving and recon tool. 
 <p>
   
 <table>
@@ -30,19 +30,20 @@
 
 </div>
 
+> Runs the OUI-SPY ecosystem by colonelpanichacks, with additional features.
+>
+> **Not affiliated with OUI-SPY**
+
 ## Contents
 
 - [Quick start](#quick-start)
 - [Engines](#engines)
 - [Ways to run](#ways-to-run)
 - [App](#app)
-- [USB radios on Android](#usb-radios-on-android)
 - [Boards](#boards)
-- [Standalone controls](#standalone-controls)
 - [Mesh](#mesh)
-- [Optional GPS module](#optional-gps-module)
+- [External GPS](#optional-gps-module)
 - [Privacy](#privacy)
-- [Internet services](#internet-services)
 - [Build](#build)
 - [Credits](#credits)
   
