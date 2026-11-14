@@ -730,6 +730,7 @@ internal class Rtl8814auAdapter(
     private var hopAt = 0L
     private var emitAt = 0L
     private var exploreAt = 0L
+    private val hopper = AdaptiveHop(Mt76Regs.CHANNELS)
     private var lastRxAt = 0L
     private var rxBufs = 0L
 
@@ -812,14 +813,8 @@ internal class Rtl8814auAdapter(
             val chs = Mt76Regs.CHANNELS
             val active = table.values.mapTo(HashSet()) { it.channel }
             val explore = now - exploreAt > Mt7612uAdapter.EXPLORE_MS
-            var nx = (hopIdx + 1) % chs.size
-            if (active.isNotEmpty() && !explore) {
-                var s = 0
-                while (s < chs.size && chs[nx] !in active) { nx = (nx + 1) % chs.size; s++ }
-            } else if (explore) {
-                exploreAt = now
-            }
-            hopIdx = nx
+            if (explore) exploreAt = now
+            hopIdx = hopper.next(hopIdx, active, explore)
             runCatching { setChannel(chs[hopIdx]) }
             hopAt = now
         }

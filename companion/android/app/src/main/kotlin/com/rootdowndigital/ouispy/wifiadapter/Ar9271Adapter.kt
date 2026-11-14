@@ -54,6 +54,7 @@ internal class Ar9271Adapter(
     private var rxPartialLen = 0
     private val table = LinkedHashMap<String, Entry>()
     private var exploreAt = 0L
+    private val hopper = AdaptiveHop(Ar9271Regs.CHANNELS)
 
     fun abort() { stop = true }
 
@@ -1000,20 +1001,10 @@ internal class Ar9271Adapter(
     }
 
     private fun nextHop(cur: Int, now: Long): Int {
-        val chs = Ar9271Regs.CHANNELS
         val active = table.values.mapTo(HashSet()) { it.channel }
         val explore = now - exploreAt > EXPLORE_MS
-        var nx = (cur + 1) % chs.size
-        if (active.isNotEmpty() && !explore) {
-            var s = 0
-            while (s < chs.size && chs[nx] !in active) {
-                nx = (nx + 1) % chs.size
-                s++
-            }
-        } else if (explore) {
-            exploreAt = now
-        }
-        return nx
+        if (explore) exploreAt = now
+        return hopper.next(cur, active, explore)
     }
 
     private fun reKickRx() {

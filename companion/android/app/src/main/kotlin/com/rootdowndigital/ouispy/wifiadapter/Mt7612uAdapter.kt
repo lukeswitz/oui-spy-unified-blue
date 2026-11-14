@@ -388,6 +388,7 @@ internal class Mt7612uAdapter(
         var rxBufs = 0L
         var lastRxAt = hopAt
         var exploreAt = hopAt
+        val hopper = AdaptiveHop(Mt76Regs.CHANNELS)
         var phoneCh = emptySet<Int>()
         var phoneChAt = 0L
         try {
@@ -432,16 +433,8 @@ internal class Mt7612uAdapter(
                     if (now - phoneChAt > 5000) { phoneCh = phoneChannels(); phoneChAt = now }
                     val active = table.map.values.mapTo(HashSet(phoneCh)) { it.channel }
                     val explore = now - exploreAt > EXPLORE_MS
-                    var nx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
-                    if (active.isNotEmpty() && !explore) {
-                        var s = 0
-                        while (s < Mt76Regs.CHANNELS.size && Mt76Regs.CHANNELS[nx] !in active) {
-                            nx = (nx + 1) % Mt76Regs.CHANNELS.size; s++
-                        }
-                    } else if (explore) {
-                        exploreAt = now
-                    }
-                    hopIdx = nx
+                    if (explore) exploreAt = now
+                    hopIdx = hopper.next(hopIdx, active, explore)
                     runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                     drainCmdResp()
                     hopAt = now

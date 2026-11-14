@@ -889,18 +889,10 @@ internal class Rtl8812auAdapter(
         emit(table, onBatch)
     }
 
-    private fun nextHop(cur: Int, table: SightingTable, explore: Boolean): Int {
-        val chs = Rg.CHANNELS
-        var nx = (cur + 1) % chs.size
-        if (explore || table.map.isEmpty()) return nx
-        val active = table.map.values.mapTo(HashSet()) { it.channel }
-        var s = 0
-        while (s < chs.size && chs[nx] !in active) {
-            nx = (nx + 1) % chs.size
-            s++
-        }
-        return nx
-    }
+    private val hopper = AdaptiveHop(Rg.CHANNELS)
+
+    private fun nextHop(cur: Int, table: SightingTable, explore: Boolean): Int =
+        hopper.next(cur, table.map.values.mapTo(HashSet()) { it.channel }, explore)
 
     // unverified: RX DMA and MAC RX are toggled through REG_CR bits only, no register is read to prove the stall
     private fun reKickRx() {

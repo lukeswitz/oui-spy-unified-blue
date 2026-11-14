@@ -209,16 +209,16 @@ class _UsbScanChip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final st = ref.watch(wifiAdapterStateProvider).valueOrNull ??
         ref.watch(wifiAdapterControllerProvider).state;
-    if (st == WifiAdapterState.absent) return const SizedBox.shrink();
+    final sdrPresent = ref.watch(sdrPresentProvider).valueOrNull ?? false;
+    if (st == WifiAdapterState.absent && !sdrPresent) return const SizedBox.shrink();
     final running = st == WifiAdapterState.running || st == WifiAdapterState.starting;
     return Padding(
       padding: const EdgeInsets.only(left: 2, right: 6),
       child: Tooltip(
         message: running ? 'USB adapter scanning' : 'USB adapter connected',
-        child: Icon(Icons.usb, size: 22, color: running ? AppTheme.detector : t.textSecondary),
+        child: Icon(Icons.usb, size: 22, color: AppTheme.detector),
       ),
     );
   }

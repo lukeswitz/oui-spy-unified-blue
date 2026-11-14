@@ -709,7 +709,56 @@ class ClassifiedDevice {
     final k = kin;
     return k != null && (own.confidence == Confidence.low || DeviceExplain.isGeneric(own)) ? k : own;
   }();
-  SignatureClass? get primaryClass => signatures.isEmpty ? null : signatures.first.kind;
+  late final SignatureClass? primaryClass = signatures.isNotEmpty
+      ? signatures.first.kind
+      : bucketClass[guess.bucket] ?? (obs.isAp ? SignatureClass.isp : null);
+
+  static const bucketClass = <String, SignatureClass>{
+    'ap': SignatureClass.isp,
+    'router': SignatureClass.isp,
+    'network': SignatureClass.isp,
+    'isp': SignatureClass.isp,
+    'hotspot': SignatureClass.isp,
+    'mesh': SignatureClass.mesh,
+    'audio': SignatureClass.audio,
+    'audio-personal': SignatureClass.audio,
+    'audio-speaker': SignatureClass.audio,
+    'speaker': SignatureClass.audio,
+    'tv': SignatureClass.home,
+    'console': SignatureClass.home,
+    'home': SignatureClass.home,
+    'light': SignatureClass.home,
+    'fan': SignatureClass.home,
+    'garage': SignatureClass.home,
+    'sensor': SignatureClass.home,
+    'iot': SignatureClass.home,
+    'iot-module': SignatureClass.home,
+    'thermostat': SignatureClass.thermostat,
+    'wearable': SignatureClass.wearable,
+    'watch': SignatureClass.wearable,
+    'bodyworn': SignatureClass.wearable,
+    'glasses': SignatureClass.glasses,
+    'health': SignatureClass.health,
+    'camera': SignatureClass.camera,
+    'lock': SignatureClass.lock,
+    'access': SignatureClass.lock,
+    'vehicle': SignatureClass.vehicle,
+    'drone': SignatureClass.drone,
+    'aircraft': SignatureClass.drone,
+    'tag': SignatureClass.finder,
+    'beacon': SignatureClass.beacon,
+    'signage': SignatureClass.signage,
+    'phone': SignatureClass.phone,
+    'computer': SignatureClass.phone,
+    'hid': SignatureClass.phone,
+    'law-enforcement': SignatureClass.lawEnforcement,
+    'pentest': SignatureClass.hacking,
+    'hacking': SignatureClass.hacking,
+    'printer': SignatureClass.other,
+    'pos': SignatureClass.other,
+    'industrial': SignatureClass.other,
+    'radio': SignatureClass.other,
+  };
 }
 
 class DeviceRegistry extends ChangeNotifier {

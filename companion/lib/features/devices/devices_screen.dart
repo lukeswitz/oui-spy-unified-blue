@@ -76,9 +76,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     _sectionOrder = prefs.getStringList(_kOrder) ?? const [];
   }
 
-  SignatureClass? _primaryClass(ClassifiedDevice d) =>
-      d.signatures.isEmpty ? null : d.signatures.first.kind;
-
   static String _sectionKey(SignatureClass? c) => c?.name ?? _unclassifiedKey;
 
   void _setGrouped(bool v) {
@@ -148,7 +145,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   List<String> _orderedSections(List<ClassifiedDevice> devices) {
     final counts = <String, int>{};
     for (final d in devices) {
-      final k = _sectionKey(_primaryClass(d));
+      final k = _sectionKey(d.primaryClass);
       counts[k] = (counts[k] ?? 0) + 1;
     }
     final present = counts.keys.toSet();
@@ -187,8 +184,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     if (_withYouOnly && !ref.read(deviceRegistryProvider).withYou(d)) return false;
     if (_radio != null && d.obs.kind != _radio) return false;
     if (_source != null && !d.sources.contains(_source)) return false;
-    if (_unclassifiedOnly) return d.signatures.isEmpty;
-    if (_class != null) return d.signatures.any((s) => s.kind == _class);
+    if (_unclassifiedOnly) return d.primaryClass == null;
+    if (_class != null) return d.primaryClass == _class || d.signatures.any((s) => s.kind == _class);
     return true;
   }
 
@@ -487,8 +484,9 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       final counts = <SignatureClass, int>{};
       var unclassified = 0;
       for (final d in all) {
-        if (d.signatures.isEmpty) unclassified++;
-        for (final k in {for (final s in d.signatures) s.kind}) {
+        final p = d.primaryClass;
+        if (p == null) unclassified++;
+        for (final k in {for (final s in d.signatures) s.kind, ?p}) {
           counts[k] = (counts[k] ?? 0) + 1;
         }
       }
@@ -583,7 +581,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                             ? _GroupedDeviceList(
                                 devices: ordered,
                                 guesses: guesses,
-                                sectionKeyOf: (d) => _sectionKey(_primaryClass(d)),
+                                sectionKeyOf: (d) => _sectionKey(d.primaryClass),
                                 order: _orderedSections(ordered),
                                 expanded: _expanded,
                                 onToggle: _toggleCollapsed,

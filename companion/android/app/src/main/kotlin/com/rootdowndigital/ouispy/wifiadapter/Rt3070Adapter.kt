@@ -423,15 +423,11 @@ internal class Rt3070Adapter(
         emit(table, onBatch)
     }
 
+    private val hopper = AdaptiveHop(Rg.HOP)
+
     private fun nextHop(hopIdx: Int, table: SightingTable, now: Long, exploreAt: Long): Int {
         val active = table.map.values.mapTo(HashSet()) { it.channel }
-        val explore = now - exploreAt > EXPLORE_MS
-        var nx = (hopIdx + 1) % Rg.HOP.size
-        if (active.isNotEmpty() && !explore) {
-            var s = 0
-            while (s < Rg.HOP.size && Rg.HOP[nx] !in active) { nx = (nx + 1) % Rg.HOP.size; s++ }
-        }
-        return nx
+        return hopper.next(hopIdx, active, now - exploreAt > EXPLORE_MS)
     }
 
     // unverified: RX layout (rxinfo word 0 = pkt len, RXWI 16 B, rxd trailer at 4+pktLen) per Wardrive Go; one MPDU per bulk buffer.

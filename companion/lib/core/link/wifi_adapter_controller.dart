@@ -184,3 +184,7 @@ final wifiAdapterStateProvider = StreamProvider<WifiAdapterState>((ref) {
 });
 
 final usbAdapterOffProvider = StateProvider<Set<String>>((ref) => const {});
+
+final usbAdapterRadioProvider = StateProvider<Map<String, int>>((ref) => const {});
+
+bool usbAdapterHasBle(WifiAdapterDevice d) => d.vendorId == 0x0e8d && d.productId == 0x7961;
