@@ -736,6 +736,7 @@ class _UsbScanSources extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(wifiAdapterStateProvider);
+    ref.watch(appStateProvider.select((s) => s.connectionState));
     final ctl = ref.read(wifiAdapterControllerProvider);
     final sdrState = ref.watch(sdrStateProvider).valueOrNull ?? SdrState.idle;
     final sdrActive = sdrState == SdrState.running || sdrState == SdrState.starting;
@@ -748,7 +749,9 @@ class _UsbScanSources extends ConsumerWidget {
         _SourceTile(
           icon: Icons.wifi,
           title: d.title,
-          subtitle: ctl.isActive(d.id) ? 'Scanning · ${ctl.apCountOf(d.id)} APs' : 'USB ${d.vidPid}',
+          subtitle: ctl.isActive(d.id)
+              ? 'Scanning · ${ctl.apCountOf(d.id)} APs'
+              : '${off.contains(d.id) ? 'Off' : ctl.stateOf(d.id) == WifiAdapterState.error ? 'Stopped' : sessionRunning ? 'Not scanning' : 'Starts with START'} · USB ${d.vidPid}',
           on: !off.contains(d.id),
           trailing: Switch(
             value: !off.contains(d.id),

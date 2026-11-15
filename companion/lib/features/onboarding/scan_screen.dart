@@ -454,8 +454,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final sorted = filtered.where((r) => !pairedIds.contains(r.device.remoteId.toString())).toList()
       ..sort((a, b) => displayName(a).compareTo(displayName(b)));
     final ble = ref.read(bleManagerProvider);
-    final liveId = ble.currentConnectionState == NodeConnectionState.ready ? ble.targetDeviceId : null;
+    final ready = ble.currentConnectionState == NodeConnectionState.ready;
+    final usbLive = ready && ble.isUsbLinked;
+    final liveId = !ready ? null : usbLive ? (ble.usbDevice?.id ?? _net?.label ?? 'USB') : ble.targetDeviceId;
     final otherPaired = _paired.where((b) => b.id != liveId).toList();
+    final otherUsb = _usb.where((d) => d.id != liveId).toList();
+    final net = _net?.label == liveId ? null : _net;
 
     return Scaffold(
       backgroundColor: t.background,
@@ -475,12 +479,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           ),
         ],
       ),
-      body: SizedBox(
-        width: double.infinity,
-        child: Column(
-        children: [
+      body: CustomScrollView(
+        slivers: [
           if (_error != null)
-            Padding(
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Container(
                 width: double.infinity,
@@ -490,10 +492,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ),
                 child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: AppTheme.mono)),
               ),
-            ),
+            )),
 
           if (liveId != null)
-            Padding(
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,31 +505,33 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   _linkTile(t,
                       id: liveId,
                       title: ref.watch(appStateProvider).labelForNode(ble.nodeId),
-                      subtitle: '${boardDisplayName(ble.board)} · $liveId',
-                      icon: Icons.bluetooth_connected,
+                      subtitle: '${boardDisplayName(ble.board)} · ${usbLive ? 'USB' : liveId}',
+                      icon: usbLive ? Icons.usb : Icons.bluetooth_connected,
                       active: true,
                       onTap: () => context.go('/home'),
-                      onLongPress: () => _confirmForget((id: liveId, name: ref.read(appStateProvider).labelForNode(ble.nodeId)))),
+                      onLongPress: usbLive
+                          ? null
+                          : () => _confirmForget((id: liveId, name: ref.read(appStateProvider).labelForNode(ble.nodeId)))),
                 ],
               ),
-            ),
+            )),
 
-          if (_usb.isNotEmpty || _net != null)
-            Padding(
+          if (otherUsb.isNotEmpty || net != null)
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('USB', style: TextStyle(color: t.textDim, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.8, fontFamily: AppTheme.mono)),
                   const SizedBox(height: 8),
-                  for (final d in _usb) _usbTile(d, t),
-                  if (_net != null) _netTile(_net!, t),
+                  for (final d in otherUsb) _usbTile(d, t),
+                  if (net != null) _netTile(net, t),
                 ],
               ),
-            ),
+            )),
 
           if (otherPaired.isNotEmpty)
-            Padding(
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -548,23 +552,32 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                         onLongPress: () => _confirmForget(b)),
                 ],
               ),
-            ),
+            )),
 
-          if (sorted.isEmpty) ...[
-            const Spacer(),
-            _ScanRadar(active: _scanning),
-            const SizedBox(height: 24),
-            const DPageTitle('OUI-APEX'),
-            const SizedBox(height: 8),
-            DEyebrow(_scanning ? 'Searching for nodes...' : 'Scan for nearby nodes to connect'),
-            const SizedBox(height: 28),
-            ElevatedButton(
-              onPressed: _scanning ? null : () => _startScan(user: true),
-              child: Text(_scanning ? 'SCANNING...' : 'Scan for devices'),
-            ),
-            const Spacer(flex: 2),
-          ] else ...[
-            Padding(
+          if (sorted.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Column(
+                children: [
+                  const Spacer(),
+                  const SizedBox(height: 16),
+                  _ScanRadar(active: _scanning),
+                  const SizedBox(height: 24),
+                  const DPageTitle('OUI-APEX'),
+                  const SizedBox(height: 8),
+                  DEyebrow(_scanning ? 'Searching for nodes...' : 'Scan for nearby nodes to connect'),
+                  const SizedBox(height: 28),
+                  ElevatedButton(
+                    onPressed: _scanning ? null : () => _startScan(user: true),
+                    child: Text(_scanning ? 'SCANNING...' : 'Scan for devices'),
+                  ),
+                  const SizedBox(height: 16),
+                  const Spacer(flex: 2),
+                ],
+              ),
+            )
+          else ...[
+            SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Row(
                 children: [
@@ -582,11 +595,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     SizedBox(width: 12, height: 12, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 1.5)),
                 ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            )),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList.builder(
                 itemCount: sorted.length,
                 itemBuilder: (context, index) {
                   final r = sorted[index];
@@ -675,7 +688,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             ),
           ],
         ],
-      ),
       ),
     );
   }

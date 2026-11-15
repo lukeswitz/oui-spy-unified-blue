@@ -24,6 +24,7 @@ class WifiAdapterController {
   final _devices = StreamController<List<WifiAdapterDevice>>.broadcast();
   StreamSubscription<WifiAdapterEvent>? _sub;
   StreamSubscription<WifiAdapterAttach>? _attachSub;
+  StreamSubscription<NodeConnectionState>? _linkSub;
   List<WifiAdapterDevice> _list = const [];
   WifiAdapterState _current = WifiAdapterState.absent;
   String _status = '';
@@ -31,7 +32,10 @@ class WifiAdapterController {
   final Map<String, Set<String>> _deviceBssids = {};
   final Set<String> _seenBssids = {};
 
-  List<WifiAdapterDevice> get devices => _list;
+  List<WifiAdapterDevice> get devices {
+    final linked = _ble.usbDevice?.id;
+    return linked == null ? _list : [for (final d in _list) if (d.id != linked) d];
+  }
   WifiAdapterState get state => _current;
   String get status => _status;
   int get apCount => _seenBssids.length;
@@ -48,6 +52,10 @@ class WifiAdapterController {
 
   void init() {
     _attachSub ??= WifiAdapter.attachEvents.listen(_onAttach);
+    _linkSub ??= _ble.connectionState.listen((_) {
+      _devices.add(devices);
+      _update();
+    });
     refresh().then((list) {
       if (list.isNotEmpty) WifiAdapter.requestPermission();
     });
@@ -65,9 +73,9 @@ class WifiAdapterController {
       DebugLog.log('WIFIADAPTER: list failed ${e.message}');
       _list = const [];
     }
-    _devices.add(_list);
+    _devices.add(devices);
     _update();
-    return _list;
+    return devices;
   }
 
   Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async {
@@ -157,7 +165,7 @@ class WifiAdapterController {
     _update();
   }
 
-  void _update() => _set(aggregateAdapterState(_deviceState.values, attached: _list.isNotEmpty));
+  void _update() => _set(aggregateAdapterState(_deviceState.values, attached: devices.isNotEmpty));
 
   void _set(WifiAdapterState s) {
     _current = s;
@@ -167,6 +175,7 @@ class WifiAdapterController {
   void dispose() {
     _sub?.cancel();
     _attachSub?.cancel();
+    _linkSub?.cancel();
     _state.close();
     _devices.close();
   }
