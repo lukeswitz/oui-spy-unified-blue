@@ -1610,7 +1610,9 @@ void setup() {
     Serial.println("[INIT] WiFi STA reserved for OTA mode only — mesh stays on ch1");
 
     // Create FreeRTOS tasks
-#ifdef OUISPY_DONGLE
+#if defined(OUISPY_TDONGLE_C5)
+    BaseType_t t1 = xTaskCreatePinnedToCoreWithCaps(detectionNotifyTask, "det_notify", 6144, NULL, 2, NULL, 0, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#elif defined(OUISPY_DONGLE)
     BaseType_t t1 = xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 6144, NULL, 2, NULL, 1);
 #else
     BaseType_t t1 = xTaskCreatePinnedToCore(detectionNotifyTask, "det_notify", 4096, NULL, 2, NULL, 1);
