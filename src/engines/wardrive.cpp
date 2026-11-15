@@ -60,6 +60,12 @@ static uint8_t  hopScheduleLen = 1;
 static uint8_t  hopIdx = 0;
 static uint8_t  currentChannel = 1;
 
+static uint16_t sweepEverySec = 0;
+static volatile uint64_t slotBusyCur = 0;
+static uint64_t slotBusyLast = 0;
+static uint32_t sweepStartMs = 0;
+static bool     camping = false;
+
 static const uint16_t kAdaptiveMinDwellMs = 80;
 static const uint16_t kAdaptiveQuietMs    = 40;
 static volatile uint32_t wifiLastNetMs = 0;
@@ -158,6 +164,33 @@ static void buildHopSchedule(void) {
 #endif
     hopIdx = 0;
     currentChannel = hopSchedule[0];
+    slotBusyCur = 0;
+    slotBusyLast = 0;
+    camping = false;
+    sweepStartMs = millis();
+}
+
+static uint8_t nextHopIdx(uint32_t now) {
+    const uint8_t n = hopScheduleLen;
+    uint8_t nx = (uint8_t)((hopIdx + 1) % n);
+    if (sweepEverySec == 0) return nx;
+    if (!camping) {
+        if (nx != 0) return nx;
+        slotBusyLast = slotBusyCur;
+        camping = slotBusyLast != 0;
+    }
+    if (!camping || now - sweepStartMs >= (uint32_t)sweepEverySec * 1000UL) {
+        camping = false;
+        slotBusyCur = 0;
+        sweepStartMs = now;
+        return 0;
+    }
+    const bool meshHome = meshIsEnabled() && meshManagerJoined();
+    for (uint8_t s = 0; s < n; s++, nx = (uint8_t)((nx + 1) % n)) {
+        if ((slotBusyLast >> nx) & 1ULL) return nx;
+        if (meshHome && hopSchedule[nx] == MESH_RENDEZVOUS_CH) return nx;
+    }
+    return nx;
 }
 
 static uint16_t currentSlotDwellMs(void) {
@@ -414,6 +447,7 @@ static void WD_WIFI_CB_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_
             if (!named) hiddenNote(addr3);
         }
         wifiLastNetMs = millis();
+        slotBusyCur |= (1ULL << hopIdx);
 
         uint8_t authMode = parseAuthFromFrame(p, len);
 
@@ -748,9 +782,8 @@ static void wardriveLoop(void) {
             Serial.printf("[HOP] ch=%u dwelt=%lums\n", currentChannel, (unsigned long)elapsed);
 #endif
             g_wdHopCount++;
-            hopIdx++;
-            if (hopIdx >= hopScheduleLen) hopIdx = 0;
-            if (hopIdx == 0) wardriveSnifferWatchdog();
+            hopIdx = nextHopIdx(now);
+            if (hopIdx == 0 && !camping) wardriveSnifferWatchdog();
 #ifdef OUISPY_SWEEPLOG
             if (hopIdx == 0) {
                 static uint32_t g_lastSweepMs = 0;
@@ -838,6 +871,14 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
 #ifdef OUISPY_DUAL_BAND
     if (len >= 12) wardrive24Mode = payload[11] & 0x01;
 #endif
+    if (len >= 14) {
+        uint16_t sw = payload[12] | (payload[13] << 8);
+        if (sw != sweepEverySec) {
+            sweepEverySec = sw;
+            camping = false;
+            Serial.printf("[WARDRIVE] full sweep every %us\n", (unsigned)sw);
+        }
+    }
 
     if (wardriveActive && newRadio != prevRadio) {
         Serial.printf("[WARDRIVE] radio change 0x%02X->0x%02X while running — restart\n",
