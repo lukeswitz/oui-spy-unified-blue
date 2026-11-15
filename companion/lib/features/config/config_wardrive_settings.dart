@@ -4,6 +4,7 @@ class _ScanTimingSliders extends ConsumerWidget {
   const _ScanTimingSliders();
 
   static const _steps = [50, 100, 110, 150, 200, 250, 300, 350, 400, 500, 800, 1000, 1500, 2000, 3000, 5000];
+  static const _sweepSteps = [0, 5, 10, 15, 30, 60];
 
   int _prevStep(int current) {
     for (int i = _steps.length - 1; i >= 0; i--) {
@@ -38,6 +39,16 @@ class _ScanTimingSliders extends ConsumerWidget {
           onUp: () => ref.read(wardriveProvider).wifiDwellPerCh = _nextStep(wd.wifiDwellPerCh),
         ),
         _TimingRow(
+          icon: Icons.wifi, label: 'Full WiFi sweep every',
+          value: wd.wifiSweepEverySec,
+          text: wd.wifiSweepEverySec == 0 ? 'Auto' : null,
+          suffix: 's',
+          onDown: () => ref.read(wardriveProvider).wifiSweepEverySec =
+              _sweepSteps.lastWhere((s) => s < wd.wifiSweepEverySec, orElse: () => 0),
+          onUp: () => ref.read(wardriveProvider).wifiSweepEverySec =
+              _sweepSteps.firstWhere((s) => s > wd.wifiSweepEverySec, orElse: () => _sweepSteps.last),
+        ),
+        _TimingRow(
           icon: Icons.bluetooth, label: 'BLE duration',
           value: wd.bleScanDuration,
           onDown: () => ref.read(wardriveProvider).bleScanDuration = _prevStep(wd.bleScanDuration),
@@ -62,10 +73,12 @@ class _TimingRow extends StatelessWidget {
     required this.onDown,
     required this.onUp,
     this.suffix = 'ms',
+    this.text,
   });
   final IconData icon;
   final String label;
   final int value;
+  final String? text;
   final VoidCallback onDown;
   final VoidCallback onUp;
   final String suffix;
@@ -105,7 +118,7 @@ class _TimingRow extends StatelessWidget {
             width: 64,
             alignment: Alignment.center,
             child: Text(
-              '$value$suffix',
+              text ?? '$value$suffix',
               style: TextStyle(
                 color: AppTheme.accent, fontSize: 12,
                 fontFamily: AppTheme.mono, fontWeight: FontWeight.w700,

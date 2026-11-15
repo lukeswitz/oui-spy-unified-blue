@@ -20,6 +20,7 @@ import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
+import 'package:oui_spy/core/link/wifi_adapter.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -241,6 +242,8 @@ class WardriveController extends ChangeNotifier {
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
     _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
     _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
+    _wifiSweepEverySec = p.getInt('wd_wifiSweepEverySec') ?? 0;
+    WifiAdapter.setSweepEvery(_wifiSweepEverySec * 1000);
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
@@ -280,6 +283,7 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_bleRssiRelog', _bleRssiRelogDb);
     p.setInt('wd_wifiScanInterval', _wifiScanInterval);
     p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
+    p.setInt('wd_wifiSweepEverySec', _wifiSweepEverySec);
     p.setInt('wd_bleScanDuration', _bleScanDuration);
     p.setInt('wd_bleScanInterval', _bleScanInterval);
     p.setInt('wd_channelStart', _channelStart);
@@ -377,6 +381,16 @@ class WardriveController extends ChangeNotifier {
   int get wifiDwellPerCh => _wifiDwellPerCh;
   set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
 
+  int _wifiSweepEverySec = 0;
+  int get wifiSweepEverySec => _wifiSweepEverySec;
+  set wifiSweepEverySec(int v) {
+    _wifiSweepEverySec = v.clamp(0, 600);
+    notifyListeners();
+    _savePrefs();
+    _pushWardriveConfigLive();
+    WifiAdapter.setSweepEvery(_wifiSweepEverySec * 1000);
+  }
+
   int _bleScanDuration = 800;
   int get bleScanDuration => _bleScanDuration;
   set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
@@ -415,6 +429,7 @@ class WardriveController extends ChangeNotifier {
         channelStart,
         channelEnd,
         wardrive24Mode,
+        wifiSweepEverySec & 0xFF, (wifiSweepEverySec >> 8) & 0xFF,
       ]);
 
   void _pushWardriveConfigLive() {

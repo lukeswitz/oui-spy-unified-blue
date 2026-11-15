@@ -189,6 +189,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 val id = call.argument<String>("id")
                 stopSessions(if (id != null) listOf(id) else sessions.keys.filter { it != SDR_ID }) { result.success(null) }
             }
+            "setSweepEvery" -> {
+                AdaptiveHop.sweepEveryMs = (call.argument<Number>("ms")?.toLong() ?: 0L).coerceAtLeast(0L)
+                result.success(null)
+            }
             "sdrList" -> result.success(candidates().filter { kindOf(it) == Kind.RTLSDR }.map { describe(it) })
             "sdrStart" -> {
                 val id = call.argument<String>("id")

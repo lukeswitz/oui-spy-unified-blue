@@ -57,12 +57,9 @@ internal class Mt7612uAdapter(
         if (!waitForMac()) {
             throw IllegalStateException("MT7612U: MAC not ready after power-on")
         }
-        val resident = io.regRead(Mt76Regs.MCU_COM_REG0) and 0x1 != 0
-        if (!resident) {
-            uploadRomPatch()
-            uploadFirmware()
-        }
-        log("MT7612U: firmware running (resident=$resident), ${io.failSummary()}")
+        uploadRomPatch()
+        uploadFirmware()
+        log("MT7612U: firmware running, ${io.failSummary()}")
         io.pollReg(Mt76Regs.WPDMA_GLO_CFG, Mt76Regs.WPDMA_TX_BUSY or Mt76Regs.WPDMA_RX_BUSY, 0, 100)
         if (!waitForMac()) {
             throw IllegalStateException("MT7612U: MAC not ready after firmware load")

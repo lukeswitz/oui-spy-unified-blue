@@ -755,12 +755,17 @@ class _UsbScanSources extends ConsumerWidget {
           on: !off.contains(d.id),
           trailing: Switch(
             value: !off.contains(d.id),
-            onChanged: (v) {
+            onChanged: (v) async {
               final next = {...off};
               v ? next.remove(d.id) : next.add(d.id);
               ref.read(usbAdapterOffProvider.notifier).state = next;
-              if (!v && ctl.isActive(d.id)) ctl.stop(id: d.id);
               if (v && sessionRunning) startSelectedUsbAdapters(ref, only: d.id);
+              if (v || !ctl.isActive(d.id)) return;
+              await ctl.stop(id: d.id);
+              final othersScanning = ref.read(appStateProvider).isConnected ||
+                  ref.read(phoneBleSourceProvider).scanning ||
+                  ctl.devices.any((x) => ctl.isActive(x.id));
+              if (ref.read(wardriveProvider).isRunning && !othersScanning) await stopWardriveSession(ref);
             },
           ),
         ),
