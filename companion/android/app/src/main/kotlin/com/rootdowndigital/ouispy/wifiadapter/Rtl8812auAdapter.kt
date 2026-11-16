@@ -985,7 +985,7 @@ internal class Rtl8812auAdapter(
                     val ch = if (Rg.CHANNELS.contains(ie.channel)) ie.channel else hopCh
                     val cap = le16(b, hdr + 34)
                     val auth = wifiAuthMode(b, hdr + 36, hdr + frameLen - 4, cap and 0x10 != 0)
-                    if (good || !ie.ssid.isNullOrEmpty()) touch(macAt(16), true, ie.ssid, ch, auth)
+                    if (good) touch(macAt(16), true, ie.ssid, ch, auth)
                 }
                 4, 0, 1, 2, 3, 10, 11, 12 -> if (good) touch(macAt(10), false, null, hopCh)
             }

@@ -549,7 +549,7 @@ internal class Mt7612uAdapter(
                     val ssid = readSsid(b, ieStart, end)
                     val cap = if (d + 35 + pad < end) (u8(d + 34 + pad) or (u8(d + 35 + pad) shl 8)) else 0
                     val auth = authOf(b, ieStart, end, cap and 0x10 != 0)
-                    if (good || !ssid.isNullOrEmpty()) touch(macAt(d + 16), true, ssid, auth)
+                    if (good) touch(macAt(d + 16), true, ssid, auth)
                 }
                 4, 0, 1, 2, 3, 10, 11, 12 -> if (good && captureClients) touch(macAt(d + 10), false, null)
             }
