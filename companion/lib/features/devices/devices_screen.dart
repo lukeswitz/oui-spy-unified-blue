@@ -837,11 +837,8 @@ class DeviceRow extends ConsumerWidget {
     final metaStyle = text.bodySmall?.copyWith(color: t.textDim);
     final tagSize = (text.labelSmall?.fontSize ?? 11) * 0.95;
     final mono = TextStyle(fontFamily: AppTheme.mono);
-    final flags = [
-      if (o.hiddenSsid) Icon(Icons.visibility_off, size: iconSize, color: AppTheme.warning),
-      if (o.randomized) Icon(Icons.shuffle, size: iconSize, color: t.textDim),
-      if (withYou) Icon(Icons.directions_walk, size: iconSize, color: AppTheme.error),
-    ];
+    final flags = deviceFlagIcons(t,
+        hidden: o.hiddenSsid, randomized: o.randomized, withYou: withYou, size: iconSize);
     final classLine = <TextSpan>[
       if (kinds.isNotEmpty)
         TextSpan(
@@ -954,14 +951,7 @@ class DeviceRow extends ConsumerWidget {
                             ),
                           ),
                           SizedBox(width: gap),
-                          _RssiSpark(
-                            samples: [for (final s in o.gpsTrail) if (s.rssi != 0) s.rssi],
-                            rssi: o.rssi,
-                            rssiMin: o.rssiMin,
-                            rssiMax: o.rssiMax,
-                            color: rssiColor(o.rssi),
-                            track: t.border,
-                          ),
+                          rssiSparkFor(o, t.border),
                         ],
                       ),
                       if (classLine.isNotEmpty && idLine.isNotEmpty) ...[
@@ -984,6 +974,23 @@ class DeviceRow extends ConsumerWidget {
     );
   }
 }
+
+List<Widget> deviceFlagIcons(ResolvedTheme t,
+        {required bool hidden, required bool randomized, required bool withYou, required double size}) =>
+    [
+      if (hidden) Icon(Icons.visibility_off, size: size, color: AppTheme.warning),
+      if (randomized) Icon(Icons.shuffle, size: size, color: t.textDim),
+      if (withYou) Icon(Icons.directions_walk, size: size, color: AppTheme.error),
+    ];
+
+Widget rssiSparkFor(Observation o, Color track) => _RssiSpark(
+      samples: [for (final s in o.gpsTrail) if (s.rssi != 0) s.rssi],
+      rssi: o.rssi,
+      rssiMin: o.rssiMin,
+      rssiMax: o.rssiMax,
+      color: rssiColor(o.rssi),
+      track: track,
+    );
 
 class _RssiSpark extends StatelessWidget {
   const _RssiSpark({

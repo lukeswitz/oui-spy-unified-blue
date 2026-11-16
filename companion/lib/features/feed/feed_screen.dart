@@ -298,7 +298,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       case FeedMetric.count:
         sorted.sort((a, b) => dir(a.count.compareTo(b.count)));
       case FeedMetric.name:
-        sorted.sort((a, b) => dir(a.deviceName.toLowerCase().compareTo(b.deviceName.toLowerCase())));
+        sorted.sort((a, b) {
+          final na = detectionHasName(a), nb = detectionHasName(b);
+          if (na != nb) return na ? -1 : 1;
+          return dir(detectionHeadline(a).toLowerCase().compareTo(detectionHeadline(b).toLowerCase()));
+        });
       case FeedMetric.kind:
         sorted.sort((a, b) {
           final e = a.engine.label.compareTo(b.engine.label);

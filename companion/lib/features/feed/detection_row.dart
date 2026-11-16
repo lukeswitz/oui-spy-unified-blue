@@ -28,6 +28,7 @@ import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/features/devices/devices_screen.dart' show deviceFlagIcons, rssiSparkFor;
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
@@ -59,6 +60,8 @@ class DetectionRow extends ConsumerWidget {
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
     final priv = ref.watch(privacyScreenProvider);
     final macCount = ref.read(appStateProvider).macsFor(detection).length;
+    final registry = ref.exists(deviceRegistryProvider) ? ref.read(deviceRegistryProvider) : null;
+    final device = registry?.deviceFor(detection);
 
     return Listener(
       onPointerDown: (event) {
@@ -80,7 +83,7 @@ class DetectionRow extends ConsumerWidget {
             ? BoxDecoration(border: Border(bottom: BorderSide(color: t.border)))
             : null,
         child: Builder(builder: (_) {
-          final headline = _headline(detection, manufacturer);
+          final headline = detectionHeadline(detection);
           final headlineIsMac = headline == detection.macAddress.toUpperCase();
           final gap = (MediaQuery.sizeOf(context).width * 0.04).clamp(12.0, 32.0);
           final clsStr = detectionAlertClass[detection];
@@ -186,7 +189,14 @@ class DetectionRow extends ConsumerWidget {
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        for (final i in icons) ...[i, const SizedBox(width: 5)],
+                        for (final i in [
+                          ...deviceFlagIcons(t,
+                              hidden: detectionIsHiddenAp(detection),
+                              randomized: MacUtil.isRandomized(detection.macAddress),
+                              withYou: device != null && registry!.withYou(device),
+                              size: 13),
+                          ...icons,
+                        ]) ...[i, const SizedBox(width: 5)],
                         Expanded(
                           child: Text.rich(
                             TextSpan(children: [
@@ -199,6 +209,7 @@ class DetectionRow extends ConsumerWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (device != null) ...[SizedBox(width: gap), rssiSparkFor(device.obs, t.border)],
                         SizedBox(width: gap),
                         Text(timeStr, style: monoDim.copyWith(fontSize: 10.5)),
                       ],
@@ -333,7 +344,7 @@ void showDetectionDetails(
     final priv = ref.read(privacyScreenProvider);
     final rawTitle = detection.deviceName.isNotEmpty
         ? detection.deviceName
-        : _headline(detection, vendor);
+        : detectionHeadline(detection);
     final title = rawTitle == detection.macAddress.toUpperCase()
         ? maskMac(rawTitle, priv)
         : maskName(rawTitle, priv);
@@ -1075,9 +1086,16 @@ Sdr433Category? _sdrCategory(Detection d) {
   );
 }
 
-String _headline(Detection d, String? manufacturer) {
+bool detectionHasName(Detection d) =>
+    (d.wardrive?.ssid.isNotEmpty ?? false) || d.deviceName.isNotEmpty;
+
+bool detectionIsHiddenAp(Detection d) =>
+    d.method == 'wifi_ap' && d.ssid.trim().isEmpty && (d.wardrive?.ssid.trim().isEmpty ?? true);
+
+String detectionHeadline(Detection d) {
   if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;
   if (d.deviceName.isNotEmpty) return d.deviceName;
+  if (detectionIsHiddenAp(d)) return 'Hidden network';
   if (_isPlatformId(d.macAddress)) return 'Unnamed BLE device';
   return d.macAddress.toUpperCase();
 }

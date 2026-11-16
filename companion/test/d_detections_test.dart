@@ -88,6 +88,19 @@ bool _hasLeftBorder(Widget w) {
 }
 
 void main() {
+  test('name sort key is the shown name: SSID for WiFi, MAC when unnamed', () {
+    final wifi = _det(ssid: '').copyWith(wardrive: const WardriveExtension(ssid: 'Zulu'));
+    final bare = _det(mac: '02:00:00:00:00:01', ssid: '').copyWith(wardrive: null, deviceName: '');
+    expect(detectionHeadline(wifi), 'Zulu');
+    expect(detectionHeadline(bare), '02:00:00:00:00:01');
+    expect(detectionHasName(wifi), isTrue);
+    expect(detectionHasName(bare), isFalse);
+    final hidden = bare.copyWith(method: 'wifi_ap');
+    expect(detectionIsHiddenAp(hidden), isTrue);
+    expect(detectionHeadline(hidden), 'Hidden network');
+    expect(detectionIsHiddenAp(wifi.copyWith(method: 'wifi_ap')), isFalse);
+  });
+
   testWidgets('detections shows underline tabs and Devices switches the view', (tester) async {
     final container = await _container();
 

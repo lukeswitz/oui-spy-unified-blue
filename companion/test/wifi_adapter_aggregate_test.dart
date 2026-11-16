@@ -20,4 +20,11 @@ void main() {
     expect(aggregateAdapterState(const [], attached: true), WifiAdapterState.present);
     expect(aggregateAdapterState(const [], attached: false), WifiAdapterState.absent);
   });
+
+  test('randomized MAC is the locally administered bit', () {
+    expect(isRandomizedMac('02:00:00:00:00:01'), isTrue);
+    expect(isRandomizedMac('fa:00:00:00:00:01'), isTrue);
+    expect(isRandomizedMac('00:11:22:33:44:55'), isFalse);
+    expect(isRandomizedMac('a4:00:00:00:00:01'), isFalse);
+  });
 }

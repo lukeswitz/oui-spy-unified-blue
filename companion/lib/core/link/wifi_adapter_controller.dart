@@ -136,11 +136,12 @@ class WifiAdapterController {
       DebugLog.log('WIFIADAPTER: ${e.status}');
       if (id != null && _status.contains('receiver live')) _markRunning(id);
     }
-    final aps = e.aps;
+    final aps = e.aps?.where((ap) => !(ap.client && isRandomizedMac(ap.bssid))).toList();
     if (aps != null && aps.isNotEmpty) {
       if (id != null) _markRunning(id);
       final mine = id == null ? null : _deviceBssids.putIfAbsent(id, () => <String>{});
       for (final ap in aps) {
+        if (ap.client) continue;
         _seenBssids.add(ap.bssid);
         mine?.add(ap.bssid);
       }
@@ -237,5 +238,10 @@ final wifiAdapterDevicesProvider = StreamProvider<List<WifiAdapterDevice>>((ref)
 final usbAdapterOffProvider = StateProvider<Set<String>>((ref) => const {});
 
 final usbAdapterRadioProvider = StateProvider<Map<String, int>>((ref) => const {});
+
+bool isRandomizedMac(String mac) {
+  final b = mac.length >= 2 ? int.tryParse(mac.substring(0, 2), radix: 16) : null;
+  return b != null && b & 0x02 != 0;
+}
 
 bool usbAdapterHasBle(WifiAdapterDevice d) => d.vendorId == 0x0e8d && d.productId == 0x7961;

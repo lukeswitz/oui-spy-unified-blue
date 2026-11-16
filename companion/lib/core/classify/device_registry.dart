@@ -988,6 +988,9 @@ class DeviceRegistry extends ChangeNotifier {
     }
   }
 
+  ClassifiedDevice? deviceFor(Detection d) =>
+      _devices['${d.isBleDetection ? 'BLE' : 'WIFI'}:${MacUtil.normalize(d.macAddress)}'];
+
   bool withYou(ClassifiedDevice d) =>
       CoTravel.withYou(d.obs, CoTravelCtx.of(_path), DateTime.now().millisecondsSinceEpoch);
 

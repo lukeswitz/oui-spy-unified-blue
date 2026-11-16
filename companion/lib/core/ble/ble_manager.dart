@@ -2088,7 +2088,8 @@ class BleManager {
     _device = null;
     _role = '';
     await _closeUsb();
-    _currentState = NodeConnectionState.disconnected; _connectionState.add(NodeConnectionState.disconnected);
+    _currentState = NodeConnectionState.disconnected;
+    if (!_connectionState.isClosed) _connectionState.add(NodeConnectionState.disconnected);
   }
 
   Future<void> _closeUsb() async {

@@ -141,7 +141,6 @@ internal class Mt7921Adapter(
         val isNew = !sights.containsKey(bssid)
         val s = sights.getOrPut(bssid) { Sight() }
         if (!ssid.isNullOrEmpty()) s.ssid = ssid
-        else if (s.ssid == null) s.ssid = "(hidden)"
         s.rssi = rx.rssi
         s.channel = rx.channel
         s.authMode = parseSecurity(f)
