@@ -683,12 +683,31 @@ class AppState extends ChangeNotifier {
 
   void clearDetectionsForEngine(Engine engine) {
     recentDetections.removeWhere((d) => d.engine == engine);
-    _dedupeIndex.clear();
-    for (int i = 0; i < recentDetections.length; i++) {
-      _dedupeIndex['${recentDetections[i].macAddress}|${recentDetections[i].engine.name}'] = i;
-    }
+    _rebuildDedupeIndex();
     notifyListeners();
   }
+
+  String dedupeKey(Detection d) {
+    final macKey = '${d.macAddress}|${d.engine.name}';
+    if (d.method != 'wifi_ap') return macKey;
+    final ssid = d.ssid.trim();
+    if (ssid.isNotEmpty) return 'ssid:$ssid|${d.engine.name}';
+    return _macSsidKey[macKey] ?? macKey;
+  }
+
+  final Map<String, Set<String>> _keyMacs = {};
+  final Map<String, String> _macSsidKey = {};
+
+  void _foldIntoSsid(Detection det, String key) {
+    final macKey = '${det.macAddress}|${det.engine.name}';
+    if (_macSsidKey[macKey] == key) return;
+    _macSsidKey[macKey] = key;
+    if (_dedupeIndex[macKey] == null) return;
+    recentDetections.removeAt(_dedupeIndex[macKey]!);
+    _rebuildDedupeIndex();
+  }
+
+  Set<String> macsFor(Detection d) => _keyMacs[dedupeKey(d)] ?? {d.macAddress};
 
 
   void _ingestOfflineDetection(Detection det) {
@@ -701,7 +720,9 @@ class AppState extends ChangeNotifier {
   }
 
   void _upsertDetection(Detection det) {
-    final key = '${det.macAddress}|${det.engine.name}';
+    final key = dedupeKey(det);
+    if (key.startsWith('ssid:')) _foldIntoSsid(det, key);
+    (_keyMacs[key] ??= <String>{}).add(det.macAddress);
     final existingIdx = _dedupeIndex[key];
 
     if (existingIdx != null && existingIdx < recentDetections.length) {
@@ -721,6 +742,7 @@ class AppState extends ChangeNotifier {
         );
       }
       final merged = det.copyWith(
+        ssid: det.ssid.isNotEmpty ? det.ssid : existing.ssid,
         count: existing.count + 1,
         rssi: det.rssi > existing.rssi ? det.rssi : existing.rssi,
         wardrive: mergedWardrive,
@@ -759,8 +781,9 @@ class AppState extends ChangeNotifier {
           }
         }
         final removed = recentDetections.removeAt(evictIdx);
-        final removedKey = '${removed.macAddress}|${removed.engine.name}';
+        final removedKey = dedupeKey(removed);
         _dedupeIndex.remove(removedKey);
+        _keyMacs.remove(removedKey);
         // Fix indices after removal
         for (final entry in _dedupeIndex.entries) {
           if (entry.value > evictIdx) {
@@ -776,8 +799,9 @@ class AppState extends ChangeNotifier {
     final idx = recentDetections.indexWhere((d) => d.id == id);
     if (idx == -1) return;
     final removed = recentDetections.removeAt(idx);
-    final key = '${removed.macAddress}|${removed.engine.name}';
+    final key = dedupeKey(removed);
     _dedupeIndex.remove(key);
+    _keyMacs.remove(key);
     // Fix indices after removal
     for (final entry in _dedupeIndex.entries) {
       if (entry.value > idx) {
@@ -815,9 +839,9 @@ class AppState extends ChangeNotifier {
   void _rebuildDedupeIndex() {
     _dedupeIndex.clear();
     for (var i = 0; i < recentDetections.length; i++) {
-      final dd = recentDetections[i];
-      _dedupeIndex['${dd.macAddress}|${dd.engine.name}'] = i;
+      _dedupeIndex[dedupeKey(recentDetections[i])] = i;
     }
+    _keyMacs.removeWhere((k, _) => !_dedupeIndex.containsKey(k));
   }
 
   Future<void> enableMesh({
@@ -885,6 +909,8 @@ class AppState extends ChangeNotifier {
     _uniqueMacsPerEngine.clear();
     recentDetections.clear();
     _dedupeIndex.clear();
+    _keyMacs.clear();
+    _macSsidKey.clear();
     _droneTracks.clear();
     _pilotTracks.clear();
     notifyListeners();

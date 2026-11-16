@@ -158,11 +158,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
   List<Detection> _mergeHistory(List<Detection> live, List<Detection> history) {
     if (history.isEmpty) return live;
+    final app = ref.read(appStateProvider);
     final seen = <String>{
-      for (final d in live) '${d.macAddress}|${d.engine.name}',
+      for (final d in live) app.dedupeKey(d),
     };
     final extra = history
-        .where((d) => seen.add('${d.macAddress}|${d.engine.name}'))
+        .where((d) => seen.add(app.dedupeKey(d)))
         .toList();
     if (extra.isEmpty) return live;
     return [...live, ...extra];
@@ -427,7 +428,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         }
                         final d = item as Detection;
                         return DetectionRow(
-                          key: ValueKey('${d.macAddress}|${d.engine.name}'),
+                          key: ValueKey(state.dedupeKey(d)),
                           detection: d,
                         );
                       },

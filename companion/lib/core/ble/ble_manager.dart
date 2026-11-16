@@ -484,6 +484,7 @@ class BleManager {
 
   void addPhoneDetection(String mac, String name, int rssi, List<int> adv,
       {String nodeId = phoneNodeId}) {
+    mac = mac.toLowerCase();
     final now = DateTime.now();
     final ext = WardriveExtension(deviceName: name);
     if (adv.isNotEmpty) wardriveAdvRaw[ext] = adv;
@@ -510,6 +511,7 @@ class BleManager {
 
   void addPhoneWifiDetection(String bssid, String ssid, int rssi, int channel, int authMode,
       {String nodeId = phoneNodeId, bool client = false}) {
+    bssid = bssid.toLowerCase();
     final now = DateTime.now();
     _detections.add(Detection(
       id: '${bssid}_${now.millisecondsSinceEpoch}',

@@ -58,6 +58,7 @@ class DetectionRow extends ConsumerWidget {
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
     final priv = ref.watch(privacyScreenProvider);
+    final macCount = ref.read(appStateProvider).macsFor(detection).length;
 
     return Listener(
       onPointerDown: (event) {
@@ -126,7 +127,8 @@ class DetectionRow extends ConsumerWidget {
                   style: tagStyle.copyWith(letterSpacing: 0, fontWeight: FontWeight.w700)),
             if (isWifi && detection.channel > 0)
               TextSpan(text: 'CH ${detection.channel}', style: monoDim),
-            if (!headlineIsMac) TextSpan(text: maskMac(shownId, priv), style: monoDim),
+            if (!headlineIsMac)
+              TextSpan(text: macCount > 1 ? '$macCount MACs' : maskMac(shownId, priv), style: monoDim),
             if (manufacturer != null && manufacturer.isNotEmpty)
               TextSpan(text: manufacturer, style: dimStyle),
           ];
@@ -343,7 +345,10 @@ void showDetectionDetails(
     final canRing = detection.engine == Engine.detector &&
         detection.method == 'tracker' &&
         ref.read(appStateProvider).isConnected;
-    final shownMac = maskMac(detection.macAddress.toUpperCase(), priv);
+    final macs = ref.read(appStateProvider).macsFor(detection);
+    final shownMac = macs.length > 1
+        ? macs.map((m) => maskMac(m.toUpperCase(), priv)).join('\n')
+        : maskMac(detection.macAddress.toUpperCase(), priv);
     final macLine = vendor != null && vendor.isNotEmpty
         ? '$shownMac · $vendor'
         : shownMac;
