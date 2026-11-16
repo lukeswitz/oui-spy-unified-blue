@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
@@ -105,6 +106,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   String _searchQuery = '';
   String? _selectedNode;
   bool _showStats = true;
+  late bool _groupSsid = ref.read(sharedPreferencesProvider).getBool(_kGroupSsid) ?? false;
   FeedMetric _sortMetric = FeedMetric.time;
   bool _sortAscending = false; // false = descending (newest/strongest/most first)
   String? _vendorFirst;
@@ -336,7 +338,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final id = d.odid?.uavId ?? '';
       return id.isEmpty || !droneUavIds.contains(id);
     }).toList();
-    final nested = nestUnderParents(nonDroneRows, state.dedupeKey, state.apKeyFor);
+    final grouped = _groupSsid ? groupBySsid(nonDroneRows, state.dedupeKey) : null;
+    String rowKey(Detection d) => grouped?.keyOf[d] ?? state.dedupeKey(d);
+    final nested = nestUnderParents(grouped?.rows ?? nonDroneRows, rowKey, (d) {
+      final ap = state.apKeyFor(d);
+      return ap == null ? null : grouped?.groupOf[ap] ?? ap;
+    });
     nonDroneRows
       ..clear()
       ..addAll(nested.rows);
@@ -436,8 +443,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         }
                         final d = item as Detection;
                         final row = DetectionRow(
-                          key: ValueKey(state.dedupeKey(d)),
+                          key: ValueKey(rowKey(d)),
                           detection: d,
+                          macs: grouped?.macs[d] ?? const [],
                         );
                         return nested.parentOf.containsKey(d)
                             ? Padding(padding: const EdgeInsets.only(left: 28), child: row)
@@ -712,6 +720,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               },
             ),
             CommandSheetTile(
+              icon: _groupSsid ? Icons.layers : Icons.layers_outlined,
+              label: _groupSsid ? 'UNGROUP SSIDS' : 'GROUP BY SSID',
+              subtitle: 'One row per network name, BSSIDs listed inside',
+              color: _groupSsid ? AppTheme.accent : null,
+              onTap: () {
+                Navigator.pop(ctx);
+                setState(() => _groupSsid = !_groupSsid);
+                ref.read(sharedPreferencesProvider).setBool(_kGroupSsid, _groupSsid);
+              },
+            ),
+            CommandSheetTile(
               icon: _searchOpen ? Icons.search_off : Icons.search,
               label: _searchOpen ? 'CLOSE SEARCH' : 'SEARCH',
               subtitle: 'MAC, name, method, node',
@@ -821,4 +840,49 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     out.addAll(byParent[keyOf(d)] ?? const []);
   }
   return (rows: out, parentOf: parentOf);
+}
+
+const _kGroupSsid = 'feedGroupBySsid';
+
+({List<Detection> rows, Map<Detection, String> keyOf, Map<Detection, List<String>> macs, Map<String, String> groupOf})
+    groupBySsid(List<Detection> rows, String Function(Detection) keyOf) {
+  final out = <Detection>[];
+  final slot = <String, int>{};
+  final members = <int, List<Detection>>{};
+  final groupOf = <String, String>{};
+  for (final d in rows) {
+    final ssid = d.method == 'wifi_ap' ? d.ssid.trim() : '';
+    if (ssid.isEmpty) {
+      out.add(d);
+      continue;
+    }
+    final g = 'ssid:$ssid|${d.engine.name}';
+    groupOf[keyOf(d)] = g;
+    final i = slot[g];
+    if (i != null) {
+      members[i]!.add(d);
+      continue;
+    }
+    slot[g] = out.length;
+    members[out.length] = [d];
+    out.add(d);
+  }
+  final keys = Map<Detection, String>.identity();
+  final macs = Map<Detection, List<String>>.identity();
+  for (final MapEntry(key: i, value: list) in members.entries) {
+    var rep = list.first;
+    if (list.length > 1) {
+      var rssi = rep.rssi, count = 0, at = rep.appTimestamp;
+      for (final m in list) {
+        if (m.rssi > rssi) rssi = m.rssi;
+        if (m.appTimestamp.isAfter(at)) at = m.appTimestamp;
+        count += m.count;
+      }
+      rep = rep.copyWith(rssi: rssi, count: count, appTimestamp: at);
+      out[i] = rep;
+      macs[rep] = [for (final m in list) m.macAddress];
+    }
+    keys[rep] = groupOf[keyOf(list.first)]!;
+  }
+  return (rows: out, keyOf: keys, macs: macs, groupOf: groupOf);
 }

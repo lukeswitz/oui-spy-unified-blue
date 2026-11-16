@@ -44,8 +44,10 @@ class DetectionRow extends ConsumerWidget {
     this.divider = true,
     this.horizontal = 20,
     this.onActivate,
+    this.macs = const [],
   });
   final Detection detection;
+  final List<String> macs;
   final bool divider;
   final double horizontal;
   final void Function(BuildContext, WidgetRef)? onActivate;
@@ -59,7 +61,7 @@ class DetectionRow extends ConsumerWidget {
     final timeStr = _formatTimeDiff(timeDiff);
     final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
     final priv = ref.watch(privacyScreenProvider);
-    final macCount = ref.read(appStateProvider).macsFor(detection).length;
+    final macCount = macs.isEmpty ? 1 : macs.length;
     final registry = ref.exists(deviceRegistryProvider) ? ref.read(deviceRegistryProvider) : null;
     final device = registry?.deviceFor(detection);
 
@@ -230,7 +232,7 @@ class DetectionRow extends ConsumerWidget {
       onActivate!(context, ref);
       return;
     }
-    showDetectionDetails(context, ref, detection);
+    showDetectionDetails(context, ref, detection, macs: macs);
   }
 
   String _formatTimeDiff(Duration diff) {
@@ -328,7 +330,8 @@ void showDetectionDetails(
     BuildContext context, WidgetRef ref, Detection detection,
     {bool showMapAction = true,
     VoidCallback? onDelete,
-    VoidCallback? onShowMap}) {
+    VoidCallback? onShowMap,
+    List<String> macs = const []}) {
     final nodeLabel = detection.sourceNodeId.isEmpty
         ? ''
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
@@ -356,7 +359,6 @@ void showDetectionDetails(
     final canRing = detection.engine == Engine.detector &&
         detection.method == 'tracker' &&
         ref.read(appStateProvider).isConnected;
-    final macs = ref.read(appStateProvider).macsFor(detection);
     final shownMac = macs.length > 1
         ? macs.map((m) => maskMac(m.toUpperCase(), priv)).join('\n')
         : maskMac(detection.macAddress.toUpperCase(), priv);
