@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/link_characteristic.dart';
 import 'package:oui_spy/core/link/link_frame.dart';
 
@@ -26,6 +27,7 @@ class LinkSession {
 
   static const pingEvery = Duration(seconds: 1);
   static const helloTimeout = Duration(seconds: 3);
+  static const deadAfter = Duration(seconds: 30);
 
   final LinkTransport _transport;
   final _parser = LinkFrameParser();
@@ -40,6 +42,7 @@ class LinkSession {
   List<int> _ids = const [];
   int _maxPayload = linkMaxPayload;
   bool _closed = false;
+  DateTime _lastFrameAt = DateTime.now();
 
   List<int> get ids => _ids;
   int get maxPayload => _maxPayload;
@@ -112,7 +115,12 @@ class LinkSession {
   }
 
   void _ping() {
-    if (_closed || _pending != null) return;
+    if (_closed) return;
+    if (DateTime.now().difference(_lastFrameAt) > deadAfter) {
+      close();
+      return;
+    }
+    if (_pending != null) return;
     _request(LinkFrameType.ping, 0, const [], LinkFrameType.pong, helloTimeout)
         .then((_) {}, onError: (Object _) {
       close();
@@ -138,8 +146,27 @@ class LinkSession {
     return op;
   }
 
+  static final _boardLogLine = RegExp(r'^[EW] \(\d+\) ');
+  final _text = StringBuffer();
+
+  void _scanBoardLog(Uint8List bytes) {
+    for (final b in bytes) {
+      if (b == 0x0A) {
+        final line = _text.toString();
+        _text.clear();
+        if (_boardLogLine.hasMatch(line) || (_ids.isEmpty && line.length >= 4)) DebugLog.log('BOARD: $line');
+      } else if (b >= 0x20 && b < 0x7F) {
+        if (_text.length < 200) _text.writeCharCode(b);
+      } else if (b != 0x0D) {
+        _text.clear();
+      }
+    }
+  }
+
   void _onBytes(Uint8List bytes) {
+    _scanBoardLog(bytes);
     for (final f in _parser.add(bytes)) {
+      _lastFrameAt = DateTime.now();
       if (f.type == LinkFrameType.notify) {
         _notify[f.id]?.add(f.payload);
         continue;
