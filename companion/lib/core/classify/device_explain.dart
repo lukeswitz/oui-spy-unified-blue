@@ -262,7 +262,11 @@ class DeviceExplain {
     ];
     if (hints.isEmpty) {
       return Guess(
-        device.kind == RadioKind.wifi ? 'Wi-Fi access point' : 'Bluetooth LE advertiser',
+        device.kind != RadioKind.wifi
+            ? 'Bluetooth LE advertiser'
+            : device.isAp || device.name.isNotEmpty
+                ? 'Wi-Fi access point'
+                : 'Wi-Fi client',
         'It is on the air, but it did not advertise a product class '
         '(no Appearance, Class of Device, or well-known service that names a type).',
         Confidence.low,
@@ -300,7 +304,7 @@ class DeviceExplain {
 
   static bool isGeneric(Guess g) {
     final h = g.headline.toLowerCase();
-    return h.contains('bluetooth le advertiser') || h.endsWith('a wi-fi access point');
+    return h.contains('bluetooth le advertiser') || h.endsWith('a wi-fi access point') || h == 'wi-fi client';
   }
 
   static String stripHedge(String headline) => headline.replaceFirst(RegExp(r'^(Most likely|Probably|Could be) '), '');
@@ -320,7 +324,7 @@ class DeviceExplain {
   static String? listLabel(Observation device, {List<String> signatureNames = const [], String? vendor, Guess? guessed}) {
     final g = guessed ?? guess(device, signatureNames, vendor: vendor);
     final h = g.headline.toLowerCase();
-    final generic = h.contains('bluetooth le advertiser') || h.contains('wi-fi access point');
+    final generic = h.contains('bluetooth le advertiser') || h.contains('wi-fi access point') || h == 'wi-fi client';
     final core = generic ? null : _tidyHeadline(g.headline);
     final v = vendor?.trim();
     final vend = (v != null && v.isNotEmpty && v.length <= 24) ? v : null;
@@ -471,6 +475,7 @@ class DeviceExplain {
   }
 
   static List<_Hint> _wifiHints(Observation device, List<String> signatureNames, {bool hasVendor = false}) {
+    if (!device.isAp && device.name.isEmpty) return const [];
     final name = device.name.toLowerCase();
     final specific = signatureNames.any((n) => !_isGeneric(n));
     if (name.startsWith('direct-')) {

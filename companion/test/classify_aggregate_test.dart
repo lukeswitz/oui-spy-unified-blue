@@ -55,6 +55,14 @@ void main() {
     expect(DeviceExplain.guess(ap, const [], vendor: 'Kenwood Corporation').headline, 'Probably a Wi-Fi access point');
   });
 
+  test('a Wi-Fi client is not called an access point or put in ISP / routers', () {
+    const client = Observation(key: 'WIFI:C', kind: RadioKind.wifi, mac: '00:11:22:33:44:66');
+    final g = DeviceExplain.guess(client, const []);
+    expect(g.headline, 'Wi-Fi client');
+    expect(DeviceExplain.isGeneric(g), isTrue);
+    expect(ClassifiedDevice.bucketClass[g.bucket], isNull);
+  });
+
   test('BLE keeps chip labels; Wi-Fi gets the Wi-Fi chip label', () {
     const ble = Observation(key: 'B:T', kind: RadioKind.ble, mac: '00:11:22:33:44:55');
     const ap = Observation(key: 'W:T', kind: RadioKind.wifi, mac: '00:11:22:33:44:55', isAp: true);
