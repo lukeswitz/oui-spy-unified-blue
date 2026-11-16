@@ -25,6 +25,12 @@ class UsbAutoConnect {
   DateTime? _netFailedAt;
   bool _busy = false;
   int _stopsSeen = 0;
+  StreamSubscription<NodeConnectionState>? _connSub;
+  UsbSerialDevice? _linked;
+  int _linkStops = 0;
+  Timer? _retry;
+
+  static const usbRetryAfter = Duration(seconds: 3);
 
   List<UsbSerialDevice> get attached => _attached;
   Stream<List<UsbSerialDevice>> get devices => _devices.stream;
@@ -37,6 +43,7 @@ class UsbAutoConnect {
         await refresh();
         if (e.attached) await connect(e.device);
       });
+      _connSub = _ble.connectionState.listen(_onConnectionState);
     }
     if (NetLinkTarget.supported) {
       _netTimer = Timer.periodic(netPollEvery, (_) => _pollNet());
@@ -70,6 +77,10 @@ class UsbAutoConnect {
     _busy = true;
     try {
       await _ble.connectUsb(device, sessionId: const Uuid().v4());
+      if (_ble.isUsbLinked) {
+        _linked = device;
+        _linkStops = _ble.stopCount;
+      }
       return _ble.isUsbLinked;
     } on Exception catch (e) {
       DebugLog.log('USB: connect ${device.vidPid} failed: $e');
@@ -77,6 +88,28 @@ class UsbAutoConnect {
     } finally {
       _busy = false;
     }
+  }
+
+  void _onConnectionState(NodeConnectionState s) {
+    if (s != NodeConnectionState.disconnected || _linked == null) return;
+    if (_ble.stopCount != _linkStops) {
+      _linked = null;
+      return;
+    }
+    _retry ??= Timer(usbRetryAfter, _retryLink);
+  }
+
+  Future<void> _retryLink() async {
+    _retry = null;
+    final want = _linked;
+    if (want == null || _ble.isConnected || _ble.isUsbLinked) return;
+    final d = (await refresh()).where((x) => x.id == want.id).firstOrNull;
+    if (d == null) {
+      _linked = null;
+      return;
+    }
+    DebugLog.log('USB: link to ${d.vidPid} lost, reconnecting');
+    await connect(d);
   }
 
   Future<bool> connectNet(NetLinkTarget target, {bool replaceBle = false}) async {
@@ -120,6 +153,8 @@ class UsbAutoConnect {
 
   void dispose() {
     _sub?.cancel();
+    _connSub?.cancel();
+    _retry?.cancel();
     _netTimer?.cancel();
     _devices.close();
     _netTargets.close();
