@@ -30,6 +30,8 @@ internal class RtlRx(
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
 
+        fun waitMs(): Long = AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(channels[idx], DWELL_MS))
+
         fun tick() {
             val now = System.currentTimeMillis()
             if (now - emitAt > EMIT_MS) {
@@ -37,7 +39,7 @@ internal class RtlRx(
                 emitAt = now
             }
             if (now - hopAt > AdaptiveHop.dwellMs(channels[idx], DWELL_MS)) {
-                idx = (idx + 1) % channels.size
+                idx = AdaptiveHop.step(channels, idx)
                 retune(channels[idx])
                 hopAt = System.currentTimeMillis()
             }
@@ -71,7 +73,7 @@ internal class RtlRx(
         val scratch = ByteArray(BUF_SZ)
         try {
             while (!stopped()) {
-                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val req = try { conn.requestWait(hop.waitMs()) } catch (e: TimeoutException) { null }
                 if (req != null) {
                     val idx = req.clientData as? Int ?: -1
                     if (idx in 0 until NBUF) {
@@ -99,7 +101,7 @@ internal class RtlRx(
     private fun runSync(hop: Hopper) {
         val buf = ByteArray(BUF_SZ)
         while (!stopped()) {
-            val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
+            val n = conn.bulkTransfer(epRx, buf, buf.size, hop.waitMs().toInt())
             if (n > 0) parse(buf, n, hop.channels[hop.idx], hop.table)
             hop.tick()
         }

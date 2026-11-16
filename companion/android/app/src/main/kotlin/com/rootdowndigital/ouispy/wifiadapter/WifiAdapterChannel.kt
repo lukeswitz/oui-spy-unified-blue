@@ -204,6 +204,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 AdaptiveHop.otherDwellMs = ms("otherDwellMs")
                 Mt7921BtAdapter.bleOnMs = ms("bleOnMs")
                 Mt7921BtAdapter.bleEveryMs = ms("bleEveryMs")
+                AdaptiveHop.bandMask = (call.argument<Int>("bandMask") ?: 0x03).let { if (it and 0x03 == 0) 0x03 else it and 0x03 }
                 result.success(null)
             }
             "sdrList" -> result.success(candidates().filter { kindOf(it) == Kind.RTLSDR }.map { describe(it) })

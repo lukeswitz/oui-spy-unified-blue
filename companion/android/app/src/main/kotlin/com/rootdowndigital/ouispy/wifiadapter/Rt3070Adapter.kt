@@ -351,7 +351,7 @@ internal class Rt3070Adapter(
         var lastRxAt = hopAt
         try {
             while (!stop) {
-                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val req = try { conn.requestWait(AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Rg.HOP[hopIdx], DWELL_MS))) } catch (e: TimeoutException) { null }
                 val now = System.currentTimeMillis()
                 if (req != null) {
                     val idx = req.clientData as? Int ?: -1
@@ -407,7 +407,7 @@ internal class Rt3070Adapter(
         var emitAt = hopAt
         var lastRxAt = hopAt
         while (!stop) {
-            val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
+            val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Rg.HOP[hopIdx], DWELL_MS)).toInt())
             val now = System.currentTimeMillis()
             if (n > 0) { lastRxAt = now; runCatching { parseRx(buf, n, Rg.HOP[hopIdx], table) } }
             else if (now - lastRxAt > 4000) { runCatching { reKickRx() }; lastRxAt = now }

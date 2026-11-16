@@ -967,7 +967,7 @@ internal class Ar9271Adapter(
         var lastRxAt = hopAt
         try {
             while (!stop) {
-                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val req = try { conn.requestWait(AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(channel, DWELL_MS))) } catch (e: TimeoutException) { null }
                 val now = System.currentTimeMillis()
                 if (req != null) {
                     val idx = req.clientData as? Int ?: -1
@@ -1032,7 +1032,7 @@ internal class Ar9271Adapter(
         var emitAt = hopAt
         var lastRxAt = hopAt
         while (!stop) {
-            val n = conn.bulkTransfer(epRx, buf, buf.size, 100)
+            val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(channel, DWELL_MS)).toInt())
             val now = System.currentTimeMillis()
             if (n > 0) { lastRxAt = now; rxChunk(buf, n, channel) }
             if (now - lastRxAt > STALL_MS) { reKickRx(); lastRxAt = now }

@@ -409,6 +409,7 @@ class WardriveController extends ChangeNotifier {
       otherDwellMs: _wifiDwellPerCh,
       bleOnMs: bleOn,
       bleEveryMs: math.max(_bleScanInterval, bleOn + 100),
+      bandMask: wifiBandMask,
     );
   }
 
@@ -431,7 +432,7 @@ class WardriveController extends ChangeNotifier {
         WifiBand.band5 => 0x02,
         WifiBand.both => 0x03,
       };
-  set wifiBand(WifiBand v) { _wifiBand = v; notifyListeners(); _savePrefs(); _pushWifiBand(); }
+  set wifiBand(WifiBand v) { _wifiBand = v; notifyListeners(); _savePrefs(); _pushWifiBand(); _pushAdapterTiming(); }
 
   int get _sweepSecForBoard => (_wifiSweepEveryMs + 999) ~/ 1000;
 

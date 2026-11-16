@@ -25,6 +25,9 @@ internal class Mt7921Adapter(
     private val MAIN = setOf(1, 6, 11)
     private val MAIN_DWELL_MS = 300L
     private val SIDE_DWELL_MS = 110L
+
+    private fun dwellOf(ch: Int): Long =
+        AdaptiveHop.dwellMs(ch, if (ch in MAIN) MAIN_DWELL_MS else SIDE_DWELL_MS) * (if (Mt7921BtAdapter.scanning) 2 else 1)
     private lateinit var epRx: UsbEndpoint
     private lateinit var epCmdOut: UsbEndpoint
     private var epCmdResp: UsbEndpoint? = null
@@ -91,13 +94,12 @@ internal class Mt7921Adapter(
         var lastHop = lastBeat
         try {
             while (!stop) {
-                val n = conn.bulkTransfer(epRx, buf, buf.size, 120)
+                val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(lastHop, dwellOf(CHANNELS[chIdx])).toInt())
                 val now = System.currentTimeMillis()
                 if (n > 0) ingestFrame(buf, n, sights)
-                val dwell = AdaptiveHop.dwellMs(CHANNELS[chIdx], if (CHANNELS[chIdx] in MAIN) MAIN_DWELL_MS else SIDE_DWELL_MS) *
-                    (if (Mt7921BtAdapter.scanning) 2 else 1)
+                val dwell = dwellOf(CHANNELS[chIdx])
                 if (now - lastHop > dwell) {
-                    chIdx = (chIdx + 1) % CHANNELS.size
+                    chIdx = AdaptiveHop.step(CHANNELS, chIdx)
                     tune(CHANNELS[chIdx], true)
                     lastHop = System.currentTimeMillis()
                 }

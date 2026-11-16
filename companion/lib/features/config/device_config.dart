@@ -580,7 +580,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
 
   Widget _buildScanTab(_ScanPart part) {
     final t = AppTheme.of(context);
-    final isC5 = ref.watch(bleManagerProvider).isC5;
+    ref.watch(wifiAdapterDevicesProvider);
+    final dualBand = ref.watch(bleManagerProvider).isC5 || ref.read(wifiAdapterControllerProvider).devices.isNotEmpty;
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
@@ -624,7 +625,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ],
 
         if (part == _ScanPart.channels) ...[
-        if (isC5) ...[
+        if (dualBand) ...[
           const ConfigSectionHeader(label: 'WiFi band'),
           Padding(
             padding: const EdgeInsets.only(bottom: 8, left: 2),

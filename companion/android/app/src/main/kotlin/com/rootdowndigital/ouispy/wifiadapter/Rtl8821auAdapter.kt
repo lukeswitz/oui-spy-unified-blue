@@ -431,13 +431,21 @@ internal class Rtl8821auAdapter(
         io.w32(Rtl8821auRegs.LSSI_WRITE[path], ((a shl 20) or (d and 0xfffff)) and 0x0fffffff)
     }
 
+    private var bandIs5g: Boolean? = null
+    private var bwSet = false
+
     private fun setChannel(ch: Int) {
-        val oldIs5g = (io.r8(R.CCK_CHECK) and (1 shl 7)) != 0
+        val oldIs5g = bandIs5g ?: ((io.r8(R.CCK_CHECK) and (1 shl 7)) != 0)
         val newIs5g = ch > 14
         if (oldIs5g != newIs5g) switchBand(newIs5g)
+        bandIs5g = newIs5g
         switchChannel(ch)
-        postSetBwMode()
-        rfWrite(0, R.RF_CFGCH, R.RF18_BW_MASK, 3)
+        if (!bwSet) {
+            postSetBwMode()
+            val old = rf18 ?: rfRead(0, R.RF_CFGCH, R.RFREG_MASK)
+            rf18Write((old and R.RF18_BW_MASK.inv()) or ((3 shl Integer.numberOfTrailingZeros(R.RF18_BW_MASK)) and R.RF18_BW_MASK))
+            bwSet = true
+        }
     }
 
     private fun switchBand(is5g: Boolean) {
@@ -505,15 +513,29 @@ internal class Rtl8821auAdapter(
             ch >= 118 -> 0x412
             else -> 0x96a
         }
-        io.m32(R.CLKTRK, 0x1ffe0000, fcArea)
+        val clk = clktrk ?: io.r32(R.CLKTRK)
+        val clkNew = (clk and 0x1ffe0000.inv()) or ((fcArea shl 17) and 0x1ffe0000)
+        if (clkNew != clk || clktrk == null) io.w32(R.CLKTRK, clkNew)
+        clktrk = clkNew
         val rfModAg = when {
             ch in 36..64 -> 0x101
             ch in 100..140 -> 0x301
             ch > 140 -> 0x501
             else -> 0x000
         }
-        rfWrite(0, R.RF_CFGCH, R.RF18_RFSI_MASK or R.RF18_BAND_MASK, rfModAg)
-        rfWrite(0, R.RF_CFGCH, R.RF18_CHANNEL_MASK, ch)
+        val old = rf18 ?: rfRead(0, R.RF_CFGCH, R.RFREG_MASK)
+        val m = R.RF18_RFSI_MASK or R.RF18_BAND_MASK
+        var d = (old and m.inv()) or ((rfModAg shl Integer.numberOfTrailingZeros(m)) and m)
+        d = (d and R.RF18_CHANNEL_MASK.inv()) or (ch and R.RF18_CHANNEL_MASK)
+        rf18Write(d)
+    }
+
+    private var rf18: Int? = null
+    private var clktrk: Int? = null
+
+    private fun rf18Write(d: Int) {
+        rf18 = d and R.RFREG_MASK
+        io.w32(Rtl8821auRegs.LSSI_WRITE[0], ((R.RF_CFGCH shl 20) or (d and 0xfffff)) and 0x0fffffff)
     }
 
     private fun postSetBwMode() {
@@ -538,6 +560,7 @@ internal class Rtl8821auAdapter(
         var lastRxAt = start
         var rxBytes = 0L
         var rxBufs = 0L
+        var hops = 0L
 
         fun feed(b: ByteArray, n: Int) {
             rxBytes += n
@@ -548,7 +571,7 @@ internal class Rtl8821auAdapter(
 
         fun tick(now: Long) {
             if (now - diagAt > 3000) {
-                log("RTL8821AU rx: bufs=$rxBufs bytes=$rxBytes tracked=${table.size} ch=${Mt76Regs.CHANNELS[hopIdx]}")
+                log("RTL8821AU rx: bufs=$rxBufs bytes=$rxBytes tracked=${table.size} ch=${Mt76Regs.CHANNELS[hopIdx]} hops=$hops")
                 diagAt = now
             }
             if (now - lastRxAt > REARM_MS) {
@@ -559,15 +582,20 @@ internal class Rtl8821auAdapter(
                 emit(table, onBatch)
                 emitAt = now
             }
-            if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], HOP_DWELL_MS)) hop(now)
+            if (now - hopAt >= dwell()) hop(now)
         }
+
+        fun waitMs(now: Long): Long = (dwell() - (now - hopAt)).coerceIn(1L, 100L)
+
+        private fun dwell(): Long = AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], HOP_DWELL_MS)
 
         private fun hop(now: Long) {
             val chans = Mt76Regs.CHANNELS
             val active = table.values.mapTo(HashSet()) { it.channel }
             hopIdx = hopper.next(hopIdx, active, now)
             runCatching { setChannel(chans[hopIdx]) }
-            hopAt = now
+            hops++
+            hopAt = System.currentTimeMillis()
         }
     }
 
@@ -592,7 +620,7 @@ internal class Rtl8821auAdapter(
         val scratch = ByteArray(BUF_SZ)
         try {
             while (!stop) {
-                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val req = try { conn.requestWait(s.waitMs(System.currentTimeMillis())) } catch (e: TimeoutException) { null }
                 if (req != null) {
                     val idx = req.clientData as? Int ?: -1
                     if (idx in 0 until NBUF) {
@@ -626,7 +654,7 @@ internal class Rtl8821auAdapter(
     private fun rxLoopSync(s: RxState) {
         val buf = ByteArray(BUF_SZ)
         while (!stop) {
-            val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
+            val n = conn.bulkTransfer(epRx, buf, buf.size, s.waitMs(System.currentTimeMillis()).toInt())
             if (n > 0) s.feed(buf, n)
             s.tick(System.currentTimeMillis())
         }

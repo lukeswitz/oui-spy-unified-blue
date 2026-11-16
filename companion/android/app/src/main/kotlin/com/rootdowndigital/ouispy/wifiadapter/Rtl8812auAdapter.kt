@@ -816,7 +816,7 @@ internal class Rtl8812auAdapter(
         var lastRxAt = hopAt
         try {
             while (!stop) {
-                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val req = try { conn.requestWait(AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Rg.CHANNELS[hopIdx], DWELL_MS))) } catch (e: TimeoutException) { null }
                 val now = System.currentTimeMillis()
                 if (req != null) {
                     val idx = req.clientData as? Int ?: -1
@@ -865,7 +865,7 @@ internal class Rtl8812auAdapter(
         var emitAt = hopAt
         var lastRxAt = hopAt
         while (!stop) {
-            val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
+            val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Rg.CHANNELS[hopIdx], DWELL_MS)).toInt())
             val now = System.currentTimeMillis()
             if (n > 0) { lastRxAt = now; parseRx(buf, n, Rg.CHANNELS[hopIdx], table) }
             if (now - lastRxAt > RX_STALL_MS) {

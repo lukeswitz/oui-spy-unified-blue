@@ -403,7 +403,7 @@ internal class Mt7612uAdapter(
         var phoneChAt = 0L
         try {
             while (!stop) {
-                val req = try { conn.requestWait(100L) } catch (e: TimeoutException) { null }
+                val req = try { conn.requestWait(AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS))) } catch (e: TimeoutException) { null }
                 val now = System.currentTimeMillis()
                 if (req != null) {
                     val idx = req.clientData as? Int ?: -1
@@ -464,7 +464,7 @@ internal class Mt7612uAdapter(
         var rxBytes = 0L
         var rxBufs = 0L
         while (!stop) {
-            val n = conn.bulkTransfer(epRx, buf, buf.size, 500)
+            val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)).toInt())
             val now = System.currentTimeMillis()
             if (n > 0) { rxBytes += n; rxBufs++; runCatching { parseRx(buf, n, Mt76Regs.CHANNELS[hopIdx], table) } }
             if (now - diagAt > 3000) {
@@ -474,7 +474,7 @@ internal class Mt7612uAdapter(
             }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
             if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)) {
-                hopIdx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
+                hopIdx = AdaptiveHop.step(Mt76Regs.CHANNELS, hopIdx)
                 runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                 drainCmdResp()
                 hopAt = now

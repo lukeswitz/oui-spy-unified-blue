@@ -105,6 +105,7 @@ class WifiAdapter {
     required int otherDwellMs,
     required int bleOnMs,
     required int bleEveryMs,
+    required int bandMask,
   }) async {
     if (!supported) return;
     await _methods.invokeMethod<void>('setTiming', {
@@ -113,6 +114,7 @@ class WifiAdapter {
       'otherDwellMs': otherDwellMs,
       'bleOnMs': bleOnMs,
       'bleEveryMs': bleEveryMs,
+      'bandMask': bandMask,
     });
   }
 
