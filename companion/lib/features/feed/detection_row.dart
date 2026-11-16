@@ -246,7 +246,7 @@ void detectionStartFoxhunt(
         detection.macAddress,
         channel: detection.channel,
         fromPhone: detection.sourceNodeId == BleManager.phoneNodeId ||
-            detection.sourceNodeId == BleManager.usbWifiNodeId,
+            BleManager.isUsbWifiNode(detection.sourceNodeId),
       );
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(

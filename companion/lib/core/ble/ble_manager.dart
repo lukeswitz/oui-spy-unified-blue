@@ -476,6 +476,9 @@ class BleManager {
   static const usbWifiNodeId = 'USBWIFI';
   static const usbBleNodeId = 'USBBLE';
 
+  static bool isUsbWifiNode(String id) => id == usbWifiNodeId || id.startsWith('$usbWifiNodeId:');
+  static bool isUsbBleNode(String id) => id == usbBleNodeId || id.startsWith('$usbBleNodeId:');
+
   void addPhoneFoxRssi(int rssi, int intervalMs) =>
       _foxhunterRssiStream.add((rssi: rssi, intervalMs: intervalMs));
 

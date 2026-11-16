@@ -249,8 +249,12 @@ class AppState extends ChangeNotifier {
 
   String labelForNode(String id) {
     if (id == BleManager.phoneNodeId) return 'PHONE';
-    if (id == BleManager.usbWifiNodeId) return 'USB WIFI';
-    if (id == BleManager.usbBleNodeId) return 'USB-BLE';
+    if (BleManager.isUsbWifiNode(id)) {
+      return id == BleManager.usbWifiNodeId ? 'USB WIFI' : 'USB ${id.substring(BleManager.usbWifiNodeId.length + 1)}';
+    }
+    if (BleManager.isUsbBleNode(id)) {
+      return id == BleManager.usbBleNodeId ? 'USB-BLE' : 'USB-BLE ${id.substring(BleManager.usbBleNodeId.length + 1)}';
+    }
     final canon = canonicalNodeId(id);
     final stored = _nodeLabels[canon];
     if (stored != null && stored.isNotEmpty) return stored;

@@ -313,34 +313,17 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
     return false;
   }
   await ref.read(wardriveProvider).startSession();
-  await startSelectedUsbAdapters(ref);
   return true;
 }
 
-Future<void> startSelectedUsbAdapters(WidgetRef ref, {String? only}) async {
-  final usb = ref.read(wifiAdapterControllerProvider);
-  final off = ref.read(usbAdapterOffProvider);
-  final mask = switch (ref.read(wardriveProvider).radio) {
-    WardriveRadio.wifi => 0x01,
-    WardriveRadio.ble => 0x02,
-    WardriveRadio.both => 0x03,
-  };
-  final picked = ref.read(usbAdapterRadioProvider);
-  for (final d in usb.devices) {
-    if (only != null && d.id != only) continue;
-    if (off.contains(d.id) || usb.isActive(d.id)) continue;
-    await usb.start(d, radioMask: picked[d.id] ?? mask);
-  }
-}
+Future<void> startSelectedUsbAdapters(WidgetRef ref, {String? only}) => ref.read(wifiAdapterControllerProvider).startSelected(
+      off: ref.read(usbAdapterOffProvider),
+      picked: ref.read(usbAdapterRadioProvider),
+      mask: ref.read(wardriveProvider).radioBitmask,
+      only: only,
+    );
 
-Future<void> stopWardriveSession(WidgetRef ref) async {
-  await ref.read(wardriveProvider).stopSession();
-  final usb = ref.read(wifiAdapterControllerProvider);
-  if (usb.state == WifiAdapterState.running ||
-      usb.state == WifiAdapterState.starting) {
-    await usb.stop();
-  }
-}
+Future<void> stopWardriveSession(WidgetRef ref) => ref.read(wardriveProvider).stopSession();
 
 Future<bool>? _priming;
 

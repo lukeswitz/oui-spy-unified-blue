@@ -16,6 +16,7 @@ import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/app_state.dart';
@@ -996,7 +997,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             // Active: node stats overlay (top-left, below map style btn)
             if (wd.isActive &&
                 ((ref.watch(appStateProvider).isManagerConnected && ref.watch(appStateProvider).meshEnabled) ||
-                    ref.watch(phoneBleSourceProvider).scanning))
+                    ref.watch(phoneBleSourceProvider).scanning ||
+                    wd.detectionsPerNode.keys.any((k) => BleManager.isUsbWifiNode(k) || BleManager.isUsbBleNode(k)) ||
+                    const {WifiAdapterState.running, WifiAdapterState.starting}
+                        .contains(ref.watch(wifiAdapterStateProvider).valueOrNull)))
               Positioned(
                 top: _statsHeight + 8 + math.max(40.0, _chipsHeight + 8),
                 left: 12,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/wifi_adapter.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
 
 enum WifiAdapterState { absent, present, starting, running, error }
 
@@ -145,17 +146,36 @@ class WifiAdapterController {
       }
       DebugLog.log('WIFIADAPTER: batch ${aps.length} fresh, ${mine?.length ?? 0} unique aps on $id, '
           '${_seenBssids.length} total');
+      final node = _nodeId(BleManager.usbWifiNodeId, id);
       for (final ap in aps) {
         _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, ap.authMode,
-            nodeId: BleManager.usbWifiNodeId, client: ap.client);
+            nodeId: node, client: ap.client);
       }
     }
     final ble = e.bleReports;
     if (ble != null && ble.isNotEmpty) {
       if (id != null) _markRunning(id);
+      final node = _nodeId(BleManager.usbBleNodeId, id);
       for (final r in ble) {
-        _ble.addPhoneDetection(r.mac, r.name, r.rssi, r.adv, nodeId: BleManager.usbBleNodeId);
+        _ble.addPhoneDetection(r.mac, r.name, r.rssi, r.adv, nodeId: node);
       }
+    }
+  }
+
+  String _nodeId(String prefix, String? id) {
+    if (id == null) return prefix;
+    final d = _list.where((x) => x.id == id).firstOrNull;
+    final bus = id.split('/').last;
+    if (d == null) return '$prefix:$bus';
+    final dup = _list.where((x) => x.title == d.title).length > 1;
+    return '$prefix:${dup ? '${d.title} $bus' : d.title}';
+  }
+
+  Future<void> startSelected({required Set<String> off, required Map<String, int> picked, required int mask, String? only}) async {
+    for (final d in devices) {
+      if (only != null && d.id != only) continue;
+      if (off.contains(d.id) || isActive(d.id)) continue;
+      await start(d, radioMask: picked[d.id] ?? mask);
     }
   }
 
@@ -184,7 +204,25 @@ class WifiAdapterController {
 final wifiAdapterControllerProvider = Provider<WifiAdapterController>((ref) {
   final c = WifiAdapterController(ref.read(bleManagerProvider));
   c.init();
-  ref.onDispose(c.dispose);
+  Future<void> startForSession() => c.startSelected(
+        off: ref.read(usbAdapterOffProvider),
+        picked: ref.read(usbAdapterRadioProvider),
+        mask: ref.read(wardriveProvider).radioBitmask,
+      );
+  var running = ref.read(wardriveProvider).isRunning;
+  if (running) startForSession();
+  ref.listen<WardriveController>(wardriveProvider, (_, wd) {
+    if (wd.isRunning == running) return;
+    running = wd.isRunning;
+    running ? startForSession() : c.stop();
+  });
+  final devSub = c.deviceStream.listen((_) {
+    if (running) startForSession();
+  });
+  ref.onDispose(() {
+    devSub.cancel();
+    c.dispose();
+  });
   return c;
 });
 
