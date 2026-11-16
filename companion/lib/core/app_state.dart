@@ -707,6 +707,14 @@ class AppState extends ChangeNotifier {
     _rebuildDedupeIndex();
   }
 
+  String? apKeyFor(Detection d) {
+    if (d.method != 'wifi_client') return null;
+    final ap = _ble.clientAp[d.macAddress];
+    if (ap == null) return null;
+    final macKey = '$ap|${d.engine.name}';
+    return _macSsidKey[macKey] ?? macKey;
+  }
+
   Set<String> macsFor(Detection d) => _keyMacs[dedupeKey(d)] ?? {d.macAddress};
 
 

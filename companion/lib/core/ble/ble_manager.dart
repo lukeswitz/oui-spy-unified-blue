@@ -509,9 +509,12 @@ class BleManager {
     ));
   }
 
+  final Map<String, String> clientAp = {};
+
   void addPhoneWifiDetection(String bssid, String ssid, int rssi, int channel, int authMode,
-      {String nodeId = phoneNodeId, bool client = false}) {
+      {String nodeId = phoneNodeId, bool client = false, String? ap}) {
     bssid = bssid.toLowerCase();
+    if (client && ap != null) clientAp[bssid] = ap.toLowerCase();
     final now = DateTime.now();
     _detections.add(Detection(
       id: '${bssid}_${now.millisecondsSinceEpoch}',

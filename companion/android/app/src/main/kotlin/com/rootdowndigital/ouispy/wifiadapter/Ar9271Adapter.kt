@@ -20,7 +20,7 @@ internal class Ar9271Adapter(
 ) {
     private class Aborted : RuntimeException()
     private class HtcFrame(val epid: Int, val off: Int, val len: Int)
-    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0)
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0, var ap: String? = null)
 
     @Volatile private var stop = false
     private var closing = false
@@ -1116,11 +1116,13 @@ internal class Ar9271Adapter(
         val rssi = (Ar9271Regs.NOISE_FLOOR + rssiRaw).coerceIn(-120, -20) // unverified: signal = default noise floor + rs_rssi
         fun macAt(o: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(b, d + o + it)) }
         fun group(o: Int) = u8(b, d + o) and 1 != 0
-        fun touch(mac: String, isAp: Boolean, ssid: String?, channel: Int, auth: Int = 0) {
+        fun apAt(o: Int) = if (group(o)) null else macAt(o)
+        fun touch(mac: String, isAp: Boolean, ssid: String?, channel: Int, auth: Int = 0, ap: String? = null) {
             if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
             if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
             val e = table.getOrPut(mac) { Entry(null, rssi, channel, 0, isAp) }
             e.isAp = e.isAp || isAp
+            if (ap != null && ap != mac) e.ap = ap
             if (!ssid.isNullOrEmpty()) e.ssid = ssid
             if (rssi > e.rssi) e.rssi = rssi
             if (auth > e.auth) e.auth = auth
@@ -1148,7 +1150,8 @@ internal class Ar9271Adapter(
                         val auth = wifiAuthMode(b, d + 36, end, cap and 0x10 != 0)
                         touch(macAt(16), true, ssid, if (dsCh in 1..13) dsCh else ch, auth)
                     }
-                    4, 0, 1, 2, 3, 10, 11, 12 -> touch(macAt(10), false, null, ch)
+                    4 -> touch(macAt(10), false, null, ch)
+                    0, 1, 2, 3, 10, 11, 12 -> touch(macAt(10), false, null, ch, ap = apAt(16))
                 }
             }
             2 -> {
@@ -1156,9 +1159,9 @@ internal class Ar9271Adapter(
                 val toDs = flags and 1 != 0
                 val fromDs = flags and 2 != 0
                 when {
-                    toDs && !fromDs -> { if (!group(4)) touch(macAt(4), true, null, ch); touch(macAt(10), false, null, ch) }
-                    !toDs && fromDs -> { if (!group(10)) touch(macAt(10), true, null, ch); touch(macAt(4), false, null, ch) }
-                    !toDs && !fromDs -> { if (!group(16)) touch(macAt(16), true, null, ch); touch(macAt(10), false, null, ch) }
+                    toDs && !fromDs -> { if (!group(4)) touch(macAt(4), true, null, ch); touch(macAt(10), false, null, ch, ap = apAt(4)) }
+                    !toDs && fromDs -> { if (!group(10)) touch(macAt(10), true, null, ch); touch(macAt(4), false, null, ch, ap = apAt(10)) }
+                    !toDs && !fromDs -> { if (!group(16)) touch(macAt(16), true, null, ch); touch(macAt(10), false, null, ch, ap = apAt(16)) }
                     else -> touch(macAt(10), false, null, ch)
                 }
             }
@@ -1177,7 +1180,7 @@ internal class Ar9271Adapter(
         val fresh = 8000L
         val batch = table.entries
             .filter { now - it.value.lastSeen < fresh }
-            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Ar9271Regs.freqOf(e.channel), client = !e.isAp, authMode = e.auth) }
+            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Ar9271Regs.freqOf(e.channel), client = !e.isAp, authMode = e.auth, ap = if (e.isAp) null else e.ap) }
         table.entries.removeAll { now - it.value.lastSeen > 60_000L }
         if (batch.isNotEmpty()) onBatch(batch)
     }

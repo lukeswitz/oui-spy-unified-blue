@@ -146,11 +146,11 @@ class WifiAdapterController {
         mine?.add(ap.bssid);
       }
       DebugLog.log('WIFIADAPTER: batch ${aps.length} fresh, ${mine?.length ?? 0} unique aps on $id, '
-          '${_seenBssids.length} total');
+          '${_seenBssids.length} total, ${aps.where((a) => a.client).length} clients, ${aps.where((a) => a.ap != null).length} linked');
       final node = _nodeId(BleManager.usbWifiNodeId, id);
       for (final ap in aps) {
         _ble.addPhoneWifiDetection(ap.bssid, ap.ssid ?? '', ap.rssi, ap.channel, ap.authMode,
-            nodeId: node, client: ap.client);
+            nodeId: node, client: ap.client, ap: ap.ap);
       }
     }
     final ble = e.bleReports;

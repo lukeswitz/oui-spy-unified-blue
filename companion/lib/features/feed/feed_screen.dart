@@ -336,6 +336,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final id = d.odid?.uavId ?? '';
       return id.isEmpty || !droneUavIds.contains(id);
     }).toList();
+    final nested = nestUnderParents(nonDroneRows, state.dedupeKey, state.apKeyFor);
+    nonDroneRows
+      ..clear()
+      ..addAll(nested.rows);
 
     final feedItems = <Object>[...nonDroneRows, ...droneGroups];
     final rowIndex = Map<Detection, int>.identity();
@@ -431,10 +435,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                           );
                         }
                         final d = item as Detection;
-                        return DetectionRow(
+                        final row = DetectionRow(
                           key: ValueKey(state.dedupeKey(d)),
                           detection: d,
                         );
+                        return nested.parentOf.containsKey(d)
+                            ? Padding(padding: const EdgeInsets.only(left: 28), child: row)
+                            : row;
                       },
                     ),
             ),
@@ -793,4 +800,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
   }
+}
+
+({List<T> rows, Map<T, T> parentOf}) nestUnderParents<T extends Object>(List<T> rows,
+    String Function(T) keyOf, String? Function(T) parentKeyOf) {
+  final byKey = {for (final d in rows) keyOf(d): d};
+  final byParent = <String, List<T>>{};
+  final parentOf = Map<T, T>.identity();
+  for (final d in rows) {
+    final p = parentKeyOf(d);
+    final parent = p == null || p == keyOf(d) ? null : byKey[p];
+    if (parent == null || parentKeyOf(parent) != null) continue;
+    (byParent[p!] ??= []).add(d);
+    parentOf[d] = parent;
+  }
+  final out = <T>[];
+  for (final d in rows) {
+    if (parentOf.containsKey(d)) continue;
+    out.add(d);
+    out.addAll(byParent[keyOf(d)] ?? const []);
+  }
+  return (rows: out, parentOf: parentOf);
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/prefs.dart';
+import 'package:oui_spy/features/feed/feed_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -36,5 +37,26 @@ void main() {
     expect(app.macsFor(net.single), {'0a:bb:cc:dd:ee:01', '0e:bb:cc:dd:ee:02'});
     expect(app.recentDetections.where((d) => d.ssid.isEmpty && d.method == 'wifi_ap'), hasLength(2));
     expect(app.recentDetections.where((d) => d.method == 'ble_adv'), hasLength(1));
+  });
+
+  test('clients nest directly under the AP row they talk to', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final c = ProviderContainer(overrides: [sharedPreferencesProvider.overrideWithValue(prefs)]);
+    final app = c.read(appStateProvider);
+    final ble = c.read(bleManagerProvider);
+
+    ble.addPhoneWifiDetection('0A:BB:CC:DD:EE:01', 'MyNetwork', -80, 1, 3);
+    ble.addPhoneWifiDetection('0a:bb:cc:dd:ee:09', '', -60, 1, 0, client: true, ap: '0A:BB:CC:DD:EE:01');
+    ble.addPhoneWifiDetection('0a:bb:cc:dd:ee:08', '', -61, 1, 0, client: true, ap: '0a:bb:cc:dd:ee:77');
+    ble.addPhoneWifiDetection('0e:bb:cc:dd:ee:02', 'OtherNet', -70, 6, 3);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final nested = nestUnderParents(app.recentDetections, app.dedupeKey, app.apKeyFor);
+    final order = nested.rows.map((d) => d.macAddress).toList();
+    final ap = order.indexOf('0a:bb:cc:dd:ee:01');
+    expect(order[ap + 1], '0a:bb:cc:dd:ee:09');
+    expect(nested.parentOf.keys.map((d) => d.macAddress), ['0a:bb:cc:dd:ee:09']);
+    expect(order, hasLength(4));
   });
 }

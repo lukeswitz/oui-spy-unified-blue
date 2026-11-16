@@ -625,6 +625,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                         "frequency" to it.frequency,
                         "client" to it.client,
                         "authMode" to it.authMode,
+                        "ap" to it.ap,
                     )
                 },
             ),

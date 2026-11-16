@@ -318,7 +318,7 @@ internal class Rt3070Adapter(
         regSet(Rg.MAC_SYS_CTRL, Rg.MAC_SYS_CTRL_ENABLE_RX)
     }
 
-    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0)
+    private class Entry(var ssid: String?, var rssi: Int, var channel: Int, var lastSeen: Long, var isAp: Boolean, var auth: Int = 0, var ap: String? = null)
     private class SightingTable { val map = LinkedHashMap<String, Entry>() }
 
     private fun rxLoop(onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit) {
@@ -447,11 +447,13 @@ internal class Rt3070Adapter(
 
         fun macAt(off: Int) = (0 until 6).joinToString(":") { "%02x".format(u8(off + it)) }
         fun group(off: Int) = u8(off) and 1 != 0
-        fun touch(mac: String, isAp: Boolean, ssid: String?, auth: Int = 0) {
+        fun apAt(off: Int) = if (group(off)) null else macAt(off)
+        fun touch(mac: String, isAp: Boolean, ssid: String?, auth: Int = 0, ap: String? = null) {
             if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
             if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
             val e = table.map.getOrPut(mac) { Entry(null, rssi, ch, 0, isAp) }
             e.isAp = e.isAp || isAp
+            if (ap != null && ap != mac) e.ap = ap
             if (!ssid.isNullOrEmpty()) e.ssid = ssid
             if (rssi > e.rssi) e.rssi = rssi
             if (auth > e.auth) e.auth = auth
@@ -472,16 +474,17 @@ internal class Rt3070Adapter(
                     val auth = wifiAuthMode(b, ieStart, end, cap and 0x10 != 0)
                     if (good) touch(macAt(d + 16), true, ssid, auth)
                 }
-                4, 0, 1, 2, 3, 10, 11, 12 -> if (good) touch(macAt(d + 10), false, null)
+                4 -> if (good) touch(macAt(d + 10), false, null)
+                0, 1, 2, 3, 10, 11, 12 -> if (good) touch(macAt(d + 10), false, null, ap = apAt(d + 16))
             }
             2 -> {
                 if (!good) return
                 val toDs = flags and 1 != 0
                 val fromDs = flags and 2 != 0
                 when {
-                    toDs && !fromDs -> { if (!group(d + 4)) touch(macAt(d + 4), true, null); touch(macAt(d + 10), false, null) }
-                    !toDs && fromDs -> { if (!group(d + 10)) touch(macAt(d + 10), true, null); touch(macAt(d + 4), false, null) }
-                    !toDs && !fromDs -> { if (!group(d + 16)) touch(macAt(d + 16), true, null); touch(macAt(d + 10), false, null) }
+                    toDs && !fromDs -> { if (!group(d + 4)) touch(macAt(d + 4), true, null); touch(macAt(d + 10), false, null, ap = apAt(d + 4)) }
+                    !toDs && fromDs -> { if (!group(d + 10)) touch(macAt(d + 10), true, null); touch(macAt(d + 4), false, null, ap = apAt(d + 10)) }
+                    !toDs && !fromDs -> { if (!group(d + 16)) touch(macAt(d + 16), true, null); touch(macAt(d + 10), false, null, ap = apAt(d + 16)) }
                     else -> touch(macAt(d + 10), false, null)
                 }
             }
@@ -509,7 +512,7 @@ internal class Rt3070Adapter(
         val now = System.currentTimeMillis()
         val batch = table.map.entries
             .filter { now - it.value.lastSeen < FRESH_MS }
-            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Rg.freqOf(e.channel), client = !e.isAp, authMode = e.auth) }
+            .map { (mac, e) -> Mt7612uAdapter.ApSighting(mac, e.ssid, e.rssi, e.channel, Rg.freqOf(e.channel), client = !e.isAp, authMode = e.auth, ap = if (e.isAp) null else e.ap) }
         table.map.entries.removeAll { now - it.value.lastSeen > 60_000L }
         if (batch.isNotEmpty()) onBatch(batch)
     }

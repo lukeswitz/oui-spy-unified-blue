@@ -27,7 +27,7 @@ class WifiAdapterDevice {
 }
 
 class WifiAdapterAp {
-  const WifiAdapterAp({required this.bssid, this.ssid, required this.rssi, required this.channel, required this.frequency, this.client = false, this.authMode = 0});
+  const WifiAdapterAp({required this.bssid, this.ssid, required this.rssi, required this.channel, required this.frequency, this.client = false, this.authMode = 0, this.ap});
 
   final String bssid;
   final String? ssid;
@@ -36,6 +36,7 @@ class WifiAdapterAp {
   final int frequency;
   final bool client;
   final int authMode;
+  final String? ap;
 
   static WifiAdapterAp fromMap(Map<Object?, Object?> m) => WifiAdapterAp(
         bssid: m['bssid']! as String,
@@ -45,6 +46,7 @@ class WifiAdapterAp {
         frequency: m['frequency']! as int,
         client: (m['client'] as bool?) ?? false,
         authMode: (m['authMode'] as int?) ?? 0,
+        ap: m['ap'] as String?,
       );
 }
 
