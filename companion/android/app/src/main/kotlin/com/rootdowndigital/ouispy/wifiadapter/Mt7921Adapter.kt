@@ -219,6 +219,7 @@ internal class Mt7921Adapter(
         var ptype = (rxd0 ushr 27) and 0x1f
         if (ptype == 7 && ((rxd0 ushr 16) and 0xf) == 1) ptype = 17
         if (ptype != 2 && ptype != 17) return null
+        if (rxd1 and (1 shl 27) != 0) return null
         if (rxd2 and ((1 shl 23) or (1 shl 24)) != 0) return null
         val dmaLen = rxd0 and 0xffff
         val channel = (rxd3 ushr 8) and 0xff
