@@ -1460,6 +1460,9 @@ void setup() {
 #endif
     Serial.begin(115200);
     delay(200);
+#if CONFIG_IDF_TARGET_ESP32C5
+    c5PsramInit();
+#endif
 
     Serial.println("\n========================================");
     Serial.println("  OUI-SPY v3.0 — App-Controlled Mode");

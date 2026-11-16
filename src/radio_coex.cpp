@@ -9,6 +9,23 @@
 #include <esp_event.h>
 #include <esp_netif.h>
 #include <nvs_flash.h>
+#if CONFIG_IDF_TARGET_ESP32C5
+#include <esp_psram.h>
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32C5
+extern "C" esp_err_t __real_esp_psram_mspi_mb_init(void);
+extern "C" esp_err_t __wrap_esp_psram_mspi_mb_init(void) { return ESP_OK; }
+
+void c5PsramInit(void) {
+    if (!esp_psram_is_initialized()) return;
+    heap_caps_malloc_extmem_enable(16);
+    __real_esp_psram_mspi_mb_init();
+    Serial.printf("[MEM] C5 PSRAM routing >=16B, MSPI barrier armed. internalFree=%u dmaFree=%u\n",
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA));
+}
+#endif
 
 static bool g_c5WifiUp = false;
 void c5WifiInitNetif(void) {

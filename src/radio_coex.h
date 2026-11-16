@@ -9,6 +9,9 @@ void wifiCoexUnregister(WifiRxParser parser);
 #ifdef OUISPY_NIMBLE2
 void c5WifiInitNetif(void);
 void c5WifiUp(void);
+#if CONFIG_IDF_TARGET_ESP32C5
+void c5PsramInit(void);
+#endif
 #endif
 bool wifiCoexActive(void);
 bool wifiCoexReassert(WifiRxParser owner);

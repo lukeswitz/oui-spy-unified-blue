@@ -8,6 +8,7 @@
 #include "../ble_gatt.h"
 #include "../usb_link.h"
 #include "../mesh_espnow.h"
+#include "../radio_coex.h"
 #include "../wifi_ota_handler.h"
 #include "../ota_handler.h"
 #include "../ignore_list.h"
@@ -120,6 +121,9 @@ void setup() {
 #endif
     Serial.begin(115200);
     delay(300);
+#if CONFIG_IDF_TARGET_ESP32C5
+    c5PsramInit();
+#endif
     Serial.println();
     Serial.println("========================================");
     Serial.println("  OUI-SPY MANAGER (WROOM) — BLE+mesh");
