@@ -284,14 +284,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     if (scanning) {
       _kick();
       _timer = Timer.periodic(scanEvery, (_) => _refreshScan());
-      if (canScanWifi && radioMask & 0x01 != 0) {
-        _wifiKick();
-        _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
-      }
+      if (canScanWifi && radioMask & 0x01 != 0) _wifiStart();
     }
-    if (_foxTarget != null && canScanWifi && _wifiTimer == null) {
-      _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
-    }
+    if (_foxTarget != null && canScanWifi) _wifiStart();
     notifyListeners();
   }
 
@@ -304,9 +299,21 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _apply();
   }
 
-  static const wifiEvery = Duration(seconds: 30);
+  static const wifiRetry = Duration(seconds: 6);
   static bool get canScanWifi => Platform.isAndroid;
   Timer? _wifiTimer;
+  StreamSubscription<List<WiFiAccessPoint>>? _wifiSub;
+  DateTime _wifiAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _wifiStart() {
+    if (_wifiTimer != null) return;
+    _wifiSub ??= WiFiScan.instance.onScannedResultsAvailable.listen(_onWifiResults,
+        onError: (Object e) => DebugLog.log('CLASSIFY: phone wifi results failed: $e'));
+    _wifiKick();
+    _wifiTimer = Timer.periodic(wifiRetry, (_) {
+      if (DateTime.now().difference(_wifiAt) >= wifiRetry) _wifiKick();
+    });
+  }
   void Function(String bssid, String ssid, int rssi, int channel, int authMode)? onWifi;
 
   static int wifiChannel(int mhz) {
@@ -332,15 +339,21 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   Future<void> _wifiKick() async {
-    if ((!scanning && _foxTarget == null) || !canScanWifi) return;
+    if ((!scanning && _foxTarget == null) || !canScanWifi || rxOnly) return;
     try {
-      if (!rxOnly && await WiFiScan.instance.canStartScan() == CanStartScan.yes) {
+      if (await WiFiScan.instance.canStartScan() == CanStartScan.yes) {
+        _wifiAt = DateTime.now();
         await WiFiScan.instance.startScan();
-        await Future<void>.delayed(const Duration(seconds: 4));
       }
-      if (!scanning) return;
-      if (await WiFiScan.instance.canGetScannedResults() != CanGetScannedResults.yes) return;
-      final aps = await WiFiScan.instance.getScannedResults();
+    } on Exception catch (e) {
+      DebugLog.log('CLASSIFY: phone wifi scan failed: $e');
+    }
+  }
+
+  void _onWifiResults(List<WiFiAccessPoint> aps) {
+    if (_wifiTimer == null) return;
+    _wifiKick();
+    try {
       final now = DateTime.now().millisecondsSinceEpoch;
       final fix = here?.call();
       for (final ap in aps) {
@@ -501,10 +514,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         onFoxRssi?.call(-100, 0);
       }
     });
-    if (canScanWifi && _wifiTimer == null) {
-      _wifiKick();
-      _wifiTimer = Timer.periodic(wifiEvery, (_) => _wifiKick());
-    }
+    if (canScanWifi) _wifiStart();
     _foxScan();
   }
 
@@ -683,6 +693,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   void dispose() {
     _timer?.cancel();
     _wifiTimer?.cancel();
+    _wifiSub?.cancel();
     _foxLostTimer?.cancel();
     _sub?.cancel();
     _nativeSub?.cancel();

@@ -4,7 +4,7 @@ class _ScanTimingSliders extends ConsumerWidget {
   const _ScanTimingSliders();
 
   static const _steps = [50, 100, 110, 150, 200, 250, 300, 350, 400, 500, 800, 1000, 1500, 2000, 3000, 5000];
-  static const _sweepSteps = [0, 5, 10, 15, 30, 60];
+  static const _sweepSteps = [0, 500, 1000, 1500, 2000, 3000, 5000, 10000, 15000, 30000, 60000];
 
   int _prevStep(int current) {
     for (int i = _steps.length - 1; i >= 0; i--) {
@@ -40,13 +40,14 @@ class _ScanTimingSliders extends ConsumerWidget {
         ),
         _TimingRow(
           icon: Icons.wifi, label: 'Full WiFi sweep every',
-          value: wd.wifiSweepEverySec,
-          text: wd.wifiSweepEverySec == 0 ? 'Auto' : null,
-          suffix: 's',
-          onDown: () => ref.read(wardriveProvider).wifiSweepEverySec =
-              _sweepSteps.lastWhere((s) => s < wd.wifiSweepEverySec, orElse: () => 0),
-          onUp: () => ref.read(wardriveProvider).wifiSweepEverySec =
-              _sweepSteps.firstWhere((s) => s > wd.wifiSweepEverySec, orElse: () => _sweepSteps.last),
+          value: wd.wifiSweepEveryMs,
+          text: wd.wifiSweepEveryMs == 0
+              ? 'Auto'
+              : '${(wd.wifiSweepEveryMs / 1000).toStringAsFixed(wd.wifiSweepEveryMs % 1000 == 0 ? 0 : 1)}s',
+          onDown: () => ref.read(wardriveProvider).wifiSweepEveryMs =
+              _sweepSteps.lastWhere((s) => s < wd.wifiSweepEveryMs, orElse: () => 0),
+          onUp: () => ref.read(wardriveProvider).wifiSweepEveryMs =
+              _sweepSteps.firstWhere((s) => s > wd.wifiSweepEveryMs, orElse: () => _sweepSteps.last),
         ),
         _TimingRow(
           icon: Icons.bluetooth, label: 'BLE duration',

@@ -387,7 +387,7 @@ internal class Rt3070Adapter(
                     }
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
-                if (now - hopAt > DWELL_MS) {
+                if (now - hopAt > AdaptiveHop.dwellMs(Rg.HOP[hopIdx], DWELL_MS)) {
                     hopIdx = nextHop(hopIdx, table, now)
                     runCatching { configChannel(Rg.HOP[hopIdx]) }
                     hopAt = now
@@ -412,7 +412,7 @@ internal class Rt3070Adapter(
             if (n > 0) { lastRxAt = now; runCatching { parseRx(buf, n, Rg.HOP[hopIdx], table) } }
             else if (now - lastRxAt > 4000) { runCatching { reKickRx() }; lastRxAt = now }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
-            if (now - hopAt > DWELL_MS) {
+            if (now - hopAt > AdaptiveHop.dwellMs(Rg.HOP[hopIdx], DWELL_MS)) {
                 hopIdx = nextHop(hopIdx, table, now)
                 runCatching { configChannel(Rg.HOP[hopIdx]) }
                 hopAt = now

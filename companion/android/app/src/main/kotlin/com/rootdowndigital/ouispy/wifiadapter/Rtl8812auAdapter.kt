@@ -845,7 +845,7 @@ internal class Rtl8812auAdapter(
                     lastRxAt = now
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
-                if (now - hopAt > DWELL_MS) {
+                if (now - hopAt > AdaptiveHop.dwellMs(Rg.CHANNELS[hopIdx], DWELL_MS)) {
                     hopIdx = nextHop(hopIdx, table, now)
                     setChannel(Rg.CHANNELS[hopIdx])
                     hopAt = now
@@ -874,7 +874,7 @@ internal class Rtl8812auAdapter(
                 lastRxAt = now
             }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
-            if (now - hopAt > DWELL_MS) {
+            if (now - hopAt > AdaptiveHop.dwellMs(Rg.CHANNELS[hopIdx], DWELL_MS)) {
                 hopIdx = nextHop(hopIdx, table, now)
                 setChannel(Rg.CHANNELS[hopIdx])
                 hopAt = now

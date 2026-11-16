@@ -240,10 +240,9 @@ class WardriveController extends ChangeNotifier {
     _sessionOpenPersisted = p.getBool('wd_session_open') ?? false;
     _wifiRssiRelogDb = p.getInt('wd_wifiRssiRelog') ?? 20;
     _bleRssiRelogDb = p.getInt('wd_bleRssiRelog') ?? 15;
-    _wifiScanInterval = p.getInt('wd_wifiScanInterval') ?? 350;
-    _wifiDwellPerCh = p.getInt('wd_wifiDwellPerCh') ?? 150;
-    _wifiSweepEverySec = p.getInt('wd_wifiSweepEverySec') ?? 0;
-    WifiAdapter.setSweepEvery(_wifiSweepEverySec * 1000);
+    _wifiScanInterval = math.max(p.getInt('wd_wifiScanInterval') ?? 350, minDwellMs);
+    _wifiDwellPerCh = math.max(p.getInt('wd_wifiDwellPerCh') ?? 150, minDwellMs);
+    _wifiSweepEveryMs = p.getInt('wd_wifiSweepEveryMs') ?? (p.getInt('wd_wifiSweepEverySec') ?? 0) * 1000;
     _bleScanDuration = p.getInt('wd_bleScanDuration') ?? 800;
     _bleScanInterval = p.getInt('wd_bleScanInterval') ?? 3000;
     _channelStart = p.getInt('wd_channelStart') ?? 1;
@@ -274,6 +273,7 @@ class WardriveController extends ChangeNotifier {
       await p.setInt('wd_wardrive24Mode', _wardrive24Mode);
       await p.setBool('wd_dwellFast_v6', true);
     }
+    _pushAdapterTiming();
     notifyListeners();
   }
 
@@ -283,7 +283,7 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_bleRssiRelog', _bleRssiRelogDb);
     p.setInt('wd_wifiScanInterval', _wifiScanInterval);
     p.setInt('wd_wifiDwellPerCh', _wifiDwellPerCh);
-    p.setInt('wd_wifiSweepEverySec', _wifiSweepEverySec);
+    p.setInt('wd_wifiSweepEveryMs', _wifiSweepEveryMs);
     p.setInt('wd_bleScanDuration', _bleScanDuration);
     p.setInt('wd_bleScanInterval', _bleScanInterval);
     p.setInt('wd_channelStart', _channelStart);
@@ -373,31 +373,44 @@ class WardriveController extends ChangeNotifier {
   int get bleRssiRelogDb => _bleRssiRelogDb;
   set bleRssiRelogDb(int v) { _bleRssiRelogDb = v; notifyListeners(); _savePrefs(); }
 
+  static const minDwellMs = 110;
+
   int _wifiScanInterval = 350;
   int get wifiScanInterval => _wifiScanInterval;
-  set wifiScanInterval(int v) { _wifiScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
+  set wifiScanInterval(int v) { _wifiScanInterval = math.max(v, minDwellMs); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); _pushAdapterTiming(); }
 
   int _wifiDwellPerCh = 150;
   int get wifiDwellPerCh => _wifiDwellPerCh;
-  set wifiDwellPerCh(int v) { _wifiDwellPerCh = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
+  set wifiDwellPerCh(int v) { _wifiDwellPerCh = math.max(v, minDwellMs); notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); _pushAdapterTiming(); }
 
-  int _wifiSweepEverySec = 0;
-  int get wifiSweepEverySec => _wifiSweepEverySec;
-  set wifiSweepEverySec(int v) {
-    _wifiSweepEverySec = v.clamp(0, 600);
+  int _wifiSweepEveryMs = 0;
+  int get wifiSweepEveryMs => _wifiSweepEveryMs;
+  set wifiSweepEveryMs(int v) {
+    _wifiSweepEveryMs = v.clamp(0, 600000);
     notifyListeners();
     _savePrefs();
     _pushWardriveConfigLive();
-    WifiAdapter.setSweepEvery(_wifiSweepEverySec * 1000);
+    _pushAdapterTiming();
   }
 
   int _bleScanDuration = 800;
   int get bleScanDuration => _bleScanDuration;
-  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
+  set bleScanDuration(int v) { _bleScanDuration = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); _pushAdapterTiming(); }
 
   int _bleScanInterval = 3000;
   int get bleScanInterval => _bleScanInterval;
-  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); }
+  set bleScanInterval(int v) { _bleScanInterval = v; notifyListeners(); _savePrefs(); _pushWardriveConfigLive(); _pushAdapterTiming(); }
+
+  void _pushAdapterTiming() {
+    final bleOn = math.max(_bleScanDuration, 100);
+    WifiAdapter.setTiming(
+      sweepMs: _wifiSweepEveryMs,
+      priDwellMs: _wifiScanInterval,
+      otherDwellMs: _wifiDwellPerCh,
+      bleOnMs: bleOn,
+      bleEveryMs: math.max(_bleScanInterval, bleOn + 100),
+    );
+  }
 
   int _channelStart = 1;
   int get channelStart => _channelStart;
@@ -420,6 +433,8 @@ class WardriveController extends ChangeNotifier {
       };
   set wifiBand(WifiBand v) { _wifiBand = v; notifyListeners(); _savePrefs(); _pushWifiBand(); }
 
+  int get _sweepSecForBoard => (_wifiSweepEveryMs + 999) ~/ 1000;
+
   Uint8List get _wardriveConfigPayload => Uint8List.fromList([
         radioBitmask,
         wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
@@ -429,7 +444,7 @@ class WardriveController extends ChangeNotifier {
         channelStart,
         channelEnd,
         wardrive24Mode,
-        wifiSweepEverySec & 0xFF, (wifiSweepEverySec >> 8) & 0xFF,
+        _sweepSecForBoard & 0xFF, (_sweepSecForBoard >> 8) & 0xFF,
       ]);
 
   void _pushWardriveConfigLive() {

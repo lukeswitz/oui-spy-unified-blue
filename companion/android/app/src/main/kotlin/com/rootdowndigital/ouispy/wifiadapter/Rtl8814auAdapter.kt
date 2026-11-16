@@ -808,7 +808,7 @@ internal class Rtl8814auAdapter(
             lastRxAt = now
         }
         if (now - emitAt > EMIT_MS) { emit(onBatch); emitAt = now }
-        if (now - hopAt > DWELL_MS) {
+        if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)) {
             val chs = Mt76Regs.CHANNELS
             val active = table.values.mapTo(HashSet()) { it.channel }
             hopIdx = hopper.next(hopIdx, active, now)

@@ -439,7 +439,7 @@ internal class Mt7612uAdapter(
                     }
                 }
                 if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
-                if (now - hopAt > DWELL_MS) {
+                if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)) {
                     if (now - phoneChAt > 5000) { phoneCh = phoneChannels(); phoneChAt = now }
                     val active = table.map.values.mapTo(HashSet(phoneCh)) { it.channel }
                     hopIdx = hopper.next(hopIdx, active, now)
@@ -473,7 +473,7 @@ internal class Mt7612uAdapter(
                 diagAt = now
             }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
-            if (now - hopAt > DWELL_MS) {
+            if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)) {
                 hopIdx = (hopIdx + 1) % Mt76Regs.CHANNELS.size
                 runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                 drainCmdResp()

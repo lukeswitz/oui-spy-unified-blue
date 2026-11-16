@@ -328,7 +328,16 @@ final sdrControllerProvider = Provider<SdrController>((ref) {
     db: ref.read(databaseProvider),
     gps: () => ref.read(wardriveProvider).currentPosition,
   );
-  ref.onDispose(c.dispose);
+  final attachSub = WifiAdapter.attachEvents.listen((e) async {
+    if (!e.attached && c.state != SdrState.idle) {
+      final present = await Sdr.list();
+      if (present.isEmpty) await c.stop();
+    }
+  });
+  ref.onDispose(() {
+    attachSub.cancel();
+    c.dispose();
+  });
   return c;
 });
 

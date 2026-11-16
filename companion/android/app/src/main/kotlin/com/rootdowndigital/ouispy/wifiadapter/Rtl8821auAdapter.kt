@@ -559,7 +559,7 @@ internal class Rtl8821auAdapter(
                 emit(table, onBatch)
                 emitAt = now
             }
-            if (now - hopAt > HOP_DWELL_MS) hop(now)
+            if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], HOP_DWELL_MS)) hop(now)
         }
 
         private fun hop(now: Long) {

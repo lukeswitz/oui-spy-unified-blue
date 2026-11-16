@@ -3,31 +3,18 @@ package com.rootdowndigital.ouispy.wifiadapter
 class AdaptiveHop(private val channels: IntArray) {
     private var sweepLeft = 0
     private var sweepAt = Long.MIN_VALUE / 2
-    private var exploreAt = 0L
-    private var explorePtr = -1
 
     fun next(cur: Int, active: Set<Int>, now: Long): Int {
         val n = channels.size
         val every = sweepEveryMs
-        if (every > 0) {
-            if (now - sweepAt > every) {
-                sweepLeft = n
-                sweepAt = now
-            }
-            if (sweepLeft > 0) {
-                sweepLeft--
-                return (cur + 1) % n
-            }
+        if (every <= 0 || active.isEmpty()) return (cur + 1) % n
+        if (now - sweepAt > every) {
+            sweepLeft = n
+            sweepAt = now
         }
-        if (active.isEmpty()) return (cur + 1) % n
-        if (every <= 0 && now - exploreAt >= EXPLORE_MS) {
-            exploreAt = now
-            var s = 0
-            do {
-                explorePtr = (explorePtr + 1) % n
-                s++
-            } while (s < n && channels[explorePtr] in active)
-            return explorePtr
+        if (sweepLeft > 0) {
+            sweepLeft--
+            return (cur + 1) % n
         }
         var nx = (cur + 1) % n
         var s = 0
@@ -39,9 +26,18 @@ class AdaptiveHop(private val channels: IntArray) {
     }
 
     companion object {
-        const val EXPLORE_MS = 2000L
-
         @Volatile
         var sweepEveryMs = 0L
+
+        @Volatile
+        var priDwellMs = 0L
+
+        @Volatile
+        var otherDwellMs = 0L
+
+        fun dwellMs(ch: Int, fallback: Long): Long {
+            val v = if (ch == 1 || ch == 6 || ch == 11) priDwellMs else otherDwellMs
+            return if (v > 0) v else fallback
+        }
     }
 }

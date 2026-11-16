@@ -63,7 +63,7 @@ class WifiAdapterController {
 
   Future<void> _onAttach(WifiAdapterAttach e) async {
     await refresh();
-    if (!e.attached && isActive(e.device.id)) await stop(id: e.device.id);
+    if (!e.attached && _deviceState.containsKey(e.device.id)) await stop(id: e.device.id);
   }
 
   Future<List<WifiAdapterDevice>> refresh() async {
@@ -190,6 +190,10 @@ final wifiAdapterControllerProvider = Provider<WifiAdapterController>((ref) {
 
 final wifiAdapterStateProvider = StreamProvider<WifiAdapterState>((ref) {
   return ref.watch(wifiAdapterControllerProvider).stateStream;
+});
+
+final wifiAdapterDevicesProvider = StreamProvider<List<WifiAdapterDevice>>((ref) {
+  return ref.watch(wifiAdapterControllerProvider).deviceStream;
 });
 
 final usbAdapterOffProvider = StateProvider<Set<String>>((ref) => const {});

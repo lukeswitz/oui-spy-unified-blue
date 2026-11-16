@@ -36,7 +36,7 @@ internal class RtlRx(
                 emit(table, onBatch)
                 emitAt = now
             }
-            if (now - hopAt > DWELL_MS) {
+            if (now - hopAt > AdaptiveHop.dwellMs(channels[idx], DWELL_MS)) {
                 idx = (idx + 1) % channels.size
                 retune(channels[idx])
                 hopAt = System.currentTimeMillis()

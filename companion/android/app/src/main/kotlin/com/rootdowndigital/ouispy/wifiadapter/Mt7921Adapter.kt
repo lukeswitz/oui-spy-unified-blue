@@ -24,7 +24,7 @@ internal class Mt7921Adapter(
     )
     private val MAIN = setOf(1, 6, 11)
     private val MAIN_DWELL_MS = 300L
-    private val SIDE_DWELL_MS = 50L
+    private val SIDE_DWELL_MS = 110L
     private lateinit var epRx: UsbEndpoint
     private lateinit var epCmdOut: UsbEndpoint
     private var epCmdResp: UsbEndpoint? = null
@@ -94,7 +94,8 @@ internal class Mt7921Adapter(
                 val n = conn.bulkTransfer(epRx, buf, buf.size, 120)
                 val now = System.currentTimeMillis()
                 if (n > 0) ingestFrame(buf, n, sights)
-                val dwell = if (CHANNELS[chIdx] in MAIN) MAIN_DWELL_MS else SIDE_DWELL_MS
+                val dwell = AdaptiveHop.dwellMs(CHANNELS[chIdx], if (CHANNELS[chIdx] in MAIN) MAIN_DWELL_MS else SIDE_DWELL_MS) *
+                    (if (Mt7921BtAdapter.scanning) 2 else 1)
                 if (now - lastHop > dwell) {
                     chIdx = (chIdx + 1) % CHANNELS.size
                     tune(CHANNELS[chIdx], true)

@@ -28,6 +28,7 @@ class ScanScreen extends ConsumerStatefulWidget {
 
 class _ScanScreenState extends ConsumerState<ScanScreen> {
   final Map<String, ScanResult> _results = {};
+  final Map<String, ScanResult> _pairedSeen = {};
   bool _scanning = false;
   bool _connecting = false;
   String? _connectingId;
@@ -70,7 +71,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     super.initState();
     final ble = ref.read(bleManagerProvider);
     _loadRememberedManager();
-    _loadPaired();
+    final paired = _loadPaired();
     final usb = ref.read(usbAutoConnectProvider);
     _usb = usb.attached;
     _usbSub = usb.devices.listen((d) {
@@ -89,7 +90,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         setState(() {});
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await paired;
       if (mounted) _startScan();
     });
   }
@@ -124,6 +126,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
 
     _results.clear();
+    _pairedSeen.clear();
     _error = null;
     setState(() => _scanning = true);
 
@@ -157,11 +160,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       return;
     }
 
+    final pairedIds = [for (final b in _paired) b.id];
     _scanSub?.cancel();
     _scanSub = FlutterBluePlus.onScanResults.listen((results) {
       if (!mounted) return;
       setState(() {
         for (final r in results) {
+          final id = r.device.remoteId.toString();
+          if (pairedIds.contains(id)) {
+            _pairedSeen[id] = r;
+            continue;
+          }
           final name = r.device.platformName.toUpperCase();
           final advName = r.advertisementData.advName.toUpperCase();
           if (name.contains('OUI') || name.contains('SPY') ||
@@ -177,7 +186,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     try {
       await FlutterBluePlus.startScan(
-        withServices: [GattUuids.service],
+        withServices: pairedIds.isEmpty ? [GattUuids.service] : const [],
         timeout: const Duration(seconds: 15),
         androidUsesFineLocation: false,
       );
@@ -457,7 +466,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final ready = ble.currentConnectionState == NodeConnectionState.ready;
     final usbLive = ready && ble.isUsbLinked;
     final liveId = !ready ? null : usbLive ? (ble.usbDevice?.id ?? _net?.label ?? 'USB') : ble.targetDeviceId;
-    final otherPaired = _paired.where((b) => b.id != liveId).toList();
+    final otherPaired = _paired.where((b) => b.id != liveId).toList()
+      ..sort((a, b) => (_pairedSeen[b.id]?.rssi ?? -999).compareTo(_pairedSeen[a.id]?.rssi ?? -999));
     final otherUsb = _usb.where((d) => d.id != liveId).toList();
     final net = _net?.label == liveId ? null : _net;
 
@@ -545,8 +555,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                           final n? => ref.watch(appStateProvider).labelForNode(n),
                           null => b.name,
                         },
-                        subtitle: _pairedNodes.containsKey(b.id) ? b.id : 'Not identified yet · ${b.id}',
-                        icon: Icons.bluetooth_connected,
+                        subtitle: [
+                          switch (_pairedSeen[b.id]) {
+                            final r? => 'Advertising · ${r.rssi} dBm',
+                            null => _scanning ? 'Looking…' : 'Not advertising',
+                          },
+                          if (!_pairedNodes.containsKey(b.id)) 'Not identified yet',
+                          b.id,
+                        ].join(' · '),
+                        icon: _pairedSeen.containsKey(b.id) ? Icons.bluetooth_searching : Icons.bluetooth_disabled,
+                        active: _pairedSeen.containsKey(b.id),
                         busyLabel: 'CONNECTING...',
                         onTap: () => _connectPaired(b),
                         onLongPress: () => _confirmForget(b)),

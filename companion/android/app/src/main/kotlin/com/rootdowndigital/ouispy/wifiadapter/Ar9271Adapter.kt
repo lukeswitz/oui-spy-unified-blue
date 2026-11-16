@@ -985,7 +985,7 @@ internal class Ar9271Adapter(
                 }
                 if (now - lastRxAt > STALL_MS) { reKickRx(); lastRxAt = now }
                 if (now - emitAt > 2000) { emit(onBatch); emitAt = now }
-                if (now - hopAt > DWELL_MS) {
+                if (now - hopAt > AdaptiveHop.dwellMs(channel, DWELL_MS)) {
                     hopIdx = nextHop(hopIdx, now)
                     channel = Ar9271Regs.CHANNELS[hopIdx]
                     setChannel(channel, true)
@@ -1037,7 +1037,7 @@ internal class Ar9271Adapter(
             if (n > 0) { lastRxAt = now; rxChunk(buf, n, channel) }
             if (now - lastRxAt > STALL_MS) { reKickRx(); lastRxAt = now }
             if (now - emitAt > 2000) { emit(onBatch); emitAt = now }
-            if (now - hopAt > DWELL_MS) {
+            if (now - hopAt > AdaptiveHop.dwellMs(channel, DWELL_MS)) {
                 hopIdx = nextHop(hopIdx, now)
                 channel = Ar9271Regs.CHANNELS[hopIdx]
                 setChannel(channel, true)

@@ -59,25 +59,45 @@ internal class Mt7921BtAdapter(
 
     private fun leScan(evt: UsbEndpoint) {
         val dst = hciCmdStatus(evt, 0x200c, byteArrayOf(0, 0))
-        val pst = hciCmdStatus(evt, 0x200b, byteArrayOf(0, 0x10, 0, 0x10, 0, 0, 0))
+        val pst = hciCmdStatus(evt, 0x200b, byteArrayOf(0, 0x10, 0, 0x08, 0, 0, 0))
         val est = hciCmdStatus(evt, 0x200c, byteArrayOf(1, 0))
         log("MT7921-BT: LE scan disable=0x%02x params=0x%02x enable=0x%02x".format(dst, pst, est))
 
         val acc = ArrayList<Byte>(512)
         val buf = ByteArray(260)
         var lastLog = System.currentTimeMillis()
+        scanning = true
+        var phaseAt = lastLog
         while (!stop) {
-            val n = conn.bulkTransfer(evt, buf, buf.size, 500)
-            if (n <= 0) continue
-            for (i in 0 until n) acc.add(buf[i])
-            drainEvents(acc)
+            val n = conn.bulkTransfer(evt, buf, buf.size, 50)
+            if (n > 0) {
+                for (i in 0 until n) acc.add(buf[i])
+                drainEvents(acc)
+            }
             val now = System.currentTimeMillis()
+            val on = bleOnMs
+            val every = bleEveryMs
+            if (on > 0 && every > on) {
+                if (scanning && now - phaseAt >= on) {
+                    hciCommand(0x200c, byteArrayOf(0, 0))
+                    scanning = false
+                } else if (!scanning && now - phaseAt >= every) {
+                    hciCommand(0x200c, byteArrayOf(1, 0))
+                    scanning = true
+                    phaseAt = now
+                }
+            } else if (!scanning) {
+                hciCommand(0x200c, byteArrayOf(1, 0))
+                scanning = true
+                phaseAt = now
+            }
             if (now - lastLog >= 3000) {
                 log("MT7921-BT: LE ${seenMacs.size} unique devices, $advCount adverts")
                 lastLog = now
             }
         }
         hciCommand(0x200c, byteArrayOf(0, 0))
+        scanning = false
         log("MT7921-BT: LE scan stopped, ${seenMacs.size} unique devices")
     }
 
@@ -289,4 +309,15 @@ internal class Mt7921BtAdapter(
             ((b[off + 1].toInt() and 0xff) shl 8) or
             ((b[off + 2].toInt() and 0xff) shl 16) or
             ((b[off + 3].toInt() and 0xff) shl 24)
+
+    companion object {
+        @Volatile
+        var bleOnMs = 0L
+
+        @Volatile
+        var bleEveryMs = 0L
+
+        @Volatile
+        var scanning = false
+    }
 }

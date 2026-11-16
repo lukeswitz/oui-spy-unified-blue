@@ -15,6 +15,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import com.hoho.android.usbserial.driver.UsbSerialProber
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -53,8 +54,15 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     private class Session {
         var thread: Thread? = null
         @Volatile var stopFn: (() -> Unit)? = null
+        @Volatile var stopped = false
+
+        fun bind(fn: () -> Unit): Boolean {
+            stopFn = fn
+            return !stopped
+        }
     }
     private val sessions = HashMap<String, Session>()
+    private val retiring = HashMap<String, Thread>()
     private val pending = HashMap<String, Pair<MethodChannel.Result, Int>>()
     private var pendingSdr: (() -> Unit)? = null
     private var sdrGen = 0
@@ -75,14 +83,14 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                     if (req != null && device != null) {
                         if (granted) startAdapter(device, req.first, req.second) else req.first.success(false)
                     } else if (granted && device != null &&
-                        (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR)) {
+                        (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) {
                         emitAttach(true, device)
                     }
                 }
                 UsbManager.ACTION_USB_DEVICE_ATTACHED ->
-                    if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR)) emitAttach(true, device)
+                    if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) emitAttach(true, device)
                 UsbManager.ACTION_USB_DEVICE_DETACHED ->
-                    if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR)) emitAttach(false, device)
+                    if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) emitAttach(false, device)
             }
         }
     }
@@ -137,7 +145,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     fun onAttachIntent(intent: Intent?) {
         if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
         val device = deviceExtra(intent) ?: return
-        if (isWifiMonitor(device)) emitAttach(true, device)
+        if (isWifiMonitor(device) || kindOf(device) == Kind.SERIAL) emitAttach(true, device)
     }
 
     fun dispose() {
@@ -189,8 +197,13 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 val id = call.argument<String>("id")
                 stopSessions(if (id != null) listOf(id) else sessions.keys.filter { it != SDR_ID }) { result.success(null) }
             }
-            "setSweepEvery" -> {
-                AdaptiveHop.sweepEveryMs = (call.argument<Number>("ms")?.toLong() ?: 0L).coerceAtLeast(0L)
+            "setTiming" -> {
+                fun ms(key: String) = (call.argument<Number>(key)?.toLong() ?: 0L).coerceAtLeast(0L)
+                AdaptiveHop.sweepEveryMs = ms("sweepMs")
+                AdaptiveHop.priDwellMs = ms("priDwellMs")
+                AdaptiveHop.otherDwellMs = ms("otherDwellMs")
+                Mt7921BtAdapter.bleOnMs = ms("bleOnMs")
+                Mt7921BtAdapter.bleEveryMs = ms("bleEveryMs")
                 result.success(null)
             }
             "sdrList" -> result.success(candidates().filter { kindOf(it) == Kind.RTLSDR }.map { describe(it) })
@@ -269,6 +282,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
             k in RT3070_IDS -> Kind.RT3070
             k in RTLSDR_IDS -> Kind.RTLSDR
             k in SERIAL_IDS -> Kind.SERIAL
+            UsbSerialProber.getDefaultProber().probeDevice(d) != null -> Kind.SERIAL
             else -> null
         }
     }
@@ -294,6 +308,22 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
             result.success(true)
             return
         }
+        val prev = retiring.remove(id)
+        if (prev != null && prev.isAlive) {
+            Thread {
+                prev.join(RETIRE_WAIT_MS)
+                main.post {
+                    if (prev.isAlive) {
+                        retiring[id] = prev
+                        emitStatus("${device.productName ?: "USB adapter"}: previous session still releasing the device", id)
+                        result.success(false)
+                    } else {
+                        startAdapter(device, result, radioMask)
+                    }
+                }
+            }.start()
+            return
+        }
         val kind = kindOf(device)
         if (kind == null) {
             result.success(false)
@@ -314,7 +344,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                     Kind.MT7612U -> {
                         val fw = FirmwareStore.load(context)
                         val a = Mt7612uAdapter(conn, intf, fw, log, ::phoneWifiChannels)
-                        s.stopFn = a::abort
+                        if (!s.bind(a::abort)) return@Thread
                         a.run(onBatch)
                     }
                     Kind.MT7921 -> {
@@ -328,7 +358,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                         )
                         val a = Mt7921Adapter(conn, intf, patch, ram, log)
                         var bt: Mt7921BtAdapter? = null
-                        s.stopFn = { a.abort(); bt?.abort() }
+                        if (!s.bind { a.abort(); bt?.abort() }) return@Thread
                         val btIntf = findBtInterface(device)
                         a.run(onBatch, scanWifi = (radioMask and 0x01) != 0, onReady = {
                             if (btIntf != null && (radioMask and 0x02) != 0) {
@@ -352,19 +382,19 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                     Kind.RTL8812AU -> {
                         val fw = Rtl8812auAdapter.loadFirmware(context)
                         val a = Rtl8812auAdapter(conn, intf, fw, log, rtlForceFirmware())
-                        s.stopFn = a::abort
+                        if (!s.bind(a::abort)) return@Thread
                         a.run(onBatch)
                     }
                     Kind.RTL8814AU -> {
                         val fw = RtlFirmwareStore.load8814a(context)
                         val a = Rtl8814auAdapter(conn, intf, fw, log, rtlForceFirmware())
-                        s.stopFn = a::abort
+                        if (!s.bind(a::abort)) return@Thread
                         a.run(onBatch)
                     }
                     Kind.RTL8821AU -> {
                         val fw = RtlFirmwareStore.load8821a(context)
                         val a = Rtl8821auAdapter(conn, intf, fw, log, rtlForceFirmware())
-                        s.stopFn = a::abort
+                        if (!s.bind(a::abort)) return@Thread
                         a.run(onBatch)
                     }
                     Kind.AR9271 -> {
@@ -375,7 +405,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                             Ar9271Regs.FIRMWARE_SHA256,
                         )
                         val a = Ar9271Adapter(conn, intf, fw, log)
-                        s.stopFn = a::abort
+                        if (!s.bind(a::abort)) return@Thread
                         a.run(onBatch)
                     }
                     Kind.RT3070 -> {
@@ -386,7 +416,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                             Rt3070Regs.FIRMWARE_SHA256,
                         )
                         val a = Rt3070Adapter(conn, intf, fw, log)
-                        s.stopFn = a::abort
+                        if (!s.bind(a::abort)) return@Thread
                         a.run(onBatch)
                     }
                     Kind.RTLSDR -> log("RTL-SDR: use SDR controls")
@@ -401,8 +431,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                     // Connection already torn down by the OS on detach.
                 }
                 main.post {
-                    if (sessions[id] === s) sessions.remove(id)
-                    emitStopped(id)
+                    if (sessions[id] === s) {
+                        sessions.remove(id)
+                        emitStopped(id)
+                    }
                 }
             }
         }
@@ -424,19 +456,47 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         val port = SerialLines.open(device, conn)
         if (device.productId == 0x205a) {
             val s = FreeWiliScanner(port, intf, log)
-            session.stopFn = s::abort
+            if (!session.bind(s::abort)) return
             s.run(onBatch)
+            return
+        }
+        if (probeIsOuiSpy(port)) {
+            log("${device.productName ?: "USB serial"}: OUI-SPY board, connect it from the Connect screen to scan with it")
             return
         }
         if (probeIsMarauder(port)) {
             val s = MarauderScanner(port, intf, log)
-            session.stopFn = s::abort
+            if (!session.bind(s::abort)) return
             s.run(onBatch)
         } else {
             val s = GhostEspScanner(port, intf, log)
-            session.stopFn = s::abort
+            if (!session.bind(s::abort)) return
             s.run(onBatch)
         }
+    }
+
+    private fun probeIsOuiSpy(port: com.hoho.android.usbserial.driver.UsbSerialPort): Boolean {
+        val hello = byteArrayOf(0xA5.toByte(), 0x5A, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01)
+        var crc = 0xFFFF
+        for (i in 2 until hello.size) {
+            crc = crc xor ((hello[i].toInt() and 0xff) shl 8)
+            repeat(8) { crc = if (crc and 0x8000 != 0) ((crc shl 1) xor 0x1021) and 0xFFFF else (crc shl 1) and 0xFFFF }
+        }
+        port.write(hello + byteArrayOf((crc and 0xff).toByte(), (crc ushr 8).toByte()), 500)
+        val buf = ByteArray(512)
+        var b1 = -1
+        var b2 = -1
+        val end = System.currentTimeMillis() + 800
+        while (System.currentTimeMillis() < end) {
+            val n = port.read(buf, 200)
+            for (i in 0 until n) {
+                val b = buf[i].toInt() and 0xff
+                if (b2 == 0xA5 && b1 == 0x5A && b == 0x81) return true
+                b2 = b1
+                b1 = b
+            }
+        }
+        return false
     }
 
     // Send help and sniff the banner: Marauder answers with "marauder"/"sniffbeacon", GhostESP does not.
@@ -453,9 +513,13 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
 
     private fun stopSessions(ids: List<String>, then: (() -> Unit)? = null) {
-        val workers = ids.mapNotNull { sessions.remove(it) }.mapNotNull { s ->
+        val workers = ids.mapNotNull { id -> sessions.remove(id)?.let { id to it } }.mapNotNull { (id, s) ->
+            s.stopped = true
             s.stopFn?.invoke()
-            s.thread?.also { it.interrupt() }
+            s.thread?.also {
+                it.interrupt()
+                retiring[id] = it
+            }
         }
         if (then == null) return
         if (workers.isEmpty()) {
@@ -569,6 +633,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
 
     private companion object {
         const val SDR_ID = "sdr"
+        const val RETIRE_WAIT_MS = 10_000L
         val MT7612U_IDS = setOf(0x0e8d7612, 0x0e8d7610)
         val MT7921_IDS = setOf(0x0e8d7961)
         val AR9271_IDS = setOf(0x0cf39271, 0x0cf31006, 0x07b89271)

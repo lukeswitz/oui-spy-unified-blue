@@ -736,6 +736,7 @@ class _UsbScanSources extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(wifiAdapterStateProvider);
+    ref.watch(wifiAdapterDevicesProvider);
     ref.watch(appStateProvider.select((s) => s.connectionState));
     final ctl = ref.read(wifiAdapterControllerProvider);
     final sdrState = ref.watch(sdrStateProvider).valueOrNull ?? SdrState.idle;

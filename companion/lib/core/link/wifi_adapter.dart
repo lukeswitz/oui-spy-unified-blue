@@ -99,8 +99,21 @@ class WifiAdapter {
   static Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async =>
       await _methods.invokeMethod<bool>('start', {'id': device.id, 'radioMask': radioMask}) ?? false;
 
-  static Future<void> setSweepEvery(int ms) async {
-    if (supported) await _methods.invokeMethod<void>('setSweepEvery', {'ms': ms});
+  static Future<void> setTiming({
+    required int sweepMs,
+    required int priDwellMs,
+    required int otherDwellMs,
+    required int bleOnMs,
+    required int bleEveryMs,
+  }) async {
+    if (!supported) return;
+    await _methods.invokeMethod<void>('setTiming', {
+      'sweepMs': sweepMs,
+      'priDwellMs': priDwellMs,
+      'otherDwellMs': otherDwellMs,
+      'bleOnMs': bleOnMs,
+      'bleEveryMs': bleEveryMs,
+    });
   }
 
   static Future<bool> requestPermission() async =>
