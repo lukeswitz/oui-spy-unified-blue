@@ -63,6 +63,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
     private val sessions = HashMap<String, Session>()
     private val retiring = HashMap<String, Thread>()
+    private val ouiSpyBoards = HashSet<String>()
     private val pending = HashMap<String, Pair<MethodChannel.Result, Int>>()
     private var pendingSdr: (() -> Unit)? = null
     private var sdrGen = 0
@@ -89,8 +90,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 }
                 UsbManager.ACTION_USB_DEVICE_ATTACHED ->
                     if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) emitAttach(true, device)
-                UsbManager.ACTION_USB_DEVICE_DETACHED ->
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    if (device != null) ouiSpyBoards.remove(device.deviceName)
                     if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) emitAttach(false, device)
+                }
             }
         }
     }
@@ -164,7 +167,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "list" -> {
-                result.success(candidates().filter { kindOf(it) != Kind.RTLSDR }.map { describe(it) })
+                result.success(candidates().filter { kindOf(it) != Kind.RTLSDR && it.deviceName !in ouiSpyBoards }.map { describe(it) })
             }
             "requestPermission" -> {
                 val device = candidates().firstOrNull {
@@ -463,6 +466,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         }
         if (probeIsOuiSpy(port)) {
             log("${device.productName ?: "USB serial"}: OUI-SPY board, connect it from the Connect screen to scan with it")
+            main.post {
+                ouiSpyBoards.add(device.deviceName)
+                emitAttach(false, device)
+            }
             return
         }
         if (probeIsMarauder(port)) {

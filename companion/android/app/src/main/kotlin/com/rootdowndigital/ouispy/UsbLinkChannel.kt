@@ -176,9 +176,6 @@ class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
         }
         try {
             p.open(connection)
-            for (ep in listOfNotNull(p.readEndpoint, p.writeEndpoint)) {
-                connection.controlTransfer(0x02, 0x01, 0, ep.address, null, 0, 200)
-            }
             p.setParameters(BAUD, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             p.dtr = false
             p.rts = false

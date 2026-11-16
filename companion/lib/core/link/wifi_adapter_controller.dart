@@ -34,8 +34,8 @@ class WifiAdapterController {
   final Set<String> _seenBssids = {};
 
   List<WifiAdapterDevice> get devices {
-    final linked = _ble.usbDevice?.id;
-    return linked == null ? _list : [for (final d in _list) if (d.id != linked) d];
+    final boards = {_ble.usbDevice?.id, _ble.lastUsbDevice?.id};
+    return [for (final d in _list) if (!boards.contains(d.id)) d];
   }
   WifiAdapterState get state => _current;
   String get status => _status;
