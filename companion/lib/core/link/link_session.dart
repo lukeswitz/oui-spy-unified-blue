@@ -134,10 +134,12 @@ class LinkSession {
       _pending = c;
       _pendingType = expect;
       _pendingId = id;
+      final rxBefore = _parser.bytesIn;
       try {
         await _transport.send(encodeLinkFrame(type, id, payload));
         return await c.future.timeout(timeout,
-            onTimeout: () => throw _linkError('link', 'no reply to 0x${type.toRadixString(16)}'));
+            onTimeout: () => throw _linkError('link',
+                'no reply to 0x${type.toRadixString(16)} (rx +${_parser.bytesIn - rxBefore} B, buffered ${_parser.buffered} B [${_parser.head}], crc ${_parser.crcErrors})'));
       } finally {
         if (identical(_pending, c)) _pending = null;
       }

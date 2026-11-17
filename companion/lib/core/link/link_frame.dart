@@ -74,8 +74,14 @@ const _deviceTypes = {
 class LinkFrameParser {
   final List<int> _buf = [];
   int crcErrors = 0;
+  int bytesIn = 0;
+
+  int get buffered => _buf.length;
+
+  String get head => _buf.take(12).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
 
   List<LinkFrame> add(List<int> bytes) {
+    bytesIn += bytes.length;
     _buf.addAll(bytes);
     final out = <LinkFrame>[];
     var i = 0;
