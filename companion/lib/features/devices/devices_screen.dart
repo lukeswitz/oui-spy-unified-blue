@@ -22,6 +22,7 @@ import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
+import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
 
@@ -201,34 +202,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     _ => 'ALL',
   };
 
-  Future<bool> _ensurePhoneScan(BuildContext ctx) async {
-    final src = ref.read(phoneBleSourceProvider);
-    if (src.active) return true;
-    final yes = await showDialog<bool>(
-      context: ctx,
-      builder: (d) => AlertDialog(
-        title: const Text('Scan with this phone?'),
-        content: const Text(
-          "Use this phone's Bluetooth to listen for nearby devices too, in addition to the connected node. "
-          'This uses more battery.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(d).pop(false),
-            child: const Text('NOT NOW'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(d).pop(true),
-            child: const Text('SCAN'),
-          ),
-        ],
-      ),
-    );
-    if (yes != true) return false;
-    src.setActive(true);
-    return true;
-  }
-
   Future<void> _openFilterSheet(
     Map<SignatureClass, int> counts,
     int unclassified,
@@ -280,7 +253,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                             _ => kPillAll,
                           },
                           onTap: () async {
-                            if (s == 'phone' && !await _ensurePhoneScan(ctx)) {
+                            if (s == 'phone' && !await ensurePhoneScan(ctx, ref)) {
                               return;
                             }
                             apply(() => _source = s);
@@ -439,7 +412,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                   src.setActive(false);
                   if (_source == 'phone') _source = null;
                 } else {
-                  await _ensurePhoneScan(context);
+                  await ensurePhoneScan(context, ref);
                 }
                 if (mounted) setState(() {});
               },

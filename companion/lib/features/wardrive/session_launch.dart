@@ -284,7 +284,20 @@ class SessionStartButton extends ConsumerWidget {
   }
 }
 
-Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool requireLocation = true}) async {
+Future<bool>? _starting;
+
+Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool requireLocation = true}) {
+  if (_starting != null) DebugLog.log('WARDRIVE: start already in progress');
+  return _starting ??= _startWardriveSession(context, ref, requireLocation: requireLocation).catchError((Object e) {
+    DebugLog.log('WARDRIVE: start failed: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Start failed: $e')));
+    }
+    return false;
+  }).whenComplete(() => _starting = null);
+}
+
+Future<bool> _startWardriveSession(BuildContext context, WidgetRef ref, {required bool requireLocation}) async {
   DebugLog.log('WARDRIVE: start requested');
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (ref.read(wardriveProvider).selectedTargets.isEmpty) {
@@ -308,11 +321,19 @@ Future<bool> startWardriveSession(BuildContext context, WidgetRef ref, {bool req
     DebugLog.log('WARDRIVE: start aborted — screen gone');
     return false;
   }
+  if (Platform.isIOS) await ensurePhoneScan(context, ref);
+  if (!context.mounted) {
+    DebugLog.log('WARDRIVE: start aborted — screen gone');
+    return false;
+  }
   if (!await confirmRadioRoles(context, ref)) {
     DebugLog.log('WARDRIVE: start aborted — radio roles canceled');
     return false;
   }
+  final usb = startSelectedUsbAdapters(ref);
   await ref.read(wardriveProvider).startSession();
+  await usb;
+  if (!ref.read(wardriveProvider).isActive) await ref.read(wifiAdapterControllerProvider).stop();
   return true;
 }
 
@@ -380,10 +401,38 @@ Future<void> _askAlwaysLocation(BuildContext context) async {
   );
 }
 
+Future<bool> ensurePhoneScan(BuildContext context, WidgetRef ref) async {
+  final src = ref.read(phoneBleSourceProvider);
+  if (src.active) return true;
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: const Text('Scan with this phone?'),
+      content: const Text(
+        "Use this phone's Bluetooth to listen for nearby devices too, in addition to the connected node. "
+        'This uses more battery.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(d).pop(false),
+          child: const Text('NOT NOW'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(d).pop(true),
+          child: const Text('SCAN'),
+        ),
+      ],
+    ),
+  );
+  if (yes != true) return false;
+  src.setActive(true);
+  return true;
+}
+
 Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   final app = ref.read(appStateProvider);
   final phone = ref.read(phoneBleSourceProvider);
-  final phoneChoice = phone.active && PhoneBleSource.canScanWifi;
+  final phoneChoice = phone.active && (PhoneBleSource.canScanWifi || Platform.isIOS);
   final mgrId = AppState.canonicalNodeId(app.nodeId);
   final nodes = app.isManagerConnected
       ? (app.liveKnownNodes.where((id) => id != mgrId).toList()..sort())
@@ -420,10 +469,11 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
       },
       hubId: hubId,
       hubNodes: hubNodes,
+      bleOnly: {if (!PhoneBleSource.canScanWifi) BleManager.phoneNodeId},
       initial: {
         for (final n in nodes)
           n: n == BleManager.phoneNodeId
-              ? phone.radioMask
+              ? (PhoneBleSource.canScanWifi ? phone.radioMask : 0x02)
               : n == selfId
                   ? wd.radioBitmask
                   : usbDual.containsKey(n)
@@ -515,6 +565,7 @@ class RadioRolePopup extends StatefulWidget {
     required this.initial,
     this.hubId,
     this.hubNodes = const [],
+    this.bleOnly = const {},
   });
 
   final List<String> nodes;
@@ -522,6 +573,7 @@ class RadioRolePopup extends StatefulWidget {
   final Map<String, int> initial;
   final String? hubId;
   final List<EnowHubNode> hubNodes;
+  final Set<String> bleOnly;
 
   @override
   State<RadioRolePopup> createState() => _RadioRolePopupState();
@@ -725,19 +777,13 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                             BorderSide(color: selColor.withValues(alpha: 0.45)),
                           ),
                         ),
-                        segments: const [
-                          ButtonSegment(
-                            value: 0x01,
-                            label: Text('WiFi', maxLines: 1, softWrap: false),
-                          ),
-                          ButtonSegment(
-                            value: 0x02,
-                            label: Text('BLE', maxLines: 1, softWrap: false),
-                          ),
-                          ButtonSegment(
-                            value: 0x03,
-                            label: Text('Both', maxLines: 1, softWrap: false),
-                          ),
+                        segments: [
+                          for (final (v, l) in const [(0x01, 'WiFi'), (0x02, 'BLE'), (0x03, 'Both')])
+                            if (v == 0x02 || !widget.bleOnly.contains(id))
+                              ButtonSegment(
+                                value: v,
+                                label: Text(l, maxLines: 1, softWrap: false),
+                              ),
                         ],
                         selected: {mask},
                         onSelectionChanged: (s) =>

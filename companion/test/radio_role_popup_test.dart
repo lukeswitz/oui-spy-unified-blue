@@ -24,6 +24,24 @@ void main() {
     expect(find.text('START'), findsOneWidget);
   });
 
+  testWidgets('BLE-only phone row offers only BLE; board row keeps all radios', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: RadioRolePopup(
+          nodes: const ['BOARD', 'PHONE'],
+          labelFor: (id) => id,
+          bleOnly: const {'PHONE'},
+          initial: const {'BOARD': 0x03, 'PHONE': 0x02},
+        ),
+      ),
+    ));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('WiFi'), findsOneWidget);
+    expect(find.text('Both'), findsOneWidget);
+    expect(find.text('BLE'), findsNWidgets(3));
+  });
+
   testWidgets('hub board shows nodes with switches; switched-off node is skipped', (tester) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;

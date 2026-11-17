@@ -53,10 +53,7 @@ class WifiAdapterController {
 
   void init() {
     _attachSub ??= WifiAdapter.attachEvents.listen(_onAttach);
-    _linkSub ??= _ble.connectionState.listen((_) {
-      _devices.add(devices);
-      _update();
-    });
+    _linkSub ??= _ble.connectionState.listen((_) => refresh());
     refresh().then((list) {
       if (list.isNotEmpty) WifiAdapter.requestPermission();
     });
@@ -79,7 +76,18 @@ class WifiAdapterController {
     return devices;
   }
 
-  Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) async {
+  Future<void> _ops = Future.value();
+
+  Future<T> _serial<T>(Future<T> Function() op) {
+    final r = _ops.then((_) => op());
+    _ops = r.then((_) {}, onError: (Object _) {});
+    return r;
+  }
+
+  Future<bool> start(WifiAdapterDevice device, {int radioMask = 0x01}) =>
+      _serial(() => _start(device, radioMask: radioMask));
+
+  Future<bool> _start(WifiAdapterDevice device, {int radioMask = 0x01}) async {
     _sub ??= WifiAdapter.events.listen(_onEvent, onError: (Object e) {
       _status = e.toString();
       for (final id in _deviceState.keys.toList()) {
@@ -93,6 +101,7 @@ class WifiAdapterController {
     try {
       final ok = await WifiAdapter.start(device, radioMask: radioMask);
       if (!ok) {
+        DebugLog.log('WIFIADAPTER: start refused for ${device.id} (${device.title})');
         _deviceState[device.id] = WifiAdapterState.error;
         _update();
       }
@@ -106,7 +115,9 @@ class WifiAdapterController {
     }
   }
 
-  Future<void> stop({String? id}) async {
+  Future<void> stop({String? id}) => _serial(() => _stop(id: id));
+
+  Future<void> _stop({String? id}) async {
     await WifiAdapter.stop(id: id);
     if (id == null) {
       _deviceState.clear();
@@ -172,13 +183,12 @@ class WifiAdapterController {
     return '$prefix:${dup ? '${d.title} $bus' : d.title}';
   }
 
-  Future<void> startSelected({required Set<String> off, required Map<String, int> picked, required int mask, String? only}) async {
-    for (final d in devices) {
-      if (only != null && d.id != only) continue;
-      if (off.contains(d.id) || isActive(d.id)) continue;
-      await start(d, radioMask: picked[d.id] ?? mask);
-    }
-  }
+  Future<void> startSelected({required Set<String> off, required Map<String, int> picked, required int mask, String? only}) =>
+      _serial(() => Future.wait([
+            for (final d in devices)
+              if ((only == null || d.id == only) && !off.contains(d.id) && !isActive(d.id))
+                _start(d, radioMask: picked[d.id] ?? mask),
+          ]));
 
   void _markRunning(String id) {
     if (_deviceState[id] == WifiAdapterState.running) return;
@@ -186,7 +196,10 @@ class WifiAdapterController {
     _update();
   }
 
-  void _update() => _set(aggregateAdapterState(_deviceState.values, attached: devices.isNotEmpty));
+  void _update() {
+    final shown = devices;
+    _set(aggregateAdapterState([for (final d in shown) ?_deviceState[d.id]], attached: shown.isNotEmpty));
+  }
 
   void _set(WifiAdapterState s) {
     _current = s;

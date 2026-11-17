@@ -1405,7 +1405,12 @@ class BleManager {
     final replied = enowHubStatus.first
         .timeout(const Duration(milliseconds: 1500))
         .then<bool>((_) => true, onError: (Object _) => false);
-    await enowHubPoll();
+    try {
+      await enowHubPoll().timeout(const Duration(milliseconds: 1500));
+    } catch (e) {
+      DebugLog.log('ENOW: hub poll failed: $e');
+      return;
+    }
     if (!await replied) return;
     while (true) {
       try {
