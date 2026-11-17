@@ -64,6 +64,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     private val sessions = HashMap<String, Session>()
     private val retiring = HashMap<String, Thread>()
     private val ouiSpyBoards = HashSet<String>()
+    private val linkOwned = HashSet<String>()
     private val pending = HashMap<String, Pair<MethodChannel.Result, Int>>()
     private var pendingSdr: (() -> Unit)? = null
     private var sdrGen = 0
@@ -91,7 +92,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
                 UsbManager.ACTION_USB_DEVICE_ATTACHED ->
                     if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) emitAttach(true, device)
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                    if (device != null) ouiSpyBoards.remove(device.deviceName)
+                    if (device != null) {
+                        ouiSpyBoards.remove(device.deviceName)
+                        linkOwned.remove(device.deviceName)
+                    }
                     if (device != null && (isWifiMonitor(device) || kindOf(device) == Kind.RTLSDR || kindOf(device) == Kind.SERIAL)) emitAttach(false, device)
                 }
             }
@@ -151,6 +155,26 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         if (isWifiMonitor(device) || kindOf(device) == Kind.SERIAL) emitAttach(true, device)
     }
 
+    fun yieldToLink(name: String, then: () -> Unit) {
+        linkOwned.add(name)
+        pending.remove(name)?.first?.success(false)
+        stopSessions(listOf(name)) {
+            val prev = retiring[name]
+            if (prev == null || !prev.isAlive) {
+                then()
+            } else {
+                Thread {
+                    prev.join(RETIRE_WAIT_MS)
+                    main.post(then)
+                }.start()
+            }
+        }
+    }
+
+    fun linkReleased(name: String) {
+        linkOwned.remove(name)
+    }
+
     fun dispose() {
         sdrSink = null
         sink = null
@@ -167,11 +191,11 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "list" -> {
-                result.success(candidates().filter { kindOf(it) != Kind.RTLSDR && it.deviceName !in ouiSpyBoards }.map { describe(it) })
+                result.success(candidates().filter { kindOf(it) != Kind.RTLSDR && it.deviceName !in ouiSpyBoards && it.deviceName !in linkOwned }.map { describe(it) })
             }
             "requestPermission" -> {
                 val device = candidates().firstOrNull {
-                    kindOf(it) != Kind.RTLSDR && !usb.hasPermission(it)
+                    kindOf(it) != Kind.RTLSDR && !usb.hasPermission(it) && it.deviceName !in linkOwned
                 }
                 if (device != null) {
                     val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
@@ -308,6 +332,10 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
 
     private fun startAdapter(device: UsbDevice, result: MethodChannel.Result, radioMask: Int) {
         val id = device.deviceName
+        if (id in linkOwned) {
+            result.success(false)
+            return
+        }
         if (sessions.containsKey(id)) {
             result.success(true)
             return

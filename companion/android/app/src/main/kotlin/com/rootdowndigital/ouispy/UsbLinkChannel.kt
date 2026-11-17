@@ -15,13 +15,18 @@ import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
+import com.rootdowndigital.ouispy.wifiadapter.WifiAdapterChannel
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
-class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
+class UsbLinkChannel(
+    private val context: Context,
+    messenger: BinaryMessenger,
+    private val adapters: WifiAdapterChannel,
+) :
     MethodChannel.MethodCallHandler {
 
     private val usb = context.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -44,7 +49,12 @@ class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
                     if (pending.first.device.deviceName != device.deviceName) return
                     pendingOpen = null
                     val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                    if (granted) openPort(pending.first, pending.second) else pending.second.success(false)
+                    if (granted) {
+                        openPort(pending.first, pending.second)
+                    } else {
+                        adapters.linkReleased(device.deviceName)
+                        pending.second.success(false)
+                    }
                 }
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     if (device.deviceName == openDeviceName) closePort()
@@ -110,14 +120,22 @@ class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
                 val driver = drivers().firstOrNull { it.device.deviceName == id }
                 if (driver == null) {
                     result.success(false)
-                } else if (usb.hasPermission(driver.device)) {
-                    openPort(driver, result)
-                } else {
-                    pendingOpen?.second?.success(false)
-                    pendingOpen = Pair(driver, result)
-                    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-                    val intent = Intent(permissionAction).setPackage(context.packageName)
-                    usb.requestPermission(driver.device, PendingIntent.getBroadcast(context, 0, intent, flags))
+                    return
+                }
+                val name = driver.device.deviceName
+                adapters.yieldToLink(name) {
+                    if (usb.hasPermission(driver.device)) {
+                        openPort(driver, result)
+                    } else {
+                        pendingOpen?.let {
+                            it.second.success(false)
+                            if (it.first.device.deviceName != name) adapters.linkReleased(it.first.device.deviceName)
+                        }
+                        pendingOpen = Pair(driver, result)
+                        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+                        val intent = Intent(permissionAction).setPackage(context.packageName)
+                        usb.requestPermission(driver.device, PendingIntent.getBroadcast(context, 0, intent, flags))
+                    }
                 }
             }
             "write" -> {
@@ -162,15 +180,18 @@ class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
     }
 
     private fun openPort(driver: UsbSerialDriver, result: MethodChannel.Result) {
-        closePort()
+        val name = driver.device.deviceName
+        closePort(keep = name)
         val connection = usb.openDevice(driver.device)
         if (connection == null) {
+            adapters.linkReleased(name)
             result.success(false)
             return
         }
         val p = driver.ports.firstOrNull()
         if (p == null) {
             connection.close()
+            adapters.linkReleased(name)
             result.success(false)
             return
         }
@@ -184,11 +205,12 @@ class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
                 p.close()
             } catch (_: Exception) {
             }
+            adapters.linkReleased(name)
             result.error("usb_open", e.message, null)
             return
         }
         port = p
-        openDeviceName = driver.device.deviceName
+        openDeviceName = name
         val manager = SerialInputOutputManager(p, object : SerialInputOutputManager.Listener {
             override fun onNewData(data: ByteArray) {
                 main.post { dataSink?.success(data) }
@@ -210,12 +232,14 @@ class UsbLinkChannel(private val context: Context, messenger: BinaryMessenger) :
         result.success(true)
     }
 
-    private fun closePort() {
+    private fun closePort(keep: String? = null) {
         io?.stop()
         io = null
         val p = port
+        val name = openDeviceName
         port = null
         openDeviceName = null
+        if (name != null && name != keep) adapters.linkReleased(name)
         if (p != null) {
             try {
                 p.close()

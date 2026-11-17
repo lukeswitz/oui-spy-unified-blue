@@ -19,8 +19,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
-        usbLink = UsbLinkChannel(applicationContext, messenger)
-        wifiAdapter = WifiAdapterChannel(applicationContext, messenger)
+        val adapters = WifiAdapterChannel(applicationContext, messenger)
+        wifiAdapter = adapters
+        usbLink = UsbLinkChannel(applicationContext, messenger, adapters)
         phoneScan = PhoneScanChannel(applicationContext, messenger)
         phoneWatch = PhoneWatchChannel(applicationContext, messenger)
     }
