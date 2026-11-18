@@ -569,6 +569,7 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
     }
 
     private fun emitStatus(msg: String, id: String? = null) {
+        android.util.Log.i("OuiSpyUsb", if (id == null) msg else "$id $msg")
         sink?.success(if (id == null) mapOf("status" to msg) else mapOf("status" to msg, "id" to id))
     }
 

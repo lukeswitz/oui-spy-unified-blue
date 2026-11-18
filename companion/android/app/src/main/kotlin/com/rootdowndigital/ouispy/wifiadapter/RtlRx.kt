@@ -26,6 +26,7 @@ internal class RtlRx(
         val onBatch: (List<Mt7612uAdapter.ApSighting>) -> Unit,
     ) {
         val table = Table()
+        val hopper = AdaptiveHop(channels)
         var idx = 0
         var hopAt = System.currentTimeMillis()
         var emitAt = hopAt
@@ -39,7 +40,7 @@ internal class RtlRx(
                 emitAt = now
             }
             if (now - hopAt > AdaptiveHop.dwellMs(channels[idx], DWELL_MS)) {
-                idx = AdaptiveHop.step(channels, idx)
+                idx = hopper.next(idx, emptySet(), now)
                 retune(channels[idx])
                 hopAt = System.currentTimeMillis()
             }

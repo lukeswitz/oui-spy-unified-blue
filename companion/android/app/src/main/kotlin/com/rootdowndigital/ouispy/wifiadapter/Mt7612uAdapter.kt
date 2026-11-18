@@ -464,6 +464,7 @@ internal class Mt7612uAdapter(
         var diagAt = hopAt
         var rxBytes = 0L
         var rxBufs = 0L
+        val hopper = AdaptiveHop(Mt76Regs.CHANNELS)
         while (!stop) {
             val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(hopAt, AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)).toInt())
             val now = System.currentTimeMillis()
@@ -475,7 +476,7 @@ internal class Mt7612uAdapter(
             }
             if (now - emitAt > 2000) { emit(table, onBatch); emitAt = now }
             if (now - hopAt > AdaptiveHop.dwellMs(Mt76Regs.CHANNELS[hopIdx], DWELL_MS)) {
-                hopIdx = AdaptiveHop.step(Mt76Regs.CHANNELS, hopIdx)
+                hopIdx = hopper.next(hopIdx, emptySet(), now)
                 runCatching { tuneChannel(Mt76Regs.CHANNELS[hopIdx]) }
                 drainCmdResp()
                 hopAt = now

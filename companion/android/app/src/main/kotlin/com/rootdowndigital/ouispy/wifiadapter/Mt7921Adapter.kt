@@ -92,6 +92,7 @@ internal class Mt7921Adapter(
         var lastBeat = System.currentTimeMillis()
         var lastEmit = lastBeat
         var lastHop = lastBeat
+        val hopper = AdaptiveHop(CHANNELS)
         try {
             while (!stop) {
                 val n = conn.bulkTransfer(epRx, buf, buf.size, AdaptiveHop.waitMs(lastHop, dwellOf(CHANNELS[chIdx])).toInt())
@@ -99,7 +100,7 @@ internal class Mt7921Adapter(
                 if (n > 0) ingestFrame(buf, n, sights)
                 val dwell = dwellOf(CHANNELS[chIdx])
                 if (now - lastHop > dwell) {
-                    chIdx = AdaptiveHop.step(CHANNELS, chIdx)
+                    chIdx = hopper.next(chIdx, emptySet(), now)
                     tune(CHANNELS[chIdx], true)
                     lastHop = System.currentTimeMillis()
                 }
