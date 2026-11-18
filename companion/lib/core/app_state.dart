@@ -532,6 +532,7 @@ class AppState extends ChangeNotifier {
         if (nodeId.isNotEmpty) _recordSeenNode(nodeId);
         sessionStartTime = DateTime.now();
         _ble.setIgnoreList(_ignoreList.serializeForFirmware());
+        _readBoardMeshMode();
         _gps.start().catchError((e) {
           DebugLog.log('GPS: start failed from BLE connect: $e');
           return false;
@@ -821,6 +822,19 @@ class AppState extends ChangeNotifier {
     _dedupeIndex.clear();
     for (var i = 0; i < recentDetections.length; i++) {
       _dedupeIndex[dedupeKey(recentDetections[i])] = i;
+    }
+  }
+
+  Future<void> _readBoardMeshMode() async {
+    try {
+      final m = await _ble.readMeshConfig();
+      if (m == null) return;
+      meshEnabled = m.enabled;
+      meshEncryption = m.encryption;
+      DebugLog.log('AppState: board mesh enabled=${m.enabled} encryption=${m.encryption}');
+      notifyListeners();
+    } on Exception catch (e) {
+      DebugLog.log('AppState: mesh config read failed: $e');
     }
   }
 

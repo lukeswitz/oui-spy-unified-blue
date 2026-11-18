@@ -2050,6 +2050,14 @@ class BleManager {
 
   // -- Mesh --
 
+  Future<({bool enabled, bool encryption})?> readMeshConfig() async {
+    final c = _meshConfig;
+    if (c == null) return null;
+    final v = await c.read();
+    if (v.length < 2) return null;
+    return (enabled: v[0] != 0, encryption: v[1] != 0);
+  }
+
   Future<void> writeMeshConfig({
     required bool enabled,
     required bool encryption,
