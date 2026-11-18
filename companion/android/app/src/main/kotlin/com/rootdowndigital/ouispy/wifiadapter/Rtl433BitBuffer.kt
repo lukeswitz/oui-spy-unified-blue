@@ -42,21 +42,45 @@ private fun bitrowPrint(bitrow: IntArray, bitLen: Int, highestIndent: Int, alway
     return sb.toString()
 }
 
+class BitRows {
+    private val rows = arrayOfNulls<IntArray>(BITBUF_ROWS)
+
+    operator fun get(row: Int): IntArray = rows[row] ?: IntArray(BITBUF_COLS).also { rows[row] = it }
+
+    operator fun set(row: Int, v: IntArray) {
+        rows[row] = v
+    }
+
+    fun peek(row: Int): IntArray? = rows[row]
+
+    fun clear() {
+        for (i in rows.indices) {
+            val a = rows[i] ?: continue
+            if (a.size == BITBUF_COLS) a.fill(0) else rows[i] = null
+        }
+    }
+}
+
 class BitBuffer {
     var numRows = 0
     var freeRow = 0
     val bitsPerRow = IntArray(BITBUF_ROWS)
     val syncsBeforeRow = IntArray(BITBUF_ROWS)
-    val bb = Array(BITBUF_ROWS) { IntArray(BITBUF_COLS) }
+    val bb = BitRows()
 
     private fun getByte(row: Int, col: Int): Int {
-        val r = row + col / BITBUF_COLS
-        return if (r < BITBUF_ROWS) bb[r][col % BITBUF_COLS] else 0
+        val a = bb.peek(row) ?: return 0
+        return if (col < a.size) a[col] else 0
     }
 
     private fun setByte(row: Int, col: Int, v: Int) {
-        val r = row + col / BITBUF_COLS
-        if (r < BITBUF_ROWS) bb[r][col % BITBUF_COLS] = v and 0xFF
+        if (row + col / BITBUF_COLS >= BITBUF_ROWS) return
+        var a = bb[row]
+        if (col >= a.size) {
+            a = a.copyOf((col / BITBUF_COLS + 1) * BITBUF_COLS)
+            bb[row] = a
+        }
+        a[col] = v and 0xFF
     }
 
     private fun bitAt(row: Int, bit: Int): Int = (getByte(row, bit shr 3) shr (7 - (bit and 7))) and 1
@@ -66,7 +90,7 @@ class BitBuffer {
         freeRow = 0
         bitsPerRow.fill(0)
         syncsBeforeRow.fill(0)
-        for (r in bb) r.fill(0)
+        bb.clear()
     }
 
     fun addBit(bit: Int) {

@@ -44,7 +44,6 @@ internal class SdrEngine(
     private fun runRtl433(bands: List<Long>, rate: Int, raw: Boolean, categories: List<String>) {
         Rtl433Devices.registerAll(categories.toSet())
         Rtl433Registry.reset()
-        Rtl433Registry.centerFreqHz = bands.first()
         val isms = if (raw) bands.associateWith { c ->
             IsmDecoder(rate, c) { b ->
                 onDetection(
@@ -65,6 +64,8 @@ internal class SdrEngine(
         var pkgs = 0
         var decs = 0
         var statAt = System.currentTimeMillis()
+        var rxSamples = 0L
+        var busyNs = 0L
         var curRssi = 0
         Rtl433Registry.onPackage = { _, _, rssi ->
             curRssi = rssi
@@ -92,7 +93,6 @@ internal class SdrEngine(
                 }
                 idx = (idx + 1) % bands.size
                 dev.setCenterFreq(bands[idx])
-                Rtl433Registry.centerFreqHz = bands[idx]
                 Rtl433Registry.reset()
                 hopAt = now
                 settleUntil = now + SETTLE_MS
@@ -100,15 +100,21 @@ internal class SdrEngine(
             }
             if (now < settleUntil) return@readIq
             val c = bands[idx]
+            val t0 = System.nanoTime()
             try {
                 pkgs += Rtl433Registry.run(buf, n / 2, rate) { r -> emit(r, c) }
             } catch (e: Exception) {
                 if (!rtl433ErrLogged) { rtl433ErrLogged = true; log("RTL433 decoder threw (continuing): ${e.message}") }
             }
             if (raw) isms[c]?.feed(buf, n)
+            busyNs += System.nanoTime() - t0
+            rxSamples += n / 2
             if (now - statAt >= 2000) {
+                val span = now - statAt
                 statAt = now
-                log("SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs")
+                log("SCAN ${c / 1_000_000}MHz pkts=$pkgs decoded=$decs rx=${rxSamples / span}k/s busy=${busyNs / 10_000 / span}%")
+                rxSamples = 0
+                busyNs = 0
             }
         }
     }

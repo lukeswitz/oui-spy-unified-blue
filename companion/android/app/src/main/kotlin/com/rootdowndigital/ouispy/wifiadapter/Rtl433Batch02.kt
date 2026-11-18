@@ -1873,7 +1873,6 @@ internal object FineoffsetWH51 : Rtl433Decoder() {
     }
 }
 
-// unverified: WH24/WH65/WS69/HP1000 (fineoffset_WH24_callback) and WH0290 delegations (rows <160 or 190..439 bits) not ported; only the WH25/WH32/WH32B/WN32B path
 internal object FineoffsetWH25 : Rtl433Decoder() {
     override val name = "Fine Offset Electronics, WH25, WH32, WH32B, WN32B, WH24, WH65, WS69, HP1000, Misol WS2320 Temperature/Humidity/Pressure Sensor"
     override val mod = Mod.FSK_PCM
@@ -1883,12 +1882,78 @@ internal object FineoffsetWH25 : Rtl433Decoder() {
 
     private val PREAMBLE = intArrayOf(0xAA, 0x2D, 0xD4)
 
+    private val uviUpper = intArrayOf(432, 851, 1210, 1570, 2017, 2450, 2761, 3100, 3512, 3918, 4277, 4650, 5029)
+
+    private fun wh24(bb: BitBuffer): List<Reading> {
+        val bits = bb.bitsPerRow[0]
+        if (bits < 190 || bits > 268) return emptyList()
+        val bitOffset = bb.search(0, 0, PREAMBLE, 24) + 24
+        if (bitOffset + 17 * 8 > bits) return emptyList()
+        var model = if (bits - bitOffset - 17 * 8 < 8 && bitOffset < 61) "Fineoffset-WH24" else "Fineoffset-WH65B"
+        if (bits > 215) model = "Fineoffset-WS69"
+        val b = IntArray(25)
+        bb.extractBytes(0, bitOffset, b, 25 * 8)
+        if (b[0] != 0x24) return emptyList()
+        if (Rtl433BitUtil.crc8(b, 16, 0x31, 0x00) != 0 || (Rtl433BitUtil.addBytes(b, 16) and 0xff) != b[16]) return emptyList()
+        var pressureHpa = -1.0f
+        if (model == "Fineoffset-WS69") {
+            val pressureRaw = (b[17] shl 16) or (b[18] shl 8) or b[19]
+            val ok = Rtl433BitUtil.crc8(b, 24, 0x31, 0x00) == 0 && (Rtl433BitUtil.addBytes(b, 24) and 0xff) == b[24]
+            if (ok && pressureRaw < 0x01ffff) pressureHpa = pressureRaw * 0.01f
+        }
+        val windDir = b[2] or ((b[3] and 0x80) shl 1)
+        val lowBattery = (b[3] and 0x08) shr 3
+        val tempRaw = ((b[3] and 0x07) shl 8) or b[4]
+        val humidity = b[5]
+        val windRaw = b[6] or ((b[3] and 0x10) shl 4)
+        val factor = if (model == "Fineoffset-WH24") 1.12f else 0.51f
+        val cup = if (model == "Fineoffset-WH24") 0.3f else 0.254f
+        val gustRaw = b[7]
+        val rainRaw = (b[8] shl 8) or b[9]
+        val uvRaw = (b[10] shl 8) or b[11]
+        val lightRaw = (b[12] shl 16) or (b[13] shl 8) or b[14]
+        var uvIndex = 0
+        while (uvIndex < 13 && uviUpper[uvIndex] < uvRaw) uvIndex++
+        val f = linkedMapOf<String, Any?>("battery_ok" to (if (lowBattery == 0) 1 else 0))
+        if (tempRaw != 0x7ff) f["temperature_C"] = ((tempRaw - 400) * 0.1f).toDouble()
+        if (humidity != 0xff) f["humidity"] = humidity
+        if (pressureHpa >= 0) f["pressure_hPa"] = pressureHpa.toDouble()
+        if (windDir != 0x1ff) f["wind_dir_deg"] = windDir
+        if (windRaw != 0x1ff) f["wind_avg_m_s"] = (windRaw * 0.125f * factor).toDouble()
+        if (gustRaw != 0xff) f["wind_max_m_s"] = (gustRaw * factor).toDouble()
+        f["rain_mm"] = (rainRaw * cup).toDouble()
+        if (uvRaw != 0xffff) {
+            f["uv"] = uvRaw
+            f["uvi"] = uvIndex.toDouble()
+        }
+        if (lightRaw != 0xffffff) f["light_lux"] = lightRaw * 0.1
+        f["mic"] = "CRC"
+        return listOf(Reading(model, b[1].toString(), f))
+    }
+
+    private fun wh0290(bb: BitBuffer): List<Reading> {
+        val bitOffset = bb.search(0, 0, PREAMBLE, 24) + 24
+        if (bitOffset + 64 > bb.bitsPerRow[0]) return emptyList()
+        val b = IntArray(8)
+        bb.extractBytes(0, bitOffset, b, 64)
+        if (Rtl433BitUtil.crc8(b, 6, 0x31, 0x00) != b[6] || (Rtl433BitUtil.addBytes(b, 7) and 0xff) != b[7]) return emptyList()
+        val bars = ((b[2] and 0x40) shr 4) or ((b[4] and 0xC0) shr 6)
+        return listOf(Reading("Fineoffset-WH0290", b[1].toString(), linkedMapOf<String, Any?>(
+            "battery_ok" to (bars * 0.2f).toDouble(),
+            "pm2_5_ug_m3" to ((((b[2] and 0x3f) shl 8) or b[3]) / 10),
+            "estimated_pm10_0_ug_m3" to ((((b[4] and 0x3f) shl 8) or b[5]) / 10),
+            "family" to b[0],
+            "unknown1" to (if ((b[2] and 0x80) != 0) 1 else 0),
+            "mic" to "CRC",
+        )))
+    }
+
     override fun decode(bb: BitBuffer): List<Reading> {
         val bits = bb.bitsPerRow[0]
         var type = 25
-        if (bits < 160) return emptyList()
+        if (bits < 160) return wh0290(bb)
         else if (bits < 190) type = 32
-        else if (bits < 440) return emptyList()
+        else if (bits < 440) return wh24(bb)
         if (bits > 510) type = 32
         val bitOffset = bb.search(0, 0, PREAMBLE, 24) + 24
         if (bitOffset + 64 > bits) return emptyList()
@@ -1896,7 +1961,7 @@ internal object FineoffsetWH25 : Rtl433Decoder() {
         bb.extractBytes(0, bitOffset, b, 64)
         val msgType = b[0] and 0xf0
         if (type == 32 && msgType == 0xd0) type = 31
-        else if (msgType != 0xe0) return emptyList()
+        else if (msgType != 0xe0) return if (b[0] == 0x41) wh0290(bb) else emptyList()
         val sum = (Rtl433BitUtil.addBytes(b, 6) and 0xff) - b[6]
         if (sum != 0) return emptyList()
         var bitsum = Rtl433BitUtil.xorBytes(b, 6)

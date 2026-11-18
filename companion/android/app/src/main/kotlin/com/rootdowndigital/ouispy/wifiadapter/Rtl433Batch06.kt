@@ -733,9 +733,10 @@ internal object OregonScientificWmr500 : Rtl433Decoder() {
     }
 }
 
-// unverified: oria_wa150km.c:70-149 (priority 10 not represented in API)
+// unverified: oria_wa150km.c:70-149
 internal object OriaWa150km : Rtl433Decoder() {
     override val name = "Oria WA150KM freezer and fridge thermometer"
+    override val priority = 10
     override val mod = Mod.OOK_PCM
     override val short = 490
     override val long = 490
@@ -940,9 +941,58 @@ internal object Proflame2 : Rtl433Decoder() {
     }
 }
 
+internal object ParadoxMagellan : Rtl433Decoder() {
+    override val name = "Paradox Magellan security sensors"
+    override val mod = Mod.OOK_PWM
+    override val short = 200
+    override val long = 400
+    override val sync = 1000
+    override val reset = 1000
+
+    override fun decode(bb: BitBuffer): List<Reading> {
+        for (row in 1 until bb.numRows) {
+            val len = bb.bitsPerRow[row]
+            val pre = bb.bitsPerRow[row - 1]
+            if (bb.syncsBeforeRow[row] == 0 || (len != 32 && len != 33)) continue
+            if (pre < 10) continue
+            val p = IntArray(2)
+            bb.extractBytes(row - 1, pre - 10, p, 10)
+            if (p[0] != 0xff || (p[1] and 0xc0) != 0xc0) continue
+            val b = IntArray(4)
+            bb.extractBytes(row, 0, b, 32)
+            if (b[0] == 0 && b[1] == 0 && b[2] == 0) continue
+            if (Rtl433BitUtil.crc8(b, 3, 0x31, 0x00) != b[3]) continue
+            val id = (rv8(b[1]) shl 8) or rv8(b[0])
+            val event = rv8(b[2])
+            val type = event shr 4
+            val state = event and 0x0f
+            val subtype = when (type) {
+                1 -> "door"
+                2 -> "motion"
+                3 -> "smoke"
+                in 4..7 -> "remote"
+                else -> ""
+            }
+            val sensor = type in 1..3
+            val f = linkedMapOf<String, Any?>()
+            if (subtype.isNotEmpty()) f["subtype"] = subtype
+            f["event"] = String.format("%02x", event)
+            if (sensor && state <= 3) {
+                f["alarm"] = state and 1
+                f["tamper"] = (state shr 1) and 1
+            }
+            if (state == 0x9 || state == 0xa) f["battery_ok"] = if (state == 0xa) 1 else 0
+            f["mic"] = "CRC"
+            return listOf(Reading("Paradox-Magellan", String.format("%04x", id), f))
+        }
+        return emptyList()
+    }
+}
+
 // unverified: prologue.c:35-88
 internal object Prologue : Rtl433Decoder() {
     override val name = "Prologue, FreeTec NC-7104, NC-7159-675 temperature sensor"
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 2000
     override val long = 4000
@@ -2301,6 +2351,7 @@ internal val BATCH_06: List<Rtl433Decoder> = listOf(
     OriaWa150km,
     OrionEndpoint,
     OrionEndpoint2020,
+    ParadoxMagellan,
     PhilipsAj3650,
     PhilipsAj7010,
     Proflame2,

@@ -630,9 +630,10 @@ internal object SmokeGs558 : Rtl433Decoder() {
     }
 }
 
-// unverified: solight_te44.c:41-91, struct solight_te44.c:103. upstream .priority=5 (dispatch order) not represented in API
+// unverified: solight_te44.c:41-91, struct solight_te44.c:103
 internal object SolightTe44 : Rtl433Decoder() {
     override val name = "Solight TE44/TE66, EMOS E0107T, NX-6876-917"
+    override val priority = 5
     override val mod = Mod.OOK_PPM
     override val short = 972
     override val long = 1932
@@ -671,9 +672,10 @@ internal object SolightTe44 : Rtl433Decoder() {
     }
 }
 
-// unverified: springfield.c:34-94, struct springfield.c:110. upstream .priority=10 (Alecto collision ordering) not represented in API
+// unverified: springfield.c:34-94, struct springfield.c:110
 internal object Springfield : Rtl433Decoder() {
     override val name = "Springfield Temperature and Soil Moisture"
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 2000
     override val long = 4000
@@ -907,9 +909,10 @@ internal object TfaTwinPlus303049 : Rtl433Decoder() {
     }
 }
 
-// unverified: tfa_30_3221.c:37-91, struct tfa_30_3221.c:106. upstream .priority=10 (LaCrosse-TX141THBv2 collision ordering) not represented in API
+// unverified: tfa_30_3221.c:37-91, struct tfa_30_3221.c:106
 internal object Tfa303221 : Rtl433Decoder() {
     override val name = "TFA Dostmann 30.3221.02 T/H Outdoor Sensor (also 30.3249.02)"
+    override val priority = 10
     override val mod = Mod.OOK_PWM
     override val short = 235
     override val long = 480
@@ -1373,9 +1376,10 @@ private fun fineoffsetWh1050Callback(bb: BitBuffer): List<Reading> {
     return out
 }
 
-// unverified: fineoffset_wh1050.c:201-241 callback, fineoffset_wh1050.c:108-195 decode, struct fineoffset_wh1050.c:268. upstream .priority=10 (WH55 collision ordering) not represented in API
+// unverified: fineoffset_wh1050.c:201-241 callback, fineoffset_wh1050.c:108-195 decode, struct fineoffset_wh1050.c:268
 internal object Tfa303151 : Rtl433Decoder() {
     override val name = "TFA 30.3151 Weather Station"
+    override val priority = 10
     override val mod = Mod.FSK_PCM
     override val short = 60
     override val long = 60

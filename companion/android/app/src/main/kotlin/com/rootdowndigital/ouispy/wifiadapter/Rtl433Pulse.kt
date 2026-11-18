@@ -13,19 +13,33 @@ const val PD_MAX_GAP_MS = 100
 const val PD_MAX_GAP_RATIO = 10
 const val PULSE_DATA_OOK = 1
 const val PULSE_DATA_FSK = 2
-const val FSK_PULSE_DETECT_OLD = 0
-const val FSK_PULSE_DETECT_NEW = 1
-const val FSK_PULSE_DETECT_AUTO = 2
-const val FSK_PULSE_DETECTOR_LIMIT = 800_000_000L
+
+const val PULSE_DETECT_END = 0
+const val PULSE_DETECT_OOK = 1
+const val PULSE_DETECT_START = 2
+const val PULSE_DETECT_PULSE = 3
+const val PULSE_DETECT_RESTART = 4
+const val PULSE_DETECT_RETRY = 5
+
+const val FSK_PULSE_DETECTOR_CLASSIC = 0
+const val FSK_PULSE_DETECTOR_MINMAX = 1
+const val FSK_PULSE_DETECTOR_HYSTERESIS = 2
+const val FSK_PULSE_DETECTOR_MEDIAN = 3
+const val FSK_PULSE_DETECTOR_COUNT = 4
 
 private const val OOK_MAX_HIGH_LEVEL = 16383
 private const val OOK_EST_HIGH_RATIO = 64
 private const val OOK_EST_LOW_RATIO = 1024
 private const val OOK_MIN_HIGH_LEVEL = 1000
 private const val OOK_HIGH_LOW_RATIO = 8
+private const val PD_FSK_MAX_LEADIN_US = 200
+private const val PD_FSK_MIN_LEADIN_GAP_US = 200
 private const val FSK_DEFAULT_FM_DELTA = 6000
 private const val FSK_EST_SLOW = 64
 private const val FSK_EST_FAST = 16
+private const val FSK_MINMAX_DECAY = 10
+private const val FSK_MINMAX_HYSTERESIS_DIVISOR = 3
+private const val FSK_MIN_RESTART_BURST_US = 7500
 
 class PulseData {
     var sampleRate = 0
@@ -70,6 +84,11 @@ class PulseData {
 }
 
 class PulsePackage(val type: Int, val data: PulseData)
+
+class PulseSpan {
+    var start = 0
+    var len = 0
+}
 
 private fun toI16(v: Int): Int = v.toShort().toInt()
 
@@ -176,90 +195,142 @@ private const val FSK_FH = 1
 private const val FSK_FL = 2
 private const val FSK_ERROR = 3
 
-private class FskState {
-    var fskPulseLength = 0
-    var fskState = FSK_INIT
-    var fmF1Est = 0
-    var fmF2Est = 0
-    var varTestMax = Short.MIN_VALUE.toInt()
-    var varTestMin = Short.MAX_VALUE.toInt()
-    var skipSamples = 40
+class FskState {
+    private var fskPulseLength = 0
+    private var fskState = FSK_INIT
+    private var fmF1Est = 0
+    private var fmF2Est = 0
+    private var varTestMax = Short.MIN_VALUE.toInt()
+    private var varTestMin = Short.MAX_VALUE.toInt()
+    private var skipSamples = 40
+    private var restarted = false
+    private var firstPulse = 0
+    private val medianSamples = IntArray(3)
+    private var medianCount = 0
 
-    fun classic(fmN: Int, fsk: PulseData) {
-        val f1Delta = abs(fmN - fmF1Est)
-        val f2Delta = abs(fmN - fmF2Est)
-        fskPulseLength += 1
-        when (fskState) {
-            FSK_INIT -> {
-                if (fskPulseLength < PD_MIN_PULSE_SAMPLES) {
-                    fmF1Est = fmF1Est / 2 + fmN / 2
-                } else if (f1Delta > FSK_DEFAULT_FM_DELTA / 2) {
-                    if (fmN > fmF1Est) {
-                        fskState = FSK_FH
-                        fmF2Est = fmF1Est
-                        fmF1Est = fmN
-                        fsk.pulse[0] = 0
-                        fsk.gap[0] = fskPulseLength
-                        fsk.numPulses += 1
-                        fskPulseLength = 0
-                    } else {
-                        fskState = FSK_FL
-                        fmF2Est = fmN
-                        fsk.pulse[0] = fskPulseLength
-                        fskPulseLength = 0
-                    }
-                } else {
-                    fmF1Est += fmN / FSK_EST_FAST - fmF1Est / FSK_EST_FAST
-                }
+    fun init() {
+        fskPulseLength = 0
+        fskState = FSK_INIT
+        fmF1Est = 0
+        fmF2Est = 0
+        varTestMax = Short.MIN_VALUE.toInt()
+        varTestMin = Short.MAX_VALUE.toInt()
+        skipSamples = 40
+        restarted = false
+        firstPulse = 0
+        medianSamples.fill(0)
+        medianCount = 0
+    }
+
+    fun pkg(fm: IntArray, span: PulseSpan, event: Int, pulses: PulseData, fsk: PulseData, detector: Int): Boolean {
+        if (event == PULSE_DETECT_START || event == PULSE_DETECT_RESTART || event == PULSE_DETECT_RETRY) {
+            val first = if (event == PULSE_DETECT_START) 0 else pulses.numPulses
+            init()
+            restarted = event == PULSE_DETECT_RESTART
+            firstPulse = first
+            fsk.clear()
+            fsk.sampleRate = pulses.sampleRate
+            return false
+        }
+        if (span.len > 0) {
+            when (detector) {
+                FSK_PULSE_DETECTOR_CLASSIC -> classic(fm, span.start, span.len, fsk)
+                FSK_PULSE_DETECTOR_MINMAX -> minmax(fm, span.start, span.len, fsk, false, FSK_MINMAX_DECAY, false)
+                FSK_PULSE_DETECTOR_HYSTERESIS -> minmax(fm, span.start, span.len, fsk, true, FSK_MINMAX_DECAY, false)
+                FSK_PULSE_DETECTOR_MEDIAN -> minmax(fm, span.start, span.len, fsk, false, 0, true)
             }
-            FSK_FH -> {
-                if (f1Delta > f2Delta) {
-                    fskState = FSK_FL
-                    if (fskPulseLength >= PD_MIN_PULSE_SAMPLES) {
-                        fsk.pulse[fsk.numPulses] = fskPulseLength
-                        fskPulseLength = 0
+        }
+        if (event != PULSE_DETECT_PULSE || fsk.numPulses <= PD_MIN_PULSES) return false
+        if (restarted && pulses.pulse[firstPulse] < FSK_MIN_RESTART_BURST_US * (pulses.sampleRate / 1000) / 1000) return false
+        return true
+    }
+
+    fun finalize(pulses: PulseData, fsk: PulseData, detector: Int) {
+        if (detector == FSK_PULSE_DETECTOR_CLASSIC) wrapUp(fsk) else minmaxWrapUp(fsk)
+        fsk.fskF1Est = fmF1Est
+        fsk.fskF2Est = fmF2Est
+        fsk.ookLowEstimate = pulses.ookLowEstimate
+        fsk.ookHighEstimate = pulses.ookHighEstimate
+    }
+
+    private fun classic(fm: IntArray, start: Int, len: Int, fsk: PulseData) {
+        for (i in start until start + len) {
+            val fmN = fm[i]
+            val f1Delta = abs(fmN - fmF1Est)
+            val f2Delta = abs(fmN - fmF2Est)
+            fskPulseLength += 1
+            when (fskState) {
+                FSK_INIT -> {
+                    if (fskPulseLength < PD_MIN_PULSE_SAMPLES) {
+                        fmF1Est = fmF1Est / 2 + fmN / 2
+                    } else if (f1Delta > FSK_DEFAULT_FM_DELTA / 2) {
+                        if (fmN > fmF1Est) {
+                            fskState = FSK_FH
+                            fmF2Est = fmF1Est
+                            fmF1Est = fmN
+                            fsk.pulse[0] = 0
+                            fsk.gap[0] = fskPulseLength
+                            fsk.numPulses += 1
+                            fskPulseLength = 0
+                        } else {
+                            fskState = FSK_FL
+                            fmF2Est = fmN
+                            fsk.pulse[0] = fskPulseLength
+                            fskPulseLength = 0
+                        }
                     } else {
-                        fskPulseLength += fsk.gap[fsk.numPulses - 1]
-                        fsk.numPulses -= 1
-                        if (fsk.numPulses == 0 && fsk.pulse[0] == 0) {
-                            fmF1Est = fmF2Est
-                            fskState = FSK_INIT
+                        fmF1Est += fmN / FSK_EST_FAST - fmF1Est / FSK_EST_FAST
+                    }
+                }
+                FSK_FH -> {
+                    if (f1Delta > f2Delta) {
+                        fskState = FSK_FL
+                        if (fskPulseLength >= PD_MIN_PULSE_SAMPLES) {
+                            fsk.pulse[fsk.numPulses] = fskPulseLength
+                            fskPulseLength = 0
+                        } else {
+                            fskPulseLength += fsk.gap[fsk.numPulses - 1]
+                            fsk.numPulses -= 1
+                            if (fsk.numPulses == 0 && fsk.pulse[0] == 0) {
+                                fmF1Est = fmF2Est
+                                fskState = FSK_INIT
+                            }
+                        }
+                    } else {
+                        if (fmN > fmF1Est) {
+                            fmF1Est += fmN / FSK_EST_FAST - fmF1Est / FSK_EST_FAST
+                        } else {
+                            fmF1Est += fmN / FSK_EST_SLOW - fmF1Est / FSK_EST_SLOW
                         }
                     }
-                } else {
-                    if (fmN > fmF1Est) {
-                        fmF1Est += fmN / FSK_EST_FAST - fmF1Est / FSK_EST_FAST
+                }
+                FSK_FL -> {
+                    if (f2Delta > f1Delta) {
+                        fskState = FSK_FH
+                        if (fskPulseLength >= PD_MIN_PULSE_SAMPLES) {
+                            fsk.gap[fsk.numPulses] = fskPulseLength
+                            fsk.numPulses += 1
+                            fskPulseLength = 0
+                            if (fsk.numPulses >= PD_MAX_PULSES) fsk.shift()
+                        } else {
+                            fskPulseLength += fsk.pulse[fsk.numPulses]
+                            if (fsk.numPulses == 0) fskState = FSK_INIT
+                        }
                     } else {
-                        fmF1Est += fmN / FSK_EST_SLOW - fmF1Est / FSK_EST_SLOW
+                        if (fmN < fmF2Est) {
+                            fmF2Est += fmN / FSK_EST_FAST - fmF2Est / FSK_EST_FAST
+                        } else {
+                            fmF2Est += fmN / FSK_EST_SLOW - fmF2Est / FSK_EST_SLOW
+                        }
                     }
                 }
+                FSK_ERROR -> {}
+                else -> fskState = FSK_ERROR
             }
-            FSK_FL -> {
-                if (f2Delta > f1Delta) {
-                    fskState = FSK_FH
-                    if (fskPulseLength >= PD_MIN_PULSE_SAMPLES) {
-                        fsk.gap[fsk.numPulses] = fskPulseLength
-                        fsk.numPulses += 1
-                        fskPulseLength = 0
-                        if (fsk.numPulses >= PD_MAX_PULSES) fsk.shift()
-                    } else {
-                        fskPulseLength += fsk.pulse[fsk.numPulses]
-                        if (fsk.numPulses == 0) fskState = FSK_INIT
-                    }
-                } else {
-                    if (fmN < fmF2Est) {
-                        fmF2Est += fmN / FSK_EST_FAST - fmF2Est / FSK_EST_FAST
-                    } else {
-                        fmF2Est += fmN / FSK_EST_SLOW - fmF2Est / FSK_EST_SLOW
-                    }
-                }
-            }
-            FSK_ERROR -> {}
-            else -> fskState = FSK_ERROR
         }
     }
 
-    fun wrapUp(fsk: PulseData) {
+    private fun wrapUp(fsk: PulseData) {
         if (fsk.numPulses < PD_MAX_PULSES) {
             fskPulseLength += 1
             if (fskState == FSK_FH) {
@@ -272,43 +343,67 @@ private class FskState {
         }
     }
 
-    fun minmax(fmN: Int, fsk: PulseData) {
-        var mid = 0
-        if (skipSamples == 0) {
-            varTestMax = maxOf(fmN, varTestMax)
-            varTestMin = minOf(fmN, varTestMin)
-            mid = (varTestMax + varTestMin) / 2
-            if (fmN > mid) varTestMax -= 10
-            if (fmN < mid) varTestMin += 10
-            fskPulseLength += 1
-            when (fskState) {
-                FSK_INIT -> {
-                    if (fmN > mid) fskState = FSK_FH
-                    if (fmN <= mid) fskState = FSK_FL
-                }
-                FSK_FH -> {
-                    if (fmN < mid) {
-                        fskState = FSK_FL
-                        fsk.pulse[fsk.numPulses] = fskPulseLength
-                        fskPulseLength = 0
-                    }
-                    fmF2Est += fmN / FSK_EST_SLOW - fmF2Est / FSK_EST_SLOW
-                }
-                FSK_FL -> {
-                    if (fmN > mid) {
-                        fskState = FSK_FH
-                        fsk.gap[fsk.numPulses] = fskPulseLength
-                        fsk.numPulses += 1
-                        fskPulseLength = 0
-                        if (fsk.numPulses >= PD_MAX_PULSES) fsk.shift()
-                    }
-                    fmF1Est += fmN / FSK_EST_SLOW - fmF1Est / FSK_EST_SLOW
-                }
-                FSK_ERROR -> {}
-                else -> fskState = FSK_ERROR
-            }
+    private fun minmaxWrapUp(fsk: PulseData) {
+        if (fskState == FSK_FH && fskPulseLength + 1 < PD_MIN_PULSE_SAMPLES) return
+        wrapUp(fsk)
+    }
+
+    private fun median3(sample: Int): Int {
+        if (medianCount < 3) {
+            medianSamples[medianCount++] = sample
+            return sample
         }
-        if (skipSamples > 0) skipSamples -= 1
+        medianSamples[0] = medianSamples[1]
+        medianSamples[1] = medianSamples[2]
+        medianSamples[2] = sample
+        val a = medianSamples[0]
+        val b = medianSamples[1]
+        val c = medianSamples[2]
+        return a + b + c - minOf(a, b, c) - maxOf(a, b, c)
+    }
+
+    private fun minmax(fm: IntArray, start: Int, len: Int, fsk: PulseData, useHysteresis: Boolean, decay: Int, useMedian: Boolean) {
+        for (i in start until start + len) {
+            var fmN = fm[i]
+            if (useMedian) fmN = median3(fmN)
+            if (skipSamples == 0) {
+                varTestMax = maxOf(fmN, varTestMax)
+                varTestMin = minOf(fmN, varTestMin)
+                val mid = toI16((varTestMax + varTestMin) / 2)
+                if (fmN > mid) varTestMax = toI16(varTestMax - decay)
+                if (fmN < mid) varTestMin = toI16(varTestMin + decay)
+                val span = varTestMax - varTestMin
+                val hyst = if (useHysteresis && span > 0) span / FSK_MINMAX_HYSTERESIS_DIVISOR else 0
+                fskPulseLength += 1
+                when (fskState) {
+                    FSK_INIT -> {
+                        if (fmN > mid) fskState = FSK_FH
+                        if (fmN <= mid) fskState = FSK_FL
+                    }
+                    FSK_FH -> {
+                        if (fmN < mid - hyst) {
+                            fskState = FSK_FL
+                            fsk.pulse[fsk.numPulses] = fskPulseLength
+                            fskPulseLength = 0
+                        }
+                        fmF2Est += fmN / FSK_EST_SLOW - fmF2Est / FSK_EST_SLOW
+                    }
+                    FSK_FL -> {
+                        if (fmN > mid + hyst) {
+                            fskState = FSK_FH
+                            fsk.gap[fsk.numPulses] = fskPulseLength
+                            fsk.numPulses += 1
+                            fskPulseLength = 0
+                            if (fsk.numPulses >= PD_MAX_PULSES) fsk.shift()
+                        }
+                        fmF1Est += fmN / FSK_EST_SLOW - fmF1Est / FSK_EST_SLOW
+                    }
+                    FSK_ERROR -> {}
+                    else -> fskState = FSK_ERROR
+                }
+            }
+            if (skipSamples > 0) skipSamples -= 1
+        }
     }
 }
 
@@ -321,13 +416,14 @@ class PulseDetector {
     private var ookState = OOK_IDLE
     private var pulseLength = 0
     private var maxPulse = 0
+    private var fskPulseNum = 0
+    private var fskRetry = 0
     private var dataCounter = 0
     private var leadInCounter = 0
     private var ookLowEstimate = 0
     private var ookHighEstimate = 0
-    private var fsk = FskState()
-    private val pulses = PulseData()
-    private val fskPulses = PulseData()
+    private var eopOnSpurious = false
+    private var pendingGap = false
 
     fun reset() {
         ookState = OOK_IDLE
@@ -337,70 +433,79 @@ class PulseDetector {
         leadInCounter = 0
         ookLowEstimate = 0
         ookHighEstimate = 0
-        fsk = FskState()
+        pendingGap = false
+        fskPulseNum = 0
+        fskRetry = 0
+        eopOnSpurious = false
     }
 
-    private fun fskStep(fm: Int, fpdm: Int) {
-        if (pulses.numPulses == 0) {
-            if (fpdm == FSK_PULSE_DETECT_OLD) fsk.classic(fm, fskPulses) else fsk.minmax(fm, fskPulses)
+    fun retryFsk() {
+        if (fskRetry == 0) fskRetry = 1
+    }
+
+    fun skipPackage() {
+        ookState = OOK_IDLE
+        pendingGap = false
+        eopOnSpurious = false
+        fskRetry = 0
+    }
+
+    private fun endPackage(pulses: PulseData): Int {
+        ookState = OOK_IDLE
+        eopOnSpurious = false
+        fskRetry = 0
+        pulses.ookLowEstimate = ookLowEstimate
+        pulses.ookHighEstimate = ookHighEstimate
+        return PULSE_DETECT_OOK
+    }
+
+    private fun fskStep(pulses: PulseData, span: PulseSpan) {
+        if (pulses.numPulses == fskPulseNum) {
+            if (span.len == 0) span.start = dataCounter
+            span.len += 1
         }
     }
 
-    private fun fskPackage(fpdm: Int): PulsePackage {
-        if (fpdm == FSK_PULSE_DETECT_OLD) fsk.wrapUp(fskPulses)
-        fskPulses.fskF1Est = fsk.fmF1Est
-        fskPulses.fskF2Est = fsk.fmF2Est
-        fskPulses.ookLowEstimate = ookLowEstimate
-        fskPulses.ookHighEstimate = ookHighEstimate
-        ookState = OOK_IDLE
-        return PulsePackage(PULSE_DATA_FSK, fskPulses.copy())
-    }
-
-    private fun ookPackage(): PulsePackage {
-        pulses.ookLowEstimate = ookLowEstimate
-        pulses.ookHighEstimate = ookHighEstimate
-        return PulsePackage(PULSE_DATA_OOK, pulses.copy())
-    }
-
-    fun flush(fpdm: Int): PulsePackage? {
-        var gapStart = true
-        when (ookState) {
-            OOK_IDLE -> return null
-            OOK_PULSE -> {
+    fun detectPackage(am: IntArray, fm: IntArray, len: Int, sampRate: Int, pulses: PulseData, span: PulseSpan): Int {
+        span.start = dataCounter
+        span.len = 0
+        if (pendingGap) {
+            if (pulses.numPulses == fskPulseNum) span.len = 1
+            dataCounter += 1
+            pendingGap = false
+        }
+        if (len == 0) {
+            var state = ookState
+            if (state == OOK_PULSE) {
                 if (pulseLength < PD_MIN_PULSE_SAMPLES) {
-                    if (pulses.numPulses <= 1) {
-                        ookState = OOK_IDLE
-                        return null
-                    }
-                    ookState = OOK_GAP
+                    if (pulses.numPulses <= 1) ookState = OOK_IDLE
+                    state = if (pulses.numPulses <= 1) OOK_IDLE else OOK_GAP_START
                 } else {
                     pulses.pulse[pulses.numPulses] = pulseLength
                     maxPulse = maxOf(pulseLength, maxPulse)
                     pulseLength = 0
-                    ookState = OOK_GAP_START
+                    state = OOK_GAP_START
                 }
             }
-            OOK_GAP_START -> {}
-            OOK_GAP -> gapStart = false
-            else -> {
-                ookState = OOK_IDLE
-                return null
+            when (state) {
+                OOK_GAP_START -> {
+                    ookState = OOK_GAP
+                    pulses.ookLowEstimate = ookLowEstimate
+                    pulses.ookHighEstimate = ookHighEstimate
+                    return PULSE_DETECT_PULSE
+                }
+                OOK_GAP -> {
+                    pulses.gap[pulses.numPulses] = pulseLength
+                    pulses.numPulses += 1
+                    ookState = OOK_IDLE
+                    pulses.ookLowEstimate = ookLowEstimate
+                    pulses.ookHighEstimate = ookHighEstimate
+                    return PULSE_DETECT_OOK
+                }
             }
         }
-        if (gapStart) {
-            ookState = OOK_GAP
-            if (fskPulses.numPulses > PD_MIN_PULSES) return fskPackage(fpdm)
-        }
-        pulses.gap[pulses.numPulses] = pulseLength
-        pulses.numPulses += 1
-        ookState = OOK_IDLE
-        return ookPackage()
-    }
-
-    fun detectPackage(am: IntArray, fm: IntArray, len: Int, sampRate: Int, fpdm: Int): PulsePackage? {
         val samplesPerMs = sampRate / 1000
         ookHighEstimate = maxOf(ookHighEstimate, OOK_MIN_HIGH_LEVEL)
-        var eopOnSpurious = false
         while (dataCounter < len) {
             val amN = am[dataCounter]
             val ookThreshold = toI16((ookLowEstimate + minOf(ookHighEstimate, OOK_MAX_HIGH_LEVEL)) / 2)
@@ -409,13 +514,16 @@ class PulseDetector {
                 OOK_IDLE -> {
                     if (amN > ookThreshold + ookHysteresis && leadInCounter > OOK_EST_LOW_RATIO) {
                         pulses.clear()
-                        fskPulses.clear()
                         pulses.sampleRate = sampRate
-                        fskPulses.sampleRate = sampRate
                         pulseLength = 0
                         maxPulse = 0
-                        fsk = FskState()
+                        eopOnSpurious = false
+                        fskPulseNum = 0
+                        fskRetry = 0
                         ookState = OOK_PULSE
+                        dataCounter += 1
+                        span.len = 0
+                        return PULSE_DETECT_START
                     } else {
                         val delta = amN - ookLowEstimate
                         ookLowEstimate += delta / OOK_EST_LOW_RATIO
@@ -446,7 +554,7 @@ class PulseDetector {
                         ookHighEstimate = maxOf(ookHighEstimate, OOK_MIN_HIGH_LEVEL)
                         pulses.fskF1Est += fm[dataCounter] / OOK_EST_HIGH_RATIO - pulses.fskF1Est / OOK_EST_HIGH_RATIO
                     }
-                    fskStep(fm[dataCounter], fpdm)
+                    fskStep(pulses, span)
                 }
                 OOK_GAP_START -> {
                     pulseLength += 1
@@ -455,21 +563,37 @@ class PulseDetector {
                         ookState = OOK_PULSE
                     } else if (pulseLength >= PD_MIN_PULSE_SAMPLES) {
                         ookState = OOK_GAP
-                        if (fskPulses.numPulses > PD_MIN_PULSES) return fskPackage(fpdm)
+                        pulses.ookLowEstimate = ookLowEstimate
+                        pulses.ookHighEstimate = ookHighEstimate
+                        pendingGap = true
+                        return PULSE_DETECT_PULSE
                     }
-                    fskStep(fm[dataCounter], fpdm)
+                    fskStep(pulses, span)
                 }
                 OOK_GAP -> {
                     pulseLength += 1
                     if (amN > ookThreshold + ookHysteresis) {
                         pulses.gap[pulses.numPulses] = pulseLength
                         pulses.numPulses += 1
-                        if (pulses.numPulses >= PD_MAX_PULSES) {
-                            ookState = OOK_IDLE
-                            return ookPackage()
-                        }
+                        if (pulses.numPulses >= PD_MAX_PULSES) return endPackage(pulses)
                         pulseLength = 0
                         ookState = OOK_PULSE
+                        if (pulses.numPulses == 1
+                            && pulses.pulse[0] < PD_FSK_MAX_LEADIN_US * samplesPerMs / 1000
+                            && pulses.gap[0] >= PD_FSK_MIN_LEADIN_GAP_US * samplesPerMs / 1000
+                        ) {
+                            fskPulseNum = 1
+                            dataCounter += 1
+                            span.len = 0
+                            return PULSE_DETECT_RESTART
+                        }
+                        if (fskRetry == 1) {
+                            fskRetry = 2
+                            fskPulseNum = pulses.numPulses
+                            dataCounter += 1
+                            span.len = 0
+                            return PULSE_DETECT_RETRY
+                        }
                     }
                     if (eopOnSpurious
                         || (pulseLength > PD_MAX_GAP_RATIO * maxPulse && pulseLength > PD_MIN_GAP_MS * samplesPerMs)
@@ -477,14 +601,13 @@ class PulseDetector {
                     ) {
                         pulses.gap[pulses.numPulses] = pulseLength
                         pulses.numPulses += 1
-                        ookState = OOK_IDLE
-                        return ookPackage()
+                        return endPackage(pulses)
                     }
                 }
             }
             dataCounter += 1
         }
         dataCounter = 0
-        return null
+        return PULSE_DETECT_END
     }
 }

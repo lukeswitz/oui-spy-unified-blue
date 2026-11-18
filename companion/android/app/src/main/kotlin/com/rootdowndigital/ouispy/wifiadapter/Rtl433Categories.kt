@@ -27,7 +27,7 @@ internal object Rtl433Categories {
         "security" to setOf(
             Cavius, CaviusDoor, ChamberlainCwpirc, Chuango, ElroDb286a, GenericMotion,
             Honeywell, HoneywellWdb, Interlogix, Kerui, KiddeSmoke, Olympia9571,
-            Quhwa, RiscoAgility, SimplisafeGen3, SmokeGs558, SsSensor, TwogigKey2e,
+            ParadoxMagellan, Quhwa, RiscoAgility, SimplisafeGen3, SmokeGs558, SsSensor, TwogigKey2e,
             VisonicPowercode, Vivint, X10Sec, YaleHsa,
         ),
         "fob" to setOf(

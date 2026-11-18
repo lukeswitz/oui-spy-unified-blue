@@ -1034,6 +1034,7 @@ internal object GmCarRemote : Rtl433Decoder() {
 // unverified: grill_thermometer.c:37-87, struct grill_thermometer.c:97
 internal object GrillThermometer : Rtl433Decoder() {
     override val name = "RF-T0912 Grill Thermometer"
+    override val priority = 10
     override val mod = Mod.OOK_PWM
     override val short = 252
     override val long = 736
@@ -1628,6 +1629,7 @@ private object GoveeFsk {
 
 internal object GoveeH5059 : Rtl433Decoder() {
     override val name = "Govee Water Leak Detector H5059"
+    override val priority = 10
     override val mod = Mod.FSK_PCM
     override val short = 100
     override val long = 100
@@ -1685,6 +1687,7 @@ internal object GoveeH5059 : Rtl433Decoder() {
 
 internal object GoveeH5112 : Rtl433Decoder() {
     override val name = "Govee H5112 Dual-Probe Thermometer"
+    override val priority = 5
     override val mod = Mod.FSK_PCM
     override val short = 100
     override val long = 100

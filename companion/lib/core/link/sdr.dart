@@ -128,7 +128,7 @@ class SdrController {
   final Map<String, AdsbAircraft> _adsb = {};
   String _scanStatus = '';
   SdrMode? _mode;
-  final Set<int> bands = {433};
+  final Set<int> bands = {315, 433, 915};
   final Set<String> categories = {'weather', 'meter', 'security', 'fob', 'environmental'};
 
   SdrState get state => _current;

@@ -33,6 +33,7 @@ abstract class Rtl433Decoder {
     open val gap: Int get() = 0
     open val sync: Int get() = 0
     open val tolerance: Int get() = 0
+    open val priority: Int get() = 0
 
     abstract fun decode(bb: BitBuffer): List<Reading>
 
@@ -85,13 +86,17 @@ class GenericRemoteDecoder : Rtl433Decoder() {
 object Rtl433Registry {
     val decoders = mutableListOf<Rtl433Decoder>()
 
-    var centerFreqHz = 433_920_000L
-
     var onPackage: ((Int, Int, Int) -> Unit)? = null
 
     private val lowPass = Baseband.LowPassState()
     private val fmState = Baseband.FmState()
     private val detector = PulseDetector()
+    private val pulses = PulseData()
+    private val span = PulseSpan()
+    private val fskStates = Array(FSK_PULSE_DETECTOR_COUNT) { FskState() }
+    private val fskPulses = Array(FSK_PULSE_DETECTOR_COUNT) { PulseData() }
+    private var fskRejected = false
+    private var fskReady = 0
 
     fun reset() {
         lowPass.x0 = 0
@@ -102,6 +107,11 @@ object Rtl433Registry {
         fmState.yf = 0
         fmState.rate = 0
         detector.reset()
+        pulses.clear()
+        for (s in fskStates) s.init()
+        for (p in fskPulses) p.clear()
+        fskRejected = false
+        fskReady = 0
     }
 
     private fun slice(d: Rtl433Decoder, p: PulseData): List<BitBuffer> {
@@ -120,23 +130,87 @@ object Rtl433Registry {
         }
     }
 
-    fun dispatch(pkg: PulsePackage, onReading: (Reading) -> Unit) {
+    fun dispatch(pkg: PulsePackage, onReading: (Reading) -> Unit): Int {
         val fsk = pkg.type == PULSE_DATA_FSK
-        for (d in decoders) {
-            if (d.mod.fsk != fsk) continue
-            for (bb in slice(d, pkg.data)) {
-                val readings = try {
-                    d.decode(bb)
-                } catch (e: IndexOutOfBoundsException) {
-                    emptyList<Reading>()
+        var events = 0
+        var priority = 0
+        while (events == 0 && priority < Int.MAX_VALUE) {
+            var nextPriority = Int.MAX_VALUE
+            for (d in decoders) {
+                if (d.mod.fsk != fsk) continue
+                if (d.priority > priority && d.priority < nextPriority) nextPriority = d.priority
+                if (d.priority != priority) continue
+                for (bb in slice(d, pkg.data)) {
+                    val readings = try {
+                        d.decode(bb)
+                    } catch (e: IndexOutOfBoundsException) {
+                        emptyList<Reading>()
+                    }
+                    for (r in readings) onReading(r)
+                    events += readings.size
                 }
-                for (r in readings) onReading(r)
             }
+            priority = nextPriority
+        }
+        return events
+    }
+
+    private fun detectPackage(am: IntArray, fm: IntArray, n: Int, sampleRate: Int): Int {
+        while (true) {
+            val event = detector.detectPackage(am, fm, n, sampleRate, pulses, span)
+            if (event == PULSE_DETECT_START || event == PULSE_DETECT_RESTART || event == PULSE_DETECT_RETRY) fskRejected = false
+            var ready = 0
+            for (d in 0 until FSK_PULSE_DETECTOR_COUNT) {
+                if (fskStates[d].pkg(fm, span, event, pulses, fskPulses[d], d)) ready = ready or (1 shl d)
+            }
+            if (ready != 0 && !fskRejected) {
+                for (d in 0 until FSK_PULSE_DETECTOR_COUNT) {
+                    if ((ready and (1 shl d)) != 0) fskStates[d].finalize(pulses, fskPulses[d], d)
+                }
+                fskReady = ready
+                return PULSE_DATA_FSK
+            }
+            if (event == PULSE_DETECT_OOK) return PULSE_DATA_OOK
+            if (event == PULSE_DETECT_END) return 0
         }
     }
 
-    private fun fpdm(): Int =
-        if (centerFreqHz > FSK_PULSE_DETECTOR_LIMIT) FSK_PULSE_DETECT_NEW else FSK_PULSE_DETECT_OLD
+    private fun report(type: Int, p: PulseData) {
+        val rssiDb = (10.0 * log10(max(1, p.ookHighEstimate) / 32258.0)).toInt()
+        onPackage?.invoke(type, p.numPulses, rssiDb)
+    }
+
+    private fun process(am: IntArray, fm: IntArray, n: Int, sampleRate: Int, onReading: (Reading) -> Unit): Int {
+        var packages = 0
+        while (true) {
+            val type = detectPackage(am, fm, n, sampleRate)
+            if (type == 0) break
+            if (type == PULSE_DATA_OOK) {
+                report(type, pulses)
+                dispatch(PulsePackage(PULSE_DATA_OOK, pulses.copy()), onReading)
+                packages++
+                continue
+            }
+            var events = 0
+            var tried = -1
+            for (d in 0 until FSK_PULSE_DETECTOR_COUNT) {
+                if (events != 0) break
+                if ((fskReady and (1 shl d)) == 0) continue
+                if (tried < 0) tried = d
+                events += dispatch(PulsePackage(PULSE_DATA_FSK, fskPulses[d].copy()), onReading)
+                if (events != 0) tried = d
+            }
+            if (events == 0 && (fskReady and (1 shl FSK_PULSE_DETECTOR_CLASSIC)) == 0) {
+                fskRejected = true
+                detector.retryFsk()
+                continue
+            }
+            detector.skipPackage()
+            report(type, fskPulses[tried])
+            packages++
+        }
+        return packages
+    }
 
     fun run(iq: ByteArray, n: Int, sampleRate: Int, onReading: (Reading) -> Unit): Int {
         val env = IntArray(n)
@@ -144,22 +218,12 @@ object Rtl433Registry {
         val fm = IntArray(n)
         Baseband.envelopeDetectNolut(iq, env, n)
         Baseband.lowPassFilter(lowPass, env, am, n)
-        val mode = fpdm()
-        Baseband.demodFm(fmState, iq, fm, n, sampleRate, if (mode == FSK_PULSE_DETECT_OLD) 0.1f else 0.2f)
-        var packages = 0
-        while (true) {
-            val pkg = detector.detectPackage(am, fm, n, sampleRate, mode) ?: break
-            val rssiDb = (10.0 * log10(max(1, pkg.data.ookHighEstimate) / 32258.0)).toInt()
-            onPackage?.invoke(pkg.type, pkg.data.numPulses, rssiDb)
-            dispatch(pkg, onReading)
-            packages++
-        }
-        return packages
+        Baseband.demodFm(fmState, iq, fm, n, sampleRate, 0.1f)
+        return process(am, fm, n, sampleRate, onReading)
     }
 
     fun flush(onReading: (Reading) -> Unit) {
-        val pkg = detector.flush(fpdm()) ?: return
-        dispatch(pkg, onReading)
+        process(IntArray(0), IntArray(0), 0, pulses.sampleRate, onReading)
     }
 
     private fun pwmTrain(bytes: IntArray, bits: Int, sampleRate: Int, shortUs: Int, longUs: Int, gapUs: Int, endGapUs: Int): PulseData {

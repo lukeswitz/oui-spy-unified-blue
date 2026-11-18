@@ -701,6 +701,7 @@ internal object LightwaveRf : Rtl433Decoder() {
 // unverified: marlec_solar.c:37-150, struct marlec_solar.c:152
 internal object MarlecSolar : Rtl433Decoder() {
     override val name = "Marlec Solar iBoost+ sensors"
+    override val priority = 10
     override val mod = Mod.FSK_PCM
     override val short = 20
     override val long = 20
@@ -1304,6 +1305,7 @@ internal object NiceFlorS : Rtl433Decoder() {
 // unverified: nexus.c:45-159, struct nexus.c:219
 internal object Nexus : Rtl433Decoder() {
     override val name = "Nexus, FreeTec NC-7345, NX-3980, Solight TE82S, TFA 30.3209 temperature/humidity sensor"
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 1000
     override val long = 2000
@@ -1348,6 +1350,7 @@ internal object Nexus : Rtl433Decoder() {
 // unverified: nexus.c:161-217, struct nexus.c:241
 internal object NexusSauna : Rtl433Decoder() {
     override val name = "Nexus, CRX, Prego sauna temperature sensor"
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 1000
     override val long = 2000

@@ -379,6 +379,7 @@ internal object Acurite986 : Rtl433Decoder() {
 // unverified: acurite.c:151-185, struct acurite.c:2131
 internal object AcuriteRain896 : Rtl433Decoder() {
     override val name = "Acurite 896 Rain Gauge"
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 1000
     override val long = 2000
@@ -1503,6 +1504,7 @@ internal object AtechWs308 : Rtl433Decoder() {
 // unverified: audiovox_pro_oe3b.c:48-111, struct audiovox_pro_oe3b.c:120
 internal object AudiovoxProOe3b : Rtl433Decoder() {
     override val name = "Audiovox PRO-OE3B Car Remote (-f 303.4M)"
+    override val priority = 10
     override val mod = Mod.OOK_PWM
     override val short = 445
     override val long = 895
@@ -1871,6 +1873,7 @@ internal object BaldrHcs528arf : Rtl433Decoder() {
 // unverified: baldr_rain.c:47-82, struct baldr_rain.c:92
 internal object BaldrRain : Rtl433Decoder() {
     override val name = "Baldr / RainPoint rain gauge."
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 1000
     override val long = 2000

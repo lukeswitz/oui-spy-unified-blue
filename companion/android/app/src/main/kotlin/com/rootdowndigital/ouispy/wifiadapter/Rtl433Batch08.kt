@@ -130,6 +130,7 @@ internal object ThermoproTp28b : Rtl433Decoder() {
 // unverified: thermopro_tp82xb.c:57-137, struct thermopro_tp82xb.c:266
 internal object ThermoproTp828b : Rtl433Decoder() {
     override val name = "ThermoPro Meat Thermometers, TP828B 2 probes with Temp, BBQ Target LO and HI"
+    override val priority = 10
     override val mod = Mod.FSK_PCM
     override val short = 102
     override val long = 102
@@ -274,6 +275,7 @@ internal object ThermoproTp86xb : Rtl433Decoder() {
 // unverified: thermopro_tx2.c:41-94, struct thermopro_tx2.c:108
 internal object ThermoproTx2 : Rtl433Decoder() {
     override val name = "ThermoPro-TX2 temperature sensor"
+    override val priority = 10
     override val mod = Mod.OOK_PPM
     override val short = 2000
     override val long = 4000

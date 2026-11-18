@@ -3,8 +3,7 @@ package com.rootdowndigital.ouispy.wifiadapter
 import java.io.File
 import kotlin.system.exitProcess
 
-private val rateRe = Regex("""_(\d+)k""")
-private val freqRe = Regex("""_(\d+(?:\.\d+)?)M""")
+private val rateRe = Regex("""_(\d+(?:\.\d+)?)k""")
 private val modelRe = Regex(""""model"\s*:\s*"([^"]+)"""")
 
 fun main(args: Array<String>) {
@@ -16,9 +15,7 @@ fun main(args: Array<String>) {
             val expected = File(f.path.removeSuffix(".cu8") + ".json").takeIf { it.exists() }
                 ?.readLines()?.mapNotNull { modelRe.find(it)?.groupValues?.get(1) }?.toSet().orEmpty()
             if (expected.isEmpty()) return@forEach
-            val rate = rateRe.find(f.name)?.groupValues?.get(1)?.toInt()?.times(1000) ?: 250_000
-            val mhz = freqRe.find(f.name)?.groupValues?.get(1)?.toDouble() ?: 433.92
-            Rtl433Registry.centerFreqHz = (mhz * 1e6).toLong()
+            val rate = rateRe.find(f.name)?.groupValues?.get(1)?.toDouble()?.times(1000)?.toInt() ?: 250_000
             Rtl433Registry.reset()
             val got = linkedSetOf<String>()
             val bytes = f.readBytes()
