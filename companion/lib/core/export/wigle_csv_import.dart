@@ -347,7 +347,7 @@ class WigleCsvRescan {
           targetIsFullMac = wlHit.isFullMac;
         } else {
           targetEngine = Engine.wardrive.name;
-          targetMethod = isBleRow ? 'ble_adv' : 'wifi_ap';
+          targetMethod = isBleRow ? 'ble_adv' : (method == 'wifi_client' ? 'wifi_client' : 'wifi_ap');
           targetDesc = null;
           targetIsFullMac = null;
         }
@@ -435,7 +435,7 @@ class WigleCsvRescan {
         targetIsFullMac = wlHit.isFullMac;
       } else {
         targetEngine = Engine.wardrive.name;
-        targetMethod = isBleRow ? 'ble_adv' : 'wifi_ap';
+        targetMethod = isBleRow ? 'ble_adv' : (method == 'wifi_client' ? 'wifi_client' : 'wifi_ap');
         targetDesc = null;
         targetIsFullMac = null;
       }
