@@ -25,6 +25,13 @@ class _NodeStatsOverlay extends ConsumerWidget {
       final selfBucket = appState.nodeId.isNotEmpty ? appState.nodeId : 'LOCAL';
       perNode[selfBucket] = (perNode[selfBucket] ?? 0) + selfRaw;
     }
+    if (showHeader) {
+      final listed = {for (final k in perNode.keys) AppState.canonicalNodeId(k)};
+      for (final id in appState.liveKnownNodes) {
+        if (id == selfId || appState.isManagerNode(id) || listed.contains(id)) continue;
+        perNode[id] = 0;
+      }
+    }
     if (ref.watch(phoneBleSourceProvider).scanning) {
       perNode[BleManager.phoneNodeId] ??= 0;
     }
