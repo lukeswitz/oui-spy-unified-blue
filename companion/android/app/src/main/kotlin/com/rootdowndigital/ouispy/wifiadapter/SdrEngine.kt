@@ -72,7 +72,7 @@ internal class SdrEngine(
         }
         fun emit(r: Reading, c: Long) {
             decs++
-            val m = HashMap<String, Any?>()
+            val m = LinkedHashMap<String, Any?>()
             m["kind"] = "rtl433"
             m["model"] = r.model
             m["id"] = r.id

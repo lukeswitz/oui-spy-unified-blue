@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -835,7 +837,7 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
 
   final rows = <(String, String)>[];
   for (final e in f.entries) {
-    if (const {'kind'}.contains(e.key)) continue;
+    if (e.key == 'kind' || e.key.startsWith('_')) continue;
     final v = e.value;
     if (v == null) continue;
     final s = v is double ? _trimDouble(v) : '$v';
@@ -978,6 +980,54 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
   );
 }
 
+const _rowSkipKeys = {'kind', 'model', 'id', 'frequency', 'rssi', 'count', 'mic'};
+
+class _UsageGauge extends StatelessWidget {
+  const _UsageGauge({required this.level, required this.color, required this.track});
+
+  final double level;
+  final Color color;
+  final Color track;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 18,
+        height: 18,
+        child: CustomPaint(painter: _UsageGaugePainter(level.clamp(0.0, 1.0), color, track)),
+      );
+}
+
+class _UsageGaugePainter extends CustomPainter {
+  _UsageGaugePainter(this.level, this.color, this.track);
+
+  final double level;
+  final Color color;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height * 0.72);
+    final r = size.width * 0.44;
+    final rect = Rect.fromCircle(center: c, radius: r);
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, math.pi, math.pi, false, stroke..color = track);
+    if (level > 0) canvas.drawArc(rect, math.pi, math.pi * level, false, stroke..color = color);
+    final a = math.pi + math.pi * level;
+    canvas.drawLine(c, c + Offset(math.cos(a), math.sin(a)) * r * 0.8,
+        Paint()
+          ..color = color
+          ..strokeWidth = 1.8
+          ..strokeCap = StrokeCap.round);
+    canvas.drawCircle(c, 1.6, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_UsageGaugePainter old) => old.level != level || old.color != color || old.track != track;
+}
+
 String _trimDouble(double v) {
   if (v == v.roundToDouble()) return v.toInt().toString();
   return v.toStringAsFixed(v.abs() < 1 ? 5 : 3);
@@ -1020,9 +1070,13 @@ class _DetectionCard extends StatelessWidget {
         sub = identifyVehicle(f['model'] as String?)?.text;
         final id = f['id'];
         if (id != null) specs.add('id $id');
-        for (final k in const ['temperature_C', 'humidity', 'pressure_kPa', 'wind_avg_km_h', 'rain_mm', 'moisture', 'battery_ok']) {
-          final v = f[k];
-          if (v != null) specs.add('$k $v');
+        for (final e in f.entries) {
+          if (e.key.startsWith('_') || _rowSkipKeys.contains(e.key)) continue;
+          final v = e.value;
+          if (v == null) continue;
+          final s = v is double ? _trimDouble(v) : '$v';
+          if (s.isEmpty || s.length > 24 || s == '$id') continue;
+          specs.add('${sdrFieldLabel(e.key)} $s');
         }
         break;
       case 'adsb':
@@ -1079,7 +1133,10 @@ class _DetectionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(_detIcon(d), size: 18, color: accent),
+              if (f['_usage'] is num)
+                _UsageGauge(level: (f['_usage'] as num).toDouble(), color: accent, track: t.border)
+              else
+                Icon(_detIcon(d), size: 18, color: accent),
               const SizedBox(width: 7),
               _Badge(label: badge, color: accent),
               const SizedBox(width: 8),

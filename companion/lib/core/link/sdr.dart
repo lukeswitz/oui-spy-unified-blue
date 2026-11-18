@@ -24,6 +24,46 @@ class SdrDetection {
   int? get rssi => (fields['rssi'] as num?)?.toInt();
 }
 
+const sdrPowerKeys = ['power_W', 'power0_W', 'power1_W', 'power2_W', 'power_VA', 'power', 'current_A'];
+const sdrTotalKeys = [
+  'consumption_data', 'Consumption', 'consumption', 'LastConsumptionCount', 'energy_kWh', 'total_kWh',
+  'cumulative_kWh', 'reading_kWh', 'reading', 'volume_m3', 'volume_gal', 'volume', 'energy',
+];
+
+double? _num(Map<String, Object?> f, List<String> keys) {
+  for (final k in keys) {
+    final v = f[k];
+    if (v is num) return v.toDouble();
+  }
+  return null;
+}
+
+void sdrTrackUsage(Map<String, Object?> f, Map<String, Object?>? prev, int nowMs) {
+  final power = _num(f, sdrPowerKeys);
+  final total = _num(f, sdrTotalKeys);
+  if (power == null && total == null) return;
+  var rate = (prev?['_usageRate'] as num?)?.toDouble() ?? 0;
+  var anchorTotal = (prev?['_usageTotal'] as num?)?.toDouble();
+  var anchorAt = prev?['_usageAt'] as int?;
+  if (power != null) {
+    rate = power.abs();
+  } else if (anchorTotal == null || anchorAt == null || total! < anchorTotal) {
+    anchorTotal = total;
+    anchorAt = nowMs;
+    rate = 0;
+  } else if (total > anchorTotal && nowMs > anchorAt) {
+    rate = (total - anchorTotal) / ((nowMs - anchorAt) / 3600000);
+    anchorTotal = total;
+    anchorAt = nowMs;
+  }
+  final peak = [rate, (prev?['_usagePeak'] as num?)?.toDouble() ?? 0].reduce((a, b) => a > b ? a : b);
+  f['_usageRate'] = rate;
+  f['_usagePeak'] = peak;
+  if (anchorTotal != null) f['_usageTotal'] = anchorTotal;
+  if (anchorAt != null) f['_usageAt'] = anchorAt;
+  f['_usage'] = peak > 0 ? rate / peak : 0.0;
+}
+
 class SdrFrame {
   const SdrFrame({this.power, this.centerHz, this.rate, this.detection, this.status});
 
@@ -221,12 +261,14 @@ class SdrController {
           return;
         }
         _pending.remove(key);
+        sdrTrackUsage(d.fields, null, DateTime.now().millisecondsSinceEpoch);
         _detections.insert(0, d);
         _persist(d);
       } else {
         if (idx >= 0) {
           final prev = _detections.removeAt(idx);
           d.fields['count'] = ((prev.fields['count'] as int?) ?? 1) + 1;
+          sdrTrackUsage(d.fields, prev.fields, DateTime.now().millisecondsSinceEpoch);
         }
         _detections.insert(0, d);
         if (d.kind == 'adsb') _mergeAdsb(d);
@@ -258,7 +300,10 @@ class SdrController {
           detectionMethod: drift.Value(d.kind),
           rssi: drift.Value(rssi),
           channel: const drift.Value(0),
-          ssid: drift.Value(jsonEncode(f)),
+          ssid: drift.Value(jsonEncode({
+            for (final e in f.entries)
+              if (!e.key.startsWith('_')) e.key: e.value,
+          })),
           deviceTimestampMs: drift.Value(now),
           appTimestamp: drift.Value(now),
           latitude: drift.Value(pos?.latitude),
