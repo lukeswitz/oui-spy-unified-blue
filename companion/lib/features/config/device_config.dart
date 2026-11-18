@@ -70,6 +70,7 @@ import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
+import 'package:oui_spy/widgets/node_rename_dialog.dart';
 
 part 'config_wardrive_settings.dart';
 part 'config_wardrive_tab.dart';
@@ -1305,50 +1306,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return widgets;
   }
 
-  Future<void> _renameNodeDialog(AppState appState, String id) async {
-    final controller = TextEditingController(text: appState.nodeLabels[id] ?? '');
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Rename $id'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 32,
-          decoration: const InputDecoration(
-            hintText: 'Custom label (blank = reset)',
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          if (id != 'LOCAL' && id != appState.nodeId)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, '__forget__'),
-              child: Text('FORGET', style: TextStyle(color: AppTheme.error)),
-            ),
-          if (appState.nodeLabels.containsKey(id))
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, ''),
-              child: const Text('CLEAR'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, null),
-            child: const Text('CANCEL'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('SAVE'),
-          ),
-        ],
-      ),
-    );
-    if (result == null) return;
-    if (result == '__forget__') {
-      appState.forgetNode(id);
-      return;
-    }
-    appState.setNodeLabel(id, result.trim());
-  }
+  Future<void> _renameNodeDialog(AppState appState, String id) =>
+      showNodeRenameDialog(context, appState, id, allowForget: true);
 
   Widget _buildFirmwareTab() {
     final appState = ref.watch(appStateProvider);

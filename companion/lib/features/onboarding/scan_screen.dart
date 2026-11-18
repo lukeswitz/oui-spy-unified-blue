@@ -16,6 +16,7 @@ import 'package:oui_spy/features/config/device_config.dart' show boardDisplayNam
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
+import 'package:oui_spy/widgets/node_rename_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -336,6 +337,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       required String subtitle,
       required VoidCallback onTap,
       VoidCallback? onLongPress,
+      VoidCallback? onRename,
       IconData icon = Icons.usb,
       bool active = false,
       String busyLabel = 'CONNECTING OVER USB...'}) {
@@ -379,6 +381,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ],
               ),
             ),
+            if (onRename != null)
+              IconButton(
+                icon: Icon(Icons.edit_outlined, size: 18, color: t.textSecondary),
+                tooltip: 'Rename',
+                onPressed: _connecting ? null : onRename,
+              ),
           ],
         ),
       ),
@@ -485,6 +493,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               'A paired board is listed under Paired. It then advertises no name or service, only a private address that keeps changing, and refuses phones it does not know.',
               'To pair another phone, restart the board. It accepts a new phone for 2 minutes after power-on, or until a phone connects.',
               'Press and hold a paired board to forget it.',
+              'Tap the pencil on a board to rename it. A board needs one connection before it can be renamed.',
             ]),
           ),
         ],
@@ -521,7 +530,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                       onTap: () => context.go('/home'),
                       onLongPress: usbLive
                           ? null
-                          : () => _confirmForget((id: liveId, name: ref.read(appStateProvider).labelForNode(ble.nodeId)))),
+                          : () => _confirmForget((id: liveId, name: ref.read(appStateProvider).labelForNode(ble.nodeId))),
+                      onRename: AppState.canonicalNodeId(ble.nodeId).isEmpty
+                          ? null
+                          : () => showNodeRenameDialog(context, ref.read(appStateProvider), ble.nodeId)),
                 ],
               ),
             )),
@@ -567,7 +579,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                         active: _pairedSeen.containsKey(b.id),
                         busyLabel: 'CONNECTING...',
                         onTap: () => _connectPaired(b),
-                        onLongPress: () => _confirmForget(b)),
+                        onLongPress: () => _confirmForget(b),
+                        onRename: switch (_pairedNodes[b.id]) {
+                          final n? when AppState.canonicalNodeId(n).isNotEmpty =>
+                            () => showNodeRenameDialog(context, ref.read(appStateProvider), n),
+                          _ => null,
+                        }),
                 ],
               ),
             )),
