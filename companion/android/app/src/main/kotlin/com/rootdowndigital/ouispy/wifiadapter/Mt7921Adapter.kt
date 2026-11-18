@@ -109,7 +109,8 @@ internal class Mt7921Adapter(
                     for ((bssid, s) in sights) {
                         if (!s.emitted || Math.abs(s.rssi - s.emitRssi) >= 8) {
                             batch.add(Mt7612uAdapter.ApSighting(
-                                bssid, s.ssid, s.rssi, s.channel, Mt76Regs.freqOf(s.channel), authMode = s.authMode))
+                                bssid, s.ssid, s.rssi, s.channel, Mt76Regs.freqOf(s.channel), client = !s.isAp,
+                                authMode = s.authMode, ap = if (s.isAp) null else s.ap))
                             s.emitted = true
                             s.emitRssi = s.rssi
                         }
@@ -119,7 +120,8 @@ internal class Mt7921Adapter(
                     lastEmit = now
                 }
                 if (now - lastBeat > 5000) {
-                    log("MT7921: ch%d, %d frames, %d APs".format(CHANNELS[chIdx], frameCount, sights.size))
+                    val aps = sights.values.count { it.isAp }
+                    log("MT7921: ch%d, %d frames, %d APs, %d clients".format(CHANNELS[chIdx], frameCount, aps, sights.size - aps))
                     lastBeat = now
                 }
             }
@@ -135,18 +137,42 @@ internal class Mt7921Adapter(
         val fc = (f[0].toInt() and 0xff) or ((f[1].toInt() and 0xff) shl 8)
         val ftype = (fc ushr 2) and 0x3
         val subtype = (fc ushr 4) and 0xf
-        if (ftype != 0 || (subtype != 8 && subtype != 5)) return
+        val flags = f[1].toInt() and 0xff
         frameCount++
-        val bssid = macOf(f, 16)
-        val ssid = if (f.size > 36) parseSsid(f, 36) else null
-        val isNew = !sights.containsKey(bssid)
-        val s = sights.getOrPut(bssid) { Sight() }
-        if (!ssid.isNullOrEmpty()) s.ssid = ssid
-        s.rssi = rx.rssi
-        s.channel = rx.channel
-        s.authMode = parseSecurity(f)
-        s.lastSeen = System.currentTimeMillis()
-        if (isNew) log("MT7921: +AP #%d ch%d rssi%d auth%d".format(sights.size, rx.channel, rx.rssi, s.authMode))
+        fun group(o: Int) = f[o].toInt() and 1 != 0
+        fun apAt(o: Int) = if (group(o)) null else macOf(f, o)
+        fun touch(mac: String, isAp: Boolean, ssid: String? = null, auth: Int = 0, ap: String? = null) {
+            if (mac == "ff:ff:ff:ff:ff:ff" || mac == "00:00:00:00:00:00") return
+            if (mac.startsWith("01:00:5e") || mac.startsWith("33:33") || mac.startsWith("01:80:c2")) return
+            val isNew = !sights.containsKey(mac)
+            val s = sights.getOrPut(mac) { Sight() }
+            s.isAp = s.isAp || isAp
+            if (ap != null && ap != mac) s.ap = ap
+            if (!ssid.isNullOrEmpty()) s.ssid = ssid
+            if (auth > s.authMode) s.authMode = auth
+            s.rssi = rx.rssi
+            s.channel = rx.channel
+            s.lastSeen = System.currentTimeMillis()
+            if (isNew && isAp) log("MT7921: +AP #%d ch%d rssi%d auth%d".format(sights.values.count { it.isAp }, rx.channel, rx.rssi, s.authMode))
+        }
+        when (ftype) {
+            0 -> when (subtype) {
+                8, 5 -> touch(macOf(f, 16), true, if (f.size > 36) parseSsid(f, 36) else null, parseSecurity(f))
+                4 -> touch(macOf(f, 10), false)
+                0, 1, 2, 3, 10, 11, 12 -> touch(macOf(f, 10), false, ap = apAt(16))
+            }
+            2 -> {
+                val toDs = flags and 1 != 0
+                val fromDs = flags and 2 != 0
+                when {
+                    toDs && !fromDs -> { if (!group(4)) touch(macOf(f, 4), true); touch(macOf(f, 10), false, ap = apAt(4)) }
+                    !toDs && fromDs -> { if (!group(10)) touch(macOf(f, 10), true); touch(macOf(f, 4), false, ap = apAt(10)) }
+                    !toDs && !fromDs -> { if (!group(16)) touch(macOf(f, 16), true); touch(macOf(f, 10), false, ap = apAt(16)) }
+                    else -> touch(macOf(f, 10), false)
+                }
+            }
+            1 -> if (subtype == 11 || subtype == 10) touch(macOf(f, 10), false)
+        }
     }
 
     private fun tune(ch: Int, wait: Boolean) {
@@ -206,7 +232,7 @@ internal class Mt7921Adapter(
         mcuUni(Mt7921Regs.MCU_UNI_SNIFFER, d, wait)
     }
 
-    private class Sight(var ssid: String? = null, var rssi: Int = 0, var channel: Int = 0, var lastSeen: Long = 0, var authMode: Int = 0, var emitted: Boolean = false, var emitRssi: Int = 0)
+    private class Sight(var ssid: String? = null, var rssi: Int = 0, var channel: Int = 0, var lastSeen: Long = 0, var authMode: Int = 0, var emitted: Boolean = false, var emitRssi: Int = 0, var isAp: Boolean = false, var ap: String? = null)
 
     private class Rx(val frame: ByteArray, val channel: Int, val rssi: Int)
 
