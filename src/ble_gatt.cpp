@@ -3155,6 +3155,9 @@ static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
                 buf[74] = n;
                 memcpy(buf + 75, evt->ext.wardrive.adv, n);
                 len = 75 + n;
+            } else if (evt->method == METHOD_WIFI_CLIENT) {
+                memcpy(buf + 74, evt->ext.wardrive.ap_bssid, 6);
+                len = 80;
             }
             break;
         default:

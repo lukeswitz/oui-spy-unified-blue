@@ -222,6 +222,7 @@ static inline DedupRing<WD_DEDUP_SLOTS, 5000>& wardriveDedupRef(void) { return w
 #endif
 static DedupRingISR<WD_DEDUP_SLOTS, 2000> wifiDedup;
 static DedupRingISR<64, 5000> isrFlockWifiDedup;
+static DedupRingISR<64, 5000> isrClientDedup;
 
 static volatile uint8_t wdFlockBleActive = 0;
 static volatile uint8_t wdFlockWifiActive = 0;
@@ -406,6 +407,24 @@ static void WD_WIFI_CB_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_
         }
         if (frameType == 0) {
             detectorCheckWifiDeviceISR(addr3, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel);
+        }
+    }
+
+    if (frameType == 2) {
+        const uint8_t ds = p[1] & 0x03;
+        const uint8_t* sta = ds == 0x01 ? addr2 : (ds == 0x02 ? addr1 : NULL);
+        const uint8_t* bss = ds == 0x01 ? addr1 : addr2;
+        if (sta && !(sta[0] & 0x03) && !(bss[0] & 0x01) && memcmp(sta, bss, 6) != 0 &&
+            !isrClientDedup.check(sta)) {
+            DetectionEvent cEvt = {};
+            cEvt.engine_id = ENGINE_WARDRIVE;
+            memcpy(cEvt.mac, sta, 6);
+            cEvt.rssi = pkt->rx_ctrl.rssi;
+            cEvt.channel = pkt->rx_ctrl.channel;
+            cEvt.timestamp_ms = millis();
+            cEvt.method = METHOD_WIFI_CLIENT;
+            memcpy(cEvt.ext.wardrive.ap_bssid, bss, 6);
+            pushDetectionFromISR(&cEvt);
         }
     }
 
@@ -612,6 +631,7 @@ static void wardriveInit(void) {
     wardriveDedupRef().reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
+    isrClientDedup.reset();
     flockMatchInit();
     Serial.println("[WARDRIVE] Initialized");
 }
@@ -625,6 +645,7 @@ static void wardriveStart(void) {
     wardriveDedupRef().reset();
     wifiDedup.reset();
     isrFlockWifiDedup.reset();
+    isrClientDedup.reset();
     hiddenCount = 0;
     hiddenHead = 0;
     meshResetTxDedup();
@@ -632,6 +653,7 @@ static void wardriveStart(void) {
     wardriveDedupRef().setCooldownMs(relog);
     wifiDedup.setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
+    isrClientDedup.setCooldownMs(relog);
     wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
     wdFlockWifiActive = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive = (engineGetState(ENGINE_FOXHUNTER) != ESTATE_DISABLED) ? 1 : 0;
@@ -932,6 +954,7 @@ static void wardriveApplyPrefs(void) {
     wardriveDedupRef().setCooldownMs(relog);
     wifiDedup.setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
+    isrClientDedup.setCooldownMs(relog);
 }
 
 const EngineCallbacks wardriveCallbacks = {

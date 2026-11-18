@@ -139,6 +139,7 @@ enum EngineState : uint8_t {
 // Wardrive methods
 #define METHOD_WIFI_AP         0
 #define METHOD_BLE_ADV         1
+#define METHOD_WIFI_CLIENT     2
 
 // Detector methods
 #define METHOD_DET_BLE_WATCH   0
@@ -261,6 +262,7 @@ typedef struct __attribute__((packed)) {
             char    device_name[21];
             uint8_t adv_len;
             uint8_t adv[62];
+            uint8_t ap_bssid[6];
         } wardrive;
     } ext;
 } DetectionEvent;

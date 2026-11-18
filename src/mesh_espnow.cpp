@@ -1229,6 +1229,8 @@ bool meshMgrDrainBatch(void (*emit)(const DetectionEvent*)) {
             uint8_t c = il < sizeof(evt.ext.wardrive.adv) ? il : sizeof(evt.ext.wardrive.adv);
             memcpy(evt.ext.wardrive.adv, p + 12 + nl, c);
             evt.ext.wardrive.adv_len = c;
+        } else if (il >= 6 && evt.method == METHOD_WIFI_CLIENT) {
+            memcpy(evt.ext.wardrive.ap_bssid, p + 12 + nl, 6);
         }
 #ifdef OUISPY_NETCOUNT
         if (evt.channel != 0) ncRecordWifiMac(evt.mac);
@@ -1818,6 +1820,9 @@ void meshEnqueueWardriveRecord(const DetectionEvent* evt) {
         if (il > MESH_DET_REC_ADV_MAX) il = MESH_DET_REC_ADV_MAX;
         r.ielen = il;
         memcpy(r.ie, evt->ext.wardrive.adv, il);
+    } else if (evt->engine_id == ENGINE_WARDRIVE && evt->method == METHOD_WIFI_CLIENT) {
+        r.ielen = 6;
+        memcpy(r.ie, evt->ext.wardrive.ap_bssid, 6);
     }
 
     if (xQueueSend(detRecQueue, &r, 0) != pdTRUE) {
