@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
-import 'package:oui_spy/features/feed/feed_screen.dart' show nestUnderParents;
+import 'package:oui_spy/features/feed/feed_screen.dart' show nestUnderParents, groupClientsProvider, groupClientsAction;
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/classify/adv_decoder.dart';
@@ -482,7 +482,9 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final unclassified = _cache!.unclassified;
     final guesses = _cache!.guesses;
     final bleMgr = ref.read(bleManagerProvider);
-    final nest = nestUnderParents(_cache!.ordered, (d) => d.obs.key, (d) => clientApKey(bleMgr, d.obs));
+    final nest = ref.watch(groupClientsProvider)
+        ? nestUnderParents(_cache!.ordered, (d) => d.obs.key, (d) => clientApKey(bleMgr, d.obs))
+        : (rows: _cache!.ordered, parentOf: Map<ClassifiedDevice, ClassifiedDevice>.identity());
     final ordered = nest.rows;
     final shown = ordered;
     final flood = reg.pairingFlood.notice;
@@ -510,6 +512,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                   active: _grouped,
                   onTap: () => _setGrouped(!_grouped),
                 ),
+                groupClientsAction(ref),
                 CommandBarAction(
                   icon: Icons.more_vert,
                   label: 'More',

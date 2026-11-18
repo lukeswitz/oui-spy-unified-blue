@@ -208,6 +208,17 @@ void main() {
     expect(find.byType(DetectionRow), findsNWidgets(2));
     expect(indented, findsNothing);
     expect(container.read(sharedPreferencesProvider).getBool('feedGroupBySsid'), isFalse);
+    await tester.tap(find.byTooltip('Group clients'));
+    await tester.pumpAndSettle();
+    expect(indented, findsOneWidget);
+    await tester.tap(find.byTooltip('Ungroup clients'));
+    await tester.pumpAndSettle();
+    expect(indented, findsNothing);
+    await tester.tap(find.text('Devices'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Group clients'), findsOneWidget);
+    await tester.tap(find.text('Live'));
+    await tester.pumpAndSettle();
 
     ble.addPhoneDetection('AA:BB:CC:DD:EE:09', 'Newest BLE', -50, const []);
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));

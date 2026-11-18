@@ -106,7 +106,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   String _searchQuery = '';
   String? _selectedNode;
   bool _showStats = true;
-  late bool _groupSsid = ref.read(sharedPreferencesProvider).getBool(_kGroupSsid) ?? false;
   FeedMetric _sortMetric = FeedMetric.time;
   bool _sortAscending = false; // false = descending (newest/strongest/most first)
   String? _vendorFirst;
@@ -344,7 +343,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }).toList();
     final grouped = groupBySsid(nonDroneRows, state.dedupeKey);
     String rowKey(Detection d) => grouped.keyOf[d] ?? state.dedupeKey(d);
-    final nested = !_groupSsid
+    final nested = !ref.watch(groupClientsProvider)
         ? (rows: grouped.rows, parentOf: Map<Detection, Detection>.identity())
         : nestUnderParents(grouped.rows, rowKey, (d) {
             final ap = state.apKeyFor(d);
@@ -394,6 +393,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   label: 'Sort: ${_sortMetric.label}',
                   onTap: _openSortSheet,
                 ),
+                groupClientsAction(ref),
                 if (widget.onShowHistory != null)
                   CommandBarAction(
                     icon: Icons.history,
@@ -708,6 +708,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       };
 
   Future<void> _openActionSheet(AppState state) {
+    final groupOn = ref.read(groupClientsProvider);
     return showCommandSheet<void>(
       context: context,
       builder: (ctx) => CommandSheet(
@@ -726,14 +727,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               },
             ),
             CommandSheetTile(
-              icon: _groupSsid ? Icons.layers : Icons.layers_outlined,
-              label: _groupSsid ? 'UNGROUP CLIENTS' : 'GROUP CLIENTS',
+              icon: groupOn ? Icons.layers : Icons.layers_outlined,
+              label: groupOn ? 'UNGROUP CLIENTS' : 'GROUP CLIENTS',
               subtitle: 'Clients indented under the network they use',
-              color: _groupSsid ? AppTheme.accent : null,
+              color: groupOn ? AppTheme.accent : null,
               onTap: () {
                 Navigator.pop(ctx);
-                setState(() => _groupSsid = !_groupSsid);
-                ref.read(sharedPreferencesProvider).setBool(_kGroupSsid, _groupSsid);
+                toggleGroupClients(ref);
               },
             ),
             CommandSheetTile(
@@ -849,6 +849,25 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 }
 
 const _kGroupSsid = 'feedGroupBySsid';
+
+final groupClientsProvider =
+    StateProvider<bool>((ref) => ref.read(sharedPreferencesProvider).getBool(_kGroupSsid) ?? false);
+
+void toggleGroupClients(WidgetRef ref) {
+  final v = !ref.read(groupClientsProvider);
+  ref.read(groupClientsProvider.notifier).state = v;
+  ref.read(sharedPreferencesProvider).setBool(_kGroupSsid, v);
+}
+
+CommandBarAction groupClientsAction(WidgetRef ref) {
+  final on = ref.watch(groupClientsProvider);
+  return CommandBarAction(
+    icon: on ? Icons.layers : Icons.layers_outlined,
+    label: on ? 'Ungroup clients' : 'Group clients',
+    active: on,
+    onTap: () => toggleGroupClients(ref),
+  );
+}
 
 ({List<Detection> rows, Map<Detection, String> keyOf, Map<Detection, List<String>> macs, Map<String, String> groupOf})
     groupBySsid(List<Detection> rows, String Function(Detection) keyOf) {

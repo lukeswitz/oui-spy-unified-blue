@@ -106,7 +106,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
               ),
               IconButton(
                 tooltip: state.isConnected ? 'Switch device' : 'Connect a device',
-                icon: Icon(state.isConnected ? Icons.swap_horiz : Icons.devices_outlined),
+                icon: const Icon(Icons.swap_horiz),
                 color: nameColor,
                 onPressed: () => context.push('/onboarding'),
               ),

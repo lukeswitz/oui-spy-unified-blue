@@ -19,6 +19,9 @@ typedef GpsStatus = ({
 class BleProtocol {
   const BleProtocol._();
 
+  static const wardriveMethods = ['wifi_ap', 'ble_adv', 'wifi_client'];
+  static final wardriveClientMethod = wardriveMethods.indexOf('wifi_client');
+
   // -- Detection event decoding --
 
   static Detection decodeDetection(List<int> data, {
@@ -77,7 +80,8 @@ class BleProtocol {
         case Engine.detector:
           detector = _decodeDetectorExtension(ext);
         case Engine.wardrive:
-          wardrive = _decodeWardriveExtension(method == 2 && ext.length > 55 ? ext.sublist(0, 55) : ext);
+          wardrive = _decodeWardriveExtension(
+              method == wardriveClientMethod && ext.length > 55 ? ext.sublist(0, 55) : ext);
           deviceName = wardrive.deviceName.isNotEmpty
               ? wardrive.deviceName
               : wardrive.ssid;
@@ -427,7 +431,7 @@ class BleProtocol {
   // -- Private helpers --
 
   static String? clientApOf(List<int> data) {
-    if (data.length < 80 || (data[0] & 0x7F) != Engine.wardrive.index || data[13] != 2) return null;
+    if (data.length < 80 || (data[0] & 0x7F) != Engine.wardrive.index || data[13] != wardriveClientMethod) return null;
     if (data.sublist(74, 80).every((b) => b == 0)) return null;
     return _decodeMac(Uint8List.fromList(data), 74);
   }
@@ -513,7 +517,7 @@ class BleProtocol {
         ][method.clamp(0, 16)],
       Engine.foxhunter => const ['ble_proximity', 'wifi_proximity'][method.clamp(0, 1)],
       Engine.uniPwn => 'unitree_ble',
-      Engine.wardrive => const ['wifi_ap', 'ble_adv', 'wifi_client'][method.clamp(0, 2)],
+      Engine.wardrive => wardriveMethods[method.clamp(0, wardriveMethods.length - 1)],
       Engine.pcap => 'pcap',
       Engine.sdr => 'sdr',
     };

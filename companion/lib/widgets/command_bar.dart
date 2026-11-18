@@ -741,7 +741,12 @@ class CommandHeader extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(gap * 2, gap * 1.5, gap * 2, gap * 1.5),
       child: Row(
         children: [
-          Text(title, style: style?.copyWith(letterSpacing: 3, color: t.textDim, fontWeight: FontWeight.w700)),
+          Flexible(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style?.copyWith(letterSpacing: 3, color: t.textDim, fontWeight: FontWeight.w700)),
+          ),
           SizedBox(width: gap),
           Expanded(
             child: SingleChildScrollView(
