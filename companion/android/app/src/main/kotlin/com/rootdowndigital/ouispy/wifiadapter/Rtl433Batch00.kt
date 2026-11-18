@@ -448,12 +448,12 @@ internal object AcuriteTxr : Rtl433Decoder() {
     private val windDirs = intArrayOf(14, 11, 13, 12, 15, 10, 0, 9, 3, 6, 4, 5, 2, 7, 1, 8)
     private val channels = arrayOf("C", "E", "B", "A")
 
-    private fun txrCheck(b: IntArray, browlen: Int, explen: Int): Boolean {
+    private fun txrCheck(b: IntArray, browlen: Int, explen: Int, checkChan: Boolean = true): Boolean {
         if (browlen < 6 || browlen < explen) return false
         if ((Rtl433BitUtil.addBytes(b, explen - 1) and 0xff) != b[explen - 1]) return false
         val par = Rtl433BitUtil.parityBytes(b.copyOfRange(2, explen - 1), explen - 3)
         if (par != 0) return false
-        return channels[(b[0] and 0xC0) shr 6] != "E"
+        return !checkChan || channels[(b[0] and 0xC0) shr 6] != "E"
     }
 
     override fun decode(bb: BitBuffer): List<Reading> {
@@ -529,6 +529,134 @@ internal object AcuriteTxr : Rtl433Decoder() {
                         f["humidity"] = humidity
                     }
                     out.add(Reading("Acurite-5n1", id.toString(), f))
+                }
+                0x01 -> {
+                    if (!txrCheck(b, browlen, 7)) continue
+                    val id = ((b[0] and 0x3f) shl 8) or b[1]
+                    out.add(Reading("Acurite-Leak", id.toString(), linkedMapOf<String, Any?>(
+                        "channel" to channel,
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "leak_detected" to ((b[3] and 0x10) shr 4),
+                    )))
+                }
+                0x2f -> {
+                    if (!txrCheck(b, browlen, 9)) continue
+                    val id = ((b[0] and 0x3f) shl 8) or b[1]
+                    val humidity = b[3] and 0x7f
+                    if (humidity > 100) continue
+                    val tempRaw = ((b[4] and 0x1F) shl 7) or (b[5] and 0x7F)
+                    val tempF = (tempRaw - 1480) * 0.1f
+                    if (tempF < -40.0 || tempF > 158.0) continue
+                    var exception = 0
+                    if ((tempRaw and 0x3000) != 0) exception++
+                    if ((b[4] and 0x20) != 0) exception++
+                    out.add(Reading("Acurite-6045M", id.toString(), linkedMapOf<String, Any?>(
+                        "channel" to channel,
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "temperature_F" to tempF.toDouble(),
+                        "humidity" to humidity,
+                        "strike_count" to (((b[6] and 0x7f) shl 1) or ((b[7] and 0x40) shr 6)),
+                        "storm_dist" to (b[7] and 0x1f),
+                        "active" to (if ((b[4] and 0x40) == 0x40) 1 else 0),
+                        "rfi" to (if ((b[7] and 0x20) == 0x20) 1 else 0),
+                        "exception" to exception,
+                    )))
+                }
+                0x08, 0x09 -> {
+                    if (!txrCheck(b, browlen, 6)) continue
+                    val id = ((b[0] and 0x3f) shl 8) or b[1]
+                    val tempRaw = ((b[3] and 0x7F) shl 7) or (b[4] and 0x7F)
+                    val tempF = (tempRaw - 1480) * 0.1f
+                    if (tempF < -40.0 || tempF > 158.0) continue
+                    val f = linkedMapOf<String, Any?>(
+                        "channel" to channel + (if (msgType == 0x08) "R" else "F"),
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "temperature_F" to tempF.toDouble(),
+                    )
+                    if ((tempRaw and 0x3000) != 0) f["exception"] = 1
+                    out.add(Reading("Acurite-515", id.toString(), f))
+                }
+                0x30 -> {
+                    if (!txrCheck(b, browlen, 8, checkChan = false)) continue
+                    val id = ((b[0] and 0x3f) shl 8) or b[1]
+                    val rain = ((b[5] and 0x7f) shl 7) or (b[6] and 0x7f)
+                    out.add(Reading("Acurite-Rain899", id.toString(), linkedMapOf<String, Any?>(
+                        "channel" to (b[0] shr 6),
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "rain_mm" to rain * 0.254,
+                    )))
+                }
+                0x05, 0x06, 0x07, 0x25, 0x26, 0x27 -> {
+                    val lightning = msgType >= 0x25
+                    if (!txrCheck(b, browlen, if (lightning) 10 else 8)) continue
+                    val id = ((b[0] and 0x03) shl 8) or b[1]
+                    val windMph = (((b[3] and 0x7F) shl 1) or ((b[4] and 0x40) shr 6)).toFloat()
+                    if (windMph > 200) continue
+                    var exception = 0
+                    val f = linkedMapOf<String, Any?>(
+                        "channel" to channel,
+                        "sequence_num" to ((b[0] and 0x0c) shr 2),
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "message_type" to msgType,
+                        "wind_avg_mi_h" to windMph.toDouble(),
+                    )
+                    when (msgType and 0x1f) {
+                        0x05 -> {
+                            val tempRaw = ((b[4] and 0x0F) shl 7) or (b[5] and 0x7F)
+                            if ((b[4] and 0x30) != 0) exception++
+                            val tempF = (tempRaw - 400) * 0.1f
+                            if (tempF < -40.0 || tempF > 158.0) continue
+                            val humidity = b[6] and 0x7f
+                            if (humidity > 100) continue
+                            if (humidity == 0) exception++
+                            f["temperature_F"] = tempF.toDouble()
+                            f["humidity"] = humidity
+                        }
+                        0x06 -> {
+                            val windDir = (((b[4] and 0x1f) shl 5) or ((b[5] and 0x7c) shr 2)).toFloat()
+                            if ((b[4] and 0x30) != 0) exception++
+                            if (windDir > 360) continue
+                            f["wind_dir_deg"] = windDir.toDouble()
+                            f["rain_in"] = ((((b[5] and 0x03) shl 7) or (b[6] and 0x7F)) * 0.01f).toDouble()
+                        }
+                        else -> {
+                            val lux = ((b[5] and 0x7f) shl 7) or (b[6] and 0x7F)
+                            if (lux > 12000) continue
+                            f["uvi"] = (b[4] and 0x0f).toDouble()
+                            f["lux"] = lux * 10
+                        }
+                    }
+                    if (lightning) {
+                        f["strike_count"] = ((b[7] and 0x7f) shl 2) or ((b[8] and 0x60) shr 5)
+                        f["strike_distance"] = b[8] and 0x1f
+                    }
+                    f["exception"] = exception
+                    out.add(Reading("Acurite-Atlas", id.toString(), f))
+                }
+                0x3a, 0x3b -> {
+                    if (!txrCheck(b, browlen, 10)) continue
+                    val id = ((b[0] and 0x0f) shl 8) or b[1]
+                    val windMph = (((b[3] and 0x7F) shl 1) or ((b[4] and 0x40) shr 6)).toFloat()
+                    if (windMph > 200) continue
+                    val f = linkedMapOf<String, Any?>(
+                        "channel" to channel,
+                        "sequence_num" to ((b[0] and 0x30) shr 4),
+                        "battery_ok" to (if (batteryLow) 0 else 1),
+                        "wind_avg_mi_h" to windMph.toDouble(),
+                        "wind_avg_km_h" to (windMph * 1.609344f).toDouble(),
+                    )
+                    if (msgType == 0x3b) {
+                        val tempF = ((((b[4] and 0x0F) shl 7) or (b[5] and 0x7F)) - 400) * 0.1f
+                        if (tempF < -40.0f || tempF > 158.0f) continue
+                        val humidity = b[6] and 0x7f
+                        if (humidity > 100) continue
+                        f["temperature_F"] = tempF.toDouble()
+                        f["humidity"] = humidity
+                    } else {
+                        f["wind_dir_deg"] = (windDirs[b[4] and 0x0f] * 22.5f).toDouble()
+                        f["rain_in"] = ((((b[5] and 0x03) shl 7) or (b[6] and 0x7F)) * 0.01f).toDouble()
+                    }
+                    out.add(Reading("Acurite-Optimus", id.toString(), f))
                 }
             }
         }

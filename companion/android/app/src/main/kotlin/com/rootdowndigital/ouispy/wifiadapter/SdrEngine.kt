@@ -69,10 +69,27 @@ internal class SdrEngine(
         Rtl433Registry.onPackage = { _, _, rssi ->
             curRssi = rssi
         }
+        fun emit(r: Reading, c: Long) {
+            decs++
+            val m = HashMap<String, Any?>()
+            m["kind"] = "rtl433"
+            m["model"] = r.model
+            m["id"] = r.id
+            m["frequency"] = c
+            m["rssi"] = curRssi
+            for ((k, v) in r.fields) if (k !in m) m[k] = v
+            onDetection(m)
+        }
         dev.readIq { buf, n ->
             if (stop) return@readIq
             val now = System.currentTimeMillis()
             if (bands.size > 1 && now - hopAt >= DWELL_MS) {
+                val prev = bands[idx]
+                try {
+                    Rtl433Registry.flush { r -> emit(r, prev) }
+                } catch (e: Exception) {
+                    if (!rtl433ErrLogged) { rtl433ErrLogged = true; log("RTL433 decoder threw (continuing): ${e.message}") }
+                }
                 idx = (idx + 1) % bands.size
                 dev.setCenterFreq(bands[idx])
                 Rtl433Registry.centerFreqHz = bands[idx]
@@ -84,17 +101,7 @@ internal class SdrEngine(
             if (now < settleUntil) return@readIq
             val c = bands[idx]
             try {
-                pkgs += Rtl433Registry.run(buf, n / 2, rate) { r ->
-                    decs++
-                    val m = HashMap<String, Any?>()
-                    m["kind"] = "rtl433"
-                    m["model"] = r.model
-                    m["id"] = r.id
-                    m["frequency"] = c
-                    m["rssi"] = curRssi
-                    for ((k, v) in r.fields) if (k !in m) m[k] = v
-                    onDetection(m)
-                }
+                pkgs += Rtl433Registry.run(buf, n / 2, rate) { r -> emit(r, c) }
             } catch (e: Exception) {
                 if (!rtl433ErrLogged) { rtl433ErrLogged = true; log("RTL433 decoder threw (continuing): ${e.message}") }
             }

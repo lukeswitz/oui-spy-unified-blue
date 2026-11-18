@@ -9,6 +9,11 @@ internal object Rtl433Devices {
         Auriol4ld5661, BrennenstuhlRcs2044, Ced7000, Chuango, DickertPwm,
         DishRemote63, Hondaremote, LightwaveRf, MBusModeF, MBusModeR,
         Megacode, NeptuneR900bcd, NiceFlorS, TpmsJansite,
+        Akhan100F14, AntAntplus, BaldrRain, BtRain, Cotech367900, CotechFt0203,
+        ElroDb286a, ElvEm1000, ElvWs2000, EnoceanErp1, EsaEnergy, Eurochron,
+        FineoffsetWh5rb, Fordremote, Fs20, HanwellMl4000, Intertechno, KiddeSmoke,
+        Klimalogg, Kw9015b, Markisol, Mebus433, NidecCarRemote, Quinetic,
+        Rftech, SmokeGs558, ThermoproTx2, ThermoproTx2c, TpmsJeep, TwogigKey2e,
     )
 
     @Volatile private var lastCategories: Set<String>? = null
