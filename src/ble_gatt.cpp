@@ -1178,13 +1178,7 @@ static int bleConnGapGuard(struct ble_gap_event* event, void* arg) {
                 if (pServer) pServer->disconnect(event->identity_resolved.conn_handle);
                 return 0;
             }
-            union ble_store_key k = {};
-            k.sec.peer_addr = key.peer_addr;
-            int rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_OUR_SEC, &k);
-            if (rc == 0) rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_PEER_SEC, &k);
-            k = {};
-            k.cccd.peer_addr = key.peer_addr;
-            if (rc == 0) rc = ble_store_util_delete_all(BLE_STORE_OBJ_TYPE_CCCD, &k);
+            int rc = ble_store_util_delete_peer(&key.peer_addr);
             Serial.printf("[BLE] new pairing replaces stored bond rc=%d\n", rc);
         }
     }
