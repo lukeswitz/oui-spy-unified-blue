@@ -135,6 +135,25 @@ The app controls your boards, shows what they find, and can scan with the phone'
 
 Tap any hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps every hit of that class.
 
+The info button at the right end of the Detections tab row explains each tab and icon.
+
+| Icon | What it does |
+|---|---|
+| **Two arrows** (Home) | Opens the Connect screen, with or without a board linked. |
+| **Funnel** | Filters by engine, radio, node or class. |
+| **Arrow** | Picks the sort order. TIME lists Wi-Fi first, then Bluetooth, newest first. Tap again to reverse. |
+| **Layers** | Indents each Wi-Fi client under the network it uses. On LIVE and DEVICES. |
+| **Shapes** (DEVICES) | Switches between class sections and one flat list. |
+| **Clock** (LIVE) / **Antenna** (HISTORY) | Opens HISTORY / goes back to LIVE. |
+| **Folder** (HISTORY) | Opens saved sessions. |
+| **Three dots** | More actions for the tab, such as search, export and clear. |
+| **Crossed arrows** on a row | The device uses a random MAC. |
+| **Crossed-out eye** on a row | The network hides its name. |
+| **Lock** on a row | The network security, such as WPA2. |
+| **Walking person** on a row | A loud Bluetooth device that keeps moving with you. |
+
+LIVE shows one row per network name. The row's details list every MAC that uses that name.
+
 ### Classification
 
 Every device the app hears gets a class, such as tracker, camera, public safety & fleet, drone, glasses, hacking tool, router, or home & office.

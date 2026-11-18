@@ -7,7 +7,7 @@ void showInfoSheet(BuildContext context, ResolvedTheme t, String title, List<Str
     backgroundColor: t.surface,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -129,6 +129,12 @@ void main() {
     expect(find.text('History'), findsOneWidget);
     expect(find.byType(SegmentedButton<DetectionsView>), findsNothing);
     expect(container.read(detectionsViewProvider), DetectionsView.live);
+    await tester.tap(find.byTooltip('About tabs and icons'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tabs and icons'), findsOneWidget);
+    expect(find.textContaining('Layers: indent each Wi-Fi client'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Tabs and icons'))).pop();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Devices'));
     await tester.pump();
     expect(container.read(detectionsViewProvider), DetectionsView.devices);
