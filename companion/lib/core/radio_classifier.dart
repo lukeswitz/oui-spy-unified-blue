@@ -48,8 +48,9 @@ bool isBleDetectionRaw({required String method, required Engine engine, required
 
 extension DetectionRadio on Detection {
   bool get isBleDetection =>
-      isBleDetectionRaw(method: method, engine: engine, channel: channel);
-  bool get isWifiDetection => !isBleDetection;
+      engine != Engine.sdr && isBleDetectionRaw(method: method, engine: engine, channel: channel);
+  bool get isWifiDetection =>
+      engine != Engine.sdr && !isBleDetectionRaw(method: method, engine: engine, channel: channel);
 }
 
 double rssiToMeters(int rssi, {required bool isBle}) {

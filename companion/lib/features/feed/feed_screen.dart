@@ -294,7 +294,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     int dir(int v) => asc ? v : -v;
     switch (_sortMetric) {
       case FeedMetric.time:
-        sorted.sort((a, b) => dir(a.appTimestamp.compareTo(b.appTimestamp)));
+        int radio(Detection d) => d.isWifiDetection ? 0 : d.isBleDetection ? 1 : 2;
+        sorted.sort((a, b) {
+          final r = radio(a).compareTo(radio(b));
+          return r != 0 ? r : dir(a.appTimestamp.compareTo(b.appTimestamp));
+        });
       case FeedMetric.rssi:
         sorted.sort((a, b) => dir(a.rssi.compareTo(b.rssi)));
       case FeedMetric.count:
@@ -338,12 +342,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       final id = d.odid?.uavId ?? '';
       return id.isEmpty || !droneUavIds.contains(id);
     }).toList();
-    final grouped = _groupSsid ? groupBySsid(nonDroneRows, state.dedupeKey) : null;
-    String rowKey(Detection d) => grouped?.keyOf[d] ?? state.dedupeKey(d);
-    final nested = nestUnderParents(grouped?.rows ?? nonDroneRows, rowKey, (d) {
-      final ap = state.apKeyFor(d);
-      return ap == null ? null : grouped?.groupOf[ap] ?? ap;
-    });
+    final grouped = groupBySsid(nonDroneRows, state.dedupeKey);
+    String rowKey(Detection d) => grouped.keyOf[d] ?? state.dedupeKey(d);
+    final nested = !_groupSsid
+        ? (rows: grouped.rows, parentOf: Map<Detection, Detection>.identity())
+        : nestUnderParents(grouped.rows, rowKey, (d) {
+            final ap = state.apKeyFor(d);
+            return ap == null ? null : grouped.groupOf[ap] ?? ap;
+          });
     nonDroneRows
       ..clear()
       ..addAll(nested.rows);
@@ -445,7 +451,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         final row = DetectionRow(
                           key: ValueKey(rowKey(d)),
                           detection: d,
-                          macs: grouped?.macs[d] ?? const [],
+                          macs: grouped.macs[d] ?? const [],
                         );
                         return nested.parentOf.containsKey(d)
                             ? Padding(padding: const EdgeInsets.only(left: 28), child: row)
@@ -685,8 +691,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       );
 
   String get _sortDirectionHint => switch ((_sortMetric, _sortAscending)) {
-        (FeedMetric.time, true) => 'Oldest first',
-        (FeedMetric.time, false) => 'Newest first',
+        (FeedMetric.time, true) => 'WiFi, then BLE · oldest first',
+        (FeedMetric.time, false) => 'WiFi, then BLE · newest first',
         (FeedMetric.rssi, true) => 'Weakest signal first',
         (FeedMetric.rssi, false) => 'Strongest signal first',
         (FeedMetric.count, true) => 'Fewest hits first',
@@ -721,8 +727,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ),
             CommandSheetTile(
               icon: _groupSsid ? Icons.layers : Icons.layers_outlined,
-              label: _groupSsid ? 'UNGROUP SSIDS' : 'GROUP BY SSID',
-              subtitle: 'One row per network name, BSSIDs listed inside',
+              label: _groupSsid ? 'UNGROUP CLIENTS' : 'GROUP CLIENTS',
+              subtitle: 'Clients indented under the network they use',
               color: _groupSsid ? AppTheme.accent : null,
               onTap: () {
                 Navigator.pop(ctx);
@@ -851,7 +857,8 @@ const _kGroupSsid = 'feedGroupBySsid';
   final members = <int, List<Detection>>{};
   final groupOf = <String, String>{};
   for (final d in rows) {
-    final ssid = d.method == 'wifi_ap' ? d.ssid.trim() : '';
+    final shown = d.wardrive?.ssid.trim() ?? '';
+    final ssid = d.method != 'wifi_ap' ? '' : shown.isNotEmpty ? shown : d.ssid.trim();
     if (ssid.isEmpty) {
       out.add(d);
       continue;

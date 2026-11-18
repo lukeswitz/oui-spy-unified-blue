@@ -21,7 +21,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   final _freq = TextEditingController(text: '100.1');
   SdrMode _mode = SdrMode.spectrum;
   Set<int> get _bands => _c.bands;
-  static const _bandHz = {315: 315000000, 433: 433920000, 915: 915000000};
+  static const _bandHz = {315: [315000000], 433: [433920000], 915: [912600000, 915000000]};
   String? _deviceId;
   String _deviceName = '';
   bool _busy = false;
@@ -74,7 +74,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
   bool get _isIsm => _mode == SdrMode.tpms || _mode == SdrMode.rtl433;
 
   List<int> _bandsHz() =>
-      [for (final b in const [315, 433, 915]) if (_bands.contains(b)) _bandHz[b]!];
+      [for (final b in const [315, 433, 915]) if (_bands.contains(b)) ..._bandHz[b]!];
 
   int _freqHz() {
     if (_mode == SdrMode.adsb) return 1090000000;
@@ -258,8 +258,8 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  _bands.length > 1
-                      ? 'Sweeping ${_bandsHz().length} bands, about 2s each'
+                  _bandsHz().length > 1
+                      ? 'Sweeping ${_bandsHz().length} frequencies, about 2s each'
                       : 'One band. Add 315, 433, or 915 to sweep more.',
                   style: TextStyle(color: t.textDim, fontSize: 11),
                 ),

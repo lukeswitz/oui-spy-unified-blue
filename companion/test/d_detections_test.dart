@@ -1,13 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/prefs.dart';
+import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -101,6 +105,14 @@ void main() {
     expect(detectionIsHiddenAp(wifi.copyWith(method: 'wifi_ap')), isFalse);
   });
 
+  test('an SDR decode is neither a Bluetooth nor a WiFi device', () {
+    final d = _det(mac: 'SilverSpring-Mesh|0000000000000001', ssid: '{}')
+        .copyWith(engine: Engine.sdr, method: 'rtl433', channel: 0, wardrive: null);
+    expect(d.isBleDetection, isFalse);
+    expect(d.isWifiDetection, isFalse);
+    expect(_det().isWifiDetection, isTrue);
+  });
+
   testWidgets('detections shows underline tabs and Devices switches the view', (tester) async {
     final container = await _container();
 
@@ -143,6 +155,65 @@ void main() {
     expect(find.text('SEARCH'), findsOneWidget);
     expect(find.text('EXPORT CSV'), findsOneWidget);
     expect(find.text('CLEAR FEED'), findsOneWidget);
+    await _release(tester, container);
+  });
+
+  testWidgets('sort opens at the top; SSID grouping turns on and back off', (tester) async {
+    final messenger = tester.binding.defaultBinaryMessenger;
+    for (final (ch, v) in const [
+      ('plugins.flutter.io/path_provider', '.'),
+      ('plugins.it_nomads.com/flutter_secure_storage', null),
+    ]) {
+      messenger.setMockMethodCallHandler(MethodChannel(ch), (c) async => v);
+      addTearDown(() => messenger.setMockMethodCallHandler(MethodChannel(ch), null));
+    }
+    final container = await _container();
+    final app = container.read(appStateProvider);
+    final ble = container.read(bleManagerProvider);
+    ble.addPhoneWifiDetection('0A:BB:CC:DD:EE:01', 'MyNetwork', -80, 1, 3);
+    ble.addPhoneWifiDetection('0A:BB:CC:DD:EE:02', 'MyNetwork', -70, 6, 3);
+    ble.addPhoneWifiDetection('0a:bb:cc:dd:ee:09', '', -60, 1, 0, client: true, ap: '0A:BB:CC:DD:EE:01');
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    expect(app.recentDetections, hasLength(3));
+    final indented = find.byWidgetPredicate(
+        (w) => w is Padding && w.padding == const EdgeInsets.only(left: 28) && w.child is DetectionRow);
+
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: AppTheme.darkTheme, home: const DetectionsScreen()),
+    ));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.byTooltip('Sort: TIME'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('SORT')).dy, lessThan(200));
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('SORT'), findsNothing);
+
+    expect(find.byType(DetectionRow), findsNWidgets(2));
+    expect(indented, findsNothing);
+    await tester.tap(find.byTooltip('More'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('GROUP CLIENTS'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DetectionRow), findsNWidgets(2));
+    expect(indented, findsOneWidget);
+    await tester.tap(find.byTooltip('More'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('UNGROUP CLIENTS'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DetectionRow), findsNWidgets(2));
+    expect(indented, findsNothing);
+    expect(container.read(sharedPreferencesProvider).getBool('feedGroupBySsid'), isFalse);
+
+    ble.addPhoneDetection('AA:BB:CC:DD:EE:09', 'Newest BLE', -50, const []);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump(const Duration(milliseconds: 50));
+    final rows = tester.widgetList<DetectionRow>(find.byType(DetectionRow)).map((r) => r.detection.isBleDetection).toList();
+    expect(rows, [false, false, true]);
     await _release(tester, container);
   });
 

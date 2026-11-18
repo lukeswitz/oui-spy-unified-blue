@@ -330,10 +330,12 @@ Future<bool> _startWardriveSession(BuildContext context, WidgetRef ref, {require
     DebugLog.log('WARDRIVE: start aborted — radio roles canceled');
     return false;
   }
+  final wd = ref.read(wardriveProvider);
+  final adapters = ref.read(wifiAdapterControllerProvider);
   final usb = startSelectedUsbAdapters(ref);
-  await ref.read(wardriveProvider).startSession();
+  await wd.startSession();
   await usb;
-  if (!ref.read(wardriveProvider).isActive) await ref.read(wifiAdapterControllerProvider).stop();
+  if (!wd.isActive) await adapters.stop();
   return true;
 }
 
@@ -441,6 +443,11 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
       ? (mgrId.isNotEmpty ? mgrId : 'LOCAL')
       : null;
   final ble = ref.read(bleManagerProvider);
+  final usb = ref.read(wifiAdapterControllerProvider);
+  final usbOff = ref.read(usbAdapterOffProvider);
+  final usbPicked = ref.read(usbAdapterRadioProvider);
+  final usbRadio = ref.read(usbAdapterRadioProvider.notifier);
+  final wd = ref.read(wardriveProvider);
   if (selfId != null) await ble.enowHubRefresh();
   final hubId = selfId != null && ble.enowHubActive ? selfId : null;
   final hubNodes = hubId == null
@@ -448,9 +455,6 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
       : [for (final n in ble.enowHubNodeMap.values) if (n.paired) n];
   if (selfId != null && (phoneChoice || hubId != null)) nodes.add(selfId);
   if (phoneChoice) nodes.add(BleManager.phoneNodeId);
-  final usb = ref.read(wifiAdapterControllerProvider);
-  final usbOff = ref.read(usbAdapterOffProvider);
-  final usbPicked = ref.read(usbAdapterRadioProvider);
   final usbDual = {
     for (final d in usb.devices)
       if (usbAdapterHasBle(d) && !usbOff.contains(d.id) && !usb.isActive(d.id)) 'usb:${d.id}': d,
@@ -458,7 +462,6 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   nodes.addAll(usbDual.keys);
   if (nodes.isEmpty) return true;
   if (!context.mounted) return false;
-  final wd = ref.read(wardriveProvider);
   final result = await showDialog<({Map<String, int> roles, Set<String> skip})>(
     context: context,
     builder: (_) => RadioRolePopup(
@@ -484,22 +487,23 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   );
   if (result == null) return false;
   final roles = result.roles;
-  ref.read(usbAdapterRadioProvider.notifier).state = {
+  usbRadio.state = {
     ...usbPicked,
     for (final e in usbDual.entries) e.value.id: ?roles.remove(e.key),
   };
   final phoneMask = roles.remove(BleManager.phoneNodeId);
   if (phoneMask != null) phone.setRadioMask(phoneMask);
   final selfMask = selfId == null ? null : roles.remove(selfId);
-  if (selfMask != null && hubId == null) setWardriveRadio(ref, selfMask);
+  if (selfMask != null && hubId == null) _setRadio(wd, app, selfMask);
   if (roles.isNotEmpty) await app.applyNodeRadioRoles(roles);
   if (result.skip.isNotEmpty) await ble.enowHubSkipForSession(result.skip);
   return true;
 }
 
-void setWardriveRadio(WidgetRef ref, int mask) {
-  final wd = ref.read(wardriveProvider);
-  final app = ref.read(appStateProvider);
+void setWardriveRadio(WidgetRef ref, int mask) =>
+    _setRadio(ref.read(wardriveProvider), ref.read(appStateProvider), mask);
+
+void _setRadio(WardriveController wd, AppState app, int mask) {
   wd.setRadio(WardriveController.radioFromMask(mask));
   app.setEngineRadio(Engine.wardrive, mask);
   for (final t in wd.selectedTargets) {

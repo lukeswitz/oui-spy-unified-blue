@@ -19,6 +19,7 @@ int _detRadioRank(Map<String, dynamic> d) {
   if (isBleMethod(method)) return 0;
   if (isWifiMethod(method)) return 1;
   final engine = (d['engine'] as String?) ?? '';
+  if (engine == 'sdr') return 2;
   if (engine == 'flockBle') return 0;
   if (engine == 'flockWifi') return 1;
   final ch = (d['channel'] as int?) ?? 0;
@@ -244,7 +245,11 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           (a['macAddress'] as String).compareTo(b['macAddress'] as String),
     };
 
-    list.sort((a, b) => _ascending ? cmp(a, b) : cmp(b, a));
+    int wifiFirst(Map<String, dynamic> d) => switch (_detRadioRank(d)) { 1 => 0, 0 => 1, _ => 2 };
+    list.sort((a, b) {
+      final r = _sort == _DetSort.time ? wifiFirst(a).compareTo(wifiFirst(b)) : 0;
+      return r != 0 ? r : _ascending ? cmp(a, b) : cmp(b, a);
+    });
     return list;
   }
 
@@ -678,8 +683,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       );
 
   String get _sortDirectionHint => switch ((_sort, _ascending)) {
-        (_DetSort.time, true) => 'Oldest first',
-        (_DetSort.time, false) => 'Newest first',
+        (_DetSort.time, true) => 'WiFi, then BLE · oldest first',
+        (_DetSort.time, false) => 'WiFi, then BLE · newest first',
         (_DetSort.rssi, true) => 'Weakest signal first',
         (_DetSort.rssi, false) => 'Strongest signal first',
         (_DetSort.mac, true) => 'A → Z',

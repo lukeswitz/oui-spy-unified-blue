@@ -652,45 +652,64 @@ Future<void> showSortSheet<T>({
   required VoidCallback onToggleDirection,
   String Function()? hint,
 }) {
-  return showCommandSheet<void>(
+  final t = AppTheme.of(context);
+  return showGeneralDialog<void>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setSheet) => CommandSheet(
-        title: 'SORT',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            CommandSheetGroup(
-              label: 'ORDER BY',
-              child: Wrap(
-                spacing: barGap(ctx),
-                runSpacing: barGap(ctx),
+    barrierDismissible: true,
+    barrierLabel: 'Close',
+    barrierColor: Colors.black54,
+    transitionDuration: const Duration(milliseconds: 200),
+    transitionBuilder: (ctx, anim, secondary, child) => SlideTransition(
+      position: Tween(begin: const Offset(0, -1), end: Offset.zero)
+          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+    pageBuilder: (ctx, anim, secondary) => Align(
+      alignment: Alignment.topCenter,
+      child: Material(
+        color: t.surface,
+        child: SafeArea(
+          bottom: false,
+          child: StatefulBuilder(
+            builder: (ctx, setSheet) => CommandSheet(
+              title: 'SORT',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (var i = 0; i < options.length; i++)
-                    CommandChip(
-                      label: label(options[i]),
-                      selected: current() == options[i],
-                      color: pillColor(i),
-                      onTap: () {
-                        onPick(options[i]);
-                        setSheet(() {});
-                      },
+                  CommandSheetGroup(
+                    label: 'ORDER BY',
+                    child: Wrap(
+                      spacing: barGap(ctx),
+                      runSpacing: barGap(ctx),
+                      children: [
+                        for (var i = 0; i < options.length; i++)
+                          CommandChip(
+                            label: label(options[i]),
+                            selected: current() == options[i],
+                            color: pillColor(i),
+                            onTap: () {
+                              onPick(options[i]);
+                              setSheet(() {});
+                            },
+                          ),
+                      ],
                     ),
+                  ),
+                  const Divider(height: 1),
+                  CommandSheetTile(
+                    icon: ascending() ? Icons.arrow_upward : Icons.arrow_downward,
+                    label: ascending() ? 'ASCENDING' : 'DESCENDING',
+                    subtitle: hint?.call(),
+                    color: AppTheme.accent,
+                    onTap: () {
+                      onToggleDirection();
+                      setSheet(() {});
+                    },
+                  ),
                 ],
               ),
             ),
-            const Divider(height: 1),
-            CommandSheetTile(
-              icon: ascending() ? Icons.arrow_upward : Icons.arrow_downward,
-              label: ascending() ? 'ASCENDING' : 'DESCENDING',
-              subtitle: hint?.call(),
-              color: AppTheme.accent,
-              onTap: () {
-                onToggleDirection();
-                setSheet(() {});
-              },
-            ),
-          ],
+          ),
         ),
       ),
     ),

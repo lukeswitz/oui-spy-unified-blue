@@ -561,17 +561,8 @@ class BleManager {
   // -- Scanning --
 
   /// Scan for OUI-SPY devices. Results arrive on FlutterBluePlus.onScanResults.
-  Future<void> startScan({Duration timeout = const Duration(seconds: 10)}) async {
-    // Ensure BLE adapter is on
-    final adapter = await FlutterBluePlus.adapterState
-        .firstWhere((s) => s != BluetoothAdapterState.unknown)
-        .timeout(const Duration(seconds: 2), onTimeout: () => FlutterBluePlus.adapterStateNow);
-    if (adapter == BluetoothAdapterState.off) {
-      await FlutterBluePlus.turnOn();
-    }
-
-    await FlutterBluePlus.startScan(withServices: [GattUuids.service], timeout: timeout);
-  }
+  Future<void> startScan({Duration timeout = const Duration(seconds: 10)}) =>
+      FlutterBluePlus.startScan(withServices: [GattUuids.service], timeout: timeout);
 
   /// Stream of scan results (list updated each scan cycle).
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.onScanResults;
@@ -2348,6 +2339,8 @@ class BleManager {
       accuracy: isAway ? null : _lastAccuracy,
       satelliteCount: isAway ? null : _lastSatCount,
     );
+    final clientOf = BleProtocol.clientApOf(data);
+    if (clientOf != null) clientAp[detection.macAddress.toLowerCase()] = clientOf;
     _detections.add(detection);
     final src = detection.sourceNodeId;
     if (enowHubActive && src.length == 4 && src.startsWith('E')) {

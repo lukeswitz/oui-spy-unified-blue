@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/prefs.dart';
@@ -46,6 +47,46 @@ void main() {
     expect(net.single.rssi, -78);
     expect(g.keyOf[net.single], 'ssid:MyNetwork|wardrive');
     expect(g.rows, hasLength(rows.length - 1));
+  });
+
+  test('board APs that carry the SSID only in the wardrive extension group too', () {
+    Detection ap(String mac, int rssi) => Detection(
+          id: mac,
+          sessionId: 's',
+          nodeId: 'n',
+          macAddress: mac,
+          engine: Engine.wardrive,
+          method: 'wifi_ap',
+          rssi: rssi,
+          channel: 6,
+          deviceTimestampMs: 0,
+          appTimestamp: DateTime(2026),
+          ssid: '',
+          wardrive: const WardriveExtension(ssid: 'MyNetwork', authMode: 3),
+        );
+    final g = groupBySsid([ap('0a:bb:cc:dd:ee:01', -70), ap('0a:bb:cc:dd:ee:02', -60)],
+        (d) => '${d.macAddress}|${d.engine.name}');
+    expect(g.rows, hasLength(1));
+    expect(g.macs[g.rows.single], hasLength(2));
+    expect(g.rows.single.rssi, -60);
+  });
+
+  test('a board wifi_client record decodes with the AP it talks to', () {
+    final b = List<int>.filled(80, 0);
+    b[0] = Engine.wardrive.index;
+    b.setRange(1, 7, [0x0a, 0xbb, 0xcc, 0xdd, 0xee, 0x09]);
+    b[7] = 0xc4;
+    b[8] = 6;
+    b[13] = 2;
+    b[74] = 0x0a;
+    b.setRange(75, 80, [0xbb, 0xcc, 0xdd, 0xee, 0x01]);
+    final d = BleProtocol.decodeDetection(b, sessionId: 's', nodeId: 'n', appTimestamp: DateTime(2026));
+    expect(d.method, 'wifi_client');
+    expect(d.macAddress, '0a:bb:cc:dd:ee:09');
+    expect(d.channel, 6);
+    expect(BleProtocol.clientApOf(b), '0a:bb:cc:dd:ee:01');
+    final ap = List<int>.from(b)..[13] = 0;
+    expect(BleProtocol.clientApOf(ap), isNull);
   });
 
   test('grouping 5000 BSSIDs of 50 SSIDs stays linear', () {
@@ -93,5 +134,31 @@ void main() {
     expect(order[ap + 1], '0a:bb:cc:dd:ee:09');
     expect(nested.parentOf.keys.map((d) => d.macAddress), ['0a:bb:cc:dd:ee:09']);
     expect(order, hasLength(4));
+  });
+
+  test('with SSID grouping on, clients of every BSSID indent under the SSID row', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final c = ProviderContainer(overrides: [sharedPreferencesProvider.overrideWithValue(prefs)]);
+    final app = c.read(appStateProvider);
+    final ble = c.read(bleManagerProvider);
+
+    ble.addPhoneWifiDetection('0A:BB:CC:DD:EE:01', 'MyNetwork', -80, 1, 3);
+    ble.addPhoneWifiDetection('0A:BB:CC:DD:EE:02', 'MyNetwork', -70, 6, 3);
+    ble.addPhoneWifiDetection('0a:bb:cc:dd:ee:09', '', -60, 1, 0, client: true, ap: '0A:BB:CC:DD:EE:01');
+    ble.addPhoneWifiDetection('0a:bb:cc:dd:ee:08', '', -61, 6, 0, client: true, ap: '0A:BB:CC:DD:EE:02');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final g = groupBySsid(app.recentDetections, app.dedupeKey);
+    String rowKey(Detection d) => g.keyOf[d] ?? app.dedupeKey(d);
+    final nested = nestUnderParents(g.rows, rowKey, (d) {
+      final ap = app.apKeyFor(d);
+      return ap == null ? null : g.groupOf[ap] ?? ap;
+    });
+    final order = nested.rows.map((d) => d.macAddress).toList();
+    final net = order.indexWhere((m) => m == '0a:bb:cc:dd:ee:01' || m == '0a:bb:cc:dd:ee:02');
+    expect(order, hasLength(3));
+    expect(order.sublist(net + 1).toSet(), {'0a:bb:cc:dd:ee:09', '0a:bb:cc:dd:ee:08'});
+    expect(nested.parentOf, hasLength(2));
   });
 }

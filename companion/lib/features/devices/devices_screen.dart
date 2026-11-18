@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/features/feed/feed_screen.dart' show nestUnderParents;
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/classify/adv_decoder.dart';
@@ -143,10 +145,11 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     );
   }
 
-  List<String> _orderedSections(List<ClassifiedDevice> devices) {
+  List<String> _orderedSections(List<ClassifiedDevice> devices,
+      [Map<ClassifiedDevice, ClassifiedDevice> parentOf = const {}]) {
     final counts = <String, int>{};
     for (final d in devices) {
-      final k = _sectionKey(d.primaryClass);
+      final k = _sectionKey((parentOf[d] ?? d).primaryClass);
       counts[k] = (counts[k] ?? 0) + 1;
     }
     final present = counts.keys.toSet();
@@ -176,7 +179,12 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
           .compareTo(b.obs.channel > 0 ? b.obs.channel : 1 << 30),
       DeviceSort.firstSeen => (a, b) => b.obs.firstSeenMs.compareTo(a.obs.firstSeenMs),
     };
-    return _sortAscending ? (a, b) => cmp(b, a) : cmp;
+    final Comparator<ClassifiedDevice> dirCmp = _sortAscending ? (a, b) => cmp(b, a) : cmp;
+    if (_sort != DeviceSort.recent) return dirCmp;
+    return (a, b) {
+      final r = a.obs.kind.index.compareTo(b.obs.kind.index);
+      return r != 0 ? r : dirCmp(a, b);
+    };
   }
 
   bool _withYouOnly = false;
@@ -473,7 +481,9 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final counts = _cache!.counts;
     final unclassified = _cache!.unclassified;
     final guesses = _cache!.guesses;
-    final ordered = _cache!.ordered;
+    final bleMgr = ref.read(bleManagerProvider);
+    final nest = nestUnderParents(_cache!.ordered, (d) => d.obs.key, (d) => clientApKey(bleMgr, d.obs));
+    final ordered = nest.rows;
     final shown = ordered;
     final flood = reg.pairingFlood.notice;
     final beaconFlood = reg.beaconFlood.notice;
@@ -554,8 +564,9 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                             ? _GroupedDeviceList(
                                 devices: ordered,
                                 guesses: guesses,
-                                sectionKeyOf: (d) => _sectionKey(d.primaryClass),
-                                order: _orderedSections(ordered),
+                                sectionKeyOf: (d) => _sectionKey((nest.parentOf[d] ?? d).primaryClass),
+                                nested: nest.parentOf,
+                                order: _orderedSections(ordered, nest.parentOf),
                                 expanded: _expanded,
                                 onToggle: _toggleCollapsed,
                                 onArrange: _openArrangeSheet,
@@ -563,9 +574,12 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                             : ListView.builder(
                                 padding: EdgeInsets.symmetric(vertical: barGap(context)),
                                 itemCount: ordered.length,
-                                itemBuilder: (context, i) => DeviceRow(
-                                  device: ordered[i],
-                                  guess: guesses[ordered[i].obs.key]!,
+                                itemBuilder: (context, i) => nestedRow(
+                                  nest.parentOf.containsKey(ordered[i]),
+                                  DeviceRow(
+                                    device: ordered[i],
+                                    guess: guesses[ordered[i].obs.key]!,
+                                  ),
                                 ),
                               ),
                       ),
@@ -644,8 +658,10 @@ class _GroupedDeviceList extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
     required this.onArrange,
+    required this.nested,
   });
 
+  final Map<ClassifiedDevice, ClassifiedDevice> nested;
   final List<ClassifiedDevice> devices;
   final Map<String, Guess> guesses;
   final String Function(ClassifiedDevice) sectionKeyOf;
@@ -682,10 +698,13 @@ class _GroupedDeviceList extends StatelessWidget {
           );
         }
         final d = item as ClassifiedDevice;
-        return DeviceRow(
-          key: ValueKey('dev:${d.obs.key}'),
-          device: d,
-          guess: guesses[d.obs.key]!,
+        return nestedRow(
+          nested.containsKey(d),
+          DeviceRow(
+            key: ValueKey('dev:${d.obs.key}'),
+            device: d,
+            guess: guesses[d.obs.key]!,
+          ),
         );
       },
     );
@@ -953,6 +972,15 @@ class DeviceRow extends ConsumerWidget {
     );
   }
 }
+
+String? clientApKey(BleManager ble, Observation o) {
+  if (o.kind != RadioKind.wifi || o.isAp) return null;
+  final ap = ble.clientAp[o.mac.toLowerCase()];
+  return ap == null ? null : 'WIFI:${MacUtil.normalize(ap)}';
+}
+
+Widget nestedRow(bool nested, Widget row) =>
+    nested ? Padding(padding: const EdgeInsets.only(left: 28), child: row) : row;
 
 List<Widget> deviceFlagIcons(ResolvedTheme t,
         {required bool hidden, required bool randomized, required bool withYou, required double size}) =>
