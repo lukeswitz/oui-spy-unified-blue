@@ -67,7 +67,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   int _lastSessionLoadEpoch = 0;
   bool _initialFitDone = false;
   bool _idleCenteredDone = false;
-  bool _feedCollapsed = false;
+  bool _feedCollapsed = true;
   final _statsKey = GlobalKey();
   double _statsHeight = 0;
   final _completedBarKey = GlobalKey();
