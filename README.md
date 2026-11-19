@@ -8,7 +8,6 @@
 
 # OUI-APEX
 
-***"Snoop unto them, as they snoop unto us"***
 
 </div>
 
@@ -32,20 +31,7 @@
 
 > Runs the OUI-SPY ecosystem by colonelpanichacks, with additional features.
 >
-> **Not affiliated with OUI-SPY**
-
-## Contents
-
-- [Quick start](#quick-start)
-- [Engines](#engines)
-- [Ways to run](#ways-to-run)
-- [App](#app)
-- [Boards](#boards)
-- [Mesh](#mesh)
-- [External GPS](#optional-gps-module)
-- [Privacy](#privacy)
-- [Build](#build)
-- [Credits](#credits)
+> *Not affiliated with OUI-SPY*
   
 
 ## Quick start
@@ -236,7 +222,7 @@ OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle with no root, kernel drive
 |---|---|
 | MediaTek MT7921AU | Wi-Fi (2.4 + 5 GHz) and Bluetooth LE |
 | MediaTek MT7612U | Wi-Fi (2.4 + 5 GHz) |
-| Realtek RTL8812AU / RTL8814AU / RTL8821AU | Wi-Fi (2.4 + 5 GHz) |
+| **Realtek RTL8812AU (Recommended)**/ RTL8814AU | Wi-Fi (2.4 + 5 GHz) |
 | Atheros AR9271 | Wi-Fi (2.4 GHz) |
 | Ralink RT3070 | Wi-Fi (2.4 GHz) |
 
