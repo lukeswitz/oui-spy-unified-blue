@@ -179,7 +179,7 @@ class _StatusBarState extends ConsumerState<StatusBar> {
 }
 
 
-IconData get _phoneIcon => Platform.isAndroid
+IconData get phoneScanIcon => Platform.isAndroid
     ? Icons.phone_android
     : Platform.isMacOS
         ? Icons.laptop_mac
@@ -194,7 +194,7 @@ class _PhoneScanChip extends ConsumerWidget {
     final t = AppTheme.of(context);
     return IconButton(
       tooltip: 'Scan with this device',
-      icon: Icon(src.radioListening ? Icons.wifi_tethering : _phoneIcon),
+      icon: Icon(src.radioListening ? Icons.wifi_tethering : phoneScanIcon),
       color: src.active ? AppTheme.detector : t.textDim,
       onPressed: () => showCommandSheet<void>(
         context: context,
@@ -218,7 +218,7 @@ class _UsbScanChip extends ConsumerWidget {
       padding: const EdgeInsets.only(left: 2, right: 6),
       child: Tooltip(
         message: running ? 'USB adapter scanning' : 'USB adapter connected',
-        child: Icon(Icons.usb, size: 22, color: AppTheme.detector),
+        child: Icon(Icons.usb, size: 22, color: running ? AppTheme.detector : AppTheme.of(context).textSecondary),
       ),
     );
   }
@@ -271,7 +271,7 @@ class _PhoneScanSheetState extends ConsumerState<_PhoneScanSheet> {
         mainAxisSize: MainAxisSize.min,
         children: [
           ConfigToggleRow(
-            icon: _phoneIcon,
+            icon: phoneScanIcon,
             label: 'Scan with this device',
             subtitle: status,
             color: AppTheme.detector,

@@ -64,11 +64,12 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
   List<String> _sectionOrder = const [];
   final Set<String> _expanded = {};
 
-  ({int rev, DeviceSort sort, bool asc, RadioKind? radio, String? source, SignatureClass? cls, bool unc})? _cacheKey;
+  ({int rev, DeviceSort sort, bool asc, RadioKind? radio, String? source, SignatureClass? cls, bool unc, bool withYou})? _cacheKey;
   ({List<ClassifiedDevice> all, Map<SignatureClass, int> counts, int unclassified, List<ClassifiedDevice> ordered, Map<String, Guess> guesses})? _cache;
 
   static const _kGrouped = 'devicesGroupedView';
   static const _kOrder = 'devicesSectionOrder';
+  static const _kExpanded = 'devicesSectionExpanded';
   static const _unclassifiedKey = '__unclassified__';
 
   @override
@@ -77,6 +78,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final prefs = ref.read(sharedPreferencesProvider);
     _grouped = prefs.getBool(_kGrouped) ?? true;
     _sectionOrder = prefs.getStringList(_kOrder) ?? const [];
+    _expanded.addAll(prefs.getStringList(_kExpanded) ?? const []);
   }
 
   static String _sectionKey(SignatureClass? c) => c?.name ?? _unclassifiedKey;
@@ -90,6 +92,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     setState(() {
       if (!_expanded.remove(key)) _expanded.add(key);
     });
+    ref.read(sharedPreferencesProvider).setStringList(_kExpanded, _expanded.toList());
   }
 
   void _persistOrder(List<String> order) {
@@ -459,7 +462,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final reg = ref.watch(deviceRegistryProvider);
     final t = AppTheme.of(context);
     final key = (rev: reg.rev, sort: _sort, asc: _sortAscending, radio: _radio,
-        source: _source, cls: _class, unc: _unclassifiedOnly);
+        source: _source, cls: _class, unc: _unclassifiedOnly, withYou: _withYouOnly);
     if (_cache == null || _cacheKey != key) {
       final all = reg.devices.toList();
       final counts = <SignatureClass, int>{};
@@ -482,9 +485,13 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
     final unclassified = _cache!.unclassified;
     final guesses = _cache!.guesses;
     final bleMgr = ref.read(bleManagerProvider);
+    final bySsid = groupDevicesBySsid(_cache!.ordered);
     final nest = ref.watch(groupClientsProvider)
-        ? nestUnderParents(_cache!.ordered, (d) => d.obs.key, (d) => clientApKey(bleMgr, d.obs))
-        : (rows: _cache!.ordered, parentOf: Map<ClassifiedDevice, ClassifiedDevice>.identity());
+        ? nestUnderParents(bySsid.rows, (d) => d.obs.key, (d) {
+            final ap = clientApKey(bleMgr, d.obs);
+            return ap == null ? null : bySsid.repKeyOf[ap] ?? ap;
+          })
+        : (rows: bySsid.rows, parentOf: Map<ClassifiedDevice, ClassifiedDevice>.identity());
     final ordered = nest.rows;
     final shown = ordered;
     final flood = reg.pairingFlood.notice;
@@ -569,6 +576,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                                 guesses: guesses,
                                 sectionKeyOf: (d) => _sectionKey((nest.parentOf[d] ?? d).primaryClass),
                                 nested: nest.parentOf,
+                                members: bySsid.members,
                                 order: _orderedSections(ordered, nest.parentOf),
                                 expanded: _expanded,
                                 onToggle: _toggleCollapsed,
@@ -582,6 +590,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                                   DeviceRow(
                                     device: ordered[i],
                                     guess: guesses[ordered[i].obs.key]!,
+                                    members: bySsid.members[ordered[i]] ?? const [],
                                   ),
                                 ),
                               ),
@@ -609,6 +618,8 @@ class _FloodBanner extends StatelessWidget {
     final gap = barGap(context);
     return Material(
       color: AppTheme.error.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onDismiss,
         child: Padding(
@@ -662,9 +673,11 @@ class _GroupedDeviceList extends StatelessWidget {
     required this.onToggle,
     required this.onArrange,
     required this.nested,
+    required this.members,
   });
 
   final Map<ClassifiedDevice, ClassifiedDevice> nested;
+  final Map<ClassifiedDevice, List<ClassifiedDevice>> members;
   final List<ClassifiedDevice> devices;
   final Map<String, Guess> guesses;
   final String Function(ClassifiedDevice) sectionKeyOf;
@@ -707,6 +720,7 @@ class _GroupedDeviceList extends StatelessWidget {
             key: ValueKey('dev:${d.obs.key}'),
             device: d,
             guess: guesses[d.obs.key]!,
+            members: members[d] ?? const [],
           ),
         );
       },
@@ -737,6 +751,8 @@ class _SectionHeader extends StatelessWidget {
     final (label, icon, color) = _sectionVisual(t, sectionKey);
     return Material(
       color: color.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onToggle,
         child: DecoratedBox(
@@ -792,10 +808,11 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class DeviceRow extends ConsumerWidget {
-  const DeviceRow({super.key, required this.device, required this.guess});
+  const DeviceRow({super.key, required this.device, required this.guess, this.members = const []});
 
   final ClassifiedDevice device;
   final Guess guess;
+  final List<ClassifiedDevice> members;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -853,7 +870,11 @@ class DeviceRow extends ConsumerWidget {
         ),
       if (!ble && o.channel > 0) TextSpan(text: 'CH ${o.channel}', style: mono),
     ];
-    final shownMac = o.mac.isEmpty ? '' : maskMac(o.mac, priv);
+    final shownMac = members.length > 1
+        ? '${members.length} MACs'
+        : o.mac.isEmpty
+            ? ''
+            : maskMac(o.mac, priv);
     final idLine = <TextSpan>[
       if (shownMac.isNotEmpty && shownMac != title) TextSpan(text: shownMac, style: mono),
       if (vendor != null && vendor.isNotEmpty) TextSpan(text: vendor),
@@ -871,7 +892,7 @@ class DeviceRow extends ConsumerWidget {
         child: InkWell(
           onTap: () => showCommandSheet<void>(
             context: context,
-            builder: (_) => DeviceDetailSheet(device: device, vendor: vendor),
+            builder: (_) => DeviceDetailSheet(device: device, vendor: vendor, members: members),
           ),
           child: Container(
             decoration: BoxDecoration(
@@ -988,9 +1009,11 @@ Widget nestedRow(bool nested, Widget row) =>
 List<Widget> deviceFlagIcons(ResolvedTheme t,
         {required bool hidden, required bool randomized, required bool withYou, required double size}) =>
     [
-      if (hidden) Icon(Icons.visibility_off, size: size, color: AppTheme.warning),
-      if (randomized) Icon(Icons.shuffle, size: size, color: t.textDim),
-      if (withYou) Icon(Icons.directions_walk, size: size, color: AppTheme.error),
+      if (hidden)
+        Tooltip(message: 'Hidden network', child: Icon(Icons.visibility_off, size: size, color: AppTheme.warning)),
+      if (randomized) Tooltip(message: 'Random MAC', child: Icon(Icons.shuffle, size: size, color: t.textDim)),
+      if (withYou)
+        Tooltip(message: 'With you', child: Icon(Icons.directions_walk, size: size, color: AppTheme.error)),
     ];
 
 Widget rssiSparkFor(Observation o, Color track) => _RssiSpark(
@@ -1084,10 +1107,11 @@ class _RssiSparkPainter extends CustomPainter {
 }
 
 class DeviceDetailSheet extends ConsumerWidget {
-  const DeviceDetailSheet({super.key, required this.device, this.vendor});
+  const DeviceDetailSheet({super.key, required this.device, this.vendor, this.members = const []});
 
   final ClassifiedDevice device;
   final String? vendor;
+  final List<ClassifiedDevice> members;
 
   void _foxhunt(BuildContext context, WidgetRef ref) {
     final o = device.obs;
@@ -1137,14 +1161,24 @@ class DeviceDetailSheet extends ConsumerWidget {
         ...rows,
       ],
     );
-    return ConstrainedBox(
+    final recent = [...members]..sort((a, b) => b.obs.lastSeenMs.compareTo(a.obs.lastSeenMs));
+    final now = DateTime.now().millisecondsSinceEpoch;
+    String ago(int ms) {
+      final s = ((now - ms) / 1000).round().clamp(0, 1 << 31);
+      return s < 60 ? '${s}s ago' : s < 3600 ? '${s ~/ 60}m ago' : '${s ~/ 3600}h ago';
+    }
+    return SelectionArea(
+      child: ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.82),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            color: t.fill,
+            decoration: BoxDecoration(
+              color: t.fill,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+            ),
             padding: const EdgeInsets.fromLTRB(20, 14, 8, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1152,7 +1186,10 @@ class DeviceDetailSheet extends ConsumerWidget {
                 Row(
                   children: [
                     Container(
-                      color: t.mark,
+                      decoration: BoxDecoration(
+                        color: t.mark,
+                        borderRadius: BorderRadius.circular(AppRadius.chip),
+                      ),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       child: Text(
                         classLabel,
@@ -1199,6 +1236,16 @@ class DeviceDetailSheet extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (g.because.isNotEmpty)
+                    section('WHY', [
+                      Text(g.because, style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.3)),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: DEyebrow(
+                            '${switch (g.confidence) { Confidence.high => 'HIGH', Confidence.medium => 'MEDIUM', Confidence.low => 'LOW' }} confidence',
+                            color: confidenceColor(g.confidence)),
+                      ),
+                    ]),
                   section('IDENTITY', [
                     if (o.mac.isNotEmpty) kv('Address', o.mac, mono: true),
                     if (o.mac.isEmpty) kv('Phone ID', o.key.substring(4), mono: true),
@@ -1225,6 +1272,11 @@ class DeviceDetailSheet extends ConsumerWidget {
                         },
                       ),
                   ]),
+                  if (members.length > 1)
+                    section('${members.length} MACS ON THIS NETWORK', [
+                      for (final m in recent.take(5))
+                        kv(ago(m.obs.lastSeenMs), '${m.obs.mac} · ${m.obs.rssi} dBm', mono: true),
+                    ]),
                   if (device.signatures.isNotEmpty)
                     section('SIGNATURES', [
                       for (final s in device.signatures)
@@ -1294,6 +1346,37 @@ class DeviceDetailSheet extends ConsumerWidget {
           ),
         ],
       ),
+      ),
     );
   }
+}
+
+({
+  List<ClassifiedDevice> rows,
+  Map<ClassifiedDevice, List<ClassifiedDevice>> members,
+  Map<String, String> repKeyOf,
+}) groupDevicesBySsid(List<ClassifiedDevice> rows) {
+  final out = <ClassifiedDevice>[];
+  final rep = <String, ClassifiedDevice>{};
+  final members = Map<ClassifiedDevice, List<ClassifiedDevice>>.identity();
+  final repKeyOf = <String, String>{};
+  for (final d in rows) {
+    final o = d.obs;
+    final ssid = o.kind == RadioKind.wifi && o.isAp ? o.name.trim() : '';
+    if (ssid.isEmpty) {
+      out.add(d);
+      continue;
+    }
+    final r = rep[ssid];
+    if (r == null) {
+      rep[ssid] = d;
+      members[d] = [d];
+      out.add(d);
+      continue;
+    }
+    members[r]!.add(d);
+    repKeyOf[o.key] = r.obs.key;
+  }
+  members.removeWhere((_, list) => list.length < 2);
+  return (rows: out, members: members, repKeyOf: repKeyOf);
 }

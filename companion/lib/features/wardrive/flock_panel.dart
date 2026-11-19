@@ -54,6 +54,7 @@ class _FlockPanelState extends State<FlockPanel> {
               color: count > 0
                   ? accent.withValues(alpha: 0.2)
                   : t.surface.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               border: Border.all(
                 color: count > 0
                     ? accent.withValues(alpha: 0.5)
@@ -89,8 +90,10 @@ class _FlockPanelState extends State<FlockPanel> {
           Container(
             margin: const EdgeInsets.only(top: 4),
             constraints: const BoxConstraints(maxHeight: 140, maxWidth: 240),
+            clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: t.background.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(color: accent.withValues(alpha: 0.3)),
             ),
             child: ListView.builder(
@@ -150,6 +153,7 @@ class _Row extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
                 ),
                 child: Text(
                   isBle ? 'B' : 'W',
@@ -162,6 +166,7 @@ class _Row extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                   decoration: BoxDecoration(
                     color: AppTheme.warning.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                   ),
                   child: Text('R',
                     style: TextStyle(color: AppTheme.warning, fontSize: 7, fontWeight: FontWeight.w700)),
@@ -176,6 +181,7 @@ class _Row extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
                     decoration: BoxDecoration(
                       color: cc.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppRadius.chip),
                     ),
                     child: Text(_flockConfShort(fc),
                       style: TextStyle(color: cc, fontSize: 7, fontWeight: FontWeight.w700)),

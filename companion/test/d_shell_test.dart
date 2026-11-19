@@ -134,7 +134,7 @@ void main() {
     expect(src.contains('0xFF1E2A28'), isFalse);
     expect(src.contains('0xFF4AFFCC'), isFalse);
     expect(src.contains('Color(0x'), isFalse);
-    expect(src.contains('BorderRadius.circular('), isFalse);
+    expect(RegExp(r'BorderRadius\.circular\(\s*[0-9]').hasMatch(src), isFalse);
     expect(src.contains('elevation:'), isFalse);
     expect(src.contains('.fill'), isTrue);
   });

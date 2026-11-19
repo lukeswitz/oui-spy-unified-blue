@@ -34,6 +34,7 @@ import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/copied_toast.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
 
@@ -45,9 +46,11 @@ class DetectionRow extends ConsumerWidget {
     this.horizontal = 20,
     this.onActivate,
     this.macs = const [],
+    this.notes = const [],
   });
   final Detection detection;
   final List<String> macs;
+  final List<({String text, Color color})> notes;
   final bool divider;
   final double horizontal;
   final void Function(BuildContext, WidgetRef)? onActivate;
@@ -64,6 +67,11 @@ class DetectionRow extends ConsumerWidget {
     final macCount = macs.isEmpty ? 1 : macs.length;
     final registry = ref.exists(deviceRegistryProvider) ? ref.read(deviceRegistryProvider) : null;
     final device = registry?.deviceFor(detection);
+    final app = ref.watch(appStateProvider);
+    final nodeLabel = detection.sourceNodeId.isEmpty ||
+            (detection.sourceNodeId == BleManager.phoneNodeId && !app.isConnected)
+        ? ''
+        : app.labelForNode(detection.sourceNodeId);
 
     return Listener(
       onPointerDown: (event) {
@@ -123,19 +131,43 @@ class DetectionRow extends ConsumerWidget {
             if (OuiLookupService.isLawEnforcement(detection.macAddress))
               Icon(Icons.local_police, size: 13, color: AppTheme.warning),
           ];
+          final method = detection.method == 'wifi_ap' || detection.method == 'ble_adv' || engine == Engine.sdr
+              ? ''
+              : methodLabel(detection.method);
+          final flock = detection.flock;
+          final pwn = detection.unipwn;
+          final det = detection.detector;
+          final alt = detection.odid?.altitudeMsl;
+          final match = det?.filterDescription?.trim() ?? '';
           final meta = <TextSpan>[
             if (sdrCat != null) TextSpan(text: sdrCat.label.toUpperCase(), style: tagStyle),
             if (headlineIsMac && clsStr != null) TextSpan(text: clsLabel, style: tagStyle),
+            if (method.isNotEmpty && method.toUpperCase() != clsLabel)
+              TextSpan(text: method.toUpperCase(), style: tagStyle.copyWith(color: engine.color)),
+            if (flock?.isRaven ?? false)
+              TextSpan(
+                  text: (flock!.ravenFirmware?.isNotEmpty ?? false) ? 'RAVEN ${flock.ravenFirmware}' : 'RAVEN',
+                  style: tagStyle.copyWith(color: AppTheme.warning)),
+            if (flock?.isValidated ?? false)
+              TextSpan(text: 'VALIDATED', style: tagStyle.copyWith(color: AppTheme.success)),
+            if (pwn != null)
+              TextSpan(text: pwn.robotType.toUpperCase(), style: tagStyle.copyWith(color: Engine.uniPwn.color)),
+            if (pwn?.exploited ?? false)
+              TextSpan(text: 'PWNED', style: tagStyle.copyWith(color: AppTheme.success)),
             if (detection.odid?.uavId?.isNotEmpty ?? false)
               TextSpan(
                   text: 'UAS ${detection.odid!.uavId}',
                   style: tagStyle.copyWith(letterSpacing: 0, fontWeight: FontWeight.w700)),
+            if (alt != null) TextSpan(text: '${alt}m', style: monoDim),
             if (isWifi && detection.channel > 0)
               TextSpan(text: 'CH ${detection.channel}', style: monoDim),
-            if (!headlineIsMac)
-              TextSpan(text: macCount > 1 ? '$macCount MACs' : maskMac(shownId, priv), style: monoDim),
+            if (detection.count > 1) TextSpan(text: '×${detection.count}', style: monoDim),
             if (manufacturer != null && manufacturer.isNotEmpty)
               TextSpan(text: manufacturer, style: dimStyle),
+            if (!headlineIsMac)
+              TextSpan(text: macCount > 1 ? '$macCount MACs' : maskMac(shownId, priv), style: monoDim),
+            if (match.isNotEmpty) TextSpan(text: match, style: monoDim.copyWith(color: AppTheme.accent)),
+            if (det != null) TextSpan(text: det.isFullMac ? 'FULL' : 'OUI', style: monoDim),
           ];
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -179,6 +211,16 @@ class DetectionRow extends ConsumerWidget {
                             ],
                           ),
                         ),
+                        if (nodeLabel.isNotEmpty) ...[
+                          SizedBox(width: gap * 0.5),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 64),
+                            child: Text(nodeLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: AppTheme.accent, fontSize: 10.5)),
+                          ),
+                        ],
                         SizedBox(width: gap),
                         Text('${detection.rssi}',
                             style: TextStyle(
@@ -216,6 +258,30 @@ class DetectionRow extends ConsumerWidget {
                         Text(timeStr, style: monoDim.copyWith(fontSize: 10.5)),
                       ],
                     ),
+                    if (flock != null) ...[
+                      const SizedBox(height: 3),
+                      Builder(builder: (_) {
+                        final c = flock.confidence(detection.method);
+                        return Text(
+                          c.label(detection.method),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: c == FlockConfidence.suspected ? AppTheme.warning : AppTheme.success,
+                            fontSize: 11,
+                            fontFamily: AppTheme.mono,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        );
+                      }),
+                    ],
+                    for (final n in notes) ...[
+                      const SizedBox(height: 3),
+                      Text(n.text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: n.color, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    ],
                   ],
                 ),
               ),
@@ -365,12 +431,13 @@ void showDetectionDetails(
     final macLine = vendor != null && vendor.isNotEmpty
         ? '$shownMac · $vendor'
         : shownMac;
+    final host = Navigator.of(context).context;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: t.surface,
-      builder: (ctx) => ConstrainedBox(
+      builder: (ctx) => Consumer(builder: (ctx, ref, _) => ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(ctx).size.height * 0.88,
         ),
@@ -380,7 +447,10 @@ void showDetectionDetails(
           children: [
             Container(
               key: const Key('detail-header'),
-              color: t.fill,
+              decoration: BoxDecoration(
+                color: t.fill,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+              ),
               padding: const EdgeInsets.fromLTRB(20, 14, 8, 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,7 +459,10 @@ void showDetectionDetails(
                     children: [
                       Container(
                         key: const Key('detail-engine-chip'),
-                        color: t.mark,
+                        decoration: BoxDecoration(
+                          color: t.mark,
+                          borderRadius: BorderRadius.circular(AppRadius.chip),
+                        ),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         child: Text(
@@ -463,7 +536,7 @@ void showDetectionDetails(
                         onResult: (reg) {
                           Navigator.pop(ctx);
                           showModalBottomSheet<void>(
-                            context: context,
+                            context: host,
                             isScrollControlled: true,
                             builder: (_) => _FaaResultSheet(
                               reg: reg,
@@ -486,7 +559,7 @@ void showDetectionDetails(
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      detectionStartFoxhunt(context, ref, detection);
+                      detectionStartFoxhunt(host, ref, detection);
                     },
                     child: Row(
                       children: [
@@ -537,7 +610,7 @@ void showDetectionDetails(
                               if (onShowMap != null) {
                                 onShowMap();
                               } else {
-                                detectionZoomOnMap(context, ref, detection);
+                                detectionZoomOnMap(host, ref, detection);
                               }
                             },
                             child: const Text('Map'),
@@ -551,7 +624,7 @@ void showDetectionDetails(
                             Clipboard.setData(ClipboardData(
                                 text: detection.macAddress.toUpperCase()));
                             Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(host).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   'MAC copied',
@@ -595,7 +668,7 @@ void showDetectionDetails(
             ),
           ],
         ),
-      ),
+      )),
     );
 }
 
@@ -956,20 +1029,7 @@ class _DetailSummary extends ConsumerWidget {
     );
   }
 
-  void _copyValue(BuildContext context, String label, String value) {
-    Clipboard.setData(ClipboardData(text: value));
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$label copied',
-          style: TextStyle(color: t.textPrimary),
-        ),
-        backgroundColor: t.surfaceLight,
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
+  void _copyValue(BuildContext context, String label, String value) => copyWithToast(context, label, value);
 
   Widget _detailRow(BuildContext context, String label, String value) {
     return GestureDetector(
@@ -1362,8 +1422,10 @@ class _FaaResultSheet extends StatelessWidget {
               else
                 Container(
                   padding: const EdgeInsets.all(8),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: t.surfaceLight,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                     border: Border.all(color: t.border, width: 0.5),
                   ),
                   child: Column(
@@ -1383,16 +1445,7 @@ class _FaaResultSheet extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          Clipboard.setData(ClipboardData(text: r.value));
-          HapticFeedback.lightImpact();
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('${r.label} copied',
-                style: TextStyle(color: t.textPrimary)),
-            backgroundColor: t.surfaceLight,
-            duration: const Duration(seconds: 1),
-          ));
-        },
+        onTap: () => copyWithToast(context, r.label, r.value),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
           child: Row(
@@ -1464,6 +1517,7 @@ class _TransportBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(AppRadius.chip),
         border: Border.all(color: color.withValues(alpha: 0.45), width: 0.7),
       ),
       child: Text(
@@ -1547,6 +1601,7 @@ class DroneDetectionRow extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: AppTheme.warning.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(AppRadius.chip),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,

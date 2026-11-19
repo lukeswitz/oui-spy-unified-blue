@@ -441,6 +441,7 @@ class _StateCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Column(
@@ -477,6 +478,7 @@ class _StateCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: AppTheme.warning.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(AppRadius.chip),
                 border: Border.all(color: AppTheme.warning.withValues(alpha: 0.35)),
               ),
               child: Row(
@@ -543,6 +545,7 @@ class _ModeSelector extends StatelessWidget {
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.control),
         border: Border.all(color: t.border),
       ),
       child: Row(
@@ -563,6 +566,7 @@ class _ModeSelector extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppTheme.accent.withValues(alpha: 0.18) : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.chip),
         ),
         alignment: Alignment.center,
         child: Text(label,
@@ -596,6 +600,7 @@ class _WifiConfigCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Column(
@@ -636,7 +641,7 @@ class _ChanDropdown extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: t.textDim, fontSize: 11, letterSpacing: 2),
-        border: const OutlineInputBorder(),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       ),
       child: DropdownButtonHideUnderline(
@@ -697,6 +702,7 @@ Widget _gridBox(BuildContext context, List<(_StatTile, _StatTile)> rows) {
     padding: const EdgeInsets.all(8),
     decoration: BoxDecoration(
       color: t.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
       border: Border.all(color: t.border),
     ),
     child: Column(
@@ -877,14 +883,17 @@ class _SavedPcapsSectionState extends State<_SavedPcapsSection> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: t.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: t.border),
                 ),
                 child: Text('No captures yet.', style: TextStyle(color: t.textDim)),
               );
             }
             return Container(
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: t.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: t.border),
               ),
               child: Column(
@@ -980,6 +989,7 @@ class _AutoPcapCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Column(
@@ -1096,6 +1106,7 @@ class _NodePicker extends ConsumerWidget {
 
     final box = BoxDecoration(
       color: t.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
       border: Border.all(color: t.border),
     );
 

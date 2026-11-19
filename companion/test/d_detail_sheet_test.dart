@@ -164,6 +164,9 @@ void main() {
     await tester.tap(find.text('Channel'));
     await tester.pump();
     expect(copied, '6');
+    expect(find.text('Channel copied'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Channel copied'), findsNothing);
     await _release(tester, container);
   });
 
@@ -198,7 +201,7 @@ void main() {
     await _release(tester, container);
   });
 
-  testWidgets('FAA copy snackbar text uses textPrimary', (tester) async {
+  testWidgets('FAA copy message text uses textPrimary', (tester) async {
     final container = await _open(
       tester,
       _det(flock: false, odid: const OdidExtension(uavId: 'UAV123')),
@@ -210,9 +213,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Status'));
     await tester.pump();
-    final t = AppTheme.of(tester.element(find.byType(SnackBar)));
+    final t = AppTheme.of(tester.element(find.text('Status copied')));
     final text = tester.widget<Text>(find.text('Status copied'));
     expect(text.style?.color, t.textPrimary);
+    await tester.pump(const Duration(seconds: 2));
     await _release(tester, container);
   });
 

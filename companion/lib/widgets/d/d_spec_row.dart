@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/copied_toast.dart';
 
 class DSpecRow extends StatelessWidget {
   const DSpecRow({
@@ -22,6 +23,7 @@ class DSpecRow extends StatelessWidget {
     final style = Theme.of(context).textTheme.bodyMedium;
     return InkWell(
       onTap: onTap,
+      onLongPress: value.isEmpty ? null : () => copyWithToast(context, label, value),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: divider

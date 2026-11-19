@@ -83,6 +83,7 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: t.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: t.border),
                 ),
                 child: Row(
@@ -372,6 +373,7 @@ class _MiniStatTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Column(

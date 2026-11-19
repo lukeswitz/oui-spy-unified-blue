@@ -822,6 +822,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                               horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: t.surface.withValues(alpha: 0.92),
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                             border: Border.all(
                                 color: AppTheme.warning.withValues(alpha: 0.7)),
                           ),
@@ -844,6 +845,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                             padding: const EdgeInsets.only(left: 12, right: 4),
                             decoration: BoxDecoration(
                               color: t.surface.withValues(alpha: 0.96),
+                              borderRadius: BorderRadius.circular(AppRadius.card),
                               border: Border.all(color: AppTheme.warning),
                             ),
                             child: Row(

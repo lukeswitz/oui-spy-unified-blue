@@ -52,6 +52,7 @@ dependencies:
   package_info_plus: ^10.2.2
   device_info_plus: ^13.3.0
   vector_map_tiles: ^8.0.0
+  vector_tile_renderer: ^5.2.1
   wifi_scan: ^0.5.0
 
 dev_dependencies:
@@ -63,7 +64,6 @@ dev_dependencies:
   drift_dev: ^2.22.0
   freezed: ^2.5.0
   json_serializable: ^6.9.0
-  vector_tile_renderer: ^5.2.1
   flutter_blue_plus_platform_interface: 7.0.0
 
 flutter:

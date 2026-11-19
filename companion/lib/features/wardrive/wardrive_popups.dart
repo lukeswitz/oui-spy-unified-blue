@@ -27,6 +27,7 @@ class _ScanningPillState extends State<_ScanningPill>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: widget.color.withValues(alpha: 0.5)),
       ),
       child: Row(

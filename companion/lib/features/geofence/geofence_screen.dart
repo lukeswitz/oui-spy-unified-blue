@@ -443,6 +443,7 @@ class _DrawingToolbar extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
       ),
       child: Column(
@@ -484,15 +485,15 @@ class _DrawingToolbar extends StatelessWidget {
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   borderSide: BorderSide(color: t.border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   borderSide: BorderSide(color: t.border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   borderSide: BorderSide(color: AppTheme.accent),
                 ),
               ),
@@ -571,6 +572,7 @@ class _SmallBtn extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: color.withValues(alpha: onTap != null ? 0.15 : 0.05),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: color.withValues(alpha: onTap != null ? 0.5 : 0.15)),
         ),
         child: Text(label, style: TextStyle(
@@ -606,9 +608,11 @@ class _BottomPanel extends StatelessWidget {
     final t = AppTheme.of(context);
     return Container(
       constraints: const BoxConstraints(maxHeight: 320),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.95),
-        border: Border(top: BorderSide(color: t.border)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+        border: Border.all(color: t.border),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -676,6 +680,7 @@ class _DrawBtn extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
         ),
         child: Row(
@@ -726,6 +731,7 @@ class _GeofenceRow extends StatelessWidget {
           color: enabled
               ? AppTheme.warning.withValues(alpha: 0.06)
               : t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: enabled
                 ? AppTheme.warning.withValues(alpha: 0.25)
@@ -764,6 +770,7 @@ class _GeofenceRow extends StatelessWidget {
                   color: enabled
                       ? AppTheme.success.withValues(alpha: 0.14)
                       : AppTheme.error.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   border: Border.all(
                     color: (enabled ? AppTheme.success : AppTheme.error)
                         .withValues(alpha: 0.5),
@@ -790,6 +797,7 @@ class _GeofenceRow extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: AppTheme.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   border: Border.all(
                     color: AppTheme.error.withValues(alpha: 0.35),
                   ),

@@ -110,6 +110,7 @@ class _DroneRow extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppTheme.skySpy.withValues(alpha: 0.3)),
       ),
       child: Column(
@@ -167,6 +168,7 @@ class _DroneRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppTheme.skySpy.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                   ),
                   child: Text(
                     '${group.macs[i].toUpperCase()} · ${_transport(group.methods[i])}',

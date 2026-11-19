@@ -9,15 +9,14 @@ import 'package:oui_spy/widgets/map_tiles.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('every map style is keyless: OpenFreeMap vector or USGS imagery', () {
+  test('every map style is keyless https', () {
     for (final s in MapStyle.values) {
-      expect(
-          s.url.startsWith('https://tiles.openfreemap.org/styles/') ||
-              s.url.startsWith('https://basemap.nationalmap.gov/'),
-          isTrue,
-          reason: s.name);
+      expect(s.url.startsWith('https://'), isTrue, reason: s.name);
       expect(s.url.contains('key='), isFalse, reason: s.name);
     }
+    expect(
+        MapStyle.values.map((s) => s.name),
+        containsAll(['osm', 'openTopo', 'terrain', 'satelliteWorld', 'cartoDark', 'cartoLight', 'cartoVoyager']));
     expect(MapStyle.dark.isDark, isTrue);
     expect(MapStyle.satellite.maxNativeZoom, 16);
   });
@@ -35,16 +34,36 @@ void main() {
     expect(identifiedStyle(style, MapStyle.dark).theme.version, base.version);
   });
 
-  test('a saved style that no longer exists maps to its nearest replacement', () async {
+  test('CSS transparent becomes rgba the renderer parses', () {
+    final out = cssColorKeywords({
+      'layers': [
+        {'paint': {'fill-color': 'transparent', 'line-color': '#fff'}, 'id': 'transparent-ish'},
+      ],
+    }) as Map;
+    final paint = (out['layers'] as List).first['paint'] as Map;
+    expect(paint['fill-color'], 'rgba(0,0,0,0)');
+    expect(paint['line-color'], '#fff');
+    final theme = ThemeReader().read(cssColorKeywords({
+      'version': 8,
+      'sources': <String, dynamic>{},
+      'layers': [
+        {'id': 'bg', 'type': 'background', 'paint': {'background-color': 'transparent'}},
+      ],
+    }) as Map<String, dynamic>);
+    expect(theme.layers, isNotEmpty);
+  });
+
+  test('a saved style loads back', () async {
     for (final (saved, want) in [
       (null, MapStyle.dark),
-      ('cartoDark', MapStyle.dark),
-      ('cartoLight', MapStyle.positron),
-      ('cartoVoyager', MapStyle.liberty),
-      ('osm', MapStyle.liberty),
-      ('openTopo', MapStyle.liberty),
-      ('terrain', MapStyle.liberty),
+      ('cartoDark', MapStyle.cartoDark),
+      ('cartoLight', MapStyle.cartoLight),
+      ('cartoVoyager', MapStyle.cartoVoyager),
+      ('osm', MapStyle.osm),
+      ('openTopo', MapStyle.openTopo),
+      ('terrain', MapStyle.terrain),
       ('satellite', MapStyle.satellite),
+      ('satelliteWorld', MapStyle.satelliteWorld),
       ('fiord', MapStyle.fiord),
     ]) {
       SharedPreferences.setMockInitialValues({'map_style': ?saved});

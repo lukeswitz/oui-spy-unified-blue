@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
+import 'package:oui_spy/core/link/sdr.dart';
+import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/features/home/status_bar.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -22,7 +24,7 @@ class _FakePhoneSource extends ChangeNotifier implements PhoneBleSource {
 }
 
 Future<ProviderContainer> _pump(WidgetTester tester, NodeConnectionState s,
-    {String nodeId = '', double width = 360, double scale = 1.0}) async {
+    {String nodeId = '', double width = 360, double scale = 1.0, WifiAdapterState? usb}) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   await tester.binding.setSurfaceSize(Size(width, 800));
@@ -30,6 +32,10 @@ Future<ProviderContainer> _pump(WidgetTester tester, NodeConnectionState s,
   final container = ProviderContainer(overrides: [
     sharedPreferencesProvider.overrideWithValue(prefs),
     phoneBleSourceProvider.overrideWith((ref) => _FakePhoneSource()),
+    if (usb != null) ...[
+      wifiAdapterStateProvider.overrideWith((ref) => Stream.value(usb)),
+      sdrPresentProvider.overrideWith((ref) => Stream.value(false)),
+    ],
   ]);
   final app = container.read(appStateProvider);
   app.connectionState = s;
@@ -108,6 +114,16 @@ void main() {
   testWidgets('long node name at 320 and 1.3 text scale does not overflow', (tester) async {
     await _pump(tester, NodeConnectionState.ready, nodeId: 'N' * 40, width: 320, scale: 1.3);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('USB chip is detector color while scanning, secondary when idle', (tester) async {
+    await _pump(tester, NodeConnectionState.disconnected, usb: WifiAdapterState.running);
+    await tester.pump();
+    expect(tester.widget<Icon>(find.byIcon(Icons.usb)).color, AppTheme.detector);
+    await _pump(tester, NodeConnectionState.disconnected, usb: WifiAdapterState.present);
+    await tester.pump();
+    final t = AppTheme.of(tester.element(find.byIcon(Icons.usb)));
+    expect(tester.widget<Icon>(find.byIcon(Icons.usb)).color, t.textSecondary);
   });
 
   testWidgets('offline with scan label fits 320', (tester) async {

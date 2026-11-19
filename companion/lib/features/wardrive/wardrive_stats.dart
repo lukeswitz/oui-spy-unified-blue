@@ -42,6 +42,7 @@ class WardriveStats extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
         decoration: BoxDecoration(
           color: t.fill,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: t.fillBorder),
         ),
         child: Column(
@@ -52,7 +53,10 @@ class WardriveStats extends ConsumerWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  color: t.mark,
+                  decoration: BoxDecoration(
+                    color: t.mark,
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
+                  ),
                   child: Text('REC', style: label?.copyWith(color: t.fill)),
                 ),
                 const SizedBox(width: 8),

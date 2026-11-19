@@ -17,9 +17,13 @@ enum DetectionsView { live, devices, history, alerts }
 
 const _infoLines = [
   'Live shows new hits, Devices each radio, History everything saved, Alerts every alert.',
-  'Funnel filters the list. Arrow sorts it; tap again to reverse.',
+  'Live gives each network name one row; its details list every MAC.',
+  'Funnel filters the list. Arrow sorts it; tap again to reverse. Time sort lists Wi-Fi first, then Bluetooth, newest first.',
   'Layers indents Wi-Fi clients under their network.',
-  'Row icons: the radio that heard it, lock for security, crossed arrows for a random MAC, crossed eye for a hidden name.',
+  'Shapes (Devices): switch between class sections and one flat list.',
+  'Clock (Live): open History. Antenna (History): back to Live. Folder (History): saved sessions.',
+  'Row icons: the radio that heard it, lock for security, crossed arrows for a random MAC, crossed eye for a hidden name, walking person for a loud Bluetooth device that keeps moving with you.',
+  '×N on a row: how many times it was heard.',
   'Three dots: search, export and clear.',
 ];
 

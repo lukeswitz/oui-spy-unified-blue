@@ -27,6 +27,7 @@ class _IdleControls extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
             color: th.surface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: th.border, width: 0.5),
           ),
           child: Row(
@@ -68,6 +69,7 @@ class _IdleControls extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: th.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   border: Border.all(color: th.border),
                 ),
                 child: Row(
@@ -96,6 +98,7 @@ class _IdleControls extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 decoration: BoxDecoration(
                   color: th.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   border: Border.all(color: th.border),
                 ),
                 child: Icon(Icons.fence, size: 14, color: AppTheme.warning),
@@ -126,6 +129,7 @@ class _IconBtn extends StatelessWidget {
     final btn = Material(
       color: Colors.transparent,
       child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.control),
         onTap: onTap,
         child: Container(
           width: 44,
@@ -134,6 +138,7 @@ class _IconBtn extends StatelessWidget {
             color: active
                 ? AppTheme.accent.withValues(alpha: 0.18)
                 : t.surface.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(AppRadius.control),
             border: Border.all(
               color: active
                   ? AppTheme.accent.withValues(alpha: 0.7)
@@ -167,12 +172,14 @@ class _CompassResetBtn extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.control),
           onTap: onTap,
           child: Container(
             width: 44,
             height: 44,
             decoration: BoxDecoration(
               color: t.surface.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               border: Border.all(
                 color: AppTheme.accent.withValues(alpha: 0.55),
                 width: 1.2,
@@ -294,6 +301,7 @@ class _LayerLoadingPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: t.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: color.withValues(alpha: 0.6)),
       ),
       child: Row(
@@ -361,6 +369,7 @@ class _MapStyleButton extends StatelessWidget {
       offset: const Offset(0, 40),
       color: t.surface,
       shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.card),
         side: BorderSide(color: t.border),
       ),
       itemBuilder: (_) => [
@@ -474,6 +483,7 @@ class _MapStyleButton extends StatelessWidget {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: t.surface.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: t.border),
         ),
         child: Icon(Icons.layers, size: 16, color: t.textSecondary),
@@ -503,11 +513,13 @@ class _FocusedDetectionChip extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.chip),
         onTap: onShowAll,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: t.surface.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(AppRadius.chip),
             border: Border.all(color: detection.engine.color.withValues(alpha: 0.6)),
           ),
           child: Row(
@@ -564,11 +576,13 @@ class _ClassGroupChip extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.chip),
         onTap: onClear,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: t.surface.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(AppRadius.chip),
             border: Border.all(color: AppTheme.warning.withValues(alpha: 0.6)),
           ),
           child: Row(
@@ -616,8 +630,10 @@ class _DetectionList extends StatelessWidget {
 
     return Container(
       constraints: const BoxConstraints(maxHeight: 100),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: t.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: ListView(
@@ -671,6 +687,7 @@ class _FeedToggle extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
         decoration: BoxDecoration(
           color: t.surface.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: t.border),
         ),
         child: Row(

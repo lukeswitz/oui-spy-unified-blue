@@ -267,7 +267,8 @@ class NotificationService extends ChangeNotifier {
     if (d.obs.detectorMethod != null && belowConfidence(d.obs.detectorConfidence)) return;
     final key = d.obs.mac.isNotEmpty ? d.obs.mac : d.obs.key;
     final now = DateTime.now();
-    if (_classAlerted.containsKey(key)) return;
+    final last = _classAlerted[key];
+    if (last != null && now.difference(last).inSeconds < cooldownSeconds) return;
     if (d.obs.mac.isNotEmpty && _macRecentlyAlerted(d.obs.mac)) return;
     if (_isRateLimited()) {
       _classPending[key] = d;
@@ -277,7 +278,10 @@ class NotificationService extends ChangeNotifier {
     _classPending.remove(key);
     _classAlerted[key] = now;
     if (d.obs.mac.isNotEmpty) _markMacAlerted(d.obs.mac);
-    if (_classAlerted.length > 5000) _classAlerted.remove(_classAlerted.keys.first);
+    if (_classAlerted.length > 5000) {
+      _classAlerted.removeWhere((_, t) => now.difference(t).inSeconds >= cooldownSeconds);
+      if (_classAlerted.length > 5000) _classAlerted.remove(_classAlerted.keys.first);
+    }
     _recordRateLimit();
     if (d.obs.mac.isNotEmpty) {
       classAlertedMacs.add(d.obs.mac.toUpperCase());

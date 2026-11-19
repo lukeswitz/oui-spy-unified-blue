@@ -44,11 +44,11 @@ void main() {
     expect(rows.single, startsWith('02:00:00:00:00:07,'));
   });
 
-  test('a detection without a fix is still exported with blank coordinates', () {
+  test('a detection without a fix stays out of the CSV', () {
     final noFix = _d('02:00:00:00:00:06', 'wifi_ap', auth: 3).copyWith(latitude: null, longitude: null);
-    final row = _rows(WigleCsv.generate([noFix])).single.split(',');
-    expect(row[7], '');
-    expect(row[8], '');
+    final fix = _d('02:00:00:00:00:08', 'wifi_ap', auth: 3);
+    final rows = _rows(WigleCsv.generate([noFix, fix]));
+    expect(rows.single, startsWith('02:00:00:00:00:08,'));
   });
 
   test('auth is written as observed, never guessed', () {

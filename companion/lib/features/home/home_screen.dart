@@ -122,7 +122,7 @@ class _DisconnectedView extends ConsumerWidget {
                   label: const Text('CANCEL'),
                 ),
               ),
-            ] else if (!isReconnecting)
+            ] else if (!isReconnecting) ...[
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -137,6 +137,22 @@ class _DisconnectedView extends ConsumerWidget {
                   label: const Text('CONNECT', style: TextStyle(letterSpacing: 2, fontSize: 13)),
                 ),
               ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: () => ref.read(phoneBleSourceProvider).setActive(true),
+                  icon: Icon(phoneScanIcon, size: 16),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.detector,
+                    side: BorderSide(color: AppTheme.detector),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+                  ),
+                  label: const Text('USE THIS DEVICE', style: TextStyle(letterSpacing: 2, fontSize: 13)),
+                ),
+              ),
+            ],
             if (isReconnecting) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -415,9 +431,9 @@ class _ConnectedView extends ConsumerWidget {
                         SizedBox(height: 12),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 14),
-                          child: SessionStartButton(),
+                          child: SessionStartButton(pause: true),
                         ),
-                      ]),
+                      ], dividers: false),
                       const DSectionHeader(label: 'Safety'),
                       _engineGroup(context, 'safety', [Engine.flockWifi, Engine.flockBle], state, wd),
                       const DSectionHeader(label: 'Tracking'),
@@ -458,7 +474,7 @@ class _ConnectedView extends ConsumerWidget {
     );
   }
 
-  Widget _panel(BuildContext context, String id, List<Widget> rows, {double indent = 62}) {
+  Widget _panel(BuildContext context, String id, List<Widget> rows, {double indent = 62, bool dividers = true}) {
     final t = AppTheme.of(context);
     return Container(
       key: ValueKey('group-$id'),
@@ -472,7 +488,7 @@ class _ConnectedView extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0) Divider(height: 1, thickness: 1, indent: indent, color: t.border),
+            if (i > 0 && dividers) Divider(height: 1, thickness: 1, indent: indent, color: t.border),
             rows[i],
           ],
         ],
@@ -813,6 +829,7 @@ class _SourceTile extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border, width: 0.5),
       ),
       child: Row(

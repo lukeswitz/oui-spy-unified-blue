@@ -31,7 +31,7 @@ String _code(String line) {
 }
 
 void main() {
-  test('no rounded corners, shadows, or color literals in features and widgets', () {
+  test('corners use AppRadius tokens; no shadows or color literals in features and widgets', () {
     final hits = <String>[];
     for (final root in ['lib/features', 'lib/widgets']) {
       for (final f in Directory(root).listSync(recursive: true).whereType<File>()) {

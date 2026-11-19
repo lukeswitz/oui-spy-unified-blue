@@ -92,6 +92,17 @@ bool _hasLeftBorder(Widget w) {
 }
 
 void main() {
+  testWidgets('row shows the seen count, Flock confidence line and source node', (tester) async {
+    await _pumpRow(tester, _det().copyWith(count: 7));
+    expect(find.textContaining('×7', findRichText: true), findsOneWidget);
+    expect(find.text('High'), findsOneWidget);
+    final app = ProviderScope.containerOf(tester.element(find.byType(DetectionRow))).read(appStateProvider);
+    expect(find.text(app.labelForNode('AABBCC')), findsOneWidget);
+    await _pumpRow(tester, _det().copyWith(flock: const FlockExtension(signals: FlockSignal.oui)));
+    expect(find.text('Suspected (Known OUI)'), findsOneWidget);
+    expect(find.textContaining('×', findRichText: true), findsNothing);
+  });
+
   test('name sort key is the shown name: SSID for WiFi, MAC when unnamed', () {
     final wifi = _det(ssid: '').copyWith(wardrive: const WardriveExtension(ssid: 'Zulu'));
     final bare = _det(mac: '02:00:00:00:00:01', ssid: '').copyWith(wardrive: null, deviceName: '');

@@ -53,7 +53,7 @@ class WigleProvider extends ChangeNotifier {
     final key = bssid.toUpperCase();
     if (_lookupCache.containsKey(key)) return _lookupCache[key];
     final api = _api;
-    if (api == null) throw WigleApiException('Sign in to WiGLE under Wardrive settings first');
+    if (api == null) throw WigleApiException('Sign in to WiGLE first: Settings → Data → Accounts');
     final rec = await api.networkDetail(key);
     _lookupCache[key] = rec;
     DebugLog.log('WIGLE: lookup ${rec == null ? 'not recorded' : 'recorded'}');

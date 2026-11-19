@@ -229,6 +229,7 @@ class DroneRangePin extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
             decoration: BoxDecoration(
               color: AppTheme.of(context).background.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(AppRadius.chip),
               border: Border.all(color: color, width: 1),
             ),
             child: Text(

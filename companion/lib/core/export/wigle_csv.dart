@@ -44,7 +44,7 @@ class WigleCsv {
 
     // Data rows
     for (final d in detections) {
-      // Geofence exclusion: skip detections inside wardrive-exclusion zones
+      if (d.latitude == null || d.longitude == null) continue;
       if (geofenceFilter != null &&
           geofenceFilter.isExcludedNullable(d.latitude, d.longitude)) {
         continue;
@@ -67,8 +67,8 @@ class WigleCsv {
       final channel = isBleDevice || d.channel <= 0 ? '' : '${d.channel}';
       final frequency = _frequency(d);
       final rssi = d.rssi;
-      final lat = d.latitude ?? '';
-      final lon = d.longitude ?? '';
+      final lat = d.latitude!;
+      final lon = d.longitude!;
       final alt = d.altitude ?? 0.0;
       final acc = d.accuracy ?? 0.0;
       final type = _type(d);

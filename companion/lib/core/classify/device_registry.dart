@@ -196,10 +196,32 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         _ownScan = false;
         notifyListeners();
       }
-      if (scanning) {
+      if (scanning && _duty == null) {
         Future<void>.delayed(const Duration(milliseconds: 1500), _kick);
       }
     });
+  }
+
+  ({int on, int every})? _duty;
+  Timer? _dutyOff;
+
+  void setDuty(({int on, int every})? duty) {
+    if (duty == _duty) return;
+    _duty = duty;
+    if (scanning) {
+      _stopOwn();
+      _apply();
+    }
+  }
+
+  void _armDutyOff() {
+    final duty = _duty;
+    _dutyOff?.cancel();
+    _dutyOff = duty == null
+        ? null
+        : Timer(Duration(milliseconds: duty.on), () {
+            if (_foxTarget == null) _stopOwn();
+          });
   }
 
   StreamSubscription<ScanResult>? _nativeSub;
@@ -281,9 +303,16 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       _lastIngest.clear();
       _stopOwn();
     }
+    if (!scanning) {
+      _dutyOff?.cancel();
+      _dutyOff = null;
+    }
     if (scanning) {
       _kick();
-      _timer = Timer.periodic(scanEvery, (_) => _refreshScan());
+      final duty = _duty;
+      _timer = duty == null
+          ? Timer.periodic(scanEvery, (_) => _refreshScan())
+          : Timer.periodic(Duration(milliseconds: duty.every), (_) => _kick());
       if (canScanWifi && radioMask & 0x01 != 0) _wifiStart();
     }
     if (_foxTarget != null && canScanWifi) _wifiStart();
@@ -396,6 +425,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
         if (started) {
           _lastKick = DateTime.now();
           _ownScan = true;
+          _armDutyOff();
           notifyListeners();
           return;
         }
@@ -412,7 +442,9 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _ownScan = true;
     notifyListeners();
     try {
+      final duty = _duty;
       await FlutterBluePlus.startScan(
+        timeout: duty == null ? null : Duration(milliseconds: duty.on),
         androidScanMode: rxOnly
             ? AndroidScanMode.opportunistic
             : (_boardLinked ? AndroidScanMode.balanced : AndroidScanMode.lowLatency),
@@ -508,6 +540,8 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     }
     _timer?.cancel();
     _timer = null;
+    _dutyOff?.cancel();
+    _dutyOff = null;
     _foxLostTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       final seen = _foxSeen;
       if (seen != null && DateTime.now().difference(seen) > const Duration(seconds: 10)) {
@@ -692,6 +726,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
+    _dutyOff?.cancel();
     _wifiTimer?.cancel();
     _wifiSub?.cancel();
     _foxLostTimer?.cancel();
@@ -1049,6 +1084,8 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   bool sessionRunning() => ref.read(wardriveProvider).state == WardriveState.running;
   bool boardAllows(AppState s) => sessionRunning() || (s.isConnected && s.activeEngines != 0);
   void sync(AppState s) {
+    final wd = ref.read(wardriveProvider);
+    src.setDuty(s.isConnected ? (on: wd.bleScanDuration, every: wd.bleScanInterval) : null);
     src.setBoardLinked(s.isConnected);
     src.setBoardAllows(boardAllows(s));
     src.setFoxTarget(s.foxhuntViaPhone ? s.foxhunterTarget : null);

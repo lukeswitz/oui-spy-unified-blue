@@ -82,6 +82,7 @@ class _WifiStatusPanelState extends ConsumerState<_WifiStatusPanel> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -167,6 +168,7 @@ class _WifiEnableToggleState extends ConsumerState<_WifiEnableToggle> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Row(
@@ -225,9 +227,11 @@ class _MeshModeTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.card),
             color: selected
                 ? AppTheme.success.withValues(alpha: 0.08)
                 : t.surface,
@@ -329,6 +333,7 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border, width: 0.5),
       ),
       child: Row(

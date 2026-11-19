@@ -8,11 +8,13 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/link_net.dart';
 import 'package:oui_spy/core/link/usb_autoconnect.dart';
 import 'package:oui_spy/core/link/usb_serial.dart';
 import 'package:oui_spy/features/config/device_config.dart' show boardDisplayName;
+import 'package:oui_spy/features/home/status_bar.dart' show phoneScanIcon;
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
@@ -226,6 +228,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     if (mounted) setState(() => _scanning = false);
 
     final ble = ref.read(bleManagerProvider);
+    if (ble.isConnected && ble.targetDeviceId != id) {
+      DebugLog.log('SCAN: switching from ${ble.targetDeviceId} to $id');
+      await ble.disconnect();
+    }
 
     try {
       await ble.connect(result.device, sessionId: const Uuid().v4());
@@ -350,6 +356,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: busy || active ? AppTheme.accent : t.border),
         ),
         child: Row(
@@ -359,6 +366,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               height: 36,
               decoration: BoxDecoration(
                 color: t.surfaceLight,
+                borderRadius: BorderRadius.circular(AppRadius.control),
               ),
               child: busy
                   ? Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
@@ -507,6 +515,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: AppTheme.error),
                 ),
                 child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: AppTheme.mono)),
@@ -606,6 +615,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     onPressed: _scanning ? null : () => _startScan(user: true),
                     child: Text(_scanning ? 'SCANNING...' : 'Scan for devices'),
                   ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _connecting
+                        ? null
+                        : () {
+                            ref.read(phoneBleSourceProvider).setActive(true);
+                            context.go('/home');
+                          },
+                    icon: Icon(phoneScanIcon, size: 16),
+                    label: const Text('Use this device'),
+                  ),
                   const SizedBox(height: 16),
                   const Spacer(flex: 2),
                 ],
@@ -655,6 +675,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: t.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.card),
                         border: Border.all(
                           color: isThisConnecting
                               ? AppTheme.accent
@@ -670,6 +691,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                             height: 36,
                             decoration: BoxDecoration(
                               color: t.surfaceLight,
+                              borderRadius: BorderRadius.circular(AppRadius.control),
                             ),
                             child: isThisConnecting
                                 ? Center(child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: AppTheme.accent, strokeWidth: 2)))
@@ -696,6 +718,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                       margin: const EdgeInsets.only(right: 6),
                                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                       decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(AppRadius.chip),
                                         border: Border.all(color: AppTheme.accent),
                                       ),
                                       child: Text('MGR', style: TextStyle(color: AppTheme.accent, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
@@ -775,7 +798,10 @@ class _ScanRadarState extends State<_ScanRadar> with SingleTickerProviderStateMi
               Container(
                 width: 8,
                 height: 8,
-                color: AppTheme.accent,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.accent,
+                ),
               ),
             ],
           ),

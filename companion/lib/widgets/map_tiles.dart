@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
+import 'package:vector_tile_renderer/vector_tile_renderer.dart' show ThemeReader;
 
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -132,6 +133,30 @@ Widget mapTileLayer(MapStyle style) {
 final Map<String, Future<Style>> _styleCache = {};
 
 @visibleForTesting
+Object? cssColorKeywords(Object? v) => switch (v) {
+      'transparent' => 'rgba(0,0,0,0)',
+      Map<String, dynamic>() => <String, dynamic>{for (final e in v.entries) e.key: cssColorKeywords(e.value)},
+      List() => [for (final e in v) cssColorKeywords(e)],
+      _ => v,
+    };
+
+Future<Style> _readStyle(MapStyle m) async {
+  final s = await StyleReader(uri: m.url).read();
+  final raw = await _tileDio.get<List<int>>(m.url);
+  final json = cssColorKeywords(jsonDecode(utf8.decode(raw.data!))) as Map<String, dynamic>;
+  return identifiedStyle(
+      Style(
+        name: s.name,
+        theme: ThemeReader().read(json),
+        providers: s.providers,
+        sprites: s.sprites,
+        center: s.center,
+        zoom: s.zoom,
+      ),
+      m);
+}
+
+@visibleForTesting
 Style identifiedStyle(Style s, MapStyle m) => Style(
       name: s.name,
       theme: s.theme.copyWith(id: 'oui-apex-${m.name}'),
@@ -148,10 +173,7 @@ class _VectorTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final future = _styleCache.putIfAbsent(
-      style.url,
-      () async => identifiedStyle(await StyleReader(uri: style.url).read(), style),
-    );
+    final future = _styleCache.putIfAbsent(style.url, () => _readStyle(style));
     return FutureBuilder<Style>(
       future: future,
       builder: (context, snapshot) {

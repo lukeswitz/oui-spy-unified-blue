@@ -204,7 +204,11 @@ class _GlobalPcapBannerOverlay extends ConsumerWidget {
                   top: false,
                   child: Material(
                     color: p.fill,
-                    shape: Border.all(color: p.fillBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      side: BorderSide(color: p.fillBorder),
+                    ),
+                    clipBehavior: Clip.antiAlias,
                     child: InkWell(
                       onTap: () => ref.read(routerProvider).push('/engine/pcap'),
                       child: Padding(

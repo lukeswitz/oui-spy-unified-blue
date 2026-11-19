@@ -302,7 +302,9 @@ class CommandBarLeadingButton extends StatelessWidget {
           vertical: gap * 0.6,
         ),
         decoration: BoxDecoration(
-          border: Border.all(color: AppTheme.accent),
+          color: AppTheme.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(gap * 1.5),
+          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.55)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -404,7 +406,7 @@ class CommandSheet extends StatelessWidget {
               child: Container(
                 width: barIconSize(context) * 2,
                 height: gap * 0.4,
-                color: t.border,
+                decoration: BoxDecoration(color: t.border, borderRadius: BorderRadius.circular(gap)),
               ),
             ),
             Padding(
@@ -454,6 +456,7 @@ Future<T?> showCommandSheet<T>({
     routeSettings: routeSettings,
     backgroundColor: t.surface,
     isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet))),
     builder: builder,
   );
 }
@@ -549,43 +552,34 @@ class CommandChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
     final gap = barGap(context);
-    final fg = selected ? t.onFill : t.textPrimary;
+    final radius = BorderRadius.circular(kMinInteractiveDimension);
+    final base = Theme.of(context).textTheme.labelLarge ?? const TextStyle();
+    final style = base.copyWith(color: color, fontWeight: FontWeight.w700, letterSpacing: 0.6);
     return Material(
-      color: selected ? t.fill : Colors.transparent,
+      color: selected ? color.withValues(alpha: 0.22) : color.withValues(alpha: 0.06),
+      borderRadius: radius,
       child: InkWell(
         onTap: onTap,
+        borderRadius: radius,
         child: Container(
-          constraints:
-              const BoxConstraints(minHeight: kMinInteractiveDimension * 0.8),
-          padding: EdgeInsets.symmetric(
-            horizontal: gap * 1.75,
-            vertical: gap,
-          ),
+          constraints: const BoxConstraints(minHeight: kMinInteractiveDimension),
+          padding: EdgeInsets.symmetric(horizontal: gap * 2.5, vertical: gap),
           decoration: BoxDecoration(
-            border: Border.all(color: selected ? t.fillBorder : t.border),
+            borderRadius: radius,
+            border: Border.all(
+              color: selected ? color : color.withValues(alpha: 0.55),
+              width: selected ? 1.6 : 1.0,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: gap * 0.75,
-                height: gap * 0.75,
-                color: color,
-              ),
-              SizedBox(width: gap),
-              Text(label, style: barLabelStyle(context, fg)),
+              if (selected) ...[Icon(Icons.check, size: base.fontSize ?? 14, color: color), SizedBox(width: gap * 0.75)],
+              Text(label, style: style),
               if (count != null) ...[
                 SizedBox(width: gap * 0.75),
-                Text(
-                  '$count',
-                  style: barLabelStyle(
-                    context,
-                    selected ? t.onFillDim : t.textDim,
-                    bold: false,
-                  ),
-                ),
+                Text('$count', style: style.copyWith(color: color.withValues(alpha: 0.65), fontWeight: FontWeight.w600)),
               ],
             ],
           ),
@@ -610,16 +604,20 @@ class CommandActiveChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gap = barGap(context);
+    final radius = BorderRadius.circular(kMinInteractiveDimension);
     return Material(
-      color: Colors.transparent,
+      color: color.withValues(alpha: 0.18),
+      borderRadius: radius,
       child: InkWell(
         onTap: onClear,
+        borderRadius: radius,
         child: Container(
           constraints:
               const BoxConstraints(minHeight: kMinInteractiveDimension * 0.65),
           padding: EdgeInsets.fromLTRB(gap * 1.5, gap * 0.5, gap, gap * 0.5),
           decoration: BoxDecoration(
-            border: Border.all(color: color),
+            borderRadius: radius,
+            border: Border.all(color: color.withValues(alpha: 0.7)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -864,7 +862,7 @@ class CommandSearchField extends StatelessWidget {
             onPressed: onClose,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.circular(gap),
             borderSide: BorderSide(color: t.border),
           ),
         ),

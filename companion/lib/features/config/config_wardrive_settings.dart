@@ -92,6 +92,7 @@ class _TimingRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Row(
@@ -110,6 +111,7 @@ class _TimingRow extends StatelessWidget {
               width: 32, height: 32,
               decoration: BoxDecoration(
                 color: AppTheme.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
               ),
               child: Icon(Icons.remove, size: 16, color: AppTheme.accent),
@@ -133,6 +135,7 @@ class _TimingRow extends StatelessWidget {
               width: 32, height: 32,
               decoration: BoxDecoration(
                 color: AppTheme.accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
               ),
               child: Icon(Icons.add, size: 16, color: AppTheme.accent),
@@ -178,7 +181,7 @@ class _ChannelRangeSlider extends ConsumerWidget {
                 const SizedBox(width: 10),
                 const Expanded(child: Text('2.4 GHz scan')),
                 ToggleButtons(
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
                   constraints:
                       const BoxConstraints(minHeight: 32, minWidth: 60),
                   isSelected: [wd.wardrive24Mode == 0, wd.wardrive24Mode == 1],
@@ -249,6 +252,7 @@ class _WifiAdapterSectionState extends ConsumerState<_WifiAdapterSection> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: t.border),
         ),
         child: child,
@@ -467,6 +471,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppTheme.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
                   border: Border.all(color: AppTheme.success.withValues(alpha: 0.3)),
                 ),
                 child: Row(
@@ -535,6 +540,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: t.surface,
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(color: t.border),
             ),
             child: Column(
@@ -615,6 +621,7 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: AppTheme.error.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
                     ),
                     child: Row(
@@ -708,6 +715,7 @@ class _WigleStatsCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: t.border),
         ),
         child: Row(
@@ -725,6 +733,7 @@ class _WigleStatsCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Column(
@@ -746,6 +755,7 @@ class _WigleStatsCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: AppTheme.accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.chip),
                   border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
                 ),
                 child: Row(
@@ -872,6 +882,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.wdgwars.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppTheme.wdgwars.withValues(alpha: 0.35)),
       ),
       child: Column(
@@ -896,6 +907,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppTheme.wdgwars.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                     border: Border.all(color: AppTheme.wdgwars.withValues(alpha: 0.4)),
                   ),
                   child: Row(
@@ -1012,6 +1024,7 @@ class _WdgwarsSectionState extends ConsumerState<_WdgwarsSection> {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppTheme.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
                 ),
                 child: Row(
@@ -1104,6 +1117,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.background.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: AppTheme.wdgwars.withValues(alpha: 0.2)),
         ),
         child: Row(
@@ -1121,6 +1135,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.background.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppTheme.wdgwars.withValues(alpha: 0.25)),
       ),
       child: Column(
@@ -1142,6 +1157,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: AppTheme.wdgwars.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                     border: Border.all(color: AppTheme.wdgwars.withValues(alpha: 0.3)),
                   ),
                   child: Row(
@@ -1163,6 +1179,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: AppTheme.wdgwarsAlt.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppRadius.chip),
                     border: Border.all(color: AppTheme.wdgwarsAlt.withValues(alpha: 0.3)),
                   ),
                   child: Row(
@@ -1243,6 +1260,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: AppTheme.wdgwars.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                   ),
                   child: Column(
                     children: [
@@ -1265,6 +1283,7 @@ class _WdgwarsStatsCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     decoration: BoxDecoration(
                       color: AppTheme.flockWifi.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                     ),
                     child: Column(
                       children: [

@@ -351,6 +351,9 @@ class UnitFormatter {
 
 
 
+const String _esriRest = 'https://services.arcgisonline.com/ArcGIS/rest/services';
+const String _cartoGl = 'https://basemaps.cartocdn.com/gl';
+const String _carto = '© CARTO, © OpenStreetMap';
 const String _ofm = 'https://tiles.openfreemap.org/styles';
 const String _ofmCredit = 'OpenFreeMap © OpenMapTiles Data from OpenStreetMap';
 
@@ -365,6 +368,17 @@ enum MapStyle {
       attribution: 'Imagery: U.S. Geological Survey, National Geospatial Program',
       isDark: true,
       maxNativeZoom: 16),
+  satelliteWorld('Satellite (World)', '$_esriRest/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: '© Esri, Maxar, Earthstar Geographics', isDark: true),
+  cartoDark('Carto Dark', '$_cartoGl/dark-matter-gl-style/style.json',
+      attribution: _carto, isVector: true, isDark: true),
+  cartoLight('Carto Light', '$_cartoGl/positron-gl-style/style.json', attribution: _carto, isVector: true),
+  cartoVoyager('Voyager', '$_cartoGl/voyager-gl-style/style.json', attribution: _carto, isVector: true),
+  osm('OpenStreetMap', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap'),
+  openTopo('Topo', 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+      attribution: '© OpenStreetMap, SRTM, OpenTopoMap (CC-BY-SA)', maxNativeZoom: 17),
+  terrain('Terrain', '$_esriRest/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+      attribution: '© Esri, HERE, Garmin, USGS, OpenStreetMap'),
   ;
 
   const MapStyle(
@@ -390,25 +404,13 @@ class MapStyleNotifier extends StateNotifier<MapStyle> {
   }
 
   static const _key = 'map_style';
-  static const _removed = {
-    'cartoDark': MapStyle.dark,
-    'cartoLight': MapStyle.positron,
-    'cartoVoyager': MapStyle.liberty,
-    'osm': MapStyle.liberty,
-    'openTopo': MapStyle.liberty,
-    'terrain': MapStyle.liberty,
-  };
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final value = prefs.getString(_key);
     if (value != null) {
       final match = MapStyle.values.where((s) => s.name == value);
-      if (match.isNotEmpty) {
-        state = match.first;
-      } else if (_removed[value] case final s?) {
-        state = s;
-      }
+      if (match.isNotEmpty) state = match.first;
     }
   }
 
@@ -426,6 +428,7 @@ final mapStyleProvider =
 
 class AppRadius {
   const AppRadius._();
+  static const double sheet = 16;
   static const double card = 12;
   static const double control = 10;
   static const double chip = 8;

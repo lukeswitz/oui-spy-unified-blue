@@ -73,6 +73,7 @@ class _OuiDatabaseSectionState extends ConsumerState<_OuiDatabaseSection> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: AppTheme.accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.control),
               border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
             ),
             child: Row(

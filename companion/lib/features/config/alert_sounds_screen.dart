@@ -66,6 +66,7 @@ class _SlotRow extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border, width: 0.5),
       ),
       child: Row(
@@ -114,6 +115,7 @@ class _MelodyRow extends ConsumerWidget {
       padding: const EdgeInsets.only(left: 12),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border, width: 0.5),
       ),
       child: Row(
@@ -238,6 +240,7 @@ class _MelodyComposerScreenState extends ConsumerState<MelodyComposerScreen> {
               padding: const EdgeInsets.only(left: 12),
               decoration: BoxDecoration(
                 color: t.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: t.border, width: 0.5),
               ),
               child: Row(

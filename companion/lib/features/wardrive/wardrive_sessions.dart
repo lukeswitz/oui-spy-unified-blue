@@ -84,6 +84,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                         : wd.flockCount > 0
                             ? AppTheme.flockBle.withValues(alpha: 0.10)
                             : t.surface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(kMinInteractiveDimension),
                     border: Border.all(
                       color: _flockExpanded
                           ? AppTheme.flockBle.withValues(alpha: 0.7)
@@ -128,6 +129,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   color: wd.droneCount > 0
                       ? AppTheme.skySpy.withValues(alpha: 0.10)
                       : t.surface.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(kMinInteractiveDimension),
                   border: Border.all(
                     color: wd.droneCount > 0
                         ? AppTheme.skySpy.withValues(alpha: 0.35)
@@ -169,6 +171,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                         : wd.detectorCount > 0
                             ? AppTheme.detector.withValues(alpha: 0.10)
                             : t.surface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(kMinInteractiveDimension),
                     border: Border.all(
                       color: _detectorExpanded
                           ? AppTheme.detector.withValues(alpha: 0.7)
@@ -215,6 +218,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppTheme.accent.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                     border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
                   ),
                   child: Row(
@@ -243,6 +247,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                     decoration: BoxDecoration(
                       color: (isUploaded ? AppTheme.success : AppTheme.warning)
                           .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                       border: Border.all(
                         color: (isUploaded ? AppTheme.success : AppTheme.warning)
                             .withValues(alpha: 0.4),
@@ -291,6 +296,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                     decoration: BoxDecoration(
                       color: (wdgUploaded ? AppTheme.success : AppTheme.wdgwars)
                           .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(AppRadius.control),
                       border: Border.all(
                         color: (wdgUploaded ? AppTheme.success : AppTheme.wdgwars)
                             .withValues(alpha: 0.4),
@@ -340,8 +346,10 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
             const SizedBox(height: 6),
             Container(
               constraints: const BoxConstraints(maxHeight: 180),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: t.background.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: AppTheme.flockBle.withValues(alpha: 0.3)),
               ),
               child: ListView.builder(
@@ -405,6 +413,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                           horizontal: 3, vertical: 0.5),
                                       decoration: BoxDecoration(
                                         color: engineColor.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(AppRadius.chip),
                                       ),
                                       child: Text(
                                         isBle ? 'BLE' : 'WiFi',
@@ -421,6 +430,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                             horizontal: 3, vertical: 0.5),
                                         decoration: BoxDecoration(
                                           color: AppTheme.warning.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(AppRadius.chip),
                                         ),
                                         child: Text('RAVEN',
                                           style: TextStyle(
@@ -481,8 +491,10 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
             const SizedBox(height: 6),
             Container(
               constraints: const BoxConstraints(maxHeight: 180),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: t.background.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(
                     color: AppTheme.detector.withValues(alpha: 0.3)),
               ),
@@ -543,6 +555,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                       decoration: BoxDecoration(
                                         color: AppTheme.detector
                                             .withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(AppRadius.chip),
                                       ),
                                       child: Text(
                                         isFullMac ? 'MAC' : 'OUI',
@@ -721,9 +734,11 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
       maxChildSize: 0.85,
       builder: (context, scrollController) {
         return Container(
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: t.background,
-            border: Border(top: BorderSide(color: t.border)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+            border: Border.all(color: t.border),
           ),
           child: Column(
             children: [
@@ -1479,6 +1494,7 @@ class _ToolbarChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: c.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppRadius.control),
           border: Border.all(color: c.withValues(alpha: 0.3)),
         ),
         child: Row(
@@ -1513,6 +1529,7 @@ class _FoxhuntBadge extends StatelessWidget {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: t.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppTheme.foxhunter.withValues(alpha: 0.5)),
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [

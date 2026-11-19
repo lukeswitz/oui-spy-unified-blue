@@ -253,6 +253,7 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                                   color: AppTheme.success.withValues(
                                     alpha: 0.2,
                                   ),
+                                  borderRadius: BorderRadius.circular(AppRadius.chip),
                                 ),
                                 child: Text(
                                   'LIVE',

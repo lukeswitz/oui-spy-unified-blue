@@ -698,6 +698,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: t.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: t.border),
           ),
           child: Column(

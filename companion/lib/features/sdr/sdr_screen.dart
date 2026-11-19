@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_adsb.dart';
@@ -10,6 +9,7 @@ import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:oui_spy/features/sdr/sdr_adsb_list.dart';
 import 'package:oui_spy/features/sdr/sdr_foxhunt.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/copied_toast.dart';
 
 class SdrScreen extends ConsumerStatefulWidget {
   const SdrScreen({super.key});
@@ -242,9 +242,14 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                           decoration: InputDecoration(
                             labelText: _mode == SdrMode.adsb ? 'Frequency (fixed 1090 MHz)' : 'Frequency (MHz)',
                             isDense: true,
-                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: t.border)),
-                            focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: t.textSecondary)),
-                            border: const OutlineInputBorder(),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppRadius.control),
+                                borderSide: BorderSide(color: t.border)),
+                            focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppRadius.control),
+                                borderSide: BorderSide(color: t.textSecondary)),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppRadius.control)),
                           ),
                         ),
                 ),
@@ -438,6 +443,7 @@ class _BandSelector extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: on ? t.fill : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppRadius.control),
                 border: Border.all(color: on ? AppTheme.accent : t.border),
               ),
               child: Text('$mhz',
@@ -521,6 +527,7 @@ class _CategoryBar extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: active ? t.fill : Colors.transparent,
+          borderRadius: BorderRadius.circular(kMinInteractiveDimension),
           border: Border.all(color: active ? color : t.border),
         ),
         child: Row(
@@ -857,15 +864,7 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
     rows.add(('Frequency', '${(hz / 1e6).toStringAsFixed(3)} MHz'));
   }
 
-  void copy(String label, String value) {
-    Clipboard.setData(ClipboardData(text: value));
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('$label copied', style: TextStyle(color: t.textPrimary)),
-      backgroundColor: t.surfaceLight,
-      duration: const Duration(seconds: 1),
-    ));
-  }
+  void copy(String label, String value) => copyWithToast(context, label, value);
 
   showModalBottomSheet<void>(
     context: context,
@@ -879,7 +878,10 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            color: t.fill,
+            decoration: BoxDecoration(
+              color: t.fill,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+            ),
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
             child: Row(
               children: [
@@ -1196,6 +1198,7 @@ class _Badge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(AppRadius.chip),
         border: Border.all(color: color.withValues(alpha: 0.45), width: 0.7),
       ),
       child: Text(

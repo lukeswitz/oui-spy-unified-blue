@@ -130,6 +130,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
                             color: selected
                                 ? AppTheme.uniPwn.withValues(alpha: 0.1)
                                 : t.surface,
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                             border: Border.all(
                               color: selected
                                   ? AppTheme.uniPwn
@@ -280,6 +281,7 @@ class _UnipwnNodePicker extends ConsumerWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: t.border),
         ),
         child: Text('No mesh nodes seen yet.',
@@ -290,6 +292,7 @@ class _UnipwnNodePicker extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Row(

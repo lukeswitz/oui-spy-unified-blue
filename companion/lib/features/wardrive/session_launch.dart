@@ -13,6 +13,7 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool targetEngineRunning(AppState app, WardriveTarget m) {
   bool on(Engine e) => app.getEngineState(e) != EngineState.disabled;
@@ -228,7 +229,9 @@ class SessionTargets extends ConsumerWidget {
 }
 
 class SessionStartButton extends ConsumerWidget {
-  const SessionStartButton({super.key});
+  const SessionStartButton({super.key, this.pause = false});
+
+  final bool pause;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -262,24 +265,45 @@ class SessionStartButton extends ConsumerWidget {
       );
     }
     final fg = AppTheme.contrast(AppTheme.error, Colors.black) >= 4.5 ? Colors.black : Colors.white;
+    final paused = wd.state == WardriveState.paused;
+    final stop = ElevatedButton(
+      key: const ValueKey('session-stop'),
+      style: shape.copyWith(
+        backgroundColor: WidgetStatePropertyAll(AppTheme.error),
+        foregroundColor: WidgetStatePropertyAll(fg),
+      ),
+      onPressed: wd.radioTransition == 'stopping' ? null : () => stopWardriveSession(ref),
+      child: Row(
+        children: [
+          Text(busy ? busyText : 'STOP'),
+          const Spacer(),
+          Icon(Icons.stop, size: 18, color: fg),
+        ],
+      ),
+    );
     return SizedBox(
       width: double.infinity,
       height: 46,
-      child: ElevatedButton(
-        key: const ValueKey('session-stop'),
-        style: shape.copyWith(
-          backgroundColor: WidgetStatePropertyAll(AppTheme.error),
-          foregroundColor: WidgetStatePropertyAll(fg),
-        ),
-        onPressed: wd.radioTransition == 'stopping' ? null : () => stopWardriveSession(ref),
-        child: Row(
-          children: [
-            Text(busy ? busyText : 'STOP'),
-            const Spacer(),
-            Icon(Icons.stop, size: 18, color: fg),
-          ],
-        ),
-      ),
+      child: !pause
+          ? stop
+          : Row(
+              children: [
+                SizedBox(
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('session-pause'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+                    ),
+                    onPressed: busy ? null : () => paused ? wd.resumeSession() : wd.pauseSession(),
+                    icon: Icon(paused ? Icons.play_arrow : Icons.pause, size: 18),
+                    label: Text(paused ? 'RESUME' : 'PAUSE'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: stop),
+              ],
+            ),
     );
   }
 }
@@ -391,7 +415,11 @@ Future<bool> _primeLocationPermission(BuildContext context) async {
 
 Future<void> _askAlwaysLocation(BuildContext context) async {
   if (!Platform.isAndroid && !Platform.isIOS) return;
-  if (await Geolocator.checkPermission() == LocationPermission.always || !context.mounted) return;
+  if (await Geolocator.checkPermission() == LocationPermission.always) return;
+  final prefKey = Platform.isAndroid ? 'android_always_upgrade_dismissed' : 'ios_always_upgrade_dismissed';
+  final p = await SharedPreferences.getInstance();
+  if (p.getBool(prefKey) == true || !context.mounted) return;
+  final t = AppTheme.of(context);
   await _settingsDialog(
     context,
     title: 'Enable "Always" Location',
@@ -400,6 +428,17 @@ Future<void> _askAlwaysLocation(BuildContext context) async {
         '${Platform.isAndroid ? 'Location → Allow all the time' : 'If Settings opens: Apps → OUI-APEX → Location → Always'}',
     action: 'TURN ON',
     onAction: openAlwaysLocationSettings,
+    leading: [
+      Builder(
+        builder: (ctx) => TextButton(
+          onPressed: () async {
+            await p.setBool(prefKey, true);
+            if (ctx.mounted) Navigator.of(ctx).pop();
+          },
+          child: Text("DON'T ASK AGAIN", style: TextStyle(color: t.textDim)),
+        ),
+      ),
+    ],
   );
 }
 
@@ -598,6 +637,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: BoxDecoration(
         color: t.background,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppTheme.wardrive.withValues(alpha: 0.35)),
       ),
       child: Column(
@@ -712,6 +752,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                 decoration: BoxDecoration(
                   color: t.background,
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: selColor.withValues(alpha: 0.35)),
                 ),
                 child: Column(

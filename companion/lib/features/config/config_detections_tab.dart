@@ -851,7 +851,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
             onPressed: _toggleSearch,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.circular(AppRadius.control),
             borderSide: BorderSide(color: t.border),
           ),
         ),
@@ -1127,6 +1127,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: t.surfaceLight,
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: t.border, width: 0.5),
               ),
               child: Column(
@@ -1271,13 +1272,16 @@ class _DetDropdown extends StatelessWidget {
     final iconSize = barIconSize(context);
     return Material(
       color: active ? AppTheme.accent.withValues(alpha: 0.12) : t.surfaceLight,
+      borderRadius: BorderRadius.circular(AppRadius.control),
       child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.control),
         child: Container(
           constraints:
               const BoxConstraints(minHeight: kMinInteractiveDimension),
           padding: EdgeInsets.symmetric(horizontal: gap * 1.5, vertical: gap),
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.control),
             border: Border.all(
               color: active ? AppTheme.accent : t.border,
               width: active ? 1.4 : 1.0,
@@ -1353,11 +1357,33 @@ class _DetectionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final det = detectionFromDbRow(data);
+    final members = (data['memberMacs'] as List?)?.length ?? 1;
+    final transports = (data['transports'] as List?) ?? const [];
+    final merged = data['mergedClasses'] as List<(String, String)>?;
     return DetectionRow(
-      detection: detectionFromDbRow(data),
+      detection: det,
       onActivate: _showDetailSheet,
+      notes: [
+        if (data['classTitle'] case final String ct when ct != det.deviceName && merged != null && merged.isNotEmpty)
+          (text: ct, color: alertKindColor(merged.first.$2)),
+        if (data['engine'] == 'skySpy' && (members > 1 || transports.length > 1))
+          (
+            text: '$members MACs · ${transports.map((m) => _droneTransportShort(m as String)).join(' · ')}',
+            color: t.textDim,
+          ),
+        if (det.latitude == null || det.longitude == null) (text: 'NO GPS', color: AppTheme.gpsNone),
+      ],
     );
   }
+
+  static String _droneTransportShort(String method) => switch (method) {
+        'odid_ble' => 'BLE',
+        'odid_nan' => 'NAN',
+        'odid_beacon' => 'BEACON',
+        _ => method.toUpperCase(),
+      };
 
 }
 

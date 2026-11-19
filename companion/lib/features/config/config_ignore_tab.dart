@@ -41,6 +41,7 @@ class _IgnoreListTab extends ConsumerWidget {
                   width: 32, height: 32,
                   decoration: BoxDecoration(
                     color: AppTheme.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
                     border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
                   ),
                   child: Icon(Icons.add, size: 18, color: AppTheme.accent),
@@ -139,6 +140,7 @@ class _IgnoreListTab extends ConsumerWidget {
                               color: isSelected
                                   ? AppTheme.accent.withValues(alpha: 0.15)
                                   : Colors.transparent,
+                              borderRadius: BorderRadius.circular(AppRadius.control),
                               border: Border.all(
                                 color: isSelected
                                     ? AppTheme.accent.withValues(alpha: 0.5)
@@ -211,6 +213,7 @@ class _IgnoreListTab extends ConsumerWidget {
                               color: isSelected
                                   ? AppTheme.accent.withValues(alpha: 0.15)
                                   : Colors.transparent,
+                              borderRadius: BorderRadius.circular(AppRadius.control),
                               border: Border.all(
                                 color: isSelected
                                     ? AppTheme.accent.withValues(alpha: 0.5)
@@ -289,6 +292,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
           color: AppTheme.error.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(AppRadius.card),
         ),
         child: Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
       ),
@@ -298,6 +302,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: isEnabled ? t.border : t.border.withValues(alpha: 0.4),
           ),
@@ -309,6 +314,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
               width: 32, height: 32,
               decoration: BoxDecoration(
                 color: (isEnabled ? AppTheme.accent : t.textDim).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppRadius.chip),
               ),
               child: Icon(
                 typeIcon,
@@ -347,6 +353,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: (isEnabled ? AppTheme.accent : t.textDim)
                               .withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(AppRadius.chip),
                         ),
                         child: Text(
                           entry.type.label,
@@ -364,6 +371,7 @@ class _IgnoreEntryTile extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: (isEnabled ? scopeColor : t.textDim)
                               .withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(AppRadius.chip),
                         ),
                         child: Text(
                           entry.scope.label,

@@ -93,8 +93,8 @@ In SETTINGS → **Detection & Alerts** → **What to Watch For**, each type can 
 | Tier | Matched |
 |---|---|
 | **VERIFIED** | Bare-serial name + XUNTONG `0x09C8` manufacturer ID + TN serial |
-| **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe |
-| **SUSPECTED** | A listed OUI only |
+| **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe with the Flock IE signature |
+| **SUSPECTED** | A listed OUI only, including a wildcard probe without the IE signature |
 
 DETECTIONS → HISTORY can filter by tier. 
 
@@ -165,7 +165,7 @@ Every device the app hears gets a class, such as tracker, camera, public safety 
 
 ### Phone scan
 
-The phone can scan with its own radios, with or without a board. Tap the phone icon in the status bar to start it. It is off at launch.
+The phone can scan with its own radios, with or without a board. Tap **USE THIS DEVICE** on Home or the Connect screen, or the phone icon in the status bar, to start it. It is off at launch.
 
 - iPhone hits skip WiGLE CSV, because iOS hides MAC addresses.
 - iOS also removes Apple's manufacturer data, so a nearby iPhone, AirPods or AirTag arrives as a blank advert. It shows as *Possibly Apple, hidden by iOS*.

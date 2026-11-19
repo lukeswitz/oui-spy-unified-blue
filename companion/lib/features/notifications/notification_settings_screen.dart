@@ -33,6 +33,7 @@ class NotificationSettingsBody extends ConsumerWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppTheme.warning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppRadius.card),
               border: Border.all(color: AppTheme.warning.withValues(alpha: 0.3)),
             ),
             child: Row(

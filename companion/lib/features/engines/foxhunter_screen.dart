@@ -88,6 +88,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: (isActive ? AppTheme.foxhunter : t.textDim).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppRadius.chip),
               border: Border.all(
                 color: (isActive ? AppTheme.foxhunter : t.textDim).withValues(alpha: 0.3),
               ),
@@ -237,6 +238,7 @@ class _NodeTargetPicker extends ConsumerWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: t.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: t.border),
         ),
         child: Text('No mesh nodes seen yet.',
@@ -247,6 +249,7 @@ class _NodeTargetPicker extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: t.border),
       ),
       child: Row(

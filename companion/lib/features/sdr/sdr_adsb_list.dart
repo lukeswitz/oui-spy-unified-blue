@@ -201,10 +201,13 @@ class _AdsbCard extends StatelessWidget {
     final title = a.callsign.trim().isNotEmpty ? a.callsign.trim() : a.icao.toUpperCase();
     return InkWell(
       onTap: () => _showDetail(context),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: t.surfaceLight,
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: t.border, width: 0.5),
         ),
         child: Row(
@@ -371,7 +374,10 @@ class _AdsbDetail extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            color: t.fill,
+            decoration: BoxDecoration(
+              color: t.fill,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+            ),
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
             child: Row(children: [
               Icon(Icons.flight, color: accent, size: 20),
@@ -412,7 +418,8 @@ class _AdsbDetail extends StatelessWidget {
                       ];
                       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         if (url != null) ...[
-                          ClipRect(
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.card),
                             child: Image.network(url,
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => const SizedBox.shrink()),

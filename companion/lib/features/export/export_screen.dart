@@ -35,6 +35,7 @@ class ExportScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: t.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: t.border),
               ),
               child: Column(

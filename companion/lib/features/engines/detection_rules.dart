@@ -232,7 +232,10 @@ class SignaturesPanel extends ConsumerWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      color: t.surface,
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -251,6 +254,7 @@ class SignaturesPanel extends ConsumerWidget {
                     return Tooltip(
                       message: s.desc,
                       child: InkWell(
+                        borderRadius: BorderRadius.circular(AppRadius.control),
                         onTap: () => ref.read(detectorSigMaskProvider.notifier).setBit(s.bit, !on),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
@@ -261,6 +265,7 @@ class SignaturesPanel extends ConsumerWidget {
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
                                   color: on ? AppTheme.detector.withValues(alpha: 0.18) : t.background,
+                                  borderRadius: BorderRadius.circular(AppRadius.control),
                                   border: Border.all(color: on ? AppTheme.detector.withValues(alpha: 0.5) : t.border),
                                 ),
                                 child: Icon(s.icon, size: 20, color: c),
@@ -305,6 +310,7 @@ class _WatchlistChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: AppTheme.detector.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(AppRadius.chip),
             border: Border.all(color: AppTheme.detector.withValues(alpha: 0.3)),
           ),
           child: Row(
