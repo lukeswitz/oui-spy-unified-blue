@@ -133,6 +133,19 @@ void main() {
     await _release(tester, container);
   });
 
+  testWidgets('an unknown device type is not labelled low confidence', (tester) async {
+    final container = await _open(
+        tester,
+        _det(flock: false).copyWith(
+            engine: Engine.detector,
+            method: 'deauth_storm',
+            ssid: '',
+            detector: const DetectorExtension(filterDescription: 'Deauth flood', confidence: 2)));
+    expect(find.textContaining('WHAT THIS LOOKS LIKE', findRichText: true), findsWidgets);
+    expect(find.textContaining(RegExp('low confidence', caseSensitive: false)), findsNothing);
+    await _release(tester, container);
+  });
+
   testWidgets('a UniPwn hit shows robot, serial and exploited state', (tester) async {
     final container = await _open(
         tester,

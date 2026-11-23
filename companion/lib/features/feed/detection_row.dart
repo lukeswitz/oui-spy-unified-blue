@@ -802,11 +802,12 @@ class _DetectionInsights extends ConsumerWidget {
         if (g.because.isNotEmpty)
           Text(g.because,
               style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.3)),
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: DEyebrow('${_confWord(g.confidence)} confidence',
-              color: _confColor(g.confidence)),
-        ),
+        if (!DeviceExplain.isGeneric(g))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: DEyebrow('${_confWord(g.confidence)} confidence',
+                color: _confColor(g.confidence)),
+          ),
       ]));
     }
 

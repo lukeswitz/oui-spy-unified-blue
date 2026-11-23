@@ -8252,7 +8252,7 @@
         {
             "id": "fleet-autel",
             "name": "Autel",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -20593,7 +20593,7 @@
         {
             "id": "fleet-crazyflie",
             "name": "Crazyflie",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -21587,60 +21587,26 @@
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
-                {
-                    "kind": "MANUFACTURER_ID",
-                    "text": "",
-                    "companyId": 2218,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "DJI",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": "BLE",
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_GLOB",
-                    "text": "DJI*",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": "BLE",
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_CONTAINS",
-                    "text": "DJI",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": "WIFI",
-                    "enabled": true
-                },
-                {
-                    "kind": "NAME_GLOB",
-                    "text": "DJI*",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": "WIFI",
-                    "enabled": true
-                },
-                {
-                    "kind": "VENDOR_IE_OUI",
-                    "text": "26:37:12",
-                    "companyId": 0,
-                    "dataPrefixHex": "",
-                    "radio": null,
-                    "enabled": true
-                }
+                { "kind": "OUI", "text": "04:A8:5A", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "0C:9A:E6", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "34:D2:62", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "48:1C:B9", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "4C:43:F6", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "58:B8:58", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "60:60:1F", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "88:29:85", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "8C:58:23", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "E4:7A:2C", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "34:91:F0", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "9C:5A:8A", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "C8:A1:62", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true },
+                { "kind": "OUI", "text": "EC:72:F7", "companyId": 0, "dataPrefixHex": "", "radio": null, "enabled": true }
             ],
             "minPeers": 0,
             "peerWindowSec": 60,
             "clusterByOui": false,
             "sequentialMac": false,
-            "notes": "DJI aircraft, controller, or setup Wi-Fi. Handheld Osmo cameras are the Osmo row. Power stations named Power2000 are the DJI Power row. In-flight digital license plate is the Remote ID row.",
+            "notes": "A device whose MAC prefix belongs to DJI (SZ DJI Technology or DJI Baiwang in the IEEE registry). A drone in flight is the Remote ID row.",
             "attentionNote": "",
             "builtIn": true,
             "kind": "DRONE",
@@ -27134,7 +27100,7 @@
         {
             "id": "fleet-holystone",
             "name": "Holy Stone",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -27338,7 +27304,7 @@
         {
             "id": "fleet-hoverair",
             "name": "HOVERAir",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -44237,7 +44203,7 @@
         {
             "id": "fleet-hubsan",
             "name": "Hubsan",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -49598,7 +49564,7 @@
         {
             "id": "fleet-parrot",
             "name": "Parrot",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -50348,7 +50314,7 @@
         {
             "id": "fleet-potensic",
             "name": "Potensic",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -56928,7 +56894,7 @@
         {
             "id": "fleet-skydio",
             "name": "Skydio",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -57401,7 +57367,7 @@
         {
             "id": "fleet-swellpro",
             "name": "SwellPro",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -57783,7 +57749,7 @@
         {
             "id": "fleet-tello",
             "name": "Tello",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -63234,7 +63200,7 @@
         {
             "id": "fleet-yuneec",
             "name": "Yuneec",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [
@@ -64844,7 +64810,7 @@
         {
             "id": "fleet-elrs",
             "name": "ExpressLRS",
-            "enabled": true,
+            "enabled": false,
             "matchAny": true,
             "colorIndex": 1,
             "rules": [

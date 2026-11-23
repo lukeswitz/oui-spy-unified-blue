@@ -98,9 +98,15 @@ void main() {
     expect(ids(ble(mfg: const [MfgRecord(0x006B, '00')])), contains('fleet-polar'));
     expect(ids(ble(uuids: ['FEEE', 'FEA5'])), allOf(contains('fleet-polar'), isNot(contains('fleet-gopro'))));
     expect(ids(ble(uuids: ['FEA5'])), contains('fleet-gopro'));
-    expect(ids(wifi('ExpressLRS TX')), contains('fleet-elrs'));
+    expect(ids(wifi('ExpressLRS TX')), isNot(contains('fleet-elrs')));
     expect(ids(wifi('EZVIZ_123456789')), contains('fleet-ezviz'));
-    expect(ids(wifi('', ies: ['26:37:12'])), contains('fleet-dji'));
+    expect(ids(wifi('', ies: ['26:37:12'])), isNot(contains('fleet-dji')));
+    expect(ids(wifi('MyNetwork-dji')), isNot(contains('fleet-dji')));
+    expect(ids(wifi('DJI-RC-1234')), isNot(contains('fleet-dji')));
+    expect(
+        ids(const Observation(
+            key: 'WIFI:60:60:1F:00:00:01', kind: RadioKind.wifi, mac: '60:60:1F:00:00:01', name: 'MyNetwork')),
+        contains('fleet-dji'));
     expect(ids(ble(uuids: ['FD5A'])), contains('fleet-smarttag'));
     expect(ids(ble(mfg: const [MfgRecord(0x0075, '0100')])), isNot(contains('fleet-smarttag')));
   });

@@ -63,6 +63,18 @@ void main() {
     expect(VendorClass.ruleFor('Hewlett Packard Enterprise')!.bucket, 'network');
   });
 
+  test('only DJI drone-maker MAC prefixes read as a drone', () {
+    VendorClass.loadTable([for (final a in VendorClass.tableAssets) File(a).readAsStringSync()]);
+    for (final v in ['Sz Dji Technology Co.,Ltd', 'Dji Baiwang Technology Co Ltd']) {
+      expect(VendorClass.ruleForKind(v, RadioKind.wifi)?.bucket, 'drone', reason: v);
+      expect(VendorClass.ruleForKind(v, RadioKind.ble)?.bucket, 'drone', reason: v);
+    }
+    for (final v in ['DJI Osmo Technology Co., Ltd.', 'SZ DJI Ronin Technology Co., Ltd.', 'Avedis Zildjian Company', 'Vantiva USA LLC']) {
+      expect(VendorClass.ruleForKind(v, RadioKind.wifi)?.bucket, isNot('drone'), reason: v);
+      expect(VendorClass.ruleForKind(v, RadioKind.ble)?.bucket, isNot('drone'), reason: v);
+    }
+  });
+
   test('SIG registry parses and resolves company IDs', () {
     expect(BtSigRegistry.companies.length, greaterThan(4000));
     expect(BtSigRegistry.memberUuids.length, greaterThan(700));

@@ -742,7 +742,6 @@ const bleCompanyClass = <int, String>{
   0x07D0: 'Home-Tuya',
   0x07D6: 'Home-ecobee',
   0x0870: 'Camera-Wyze',
-  0x08AA: 'Drone-DJI',
   0x08C0: 'Beacon-Accent',
   0x08C3: 'Tag-Chipolo',
   0x0909: 'Vehicle-70mai',

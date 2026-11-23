@@ -1239,12 +1239,13 @@ class DeviceDetailSheet extends ConsumerWidget {
                   if (g.because.isNotEmpty)
                     section('WHY', [
                       Text(g.because, style: TextStyle(color: t.textSecondary, fontSize: 13, height: 1.3)),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: DEyebrow(
-                            '${switch (g.confidence) { Confidence.high => 'HIGH', Confidence.medium => 'MEDIUM', Confidence.low => 'LOW' }} confidence',
-                            color: confidenceColor(g.confidence)),
-                      ),
+                      if (!DeviceExplain.isGeneric(g))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: DEyebrow(
+                              '${switch (g.confidence) { Confidence.high => 'HIGH', Confidence.medium => 'MEDIUM', Confidence.low => 'LOW' }} confidence',
+                              color: confidenceColor(g.confidence)),
+                        ),
                     ]),
                   section('IDENTITY', [
                     if (o.mac.isNotEmpty) kv('Address', o.mac, mono: true),
