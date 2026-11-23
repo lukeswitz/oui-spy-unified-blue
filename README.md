@@ -24,8 +24,8 @@
 
 | Platform | Phone scans | Detects on its own (no board) | Add-ons |
 |---|---|---|---|
-| Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices, sorted into classes (trackers, cameras, glasses, hacking tools and more). Drones by Remote ID over Bluetooth, Wi-Fi beacon, and Wi-Fi NAN on phones with Wi-Fi Aware | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
-| iPhone / macOS | BLE | Bluetooth devices, sorted into classes. Drones by Remote ID over Bluetooth | ESP32 board(s) |
+| Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices, sorted into types such as trackers, cameras, glasses and hacking tools. Drones that send Remote ID over Bluetooth or Wi-Fi. Phones with Wi-Fi Aware also catch drones that send it that way | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
+| iPhone / macOS | Bluetooth | Bluetooth devices, sorted into types. Drones that send Remote ID over Bluetooth 4. Apple doesn't let apps receive Remote ID sent over Wi-Fi or Bluetooth 5 long range. A board adds Wi-Fi Remote ID | ESP32 board(s) |
 
 </div>
 
