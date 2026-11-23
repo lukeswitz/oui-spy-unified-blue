@@ -11,30 +11,12 @@
 #include <esp_wifi.h>
 #include "opendroneid.h"
 #include "odid_wifi.h"
+#include "skyspy_odid.h"
 
 #define MAX_UAVS 32
 
 static ODID_UAS_Data UAS_data_ble;
 static ODID_UAS_Data UAS_data_wifi;
-
-struct DroneData {
-    uint8_t  mac[6];
-    int      rssi;
-    uint32_t lastSeen;
-    char     uavId[ODID_ID_SIZE + 1];
-    char     opId[ODID_ID_SIZE + 1];
-    char     selfId[ODID_STR_SIZE + 1];
-    double   lat, lon;
-    double   pilotLat, pilotLon;
-    int16_t  altMsl, heightAgl, speed, heading;
-    int16_t  altBaro, vertSpeed, operatorAlt, areaCeiling, areaFloor;
-    uint16_t areaCount, areaRadius, locTimestamp;
-    uint8_t  uaType, idType, opIdType, opLocType, classification;
-    uint8_t  categoryEu, classEu, heightType, status;
-    uint8_t  horizAcc, vertAcc, baroAcc, speedAcc, selfIdType;
-    uint32_t lastPushed;
-    bool     active;
-};
 
 static DroneData drones[MAX_UAVS];
 static DroneData* g_lastBleDrone = nullptr;
@@ -131,66 +113,6 @@ static void pushDroneDetection(DroneData* d, uint8_t method) {
     pushDetection(&evt);
 }
 
-static void applyOdidData(DroneData* d, const ODID_UAS_Data& UAS_data) {
-    if (UAS_data.BasicIDValid[0]) {
-        strncpy(d->uavId, (char*)UAS_data.BasicID[0].UASID, ODID_ID_SIZE);
-        d->uaType = (uint8_t)UAS_data.BasicID[0].UAType;
-        d->idType = (uint8_t)UAS_data.BasicID[0].IDType;
-    }
-    if (UAS_data.LocationValid) {
-        d->lat = UAS_data.Location.Latitude;
-        d->lon = UAS_data.Location.Longitude;
-        d->altMsl = (int16_t)UAS_data.Location.AltitudeGeo;
-        d->altBaro = (int16_t)UAS_data.Location.AltitudeBaro;
-        d->heightAgl = (int16_t)UAS_data.Location.Height;
-        d->speed = (int16_t)UAS_data.Location.SpeedHorizontal;
-        d->vertSpeed = (int16_t)UAS_data.Location.SpeedVertical;
-        d->heading = (int16_t)UAS_data.Location.Direction;
-        d->heightType = (uint8_t)UAS_data.Location.HeightType;
-        d->status = (uint8_t)UAS_data.Location.Status;
-        d->horizAcc = (uint8_t)UAS_data.Location.HorizAccuracy;
-        d->vertAcc = (uint8_t)UAS_data.Location.VertAccuracy;
-        d->baroAcc = (uint8_t)UAS_data.Location.BaroAccuracy;
-        d->speedAcc = (uint8_t)UAS_data.Location.SpeedAccuracy;
-        d->locTimestamp = (uint16_t)(UAS_data.Location.TimeStamp * 10.0f);
-    }
-    if (UAS_data.SelfIDValid) {
-        strncpy(d->selfId, (char*)UAS_data.SelfID.Desc, ODID_STR_SIZE);
-        d->selfIdType = (uint8_t)UAS_data.SelfID.DescType;
-    }
-    if (UAS_data.SystemValid) {
-        d->pilotLat = UAS_data.System.OperatorLatitude;
-        d->pilotLon = UAS_data.System.OperatorLongitude;
-        d->operatorAlt = (int16_t)UAS_data.System.OperatorAltitudeGeo;
-        d->areaCount = UAS_data.System.AreaCount;
-        d->areaRadius = UAS_data.System.AreaRadius;
-        d->areaCeiling = (int16_t)UAS_data.System.AreaCeiling;
-        d->areaFloor = (int16_t)UAS_data.System.AreaFloor;
-        d->opLocType = (uint8_t)UAS_data.System.OperatorLocationType;
-        d->classification = (uint8_t)UAS_data.System.ClassificationType;
-        d->categoryEu = (uint8_t)UAS_data.System.CategoryEU;
-        d->classEu = (uint8_t)UAS_data.System.ClassEU;
-    }
-    if (UAS_data.OperatorIDValid) {
-        strncpy(d->opId, (char*)UAS_data.OperatorID.OperatorId, ODID_ID_SIZE);
-        d->opIdType = (uint8_t)UAS_data.OperatorID.OperatorIdType;
-    }
-}
-
-static bool odidIsPlausible(const ODID_UAS_Data* u) {
-    for (int i = 0; i < ODID_BASIC_ID_MAX_MESSAGES; i++) {
-        if (!u->BasicIDValid[i]) continue;
-        const ODID_BasicID_data* b = &u->BasicID[i];
-        if (b->UAType == ODID_UATYPE_NONE) continue;
-        if (b->IDType == ODID_IDTYPE_NONE) continue;
-        for (int j = 0; j < ODID_ID_SIZE; j++) {
-            uint8_t c = (uint8_t)b->UASID[j];
-            if (c >= 0x20 && c <= 0x7E) return true;
-        }
-    }
-    return false;
-}
-
 static const uint8_t DRONE_VENDOR_OUIS[][3] = {
     {0x38, 0x1D, 0x14},
     {0x04, 0xA8, 0x5A}, {0x0C, 0x9A, 0xE6}, {0x34, 0xD2, 0x62}, {0x48, 0x1C, 0xB9}, {0x4C, 0x43, 0xF6},
@@ -252,32 +174,18 @@ class SkySkyBLECallback : public NimBLEAdvertisedDeviceCallbacks {
         int len = dev->getPayloadLength();
         uint8_t* payload = dev->getPayload();
 #endif
-        if (!payload || len < 6 + (int)sizeof(ODID_BasicID_encoded)) return;
-
-        // ODID BLE signature: 0x16 0xFA 0xFF 0x0D
-        if (payload[1] != 0x16 || payload[2] != 0xFA ||
-            payload[3] != 0xFF || payload[4] != 0x0D) return;
-
-        uint8_t* odid = const_cast<uint8_t*>(&payload[6]);
-        int odidLen = len - 6;
-
-        memset(&UAS_data, 0, sizeof(UAS_data));
-        if ((odid[0] & 0xF0) == (ODID_MESSAGETYPE_PACKED << 4)) {
-            odid_message_process_pack(&UAS_data, odid, odidLen);
-        } else {
-            decodeOpenDroneID(&UAS_data, odid);
-        }
+        if (!odidFromBleAdv(payload, len, &UAS_data)) return;
 
         const uint8_t* native = dev->getAddress().getNative();
         if (!native) return;
         uint8_t mac[6];
         bleAddrToMac(native, mac);
 
-        bool plausible = odidIsPlausible(&UAS_data);
+        const int bi = odidBasicIdIndex(&UAS_data);
         DroneData* d = nullptr;
-        if (plausible) {
+        if (bi >= 0) {
             char uid[ODID_ID_SIZE + 1] = {0};
-            strncpy(uid, (char*)UAS_data.BasicID[0].UASID, ODID_ID_SIZE);
+            strncpy(uid, (char*)UAS_data.BasicID[bi].UASID, ODID_ID_SIZE);
             d = findActiveDroneByUavId(uid);
             if (d != nullptr) {
                 memcpy(d->mac, mac, 6);
@@ -351,35 +259,22 @@ static void IRAM_ATTR wifiCallback(void* buf, wifi_promiscuous_pkt_type_t type) 
     }
 
     // Beacon frame with vendor-specific ODID element
-    if (payload[0] == 0x80) {
-        int offset = 36;
-        while (offset + 1 < length) {
-            int typ = payload[offset];
-            int len = payload[offset + 1];
-            if (typ == 0xdd && offset + 4 < length &&
-                ((payload[offset+2]==0x90 && payload[offset+3]==0x3a && payload[offset+4]==0xe6) ||
-                 (payload[offset+2]==0xfa && payload[offset+3]==0x0b && payload[offset+4]==0xbc))) {
-                int j = offset + 7;
-                if (j < length) {
-                    memset(&UAS_data, 0, sizeof(UAS_data));
-                    odid_message_process_pack(&UAS_data, &payload[j], length - j);
-                    if (!odidIsPlausible(&UAS_data)) return;
-
-                    DroneData* d = findOrAllocDrone(&payload[10]);
-                    if (!d->active) {
-                        memset(d, 0, sizeof(*d));
-                        memcpy(d->mac, &payload[10], 6);
-                        d->active = true;
-                    }
-                    d->rssi = pkt->rx_ctrl.rssi;
-                    d->lastSeen = millis();
-                    applyOdidData(d, UAS_data);
-                    pushDroneDetection(d, METHOD_ODID_BEACON);
-                }
-                return;
+    {
+        const int r = odidFromBeacon(payload, length, &UAS_data);
+        if (r == 0) return;
+        if (r == 1) {
+            if (!odidIsPlausible(&UAS_data)) return;
+            DroneData* d = findOrAllocDrone(&payload[10]);
+            if (!d->active) {
+                memset(d, 0, sizeof(*d));
+                memcpy(d->mac, &payload[10], 6);
+                d->active = true;
             }
-            offset += 2 + len;
-            if (len == 0) break;
+            d->rssi = pkt->rx_ctrl.rssi;
+            d->lastSeen = millis();
+            applyOdidData(d, UAS_data);
+            pushDroneDetection(d, METHOD_ODID_BEACON);
+            return;
         }
     }
 }
