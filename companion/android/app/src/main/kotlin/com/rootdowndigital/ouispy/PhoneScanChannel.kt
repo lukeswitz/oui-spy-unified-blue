@@ -7,6 +7,7 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.os.Build
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -44,6 +45,13 @@ class PhoneScanChannel(private val context: Context, messenger: BinaryMessenger)
             "stop" -> {
                 stop()
                 result.success(null)
+            }
+            "wifiOdid" -> {
+                try {
+                    result.success(wifiOdid())
+                } catch (e: SecurityException) {
+                    result.error("wifi_odid", e.message, null)
+                }
             }
             else -> result.notImplemented()
         }
@@ -98,6 +106,26 @@ class PhoneScanChannel(private val context: Context, messenger: BinaryMessenger)
             scanner()?.stopScan(cb)
         } catch (_: Exception) {
         }
+    }
+
+    private fun wifiOdid(): List<Map<String, Any>> {
+        if (Build.VERSION.SDK_INT < 30) return emptyList()
+        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val out = ArrayList<Map<String, Any>>()
+        for (r in wm.scanResults) {
+            for (ie in r.informationElements) {
+                if (ie.id != 221) continue
+                val buf = ie.bytes.duplicate()
+                val b = ByteArray(buf.remaining())
+                buf.get(b)
+                if (b.size < 5) continue
+                val oui = ((b[0].toInt() and 0xFF) shl 16) or ((b[1].toInt() and 0xFF) shl 8) or (b[2].toInt() and 0xFF)
+                if ((oui == 0xFA0BBC || oui == 0x903AE6) && (b[3].toInt() and 0xFF) == 0x0D) {
+                    out.add(mapOf("bssid" to r.BSSID, "rssi" to r.level, "freq" to r.frequency, "ie" to b))
+                }
+            }
+        }
+        return out
     }
 
     private fun encode(r: ScanResult): Map<String, Any?> {

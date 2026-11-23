@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show PlatformException, rootBundle;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
@@ -383,9 +383,24 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     }
   }
 
+  void Function(String bssid, int rssi, int channel, List<int> vendorIe)? onWifiOdid;
+
+  Future<void> _pullWifiOdid() async {
+    final cb = onWifiOdid;
+    if (cb == null || !Platform.isAndroid || !scanning || radioMask & 0x01 == 0) return;
+    try {
+      for (final r in await NativePhoneScan.wifiOdid()) {
+        cb(MacUtil.normalize(r.bssid), r.rssi, wifiChannel(r.freq), r.ie);
+      }
+    } on PlatformException catch (e) {
+      DebugLog.log('CLASSIFY: wifi Remote ID read failed: ${e.message}');
+    }
+  }
+
   void _onWifiResults(List<WiFiAccessPoint> aps) {
     if (_wifiTimer == null) return;
     _wifiKick();
+    unawaited(_pullWifiOdid());
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       final fix = here?.call();
@@ -480,6 +495,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
   }
 
   void Function(String mac, String name, int rssi, List<int> adv)? onDetection;
+  void Function(String mac, int rssi, List<int> adv)? onOdid;
   final Map<String, int> _lastFed = {};
   static const ingestEvery = Duration(seconds: 5);
   final Map<String, int> _lastIngest = {};
@@ -594,6 +610,8 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       final isMac = !Platform.isIOS && !Platform.isMacOS;
       final mac = isMac ? MacUtil.normalize(id) : '';
       final adv = r.advertisementData;
+      final odid = onOdid;
+      if (odid != null && isMac && adv.serviceData.isNotEmpty) odid(mac, r.rssi, advBytes(adv));
       final feed = onDetection;
       if (feed != null) {
         final last = _lastFed[id];
@@ -1063,6 +1081,8 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
     return p == null ? null : GpsSample(0, p.latitude, p.longitude);
   });
   src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;
+  src.onOdid = ref.read(bleManagerProvider).addPhoneOdid;
+  src.onWifiOdid = ref.read(bleManagerProvider).addPhoneWifiOdid;
   src.onWifi = ref.read(bleManagerProvider).addPhoneWifiDetection;
   src.onFoxRssi = ref.read(bleManagerProvider).addPhoneFoxRssi;
   src.setRxOnly(ref.read(rxOnlyProvider));

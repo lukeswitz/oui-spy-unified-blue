@@ -263,6 +263,8 @@ class SdrController {
     _power = const [];
   }
 
+  void injectFrame(SdrFrame f) => _onFrame(f);
+
   void _onFrame(SdrFrame f) {
     if (f.status != null) _scanStatus = f.status!;
     if (f.power != null) {

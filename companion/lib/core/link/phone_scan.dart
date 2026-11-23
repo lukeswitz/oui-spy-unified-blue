@@ -18,6 +18,20 @@ class NativePhoneScan {
 
   static Future<void> stop() => _method.invokeMethod<void>('stop');
 
+  static Future<List<({String bssid, int rssi, int freq, List<int> ie})>> wifiOdid() async {
+    final raw = await _method.invokeListMethod<Object?>('wifiOdid') ?? const [];
+    return [
+      for (final e in raw)
+        if (e is Map)
+          (
+            bssid: e['bssid'] as String,
+            rssi: e['rssi'] as int,
+            freq: e['freq'] as int,
+            ie: List<int>.from(e['ie'] as List),
+          ),
+    ];
+  }
+
   static ScanResult decode(Map m) {
     final mfg = <int, List<int>>{};
     (m['mfg'] as Map?)?.forEach((k, v) => mfg[k as int] = List<int>.from(v as List));

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/odid/odid_ble.dart';
 import 'package:oui_spy/smoke_hook.dart';
 
 void main() {
@@ -35,6 +36,17 @@ void main() {
     expect(o.opLocationType, 1);
     expect(o.selfIdType, 1);
     expect(o.status, 2);
+  });
+
+  test('the smoke phone Remote ID advertisement decodes', () {
+    final o = OdidBleDecoder().feed('02:00:00:00:06:02', smokePhoneOdidAdv(51.4, -0.1, 1))!;
+    expect(o.uavId, 'SMOKEPHONE01');
+    expect(o.operatorId, 'SMOKEPHONEOP');
+    expect(o.altitudeMsl, 120);
+    expect(o.heightAgl, 30);
+    expect(o.droneSpeed, 5);
+    expect(o.droneHeading, 45);
+    expect(o.droneLat, closeTo(51.4, 1e-6));
   });
 
   test('Remote ID "unknown" values decode as missing, real values stay', () {

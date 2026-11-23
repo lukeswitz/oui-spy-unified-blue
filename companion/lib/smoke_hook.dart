@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
+import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/watch_alert_log.dart';
@@ -99,6 +100,21 @@ List<int> smokeOdidExt({
   return b.buffer.asUint8List();
 }
 
+List<int> smokePhoneOdidAdv(double lat, double lon, int counter) {
+  List<int> le(int v, int n) => [for (var i = 0; i < n; i++) (v >> (8 * i)) & 0xff];
+  final basic = [0x02, (1 << 4) | 2, ..._str('SMOKEPHONE01', 20), 0, 0, 0];
+  final loc = [
+    0x12, 2 << 4, 45, 20, 0,
+    ...le((lat * 1e7).round(), 4), ...le((lon * 1e7).round(), 4),
+    ...le((1120 * 2), 2), ...le((1120 * 2), 2), ...le((1030 * 2), 2),
+    0, 0, ...le(1234, 2), 0, 0,
+  ];
+  final op = [0x52, 0, ..._str('SMOKEPHONEOP', 20), 0, 0, 0];
+  final pack = [0xF2, 0x19, 3, ...basic, ...loc, ...op];
+  final data = [0x16, 0xFA, 0xFF, 0x0D, counter & 0xff, ...pack];
+  return [data.length, ...data];
+}
+
 void runSmokeIfEnabled(ProviderContainer container) {
   if (!_enabled) return;
   final wd = container.read(wardriveProvider);
@@ -146,6 +162,10 @@ void _inject(ProviderContainer container) {
     for (var i = 0; i < 2; i++) {
       send('wifi_client', smokeFrame(Engine.wardrive, '02:00:00:00:02:0$i', -70 - r, 1, 2,
           [..._wardriveExt('', 0, ''), ..._mac('02:00:00:00:01:00')]));
+    }
+    for (var i = 0; i < 3; i++) {
+      send('wifi_mesh', smokeFrame(Engine.wardrive, '02:00:00:00:0a:0$i', -66 - i - r, 11, 0,
+          _wardriveExt('SmokeMesh', 3, '')));
     }
     for (var i = 0; i < 3; i++) {
       send('ble_adv', smokeFrame(Engine.wardrive, '02:00:00:00:03:0$i', -65 - r, 37, 1,
@@ -200,6 +220,9 @@ void _inject(ProviderContainer container) {
     send('uniPwn', smokeFrame(Engine.uniPwn, '02:00:00:00:07:00', -68 - r, 37, 0,
         [..._str('Go2', 8), 0]));
     send('foxhunter', smokeFrame(Engine.foxhunter, '02:00:00:00:08:00', -45 - r, 37, 0, const []));
+    ble.addPhoneOdid('02:00:00:00:06:02', -70 - r,
+        smokePhoneOdidAdv(lat0 - 0.0025 + step, lon0 + 0.0025, tick));
+    counts['phone_odid'] = (counts['phone_odid'] ?? 0) + 1;
 
     if (tick == 3) {
       log(kind: 'drone_loiter', title: 'Smoke drone loiter', reason: 'smoke test', subject: '02:00:00:00:06:00',
@@ -209,7 +232,29 @@ void _inject(ProviderContainer container) {
       log(kind: 'car_follow', title: 'Smoke car follow', reason: 'smoke test', subject: '02:00:00:00:03:00');
       log(kind: 'trusted_network', title: 'Smoke evil twin', reason: 'smoke test', subject: '02:00:00:00:01:01',
           lat: lat0 + 0.0035, lon: lon0 - 0.0035);
-      counts['alerts'] = 4;
+      log(kind: 'cell_watch', title: 'Smoke cell downgrade', reason: 'smoke test', subject: 'CELL',
+          lat: lat0 - 0.0035, lon: lon0 - 0.0035);
+      log(kind: 'gps_watch', title: 'Smoke GPS jump', reason: 'smoke test', subject: 'GPS');
+      log(kind: 'aircraft_circle', title: 'Smoke aircraft circling', reason: 'smoke test', subject: 'ABC123',
+          lat: lat0 + 0.004, lon: lon0);
+      counts['alerts'] = 7;
+    }
+    final sdr = container.read(sdrControllerProvider);
+    for (final d in [
+      SdrDetection(kind: 'rtl433', fields: {
+        'model': 'ERT-SCM', 'id': 10001, 'consumption_data': 12000 + tick * 3, 'rssi': -20,
+      }),
+      SdrDetection(kind: 'rtl433', fields: {
+        'model': 'Acurite-Tower', 'id': 2002, 'temperature_C': 21.5, 'humidity': 40, 'rssi': -25,
+      }),
+      SdrDetection(kind: 'tpms', fields: {'model': 'Schrader', 'id': '0000ABCD', 'pressure_kPa': 230, 'rssi': -30}),
+      SdrDetection(kind: 'adsb', fields: {
+        'icao': 'ABC123', 'callsign': 'SMK123', 'lat': lat0 + 0.01, 'lon': lon0, 'alt_ft': 3000 + tick * 10,
+        'speed_kt': 120, 'heading': 90,
+      }),
+    ]) {
+      sdr.injectFrame(SdrFrame(detection: d));
+      counts['sdr:${d.kind}'] = (counts['sdr:${d.kind}'] ?? 0) + 1;
     }
     if (++tick < _seconds) return;
     t.cancel();

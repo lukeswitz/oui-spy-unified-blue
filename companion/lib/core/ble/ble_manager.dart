@@ -24,6 +24,7 @@ import 'package:oui_spy/core/oui/flock_oui.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
+import 'package:oui_spy/core/odid/odid_ble.dart';
 
 class SpoolImportProgress {
   final int seen;
@@ -482,8 +483,50 @@ class BleManager {
   void addPhoneFoxRssi(int rssi, int intervalMs) =>
       _foxhunterRssiStream.add((rssi: rssi, intervalMs: intervalMs));
 
+  final _odidDecoder = OdidBleDecoder();
+  final Map<String, int> _odidLastEmitMs = {};
+
+  void addPhoneOdid(String mac, int rssi, List<int> adv, {String nodeId = phoneNodeId}) {
+    mac = mac.toLowerCase();
+    _emitPhoneOdid(mac, rssi, _odidDecoder.feed(mac, adv), nodeId: nodeId, method: 'odid_ble', channel: 0);
+  }
+
+  void addPhoneWifiOdid(String bssid, int rssi, int channel, List<int> vendorIe) {
+    final mac = bssid.toLowerCase();
+    _emitPhoneOdid(mac, rssi, _odidDecoder.feedMessages(mac, odidMessagesFromVendorIe(vendorIe)),
+        nodeId: phoneNodeId, method: 'odid_beacon', channel: channel);
+  }
+
+  void _emitPhoneOdid(String mac, int rssi, OdidExtension? ext,
+      {required String nodeId, required String method, required int channel}) {
+    if (ext == null) return;
+    final now = DateTime.now();
+    final last = _odidLastEmitMs[mac];
+    if (last != null && now.millisecondsSinceEpoch - last < 1000) return;
+    _odidLastEmitMs[mac] = now.millisecondsSinceEpoch;
+    _detections.add(Detection(
+      id: '${mac}_odid_${now.millisecondsSinceEpoch}',
+      sessionId: _sessionId,
+      nodeId: nodeId,
+      macAddress: mac,
+      engine: Engine.skySpy,
+      method: method,
+      rssi: rssi,
+      channel: channel,
+      deviceTimestampMs: 0,
+      appTimestamp: now,
+      sourceNodeId: nodeId,
+      latitude: _lastLat,
+      longitude: _lastLon,
+      accuracy: _lastAccuracy,
+      satelliteCount: _lastSatCount,
+      odid: ext,
+    ));
+  }
+
   void addPhoneDetection(String mac, String name, int rssi, List<int> adv,
       {String nodeId = phoneNodeId}) {
+    if (adv.isNotEmpty) addPhoneOdid(mac, rssi, adv, nodeId: nodeId);
     mac = mac.toLowerCase();
     final now = DateTime.now();
     final ext = WardriveExtension(deviceName: name);
