@@ -14,7 +14,7 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 
-const kPermissionsOnboardedKey = 'permissions_onboarded_v2';
+const kPermissionsOnboardedKey = 'permissions_onboarded_v3';
 
 class PermissionStep {
   const PermissionStep({
@@ -102,14 +102,8 @@ Future<bool> openAlwaysLocationSettings() async {
     _alwaysRequestIgnored = true;
     if (answered) return false;
   } else if (Platform.isAndroid) {
-    var prompted = false;
-    final listener = AppLifecycleListener(onInactive: () => prompted = true);
-    try {
-      final status = await ph.Permission.locationAlways.request();
-      if (status.isGranted || prompted) return false;
-    } finally {
-      listener.dispose();
-    }
+    final status = await ph.Permission.locationAlways.request();
+    if (status.isGranted) return false;
   }
   await Geolocator.openAppSettings();
   return true;
@@ -128,6 +122,16 @@ Future<void> _requestLocationAlways(WidgetRef ref) async {
     listener.dispose();
   }
 }
+
+Future<bool> backgroundRunAllowed() async =>
+    !Platform.isAndroid || await ph.Permission.ignoreBatteryOptimizations.isGranted;
+
+Future<void> requestBackgroundRun() async {
+  if (!Platform.isAndroid) return;
+  await ph.Permission.ignoreBatteryOptimizations.request();
+}
+
+Future<void> _requestBackgroundRun(WidgetRef ref) => requestBackgroundRun();
 
 Future<void> _requestNotifications(WidgetRef ref) =>
     ref.read(notificationServiceProvider).init();
@@ -149,23 +153,31 @@ List<PermissionStep> defaultPermissionSteps() => [
             'wardrive sessions went. It also lets the app turn the radios off '
             'inside your exclusion zones.\n\n'
             '${Platform.isMacOS ? 'Choose Allow. macOS has one location setting, so this also keeps the map '
-                'running in the background.' : 'Choose While Using the App, not Only This Time. The next screen '
-                'changes it to all the time, which the map needs.'}',
+                'running in the background.' : Platform.isAndroid ? 'Choose While Using the App, not Only This Time. The next screen '
+                'changes it to all the time, which the map needs.' : 'Choose While Using the App.'}',
         request: _requestLocation,
       ),
-      if (Platform.isAndroid || Platform.isIOS)
+      if (Platform.isAndroid)
         PermissionStep(
           icon: Icons.my_location,
           title: 'Location all the time',
-          body: 'Wardriving with the screen off needs location set to '
-              '${Platform.isAndroid ? '"Allow all the time"' : '"Always"'}. Without it, location '
-              'stops reaching the app when the screen turns off, so the map and distance stop too.'
-              '\n\n${Platform.isAndroid ? 'Continue opens the location page in Settings. Choose Allow all the time, then go back. '
-                  'If the app info page opens instead, tap Permissions, then Location first.' : 'Continue shows the prompt. Choose Change to Always Allow. iOS only shows it once, so if Settings '
-                  'opens instead, choose Apps, OUI-APEX, Location, then Always, then come back.'}',
-          hint: Platform.isAndroid ? 'Settings opens next.' : null,
+          body: 'Wardriving with the screen off needs location set to "Allow all the time". '
+              'Without it, location stops reaching the app when the screen turns off, so the map and '
+              'distance stop too.\n\nContinue opens the location page in Settings. Choose Allow all the '
+              'time, then go back. If the app info page opens instead, tap Permissions, then Location first.',
+          hint: 'Settings opens next.',
           request: _requestLocationAlways,
           done: BlePermissions.alwaysLocationGranted,
+        ),
+      if (Platform.isAndroid)
+        const PermissionStep(
+          icon: Icons.battery_charging_full,
+          title: 'Run in the background',
+          body: 'With battery optimization on, Android puts the phone to sleep about a minute after '
+              'the screen turns off, even with location set to all the time. Scanning, GPS and the board '
+              'link all freeze until you unlock it.\n\nChoose Allow on the next prompt.',
+          request: _requestBackgroundRun,
+          done: backgroundRunAllowed,
         ),
       const PermissionStep(
         icon: Icons.notifications_outlined,
@@ -320,7 +332,7 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Continue'),
+                      : Text(_notSet ? 'Open Settings' : 'Continue'),
                 ),
               ),
             ],

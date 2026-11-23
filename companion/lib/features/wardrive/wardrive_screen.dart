@@ -86,7 +86,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   bool _alwaysLocationMissing = false;
 
   Future<void> _checkAlwaysLocation() async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
+    if (!Platform.isAndroid && !Platform.isMacOS) return;
     final missing = !await BlePermissions.alwaysLocationGranted();
     if (mounted && missing != _alwaysLocationMissing) {
       setState(() => _alwaysLocationMissing = missing);

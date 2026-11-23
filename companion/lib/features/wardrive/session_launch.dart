@@ -340,12 +340,17 @@ Future<bool> _startWardriveSession(BuildContext context, WidgetRef ref, {require
     DebugLog.log('WARDRIVE: start aborted — screen gone');
     return false;
   }
-  if (requireLocation) await _askAlwaysLocation(context);
+  if (requireLocation) await askAlwaysLocation(context);
   if (!context.mounted) {
     DebugLog.log('WARDRIVE: start aborted — screen gone');
     return false;
   }
-  if (Platform.isIOS) await ensurePhoneScan(context, ref);
+  await askBackgroundRun(context);
+  if (!context.mounted) {
+    DebugLog.log('WARDRIVE: start aborted — screen gone');
+    return false;
+  }
+  await ensurePhoneScan(context, ref, askAlways: false);
   if (!context.mounted) {
     DebugLog.log('WARDRIVE: start aborted — screen gone');
     return false;
@@ -413,10 +418,10 @@ Future<bool> _primeLocationPermission(BuildContext context) async {
   }
 }
 
-Future<void> _askAlwaysLocation(BuildContext context) async {
-  if (!Platform.isAndroid && !Platform.isIOS) return;
+Future<void> askAlwaysLocation(BuildContext context) async {
+  if (!Platform.isAndroid) return;
   if (await Geolocator.checkPermission() == LocationPermission.always) return;
-  final prefKey = Platform.isAndroid ? 'android_always_upgrade_dismissed' : 'ios_always_upgrade_dismissed';
+  const prefKey = 'android_always_upgrade_dismissed';
   final p = await SharedPreferences.getInstance();
   if (p.getBool(prefKey) == true || !context.mounted) return;
   final t = AppTheme.of(context);
@@ -442,9 +447,36 @@ Future<void> _askAlwaysLocation(BuildContext context) async {
   );
 }
 
-Future<bool> ensurePhoneScan(BuildContext context, WidgetRef ref) async {
+Future<void> askBackgroundRun(BuildContext context) async {
+  if (!Platform.isAndroid || await backgroundRunAllowed() || !context.mounted) return;
+  await _settingsDialog(
+    context,
+    title: 'Allow background running',
+    body: 'With battery optimization on, Android puts the phone to sleep about a minute after the '
+        'screen turns off. Scanning, GPS and the board link freeze until you unlock it.',
+    action: 'ALLOW',
+    onAction: requestBackgroundRun,
+  );
+}
+
+const _phoneScanAskedKey = 'phone_scan_asked';
+
+Future<bool> ensurePhoneScan(
+  BuildContext context,
+  WidgetRef ref, {
+  bool askAlways = true,
+  bool explicit = false,
+}) async {
   final src = ref.read(phoneBleSourceProvider);
   if (src.active) return true;
+  if (explicit) {
+    src.setActive(true);
+    if (askAlways && context.mounted) await askAlwaysLocation(context);
+    return true;
+  }
+  final prefs = await SharedPreferences.getInstance();
+  if (prefs.getBool(_phoneScanAskedKey) ?? false) return false;
+  if (!context.mounted) return false;
   final yes = await showDialog<bool>(
     context: context,
     builder: (d) => AlertDialog(
@@ -465,8 +497,19 @@ Future<bool> ensurePhoneScan(BuildContext context, WidgetRef ref) async {
       ],
     ),
   );
-  if (yes != true) return false;
+  await prefs.setBool(_phoneScanAskedKey, true);
+  if (yes != true) {
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text('To scan with this ${Platform.isAndroid ? 'phone' : 'device'} later, tap the '
+            '${Platform.isAndroid ? 'phone' : 'device'} icon at the top.'),
+        duration: const Duration(seconds: 6),
+      ));
+    }
+    return false;
+  }
   src.setActive(true);
+  if (askAlways && context.mounted) await askAlwaysLocation(context);
   return true;
 }
 

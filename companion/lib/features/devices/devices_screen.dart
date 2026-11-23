@@ -264,7 +264,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                             _ => kPillAll,
                           },
                           onTap: () async {
-                            if (s == 'phone' && !await ensurePhoneScan(ctx, ref)) {
+                            if (s == 'phone' && !await ensurePhoneScan(ctx, ref, explicit: true)) {
                               return;
                             }
                             apply(() => _source = s);
@@ -423,7 +423,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
                   src.setActive(false);
                   if (_source == 'phone') _source = null;
                 } else {
-                  await ensurePhoneScan(context, ref);
+                  await ensurePhoneScan(context, ref, explicit: true);
                 }
                 if (mounted) setState(() {});
               },

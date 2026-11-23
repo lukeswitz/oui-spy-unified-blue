@@ -740,6 +740,7 @@ class CommandHeader extends StatelessWidget {
       child: Row(
         children: [
           Flexible(
+            flex: 3,
             child: Text(title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
