@@ -537,29 +537,42 @@ class BleProtocol {
     );
   }
 
+  static const odidInvalidAltitude = -1000;
+  static const odidInvalidSpeed = 255;
+  static const odidInvalidVertSpeed = 63;
+  static const odidInvalidDirection = 361;
+  static const odidInvalidTimestamp = 0xFFFF;
+  static const odidMaxTimestampTenths = 36000;
+
+  static int? _odidAlt(int v) => v == odidInvalidAltitude ? null : v;
+
   static OdidExtension _decodeOdidExtension(Uint8List ext) {
     if (ext.length < 88) return const OdidExtension();
     final view = ByteData.sublistView(ext);
+    final speed = view.getInt16(62, Endian.little);
+    final heading = view.getInt16(64, Endian.little);
+    final vSpeed = ext.length >= 110 ? view.getInt16(108, Endian.little) : null;
+    final ts = ext.length >= 122 ? view.getUint16(120, Endian.little) : null;
     return OdidExtension(
       uavId: _extractString(ext, 0, 21),
       operatorId: _extractString(ext, 21, 21),
       droneLat: view.getFloat64(42, Endian.little),
       droneLon: view.getFloat64(50, Endian.little),
-      altitudeMsl: view.getInt16(58, Endian.little),
-      heightAgl: view.getInt16(60, Endian.little),
-      droneSpeed: view.getInt16(62, Endian.little),
-      droneHeading: view.getInt16(64, Endian.little),
+      altitudeMsl: _odidAlt(view.getInt16(58, Endian.little)),
+      heightAgl: _odidAlt(view.getInt16(60, Endian.little)),
+      droneSpeed: speed >= odidInvalidSpeed ? null : speed,
+      droneHeading: heading >= odidInvalidDirection ? null : heading,
       pilotLat: view.getFloat64(66, Endian.little),
       pilotLon: view.getFloat64(74, Endian.little),
       selfId: ext.length >= 106 ? _extractString(ext, 82, 24) : null,
-      altitudeBaro: ext.length >= 108 ? view.getInt16(106, Endian.little) : null,
-      vertSpeed: ext.length >= 110 ? view.getInt16(108, Endian.little) : null,
-      operatorAlt: ext.length >= 112 ? view.getInt16(110, Endian.little) : null,
+      altitudeBaro: ext.length >= 108 ? _odidAlt(view.getInt16(106, Endian.little)) : null,
+      vertSpeed: vSpeed == null || vSpeed.abs() >= odidInvalidVertSpeed ? null : vSpeed,
+      operatorAlt: ext.length >= 112 ? _odidAlt(view.getInt16(110, Endian.little)) : null,
       areaCount: ext.length >= 114 ? view.getUint16(112, Endian.little) : null,
       areaRadius: ext.length >= 116 ? view.getUint16(114, Endian.little) : null,
-      areaCeiling: ext.length >= 118 ? view.getInt16(116, Endian.little) : null,
-      areaFloor: ext.length >= 120 ? view.getInt16(118, Endian.little) : null,
-      locTimestamp: ext.length >= 122 ? view.getUint16(120, Endian.little) : null,
+      areaCeiling: ext.length >= 118 ? _odidAlt(view.getInt16(116, Endian.little)) : null,
+      areaFloor: ext.length >= 120 ? _odidAlt(view.getInt16(118, Endian.little)) : null,
+      locTimestamp: ts == null || ts > odidMaxTimestampTenths ? null : ts,
       uaType: ext.length >= 123 ? ext[122] : null,
       idType: ext.length >= 124 ? ext[123] : null,
       opIdType: ext.length >= 125 ? ext[124] : null,

@@ -123,34 +123,49 @@ class _DisconnectedView extends ConsumerWidget {
                 ),
               ),
             ] else if (!isReconnecting) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push('/onboarding'),
-                  icon: const Icon(Icons.bluetooth, size: 16),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.accent,
-                    side: BorderSide(color: AppTheme.accent),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+              Row(
+                key: const Key('home-connect-row'),
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.push('/onboarding'),
+                        icon: const Icon(Icons.bluetooth, size: 16),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accent,
+                          side: BorderSide(color: AppTheme.accent),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+                        ),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('CONNECT', style: TextStyle(letterSpacing: 2, fontSize: 13)),
+                        ),
+                      ),
+                    ),
                   ),
-                  label: const Text('CONNECT', style: TextStyle(letterSpacing: 2, fontSize: 13)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: () => ref.read(phoneBleSourceProvider).setActive(true),
-                  icon: Icon(phoneScanIcon, size: 16),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.detector,
-                    side: BorderSide(color: AppTheme.detector),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () => ref.read(phoneBleSourceProvider).setActive(true),
+                        icon: Icon(phoneScanIcon, size: 16),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.detector,
+                          side: BorderSide(color: AppTheme.detector),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+                        ),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('USE THIS DEVICE', style: TextStyle(letterSpacing: 2, fontSize: 13)),
+                        ),
+                      ),
+                    ),
                   ),
-                  label: const Text('USE THIS DEVICE', style: TextStyle(letterSpacing: 2, fontSize: 13)),
-                ),
+                ],
               ),
             ],
             if (isReconnecting) ...[
