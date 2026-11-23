@@ -516,7 +516,7 @@ class BleManager {
     bssid = bssid.toLowerCase();
     if (client && ap != null) clientAp[bssid] = ap.toLowerCase();
     final now = DateTime.now();
-    _detections.add(Detection(
+    final det = Detection(
       id: '${bssid}_${now.millisecondsSinceEpoch}',
       sessionId: _sessionId,
       nodeId: nodeId,
@@ -534,7 +534,9 @@ class BleManager {
       accuracy: _lastAccuracy,
       satelliteCount: _lastSatCount,
       wardrive: WardriveExtension(ssid: ssid, authMode: authMode),
-    ));
+    );
+    if (client && ap != null) detectionClientAp[det] = ap.toLowerCase();
+    _detections.add(det);
     if ((_flockOuiOnlyGetter?.call() ?? false) && FlockOui.match(bssid)) {
       _detections.add(Detection(
         id: '${bssid}_flock_${now.millisecondsSinceEpoch}',
@@ -2350,7 +2352,10 @@ class BleManager {
       satelliteCount: isAway ? null : _lastSatCount,
     );
     final clientOf = BleProtocol.clientApOf(data);
-    if (clientOf != null) clientAp[detection.macAddress.toLowerCase()] = clientOf;
+    if (clientOf != null) {
+      clientAp[detection.macAddress.toLowerCase()] = clientOf;
+      detectionClientAp[detection] = clientOf;
+    }
     _detections.add(detection);
     final src = detection.sourceNodeId;
     if (enowHubActive && src.length == 4 && src.startsWith('E')) {

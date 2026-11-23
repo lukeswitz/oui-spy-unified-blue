@@ -171,6 +171,9 @@ Detection mergeWardriveSighting(Detection existing, Detection detection) {
   detectionRssiMax[merged] = math.max(
       math.max(detectionRssiMax[existing] ?? existing.rssi, detectionRssiMax[detection] ?? detection.rssi),
       merged.rssi);
+  final clientOf = detectionClientAp[detection] ?? detectionClientAp[existing];
+  if (clientOf != null) detectionClientAp[merged] = clientOf;
+  detectionRssiLast[merged] = detectionRssiLast[detection] ?? detection.rssi;
   return merged;
 }
 
@@ -228,6 +231,9 @@ Map<String, Detection> foldSessionRows(Iterable<Detection> rowsAsc) {
       );
       detectionRssiMin[folded] = detectionRssiMin[merged];
       detectionRssiMax[folded] = detectionRssiMax[merged];
+      final clientOf = detectionClientAp[merged];
+      if (clientOf != null) detectionClientAp[folded] = clientOf;
+      detectionRssiLast[folded] = detectionRssiLast[merged];
       out[key] = folded;
     }
     final seen = detectionLastSeenMs[row] ?? row.appTimestamp.millisecondsSinceEpoch;

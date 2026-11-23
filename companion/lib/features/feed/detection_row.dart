@@ -918,6 +918,18 @@ class _DetailSummary extends ConsumerWidget {
               ? '$board  (${detection.nodeId})'
               : detection.nodeId));
     }
+    final clientOf = detectionClientAp[detection] ??
+        ref.read(bleManagerProvider).clientAp[detection.macAddress.toLowerCase()];
+    if (detection.method == 'wifi_client' && clientOf != null && clientOf.isNotEmpty) {
+      rows.add(_detailRow(context, 'Connected to',
+          maskMac(clientOf.toUpperCase(), ref.read(privacyScreenProvider))));
+    }
+    final pwn = detection.unipwn;
+    if (pwn != null) {
+      if (pwn.robotType.isNotEmpty) rows.add(_detailRow(context, 'Robot', pwn.robotType.toUpperCase()));
+      if ((pwn.serialNumber ?? '').isNotEmpty) rows.add(_detailRow(context, 'Serial', pwn.serialNumber!));
+      rows.add(_detailRow(context, 'Exploited', pwn.exploited ? 'Yes' : 'No'));
+    }
     if (detection.engine == Engine.sdr && detection.ssid.isNotEmpty) {
       Map<String, dynamic>? payload;
       try {
@@ -1122,6 +1134,7 @@ class _DetailSummary extends ConsumerWidget {
     'Channel',
     'Seen',
     'Source Node',
+    'Connected to',
     'Location',
     'UAV ID',
     'Operator ID',

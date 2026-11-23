@@ -195,7 +195,24 @@ void main() {
       final o = observationFromDetection(folded);
       expect(o.rssiMin, -80);
       expect(o.rssiMax, -40);
+      expect(o.rssi, -60);
       expect(o.serviceUuids, isNotEmpty);
+      store.dispose();
+    });
+
+    test('a Wi-Fi client keeps the AP it was linked to after a reload', () async {
+      final store = SessionDetectionStore(db, flushEvery: const Duration(milliseconds: 10));
+      const key = 'AA:BB:CC:DD:EE:02|wardrive';
+      final first = _base(Engine.wardrive, mac: 'AA:BB:CC:DD:EE:02', t: 1000).copyWith(method: 'wifi_client');
+      detectionClientAp[first] = 'aa:bb:cc:dd:ee:10';
+      store.insert(key, 's1', first);
+      final live = mergeWardriveSighting(
+          first, _base(Engine.wardrive, mac: 'AA:BB:CC:DD:EE:02', t: 2000).copyWith(method: 'wifi_client'));
+      store.update(key, 's1', live);
+      await store.flush();
+
+      final folded = foldSessionRows(await _load(db, 's1')).values.single;
+      expect(detectionClientAp[folded], 'aa:bb:cc:dd:ee:10');
       store.dispose();
     });
 

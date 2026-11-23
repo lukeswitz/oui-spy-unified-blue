@@ -133,6 +133,19 @@ void main() {
     await _release(tester, container);
   });
 
+  testWidgets('a UniPwn hit shows robot, serial and exploited state', (tester) async {
+    final container = await _open(
+        tester,
+        _det(flock: false).copyWith(
+            engine: Engine.uniPwn,
+            method: 'unitree_ble',
+            unipwn: const UnipwnExtension(robotType: 'go2', serialNumber: 'SN1', exploited: true)));
+    for (final s in ['Robot', 'GO2', 'Serial', 'SN1', 'Exploited', 'Yes']) {
+      expect(find.text(s), findsWidgets, reason: s);
+    }
+    await _release(tester, container);
+  });
+
   testWidgets('the chip shows the same icon as the map pin', (tester) async {
     final container = await _open(tester, _det());
     final icon = tester.widget<Icon>(

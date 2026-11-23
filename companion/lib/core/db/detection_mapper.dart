@@ -75,9 +75,11 @@ Map<String, Object?> detectionExt(Detection d) {
     'lastSeenMs': d.appTimestamp.millisecondsSinceEpoch,
     'rssiMin': detectionRssiMin[d] ?? d.rssi,
     'rssiMax': detectionRssiMax[d] ?? d.rssi,
+    'rssiLast': detectionRssiLast[d] ?? d.rssi,
     if (adv != null && adv.isNotEmpty) 'advRaw': base64Encode(adv),
     if (d.sourceNodeId.isNotEmpty) 'sourceNodeId': d.sourceNodeId,
     if (d.nodeId.isNotEmpty && d.nodeId != 'default') 'boardNodeId': d.nodeId,
+    if (detectionClientAp[d] != null) 'clientAp': detectionClientAp[d],
     if (x != null) 'detectorConfidence': x.confidence,
     if (o != null) ...{
       'odidSelfId': o.selfId,
@@ -213,6 +215,10 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
   if (rssiMin is int) detectionRssiMin[d] = rssiMin;
   final rssiMax = ext['rssiMax'];
   if (rssiMax is int) detectionRssiMax[d] = rssiMax;
+  final rssiLast = ext['rssiLast'];
+  if (rssiLast is int) detectionRssiLast[d] = rssiLast;
+  final clientOf = ext['clientAp'];
+  if (clientOf is String && clientOf.isNotEmpty) detectionClientAp[d] = clientOf;
   final adv = ext['advRaw'];
   if (adv is String && d.wardrive != null) {
     wardriveAdvRaw[d.wardrive!] = List<int>.unmodifiable(base64Decode(adv));

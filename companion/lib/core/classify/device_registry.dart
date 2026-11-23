@@ -127,7 +127,7 @@ Observation observationFromDetection(Detection d) {
     kind: ble ? RadioKind.ble : RadioKind.wifi,
     mac: mac,
     name: name,
-    rssi: d.rssi,
+    rssi: detectionRssiLast[d] ?? d.rssi,
     rssiMin: math.min(d.rssi, detectionRssiMin[d] ?? d.rssi),
     rssiMax: math.max(d.rssi, detectionRssiMax[d] ?? d.rssi),
     firstSeenMs: at,

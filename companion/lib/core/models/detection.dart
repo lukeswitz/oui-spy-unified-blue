@@ -162,6 +162,10 @@ final detectionRssiMin = Expando<int>('detectionRssiMin');
 
 final detectionRssiMax = Expando<int>('detectionRssiMax');
 
+final detectionClientAp = Expando<String>('detectionClientAp');
+
+final detectionRssiLast = Expando<int>('detectionRssiLast');
+
 @freezed
 class WardriveExtension with _$WardriveExtension {
   const factory WardriveExtension({
