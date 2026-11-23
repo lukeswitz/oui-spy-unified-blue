@@ -245,6 +245,7 @@ class GpsProvider {
     _bleManager.updateGps(
       latitude: p.latitude,
       longitude: p.longitude,
+      altitude: p.altitude,
       accuracy: p.accuracy,
       satelliteCount: p.satelliteCount > 0 ? p.satelliteCount : null,
     );

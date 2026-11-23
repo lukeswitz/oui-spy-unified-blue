@@ -200,6 +200,28 @@ void main() {
       store.dispose();
     });
 
+    test('a device first seen before the GPS fix gets the first fix it is seen with', () async {
+      final store = SessionDetectionStore(db, flushEvery: const Duration(milliseconds: 10));
+      const key = 'AA:BB:CC:DD:EE:03|wardrive';
+      final first = _base(Engine.wardrive, mac: 'AA:BB:CC:DD:EE:03', t: 1000)
+          .copyWith(method: 'ble_adv', latitude: null, longitude: null, altitude: null, accuracy: null);
+      store.insert(key, 's1', first);
+      final fixed = mergeWardriveSighting(first, _base(Engine.wardrive, mac: 'AA:BB:CC:DD:EE:03', t: 2000)
+          .copyWith(method: 'ble_adv', latitude: 51.41, longitude: -0.11, altitude: 1612.5, accuracy: 4));
+      store.update(key, 's1', fixed);
+      await store.flush();
+      final later = mergeWardriveSighting(fixed, _base(Engine.wardrive, mac: 'AA:BB:CC:DD:EE:03', t: 3000)
+          .copyWith(method: 'ble_adv', latitude: 51.42, longitude: -0.12, altitude: 1700, accuracy: 9));
+      store.update(key, 's1', later);
+      await store.flush();
+      final row = (await db.getDetectionMapsForSession('s1')).single;
+      expect(row['latitude'], 51.41);
+      expect(row['longitude'], -0.11);
+      expect(row['altitude'], 1612.5);
+      expect(row['accuracy'], 4);
+      store.dispose();
+    });
+
     test('a Wi-Fi client keeps the AP it was linked to after a reload', () async {
       final store = SessionDetectionStore(db, flushEvery: const Duration(milliseconds: 10));
       const key = 'AA:BB:CC:DD:EE:02|wardrive';

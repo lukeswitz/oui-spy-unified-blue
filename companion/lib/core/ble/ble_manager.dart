@@ -461,14 +461,18 @@ class BleManager {
   double? _lastAccuracy;
   int? _lastSatCount;
 
+  double? _lastAlt;
+
   void updateGps({
     required double latitude,
     required double longitude,
+    double? altitude,
     double? accuracy,
     int? satelliteCount,
   }) {
     _lastLat = latitude;
     _lastLon = longitude;
+    _lastAlt = altitude;
     _lastAccuracy = accuracy;
     _lastSatCount = satelliteCount;
   }
@@ -518,6 +522,7 @@ class BleManager {
       sourceNodeId: nodeId,
       latitude: _lastLat,
       longitude: _lastLon,
+      altitude: _lastAlt,
       accuracy: _lastAccuracy,
       satelliteCount: _lastSatCount,
       odid: ext,
@@ -546,6 +551,7 @@ class BleManager {
       sourceNodeId: nodeId,
       latitude: _lastLat,
       longitude: _lastLon,
+      altitude: _lastAlt,
       accuracy: _lastAccuracy,
       satelliteCount: _lastSatCount,
       wardrive: ext,
@@ -574,6 +580,7 @@ class BleManager {
       sourceNodeId: nodeId,
       latitude: _lastLat,
       longitude: _lastLon,
+      altitude: _lastAlt,
       accuracy: _lastAccuracy,
       satelliteCount: _lastSatCount,
       wardrive: WardriveExtension(ssid: ssid, authMode: authMode),
@@ -596,7 +603,8 @@ class BleManager {
         sourceNodeId: nodeId,
         latitude: _lastLat,
         longitude: _lastLon,
-        accuracy: _lastAccuracy,
+        altitude: _lastAlt,
+      accuracy: _lastAccuracy,
         satelliteCount: _lastSatCount,
         flock: const FlockExtension(signals: FlockSignal.oui),
       ));
@@ -1923,6 +1931,7 @@ class BleManager {
     updateGps(
       latitude: latitude,
       longitude: longitude,
+      altitude: altitude,
       accuracy: accuracy,
       satelliteCount: satelliteCount,
     );
@@ -2391,6 +2400,7 @@ class BleManager {
       appTimestamp: DateTime.now(),
       latitude: isAway ? null : _lastLat,
       longitude: isAway ? null : _lastLon,
+      altitude: isAway ? null : _lastAlt,
       accuracy: isAway ? null : _lastAccuracy,
       satelliteCount: isAway ? null : _lastSatCount,
     );

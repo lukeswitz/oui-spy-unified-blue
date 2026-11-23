@@ -30,6 +30,7 @@ class BleProtocol {
     required DateTime appTimestamp,
     double? latitude,
     double? longitude,
+    double? altitude,
     double? accuracy,
     int? satelliteCount,
   }) {
@@ -108,6 +109,7 @@ class BleProtocol {
       sourceNodeId: sourceNodeId,
       latitude: latitude,
       longitude: longitude,
+      altitude: altitude,
       accuracy: accuracy,
       satelliteCount: satelliteCount,
       flock: flock,

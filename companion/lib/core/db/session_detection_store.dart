@@ -12,6 +12,7 @@ class SessionDetectionStore {
   final Duration flushEvery;
   final _rowIds = <String, int>{};
   final _dirty = <String, ({String sessionId, Detection d})>{};
+  final _noFix = <String>{};
   final _chains = <String, Future<void>>{};
   Timer? _timer;
 
@@ -22,11 +23,17 @@ class SessionDetectionStore {
     _timer = null;
     _rowIds.clear();
     _dirty.clear();
+    _noFix.clear();
     _chains.clear();
   }
 
   void insert(String key, String sessionId, Detection d) {
     _dirty.remove(key);
+    if (d.latitude == null || d.longitude == null) {
+      _noFix.add(key);
+    } else {
+      _noFix.remove(key);
+    }
     _enqueue(key, () async {
       _rowIds[key] = await _db.insertDetectionRow(
         detectionCompanion(d, sessionId),
@@ -44,15 +51,19 @@ class SessionDetectionStore {
     if (_dirty.isEmpty) return;
     final batch = Map.of(_dirty);
     _dirty.clear();
-    batch.forEach((key, v) => _enqueue(key, () async {
-          final id = _rowIds[key];
-          if (id == null) return;
-          await _db.updateDetectionRow(
-            id,
-            detectionUpdateCompanion(v.d),
-            ext: detectionExt(v.d),
-          );
-        }));
+    batch.forEach((key, v) {
+      final firstFix = _noFix.contains(key) && v.d.latitude != null && v.d.longitude != null;
+      if (firstFix) _noFix.remove(key);
+      _enqueue(key, () async {
+        final id = _rowIds[key];
+        if (id == null) return;
+        await _db.updateDetectionRow(
+          id,
+          firstFix ? detectionFirstFixCompanion(v.d) : detectionUpdateCompanion(v.d),
+          ext: detectionExt(v.d),
+        );
+      });
+    });
   }
 
   void _enqueue(String key, Future<void> Function() op) {

@@ -67,6 +67,17 @@ DetectionsCompanion detectionUpdateCompanion(Detection d) => detectionCompanion(
       approxGps: const drift.Value.absent(),
     );
 
+DetectionsCompanion detectionFirstFixCompanion(Detection d) => detectionUpdateCompanion(d).copyWith(
+      latitude: drift.Value(d.latitude),
+      longitude: drift.Value(d.longitude),
+      altitude: drift.Value(d.altitude),
+      speed: drift.Value(d.speed),
+      heading: drift.Value(d.heading),
+      accuracy: drift.Value(d.accuracy),
+      satelliteCount: drift.Value(d.satelliteCount),
+      approxGps: drift.Value(d.approxGps),
+    );
+
 Map<String, Object?> detectionExt(Detection d) {
   final o = d.odid;
   final x = d.detector;
