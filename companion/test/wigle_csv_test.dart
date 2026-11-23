@@ -60,19 +60,25 @@ void main() {
       _d('02:00:00:00:00:05', 'oui_addr2', engine: Engine.flockWifi),
     ]));
     expect(rows.map((r) => r.split(',')[2]).toList(),
-        ['[WPA2_PSK][WPA3_SAE]', '[OWE]', '[WPA3_EAP]', '[UNKNOWN]', '[UNKNOWN]']);
+        ['[WPA2_WPA3_PSK]', '[OWE]', '[WPA3_EAP]', '[UNDEFINED]', '[UNDEFINED]']);
   });
 
-  test('BLE rows leave channel and frequency blank; lines end in LF like WiGLE', () {
+  test('BLE rows follow the WiGLE spec: [BLE], channel 0, blank frequency, manufacturer id; LF line ends', () {
+    const ext = WardriveExtension(deviceName: 'tag');
+    wardriveAdvRaw[ext] = const [2, 1, 6, 5, 0xFF, 0x4C, 0x00, 0x12, 0x19];
     final csv = WigleCsv.generate([
-      _d('02:00:00:00:00:01', 'ble_adv', channel: 37, ssid: ''),
+      _d('02:00:00:00:00:01', 'ble_adv', channel: 37, ssid: '').copyWith(wardrive: ext, altitude: 1612.6),
       _d('02:00:00:00:00:02', 'wifi_ap', channel: 36, auth: 3),
     ]);
     expect(csv.contains('\r'), isFalse);
     final rows = _rows(csv);
     final ble = rows[0].split(',');
-    expect(ble[4], '');
+    expect(ble[2], '[BLE]');
+    expect(ble[4], '0');
     expect(ble[5], '');
+    expect(ble[9], '1613');
+    expect(ble[12], '76');
+    expect(ble[13], 'BLE');
     final wifi = rows[1].split(',');
     expect(wifi[4], '36');
     expect(wifi[5], '5180');

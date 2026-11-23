@@ -232,11 +232,11 @@ class WigleCsvImport {
 
   static int _parseAuthMode(String s) {
     final u = s.toUpperCase();
-    if (u.contains('UNKNOWN')) return 0xFF;
+    if (u.contains('UNKNOWN') || u.contains('UNDEFINED')) return 0xFF;
     if (u.contains('OWE')) return 8;
     final wpa3 = u.contains('WPA3') || u.contains('SAE');
     if (wpa3 && (u.contains('EAP') || u.contains('SUITE-B') || u.contains('SUITE_B'))) return 9;
-    if (wpa3 && u.contains('PSK')) return 7;
+    if (wpa3 && (u.contains('WPA2_WPA3') || u.contains('PSK+SAE') || u.contains('WPA2_PSK'))) return 7;
     if (wpa3) return 6;
     if (u.contains('WPA2_EAP') || u.contains('EAP')) return 5;
     if (u.contains('WPA_WPA2')) {

@@ -64,18 +64,19 @@ class WigleCsv {
       final ssid = _escapeCsv(rawSsid);
       final authMode = _capabilities(d);
       final firstSeen = _dateFormat.format(d.appTimestamp.toUtc());
-      final channel = isBleDevice || d.channel <= 0 ? '' : '${d.channel}';
+      final channel = isBleDevice ? '0' : (d.channel <= 0 ? '' : '${d.channel}');
       final frequency = _frequency(d);
       final rssi = d.rssi;
       final lat = d.latitude!;
       final lon = d.longitude!;
-      final alt = d.altitude ?? 0.0;
+      final alt = (d.altitude ?? 0.0).round();
       final acc = d.accuracy ?? 0.0;
+      final mfgr = isBleDevice ? _mfgrId(d) : '';
       final type = _type(d);
 
       buffer.writeln(
         '$mac,$ssid,$authMode,$firstSeen,$channel,'
-        '$frequency,$rssi,$lat,$lon,$alt,$acc,,,$type',
+        '$frequency,$rssi,$lat,$lon,$alt,$acc,,$mfgr,$type',
       );
     }
 
@@ -84,7 +85,7 @@ class WigleCsv {
 
   static String _capabilities(Detection d) {
     final isBle = d.isBleDetection;
-    if (isBle) return '[LE]';
+    if (isBle) return '[BLE]';
     return switch (d.wardrive?.authMode) {
       0 => '[OPEN]',
       1 => '[WEP]',
@@ -92,12 +93,25 @@ class WigleCsv {
       3 => '[WPA2_PSK]',
       4 => '[WPA_WPA2_PSK]',
       5 => '[WPA2_EAP]',
-      6 => '[WPA3_SAE]',
-      7 => '[WPA2_PSK][WPA3_SAE]',
+      6 => '[WPA3_PSK]',
+      7 => '[WPA2_WPA3_PSK]',
       8 => '[OWE]',
       9 => '[WPA3_EAP]',
-      _ => '[UNKNOWN]',
+      _ => '[UNDEFINED]',
     };
+  }
+
+  static String _mfgrId(Detection d) {
+    final adv = d.wardrive == null ? null : wardriveAdvRaw[d.wardrive!];
+    if (adv == null) return '';
+    var i = 0;
+    while (i + 1 < adv.length) {
+      final len = adv[i];
+      if (len == 0 || i + 1 + len > adv.length) break;
+      if (adv[i + 1] == 0xFF && len >= 3) return '${adv[i + 2] | (adv[i + 3] << 8)}';
+      i += 1 + len;
+    }
+    return '';
   }
 
 
