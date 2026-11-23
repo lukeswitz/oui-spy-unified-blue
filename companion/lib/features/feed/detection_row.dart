@@ -15,6 +15,7 @@ import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/fleet_decode.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/db/app_database.dart' show databaseProvider;
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/detection.dart';
@@ -30,6 +31,8 @@ import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/devices/devices_screen.dart' show deviceFlagIcons, rssiSparkFor;
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneColorForMac, kDroneSvgAsset;
 import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
@@ -310,15 +313,23 @@ class DetectionRow extends ConsumerWidget {
   }
 }
 
-void detectionZoomOnMap(
-    BuildContext context, WidgetRef ref, Detection detection) {
+Future<void> detectionZoomOnMap(
+    BuildContext context, WidgetRef ref, Detection detection) async {
   if (detection.latitude == null || detection.longitude == null) return;
-  ref.read(wardriveProvider).requestZoom(
-        detection.latitude!,
-        detection.longitude!,
-        detection: detection,
-      );
-  context.go('/wardrive');
+  final wd = ref.read(wardriveProvider);
+  final sid = detection.sessionId;
+  if (!wd.isActive &&
+      sid.isNotEmpty &&
+      sid != wd.sessionId &&
+      await ref.read(databaseProvider).getSessionById(sid) != null) {
+    await wd.loadSession(sid);
+  }
+  wd.requestZoom(
+    detection.latitude!,
+    detection.longitude!,
+    detection: detection,
+  );
+  if (context.mounted) context.go('/wardrive');
 }
 
 void detectionStartFoxhunt(
@@ -392,6 +403,23 @@ Future<void> _ringTracker(BuildContext ctx, WidgetRef ref, String mac) async {
   ));
 }
 
+String detectionScanner(Detection d) {
+  final src = d.sourceNodeId.isNotEmpty ? d.sourceNodeId : d.nodeId;
+  final wifi = d.isWifiDetection;
+  if (src == BleManager.phoneNodeId) return wifi ? 'Phone Wi-Fi scan' : 'Phone Bluetooth scan';
+  if (BleManager.isUsbWifiNode(src)) return 'USB Wi-Fi adapter';
+  if (BleManager.isUsbBleNode(src)) return 'USB Bluetooth adapter';
+  if (!d.engine.isDualRadio) return d.engine.label;
+  return '${d.engine.label} · ${wifi ? 'Wi-Fi' : 'BLE'}';
+}
+
+bool detectionHasBoard(Detection d) =>
+    d.nodeId.isNotEmpty &&
+    d.nodeId != 'default' &&
+    d.nodeId != BleManager.phoneNodeId &&
+    !BleManager.isUsbWifiNode(d.nodeId) &&
+    !BleManager.isUsbBleNode(d.nodeId);
+
 void showDetectionDetails(
     BuildContext context, WidgetRef ref, Detection detection,
     {bool showMapAction = true,
@@ -432,6 +460,39 @@ void showDetectionDetails(
         ? '$shownMac · $vendor'
         : shownMac;
     final host = Navigator.of(context).context;
+    final alertCls = detectionAlertClass[detection];
+    final Color chipColor = alertCls != null
+        ? alertKindColor(alertCls)
+        : detection.engine == Engine.skySpy
+            ? droneColorForMac(detection.macAddress)
+            : detection.engine.color;
+    final chipLabel = alertCls != null
+        ? alertKindLabel(alertCls).toUpperCase()
+        : switch (detection.engine) {
+            Engine.skySpy => 'DRONE',
+            Engine.detector || Engine.wardrive => methodLabel(detection.method),
+            _ when detection.isWifiDetection => methodLabel(detection.method),
+            _ => detection.engine.label.toUpperCase(),
+          };
+    final chipFg = ThemeData.estimateBrightnessForColor(chipColor) == Brightness.dark
+        ? Colors.white
+        : Colors.black;
+    final Widget chipIcon = alertCls == null && detection.engine == Engine.skySpy
+        ? SvgPicture.asset(kDroneSvgAsset,
+            width: 14, height: 14,
+            colorFilter: ColorFilter.mode(chipFg, BlendMode.srcIn))
+        : Icon(
+            alertCls != null
+                ? alertKindIcon(alertCls)
+                : detection.engine == Engine.detector
+                    ? Icons.radar
+                    : OuiLookupService.isLawEnforcement(detection.macAddress)
+                        ? Icons.local_police
+                        : detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi
+                            ? Icons.videocam
+                            : detection.engine.icon,
+            size: 14,
+            color: chipFg);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -460,20 +521,21 @@ void showDetectionDetails(
                       Container(
                         key: const Key('detail-engine-chip'),
                         decoration: BoxDecoration(
-                          color: t.mark,
+                          color: chipColor,
                           borderRadius: BorderRadius.circular(AppRadius.chip),
                         ),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
-                        child: Text(
-                          detection.isWifiDetection ||
-                                  detection.engine == Engine.wardrive
-                              ? methodLabel(detection.method)
-                              : detection.engine.label.toUpperCase(),
-                          style: Theme.of(ctx)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(color: t.fill),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            KeyedSubtree(key: const Key('detail-type-icon'), child: chipIcon),
+                            const SizedBox(width: 5),
+                            Text(
+                              chipLabel,
+                              style: Theme.of(ctx).textTheme.labelSmall?.copyWith(color: chipFg),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -821,7 +883,7 @@ class _DetailSummary extends ConsumerWidget {
     if (manufacturer != null) {
       rows.add(_detailRow(context, 'Vendor', manufacturer!));
     }
-    rows.add(_detailRow(context, 'Engine', detection.engine.label));
+    rows.add(_detailRow(context, 'Engine', detectionScanner(detection)));
     rows.add(_detailRow(context, 'Method', methodLabel(detection.method)));
     final why = detection.detector?.filterDescription?.trim() ?? '';
     if (why.isNotEmpty) {
@@ -847,6 +909,14 @@ class _DetailSummary extends ConsumerWidget {
           ? '$nodeLabel  (${detection.sourceNodeId})'
           : detection.sourceNodeId;
       rows.add(_detailRow(context, 'Source Node', lbl));
+    } else if (detectionHasBoard(detection)) {
+      final board = ref.read(appStateProvider).labelForNode(detection.nodeId);
+      rows.add(_detailRow(
+          context,
+          'Source Node',
+          board != detection.nodeId && board != 'LOCAL'
+              ? '$board  (${detection.nodeId})'
+              : detection.nodeId));
     }
     if (detection.engine == Engine.sdr && detection.ssid.isNotEmpty) {
       Map<String, dynamic>? payload;

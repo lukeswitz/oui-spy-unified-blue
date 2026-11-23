@@ -89,6 +89,9 @@ class _LeaderPainter extends CustomPainter {
   }
 
   @override
+  bool? hitTest(Offset position) => false;
+
+  @override
   bool shouldRepaint(_LeaderPainter old) =>
       old.dx != dx || old.dy != dy || old.color != color;
 }

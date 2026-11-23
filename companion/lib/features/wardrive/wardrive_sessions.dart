@@ -444,11 +444,19 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                 ),
                                 Row(
                                   children: [
-                                    Text(
-                                      'ch${d.channel}',
-                                      style: TextStyle(
-                                        color: t.textDim, fontSize: 8,
-                                        fontFamily: AppTheme.mono,
+                                    Flexible(
+                                      child: Text(
+                                        [
+                                          'ch${d.channel}',
+                                          if (d.deviceName.isNotEmpty) d.deviceName,
+                                          ?ref.read(ouiLookupProvider).lookup(d.macAddress),
+                                        ].join(' · '),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: t.textDim, fontSize: 8,
+                                          fontFamily: AppTheme.mono,
+                                        ),
                                       ),
                                     ),
                                     if (hasGps) ...[
@@ -565,14 +573,38 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 0.5),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.detector.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(AppRadius.chip),
+                                        ),
+                                        child: Text(
+                                          methodLabel(d.method),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: AppTheme.detector, fontSize: 7,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
-                                if (desc.isNotEmpty || d.deviceName.isNotEmpty)
+                                if (desc.isNotEmpty || d.deviceName.isNotEmpty ||
+                                    ref.read(ouiLookupProvider).lookup(d.macAddress) != null)
                                   Text(
-                                    desc.isNotEmpty ? desc : d.deviceName,
+                                    [
+                                      if (desc.isNotEmpty) desc else if (d.deviceName.isNotEmpty) d.deviceName,
+                                      ?ref.read(ouiLookupProvider).lookup(d.macAddress),
+                                    ].join(' · '),
                                     style: TextStyle(
                                       color: t.textDim, fontSize: 9,
                                     ),
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                               ],

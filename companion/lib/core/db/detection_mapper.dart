@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' as drift;
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/models/detection.dart';
@@ -68,9 +70,14 @@ DetectionsCompanion detectionUpdateCompanion(Detection d) => detectionCompanion(
 Map<String, Object?> detectionExt(Detection d) {
   final o = d.odid;
   final x = d.detector;
+  final adv = d.wardrive == null ? null : wardriveAdvRaw[d.wardrive!];
   return {
     'lastSeenMs': d.appTimestamp.millisecondsSinceEpoch,
+    'rssiMin': detectionRssiMin[d] ?? d.rssi,
+    'rssiMax': detectionRssiMax[d] ?? d.rssi,
+    if (adv != null && adv.isNotEmpty) 'advRaw': base64Encode(adv),
     if (d.sourceNodeId.isNotEmpty) 'sourceNodeId': d.sourceNodeId,
+    if (d.nodeId.isNotEmpty && d.nodeId != 'default') 'boardNodeId': d.nodeId,
     if (x != null) 'detectorConfidence': x.confidence,
     if (o != null) ...{
       'odidSelfId': o.selfId,
@@ -116,7 +123,7 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
   final d = Detection(
     id: '${row['id']}',
     sessionId: row['sessionId'] as String,
-    nodeId: row['nodeId'] as String,
+    nodeId: (ext['boardNodeId'] as String?) ?? row['nodeId'] as String,
     macAddress: row['macAddress'] as String,
     deviceName: deviceName,
     engine: engine,
@@ -200,6 +207,14 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
   );
   final lastSeen = ext['lastSeenMs'];
   if (lastSeen is int) detectionLastSeenMs[d] = lastSeen;
+  final rssiMin = ext['rssiMin'];
+  if (rssiMin is int) detectionRssiMin[d] = rssiMin;
+  final rssiMax = ext['rssiMax'];
+  if (rssiMax is int) detectionRssiMax[d] = rssiMax;
+  final adv = ext['advRaw'];
+  if (adv is String && d.wardrive != null) {
+    wardriveAdvRaw[d.wardrive!] = List<int>.unmodifiable(base64Decode(adv));
+  }
   final cls = row['alertClass'];
   if (cls is String && cls.isNotEmpty) detectionAlertClass[d] = cls;
   return d;

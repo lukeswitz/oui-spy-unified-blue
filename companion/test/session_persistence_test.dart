@@ -162,6 +162,27 @@ void main() {
       store.dispose();
     });
 
+    test('BLE advertisement bytes and the RSSI range survive a reload', () async {
+      final store = SessionDetectionStore(db, flushEvery: const Duration(milliseconds: 10));
+      const key = 'AA:BB:CC:DD:EE:01|wardrive';
+      const ext = WardriveExtension(deviceName: 'dev');
+      wardriveAdvRaw[ext] = const [2, 1, 6, 3, 3, 0x6F, 0xFD];
+      final first = _base(Engine.wardrive, t: 1000, rssi: -80).copyWith(method: 'ble_adv', wardrive: ext);
+      store.insert(key, 's1', first);
+      var live = mergeWardriveSighting(first, _base(Engine.wardrive, t: 2000, rssi: -40).copyWith(method: 'ble_adv'));
+      live = mergeWardriveSighting(live, _base(Engine.wardrive, t: 3000, rssi: -60).copyWith(method: 'ble_adv'));
+      store.update(key, 's1', live);
+      await store.flush();
+
+      final folded = foldSessionRows(await _load(db, 's1')).values.single;
+      expect(wardriveAdvRaw[folded.wardrive!], const [2, 1, 6, 3, 3, 0x6F, 0xFD]);
+      final o = observationFromDetection(folded);
+      expect(o.rssiMin, -80);
+      expect(o.rssiMax, -40);
+      expect(o.serviceUuids, isNotEmpty);
+      store.dispose();
+    });
+
     test('updates never change the fields the WiGLE CSV reads', () async {
       final store = SessionDetectionStore(db, flushEvery: const Duration(milliseconds: 10));
       const key = 'AA:BB:CC:DD:EE:01|wardrive';
@@ -233,6 +254,29 @@ void main() {
       final global = await db.getClassAlertMaps();
       expect(global.firstWhere((r) => r['alertClass'] == 'deauth_storm')['count'], 3);
     });
+  });
+
+  test('the session GPS track is stored in order and removed with the session', () async {
+    await db.insertTrackPoints('s1', [
+      (ts: 2000, lat: 40.001, lon: -105.0),
+      (ts: 1000, lat: 40.0, lon: -105.0),
+    ]);
+    await db.insertTrackPoints('s2', [(ts: 1500, lat: 41.0, lon: -106.0)]);
+    expect((await db.getSessionTrack('s1')).map((p) => p.ts), [1000, 2000]);
+    await db.deleteSession('s1');
+    expect(await db.getSessionTrack('s1'), isEmpty);
+    expect((await db.getSessionTrack('s2')).length, 1);
+  });
+
+  test('upgrade from schema 10 adds the track table', () async {
+    final old = AppDatabase.forTesting(NativeDatabase.memory(setup: (raw) {
+      raw.execute('PRAGMA user_version = 10');
+    }));
+    addTearDown(old.close);
+    final t = await old
+        .customSelect("SELECT name FROM sqlite_master WHERE name = 'session_track'")
+        .get();
+    expect(t.length, 1);
   });
 
   test('deleting a detection removes its extra details', () async {

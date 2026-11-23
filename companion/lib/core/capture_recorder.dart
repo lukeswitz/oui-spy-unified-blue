@@ -39,6 +39,7 @@ class CaptureRecorder {
   final _latest = <String, Detection>{};
   final _rowIds = <String, int>{};
   final _dirty = <String>{};
+  final _droneGate = DroneTrackGate();
   bool _needsRow = false;
   String? _sessionId;
   String _sessionName = '';
@@ -62,7 +63,7 @@ class CaptureRecorder {
     final key = '${d.macAddress}|${d.engine.name}';
     final last = _lastLogged[key];
     final held = _latest[key];
-    if (last != null && now - last < relogEvery.inMilliseconds) {
+    if (last != null && now - last < relogEvery.inMilliseconds && !_droneGate.moved(key, d)) {
       if (held != null) {
         _latest[key] = mergeWardriveSighting(held, d);
         if (_rowIds.containsKey(key)) _dirty.add(key);
@@ -73,6 +74,7 @@ class CaptureRecorder {
     _macs.add(d.macAddress);
     final merged = held == null ? d : mergeWardriveSighting(held, d);
     _latest[key] = merged;
+    _droneGate.note(key, merged);
     _dirty.remove(key);
     _pending.add((
       key: key,

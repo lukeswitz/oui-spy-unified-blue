@@ -158,6 +158,10 @@ final detectionAlertClass = Expando<String>('detectionAlertClass');
 
 final detectionLastSeenMs = Expando<int>('detectionLastSeenMs');
 
+final detectionRssiMin = Expando<int>('detectionRssiMin');
+
+final detectionRssiMax = Expando<int>('detectionRssiMax');
+
 @freezed
 class WardriveExtension with _$WardriveExtension {
   const factory WardriveExtension({

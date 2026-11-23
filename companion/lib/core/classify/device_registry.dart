@@ -128,6 +128,8 @@ Observation observationFromDetection(Detection d) {
     mac: mac,
     name: name,
     rssi: d.rssi,
+    rssiMin: math.min(d.rssi, detectionRssiMin[d] ?? d.rssi),
+    rssiMax: math.max(d.rssi, detectionRssiMax[d] ?? d.rssi),
     firstSeenMs: at,
     lastSeenMs: math.max(at, detectionLastSeenMs[d] ?? at),
     channel: ble ? 0 : d.channel,

@@ -752,6 +752,8 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
     final t = AppTheme.of(context);
     return AlertDialog(
       backgroundColor: t.surface,
+      contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       title: Row(
         children: [
           Icon(
@@ -791,7 +793,7 @@ class _RadioRolePopupState extends State<RadioRolePopup> {
               final mask = _roles[id] ?? 0x03;
               final selColor = _radioColor(mask);
               return Container(
-                margin: const EdgeInsets.only(bottom: 10),
+                margin: EdgeInsets.only(bottom: id == widget.nodes.last ? 0 : 10),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                 decoration: BoxDecoration(
                   color: t.background,

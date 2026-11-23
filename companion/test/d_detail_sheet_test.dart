@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/observation.dart';
@@ -111,13 +112,32 @@ Future<void> _release(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
-  testWidgets('header block is fill and the engine chip is mark', (tester) async {
-    final container = await _open(tester, _det());
+  testWidgets('header block is fill and the engine chip is the marker color', (tester) async {
+    final d = _det();
+    final container = await _open(tester, d);
     final p = AppTheme.of(tester.element(find.byKey(const Key('detail-header'))));
     final header = tester.widget<Container>(find.byKey(const Key('detail-header')));
     expect((header.decoration as BoxDecoration?)?.color ?? header.color, p.fill);
     final chip = tester.widget<Container>(find.byKey(const Key('detail-engine-chip')));
-    expect((chip.decoration as BoxDecoration?)?.color ?? chip.color, p.mark);
+    expect((chip.decoration as BoxDecoration?)?.color ?? chip.color, d.engine.color);
+    await _release(tester, container);
+  });
+
+  testWidgets('a drone chip says DRONE', (tester) async {
+    final container = await _open(tester,
+        _det(flock: false, odid: const OdidExtension(uavId: 'UAV1')).copyWith(engine: Engine.skySpy));
+    expect(find.descendant(of: find.byKey(const Key('detail-engine-chip')), matching: find.text('DRONE')),
+        findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('detail-type-icon')), matching: find.byType(SvgPicture)),
+        findsOneWidget);
+    await _release(tester, container);
+  });
+
+  testWidgets('the chip shows the same icon as the map pin', (tester) async {
+    final container = await _open(tester, _det());
+    final icon = tester.widget<Icon>(
+        find.descendant(of: find.byKey(const Key('detail-type-icon')), matching: find.byType(Icon)));
+    expect(icon.icon, Icons.videocam);
     await _release(tester, container);
   });
 

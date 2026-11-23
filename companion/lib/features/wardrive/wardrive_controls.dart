@@ -14,7 +14,7 @@ class _IdleControls extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 24),
-          child: SessionTargets(wigleLabel: 'WIGLE'),
+          child: SessionTargets(wigleLabel: 'WARDRIVE'),
         ),
         const SizedBox(height: 8),
         const Padding(

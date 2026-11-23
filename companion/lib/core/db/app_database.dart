@@ -103,7 +103,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration {
@@ -116,6 +116,7 @@ class AppDatabase extends _$AppDatabase {
             'CREATE INDEX IF NOT EXISTS idx_detections_mac ON detections (mac_address)');
         await customStatement(_classAlertsDdl);
         await _ensureDetectionExtTable();
+        await _ensureSessionTrackTable();
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
@@ -152,6 +153,9 @@ class AppDatabase extends _$AppDatabase {
         if (from < 10) {
           await _ensureDetectionExtTable();
           await _ensureClassAlertSessionColumn();
+        }
+        if (from < 11) {
+          await _ensureSessionTrackTable();
         }
       },
     );
@@ -207,6 +211,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteSession(String id) async {
     await transaction(() async {
       await (delete(detections)..where((d) => d.sessionId.equals(id))).go();
+      await customStatement('DELETE FROM session_track WHERE session_id = ?', [id]);
       await (delete(sessions)..where((s) => s.id.equals(id))).go();
     });
   }
@@ -217,9 +222,52 @@ class AppDatabase extends _$AppDatabase {
       for (var i = 0; i < ids.length; i += 500) {
         final chunk = ids.sublist(i, (i + 500).clamp(0, ids.length));
         await (delete(detections)..where((d) => d.sessionId.isIn(chunk))).go();
+        await customStatement(
+            'DELETE FROM session_track WHERE session_id IN (${List.filled(chunk.length, '?').join(',')})',
+            chunk);
         await (delete(sessions)..where((s) => s.id.isIn(chunk))).go();
       }
     });
+  }
+
+  static const _sessionTrackDdl = 'CREATE TABLE IF NOT EXISTS session_track ('
+      'session_id TEXT NOT NULL, '
+      'ts INTEGER NOT NULL, '
+      'lat REAL NOT NULL, '
+      'lon REAL NOT NULL)';
+
+  Future<void> _ensureSessionTrackTable() async {
+    await customStatement(_sessionTrackDdl);
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_session_track ON session_track (session_id, ts)');
+  }
+
+  Future<void> insertTrackPoints(String sessionId, List<({int ts, double lat, double lon})> pts) async {
+    if (sessionId.isEmpty || pts.isEmpty) return;
+    await transaction(() async {
+      for (final p in pts) {
+        await customInsert(
+          'INSERT INTO session_track (session_id, ts, lat, lon) VALUES (?, ?, ?, ?)',
+          variables: [
+            Variable.withString(sessionId),
+            Variable.withInt(p.ts),
+            Variable.withReal(p.lat),
+            Variable.withReal(p.lon),
+          ],
+        );
+      }
+    });
+  }
+
+  Future<List<({int ts, double lat, double lon})>> getSessionTrack(String sessionId) async {
+    final rows = await customSelect(
+      'SELECT ts, lat, lon FROM session_track WHERE session_id = ? ORDER BY ts ASC',
+      variables: [Variable.withString(sessionId)],
+    ).get();
+    return [
+      for (final r in rows)
+        (ts: r.read<int>('ts'), lat: r.read<double>('lat'), lon: r.read<double>('lon')),
+    ];
   }
 
   // -- Detection operations --

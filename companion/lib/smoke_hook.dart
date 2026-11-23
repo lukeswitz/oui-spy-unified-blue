@@ -118,15 +118,24 @@ void _inject(ProviderContainer container) {
   final ble = container.read(bleManagerProvider);
   final log = container.read(watchAlertLogProvider);
   final here = container.read(gpsProvider).lastPosition;
-  final lat0 = here?.latitude ?? 40.0;
-  final lon0 = here?.longitude ?? -105.0;
+  final lat0 = here?.latitude ?? 51.4779;
+  final lon0 = here?.longitude ?? -0.0015;
+  var tick = 0;
   final counts = <String, int>{};
+  final spots = <String, int>{};
   void send(String label, List<int> frame) {
+    final mac = frame.sublist(1, 7).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':');
+    final spot = spots.putIfAbsent(mac, () => spots.length);
+    final jitter = (tick % 3 - 1) * 0.00002;
+    ble.updateGps(
+      latitude: lat0 + (spot ~/ 6) * 0.0012 - 0.003 + jitter,
+      longitude: lon0 + (spot % 6) * 0.0012 - 0.003 + jitter,
+      accuracy: 5,
+    );
     ble.injectDetectionFrame(frame);
     counts[label] = (counts[label] ?? 0) + 1;
   }
 
-  var tick = 0;
   debugPrint('SMOKE: injecting for ${_seconds}s around the phone fix');
   Timer.periodic(const Duration(seconds: 1), (t) {
     final r = tick % 5;
@@ -166,8 +175,8 @@ void _inject(ProviderContainer container) {
       opId: 'SMOKEOP0001',
       lat: lat0 + 0.002 + step,
       lon: lon0 + 0.002,
-      pilotLat: lat0 + 0.001,
-      pilotLon: lon0 + 0.001,
+      pilotLat: lat0 + 0.0005 + step / 4,
+      pilotLon: lon0 + 0.0045,
       alt: 1700 + tick,
       agl: 60,
       speed: 5,
@@ -195,10 +204,10 @@ void _inject(ProviderContainer container) {
       log(kind: 'drone_loiter', title: 'Smoke drone loiter', reason: 'smoke test', subject: '02:00:00:00:06:00',
           lat: lat0 + 0.0015, lon: lon0 + 0.0015);
       log(kind: 'beacon_flood', title: 'Smoke beacon flood', reason: 'smoke test', subject: '02:00:00:00:09:00',
-          lat: lat0 - 0.0015, lon: lon0 + 0.0015);
+          lat: lat0 - 0.0035, lon: lon0 + 0.0035);
       log(kind: 'car_follow', title: 'Smoke car follow', reason: 'smoke test', subject: '02:00:00:00:03:00');
       log(kind: 'trusted_network', title: 'Smoke evil twin', reason: 'smoke test', subject: '02:00:00:00:01:01',
-          lat: lat0 + 0.0005, lon: lon0 - 0.0015);
+          lat: lat0 + 0.0035, lon: lon0 - 0.0035);
       counts['alerts'] = 4;
     }
     if (++tick < _seconds) return;

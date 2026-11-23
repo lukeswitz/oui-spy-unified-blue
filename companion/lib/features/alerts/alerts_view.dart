@@ -104,10 +104,13 @@ class _AlertRow extends ConsumerWidget {
         style: TextStyle(color: t.textDim, fontSize: 12),
       ),
       trailing: Text(alertKindLabel(kind), style: TextStyle(color: alertKindColor(kind), fontSize: 10)),
-      onTap: () => _showAlert(context, ref, row, masked),
+      onTap: () => showAlertSheet(context, ref, row, masked),
     );
   }
 }
+
+Future<void> showAlertSheet(BuildContext context, WidgetRef ref, Map<String, dynamic> row, bool masked) =>
+    _showAlert(context, ref, row, masked);
 
 Future<void> _showAlert(BuildContext context, WidgetRef ref, Map<String, dynamic> row, bool masked) async {
   final kind = row['alertClass'] as String? ?? '';

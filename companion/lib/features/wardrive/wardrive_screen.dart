@@ -45,6 +45,7 @@ import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/deflock/deflock_api.dart';
 import 'package:oui_spy/core/deflock/deflock_provider.dart';
 import 'package:oui_spy/core/privacy.dart';
+import 'package:oui_spy/features/alerts/alerts_view.dart' show showAlertSheet;
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/map_tiles.dart';
 import 'package:share_plus/share_plus.dart';
@@ -53,6 +54,8 @@ part 'wardrive_controls.dart';
 part 'wardrive_sessions.dart';
 part 'wardrive_overlays.dart';
 part 'wardrive_popups.dart';
+
+final _alertRowOf = Expando<Map<String, dynamic>>('alertRowOf');
 
 class WardriveScreen extends ConsumerStatefulWidget {
   const WardriveScreen({super.key});
@@ -232,7 +235,33 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       _focusedDetection = d;
       _followMode = false;
     });
-    _mapController.move(LatLng(d.latitude!, d.longitude!), 18);
+    _cameraTo(d, LatLng(d.latitude!, d.longitude!));
+  }
+
+  List<LatLng> _droneFocusPoints(Detection d) {
+    if (d.engine != Engine.skySpy) return const [];
+    final wd = ref.read(wardriveProvider);
+    final app = ref.read(appStateProvider);
+    final key = AppState.droneTrackKey(d);
+    final saved = wd.viewingSavedSession;
+    final rid = droneRidPoint(d);
+    final pilot = pilotRidPoint(d);
+    return [
+      if (_hasMapCoord(d.latitude, d.longitude)) LatLng(d.latitude!, d.longitude!),
+      ...?(saved ? wd.loadedDroneTrack(key) : app.droneTrack(key)),
+      ...?(saved ? wd.loadedPilotTrack(key) : app.pilotTrack(key)),
+      ?rid,
+      ?pilot,
+    ];
+  }
+
+  void _cameraTo(Detection d, LatLng fallback) {
+    final pts = _droneFocusPoints(d);
+    if (pts.length >= 2) {
+      _fitToPoints(pts);
+    } else {
+      _mapController.move(fallback, 18);
+    }
   }
 
   void _clearFocusedDetection() {
@@ -541,7 +570,11 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       _focusedDetection = focus;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _mapController.move(zoom, 18);
+        if (focus != null) {
+          _cameraTo(focus, zoom);
+        } else {
+          _mapController.move(zoom, 18);
+        }
       });
     }
 
@@ -1094,6 +1127,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     for (final r in wd.sessionAlertRows) {
       if (!_hasMapCoord(r['latitude'] as double?, r['longitude'] as double?)) continue;
       final d = detectionFromDbRow(r);
+      _alertRowOf[d] = r;
       if (seenKeys.add('${d.macAddress}|${d.engine.name}')) source.add(d);
     }
     for (final d in appState.recentDetections) {
@@ -1454,7 +1488,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           headExtent: pinHead + 5,
           head: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => showDetectionDetails(context, ref, d),
+            onTap: () {
+              final row = _alertRowOf[d];
+              if (row != null) {
+                showAlertSheet(context, ref, row, ref.read(privacyScreenProvider));
+              } else {
+                showDetectionDetails(context, ref, d);
+              }
+            },
             child: Container(
               width: pinHead,
               height: pinHead,

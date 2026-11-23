@@ -153,7 +153,10 @@ Detection mergeWardriveSighting(Detection existing, Detection detection) {
   }
   final hasFix = detection.latitude != null && detection.longitude != null;
   final keepAp = existing.method == 'wifi_ap' && detection.method == 'wifi_client';
-  return detection.copyWith(
+  final adv = (detection.wardrive == null ? null : wardriveAdvRaw[detection.wardrive!]) ??
+      (existing.wardrive == null ? null : wardriveAdvRaw[existing.wardrive!]);
+  if (mergedWardrive != null && adv != null) wardriveAdvRaw[mergedWardrive] = adv;
+  final merged = detection.copyWith(
     count: existing.count + 1,
     rssi: detection.rssi > existing.rssi ? detection.rssi : existing.rssi,
     wardrive: mergedWardrive,
@@ -162,6 +165,49 @@ Detection mergeWardriveSighting(Detection existing, Detection detection) {
     longitude: hasFix ? detection.longitude : existing.longitude,
     accuracy: hasFix ? detection.accuracy : existing.accuracy,
   );
+  detectionRssiMin[merged] = math.min(
+      math.min(detectionRssiMin[existing] ?? existing.rssi, detectionRssiMin[detection] ?? detection.rssi),
+      existing.rssi);
+  detectionRssiMax[merged] = math.max(
+      math.max(detectionRssiMax[existing] ?? existing.rssi, detectionRssiMax[detection] ?? detection.rssi),
+      merged.rssi);
+  return merged;
+}
+
+LatLng? ridLatLng(double? lat, double? lon) {
+  if (lat == null || lon == null) return null;
+  if (!lat.isFinite || !lon.isFinite) return null;
+  if (lat == 0 && lon == 0) return null;
+  if (lat.abs() > 90 || lon.abs() > 180) return null;
+  return LatLng(lat, lon);
+}
+
+class DroneTrackGate {
+  static const stepMeters = 3.0;
+  final _stored = <String, ({LatLng? drone, LatLng? pilot})>{};
+
+  void clear() => _stored.clear();
+
+  bool moved(String key, Detection d) {
+    final o = d.odid;
+    if (d.engine != Engine.skySpy || o == null) return false;
+    final drone = ridLatLng(o.droneLat, o.droneLon);
+    final pilot = ridLatLng(o.pilotLat, o.pilotLon);
+    final last = _stored[key];
+    if (last == null) return drone != null || pilot != null;
+    bool far(LatLng? now, LatLng? was) =>
+        now != null && (was == null || const Distance().as(LengthUnit.Meter, now, was) >= stepMeters);
+    return far(drone, last.drone) || far(pilot, last.pilot);
+  }
+
+  void note(String key, Detection d) {
+    final o = d.odid;
+    if (d.engine != Engine.skySpy || o == null) return;
+    _stored[key] = (
+      drone: ridLatLng(o.droneLat, o.droneLon) ?? _stored[key]?.drone,
+      pilot: ridLatLng(o.pilotLat, o.pilotLon) ?? _stored[key]?.pilot,
+    );
+  }
 }
 
 Map<String, Detection> foldSessionRows(Iterable<Detection> rowsAsc) {
@@ -170,14 +216,20 @@ Map<String, Detection> foldSessionRows(Iterable<Detection> rowsAsc) {
   for (final row in rowsAsc) {
     final key = '${row.macAddress}|${row.engine.name}';
     final existing = out.remove(key);
-    out[key] = existing == null
-        ? row
-        : mergeWardriveSighting(existing, row).copyWith(
-            count: math.max(row.count, existing.count + 1),
-            appTimestamp: existing.appTimestamp.isBefore(row.appTimestamp)
-                ? existing.appTimestamp
-                : row.appTimestamp,
-          );
+    if (existing == null) {
+      out[key] = row;
+    } else {
+      final merged = mergeWardriveSighting(existing, row);
+      final folded = merged.copyWith(
+        count: math.max(row.count, existing.count + 1),
+        appTimestamp: existing.appTimestamp.isBefore(row.appTimestamp)
+            ? existing.appTimestamp
+            : row.appTimestamp,
+      );
+      detectionRssiMin[folded] = detectionRssiMin[merged];
+      detectionRssiMax[folded] = detectionRssiMax[merged];
+      out[key] = folded;
+    }
     final seen = detectionLastSeenMs[row] ?? row.appTimestamp.millisecondsSinceEpoch;
     lastSeen[key] = math.max(lastSeen[key] ?? 0, seen);
   }
@@ -571,40 +623,8 @@ class WardriveController extends ChangeNotifier {
           (r['macAddress'] as String).toUpperCase(): r['alertClass'] as String,
       };
 
-  final Map<String, ({LatLng? drone, LatLng? pilot})> _storedDronePos = {};
-  static const double _droneStepKm = 0.003;
-
-  static LatLng? _ridPoint(double? lat, double? lon) {
-    if (lat == null || lon == null) return null;
-    if (!lat.isFinite || !lon.isFinite) return null;
-    if (lat == 0 && lon == 0) return null;
-    if (lat.abs() > 90 || lon.abs() > 180) return null;
-    return LatLng(lat, lon);
-  }
-
-  bool _droneMoved(String key, Detection d) {
-    final o = d.odid;
-    if (o == null) return false;
-    final drone = _ridPoint(o.droneLat, o.droneLon);
-    final pilot = _ridPoint(o.pilotLat, o.pilotLon);
-    final last = _storedDronePos[key];
-    if (last == null) return drone != null || pilot != null;
-    bool far(LatLng? now, LatLng? was) =>
-        now != null &&
-        (was == null ||
-            _haversineKm(now.latitude, now.longitude, was.latitude, was.longitude) >=
-                _droneStepKm);
-    return far(drone, last.drone) || far(pilot, last.pilot);
-  }
-
-  void _noteStoredDrone(String key, Detection d) {
-    final o = d.odid;
-    if (d.engine != Engine.skySpy || o == null) return;
-    _storedDronePos[key] = (
-      drone: _ridPoint(o.droneLat, o.droneLon) ?? _storedDronePos[key]?.drone,
-      pilot: _ridPoint(o.pilotLat, o.pilotLon) ?? _storedDronePos[key]?.pilot,
-    );
-  }
+  final _droneGate = DroneTrackGate();
+  static LatLng? _ridPoint(double? lat, double? lon) => ridLatLng(lat, lon);
 
   final Map<String, List<LatLng>> _loadedDroneTracks = {};
   final Map<String, List<LatLng>> _loadedPilotTracks = {};
@@ -893,8 +913,9 @@ class WardriveController extends ChangeNotifier {
     startTime = DateTime.now();
     sessionId = const Uuid().v4();
     _store.reset();
+    _routePending.clear();
     sessionAlertRows = const [];
-    _storedDronePos.clear();
+    _droneGate.clear();
     _loadedDroneTracks.clear();
     _loadedPilotTracks.clear();
     _loadedFromHistory = false;
@@ -1066,6 +1087,7 @@ class WardriveController extends ChangeNotifier {
   Future<void> _finalizeSession() async {
     final sid = sessionId;
     await _store.flush();
+    await _flushRoute();
     if (sid.isNotEmpty && startTime != null) {
       try {
         await _db.updateSession(SessionsCompanion(
@@ -1222,7 +1244,7 @@ class WardriveController extends ChangeNotifier {
     final rows = [for (final row in dbRows) _detectionFromDb(row)];
     _loadedDroneTracks.clear();
     _loadedPilotTracks.clear();
-    _storedDronePos.clear();
+    _droneGate.clear();
     for (final det in rows) {
       if (_isPlausibleCoord(det.latitude, det.longitude)) {
         lats.add(det.latitude!);
@@ -1312,9 +1334,14 @@ class WardriveController extends ChangeNotifier {
     // Load session metadata for start time display.
     final sessionRow = await _db.getSessionById(sid);
     if (sessionRow != null) {
-      startTime = DateTime.fromMillisecondsSinceEpoch(
-        (sessionRow as dynamic).startedAt as int,
-      );
+      startTime = DateTime.fromMillisecondsSinceEpoch(sessionRow.startedAt);
+    }
+    final track = await _db.getSessionTrack(sid);
+    if (track.length >= 2) {
+      routePoints
+        ..clear()
+        ..addAll([for (final p in track) LatLng(p.lat, p.lon)]);
+      if (sessionRow != null) distanceKm = sessionRow.distanceKm;
     }
 
     sessionId = sid;
@@ -1970,7 +1997,7 @@ class WardriveController extends ChangeNotifier {
     if (existing != null) {
       final rssiDelta = (detection.rssi - existing.rssi).abs();
       final shouldRelog = rssiDelta >= threshold ||
-          (detection.engine == Engine.skySpy && _droneMoved(key, detection));
+          _droneGate.moved(key, detection);
       final updated = mergeWardriveSighting(existing, detection);
       _dedupedByMac.remove(key);
       _dedupedByMac[key] = updated;
@@ -1980,12 +2007,12 @@ class WardriveController extends ChangeNotifier {
         _scheduleNotify();
         return;
       }
-      _noteStoredDrone(key, updated);
+      _droneGate.note(key, updated);
       _store.insert(key, sessionId, updated);
     } else {
       _dedupedByMac[key] = detection;
       _newestFirst = null;
-      _noteStoredDrone(key, detection);
+      _droneGate.note(key, detection);
       _store.insert(key, sessionId, detection);
     }
 
@@ -2006,6 +2033,20 @@ class WardriveController extends ChangeNotifier {
       _enableEnginesSequentially(_fleetEngines);
     }
     notifyListeners();
+  }
+
+  final List<({int ts, double lat, double lon})> _routePending = [];
+
+  Future<void> _flushRoute() async {
+    if (_routePending.isEmpty || sessionId.isEmpty) return;
+    final batch = List.of(_routePending);
+    _routePending.clear();
+    try {
+      await _db.insertTrackPoints(sessionId, batch);
+    } catch (e) {
+      _routePending.insertAll(0, batch);
+      DebugLog.log('WARDRIVE: route save failed, kept ${batch.length} points: $e');
+    }
   }
 
   void _onGpsUpdate(GpsPosition pos) {
@@ -2035,6 +2076,8 @@ class WardriveController extends ChangeNotifier {
       }
 
       routePoints.add(ll);
+      _routePending.add((ts: pos.timestamp.millisecondsSinceEpoch, lat: pos.latitude, lon: pos.longitude));
+      if (_routePending.length >= 10) unawaited(_flushRoute());
       if (lastGpsForDistance != null) {
         final km = _haversineKm(
           lastGpsForDistance!.latitude, lastGpsForDistance!.longitude,
