@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException, rootBundle;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart' show Permission, PermissionActions, PermissionCheckShortcuts;
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/capture_recorder.dart';
@@ -320,7 +321,33 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       if (canScanWifi && radioMask & 0x01 != 0) _wifiStart();
     }
     if (_foxTarget != null && canScanWifi) _wifiStart();
+    unawaited(_nanSync(scanning && canScanWifi && radioMask & 0x01 != 0 && !rxOnly));
     notifyListeners();
+  }
+
+  void Function(int peer, List<int> ssi)? onNanOdid;
+  bool _nanOn = false;
+  StreamSubscription<({int peer, List<int> ssi})>? _nanSub;
+
+  Future<void> _nanSync(bool on) async {
+    final cb = onNanOdid;
+    if (on == _nanOn || (on && cb == null)) return;
+    _nanOn = on;
+    if (!on) {
+      await _nanSub?.cancel();
+      _nanSub = null;
+      await NativePhoneScan.nanStop();
+      return;
+    }
+    if (!await Permission.nearbyWifiDevices.isGranted) await Permission.nearbyWifiDevices.request();
+    try {
+      _nanSub ??= NativePhoneScan.nanResults.listen((r) => cb!(r.peer, r.ssi),
+          onError: (Object e) => DebugLog.log('CLASSIFY: NAN Remote ID stream failed: $e'));
+      final ok = await NativePhoneScan.nanStart();
+      DebugLog.log('CLASSIFY: NAN Remote ID subscribe ${ok ? 'started' : 'unavailable on this phone'}');
+    } on PlatformException catch (e) {
+      DebugLog.log('CLASSIFY: NAN Remote ID start failed: ${e.message}');
+    }
   }
 
   int radioMask = 0x03;
@@ -611,7 +638,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
       final mac = isMac ? MacUtil.normalize(id) : '';
       final adv = r.advertisementData;
       final odid = onOdid;
-      if (odid != null && isMac && adv.serviceData.isNotEmpty) odid(mac, r.rssi, advBytes(adv));
+      if (odid != null && adv.serviceData.isNotEmpty) odid(isMac ? mac : id, r.rssi, advBytes(adv));
       final feed = onDetection;
       if (feed != null) {
         final last = _lastFed[id];
@@ -751,6 +778,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     _dutyOff?.cancel();
     _wifiTimer?.cancel();
     _wifiSub?.cancel();
+    _nanSub?.cancel();
     _foxLostTimer?.cancel();
     _sub?.cancel();
     _nativeSub?.cancel();
@@ -1083,6 +1111,7 @@ final phoneBleSourceProvider = ChangeNotifierProvider<PhoneBleSource>((ref) {
   src.onDetection = ref.read(bleManagerProvider).addPhoneDetection;
   src.onOdid = ref.read(bleManagerProvider).addPhoneOdid;
   src.onWifiOdid = ref.read(bleManagerProvider).addPhoneWifiOdid;
+  src.onNanOdid = ref.read(bleManagerProvider).addPhoneNanOdid;
   src.onWifi = ref.read(bleManagerProvider).addPhoneWifiDetection;
   src.onFoxRssi = ref.read(bleManagerProvider).addPhoneFoxRssi;
   src.setRxOnly(ref.read(rxOnlyProvider));

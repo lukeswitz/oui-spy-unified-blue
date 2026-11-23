@@ -501,6 +501,14 @@ class BleManager {
         nodeId: phoneNodeId, method: 'odid_beacon', channel: channel);
   }
 
+  static const nanDiscoveryChannel = 6;
+
+  void addPhoneNanOdid(int peer, List<int> ssi) {
+    final key = 'nan:${peer.toRadixString(16)}';
+    _emitPhoneOdid(key, 0, _odidDecoder.feedMessages(key, odidMessagesFromNanSsi(ssi)),
+        nodeId: phoneNodeId, method: 'odid_nan', channel: nanDiscoveryChannel);
+  }
+
   void _emitPhoneOdid(String mac, int rssi, OdidExtension? ext,
       {required String nodeId, required String method, required int channel}) {
     if (ext == null) return;

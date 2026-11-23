@@ -6,8 +6,19 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
+import android.net.wifi.aware.AttachCallback
+import android.net.wifi.aware.DiscoverySessionCallback
+import android.net.wifi.aware.PeerHandle
+import android.net.wifi.aware.SubscribeConfig
+import android.net.wifi.aware.SubscribeDiscoverySession
+import android.net.wifi.aware.WifiAwareManager
+import android.net.wifi.aware.WifiAwareSession
 import android.os.Build
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -20,12 +31,25 @@ class PhoneScanChannel(private val context: Context, messenger: BinaryMessenger)
 
     private val method = MethodChannel(messenger, "ouispy/phone_scan")
     private val events = EventChannel(messenger, "ouispy/phone_scan/results")
+    private val nanEvents = EventChannel(messenger, "ouispy/phone_scan/nan")
     private var sink: EventChannel.EventSink? = null
+    private var nanSink: EventChannel.EventSink? = null
     private var callback: ScanCallback? = null
+    private var nanSession: WifiAwareSession? = null
+    private var nanSubscribe: SubscribeDiscoverySession? = null
 
     init {
         method.setMethodCallHandler(this)
         events.setStreamHandler(this)
+        nanEvents.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, eventSink: EventChannel.EventSink) {
+                nanSink = eventSink
+            }
+
+            override fun onCancel(arguments: Any?) {
+                nanSink = null
+            }
+        })
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -53,6 +77,17 @@ class PhoneScanChannel(private val context: Context, messenger: BinaryMessenger)
                     result.error("wifi_odid", e.message, null)
                 }
             }
+            "nanStart" -> {
+                try {
+                    result.success(nanStart())
+                } catch (e: SecurityException) {
+                    result.error("nan_start", e.message, null)
+                }
+            }
+            "nanStop" -> {
+                nanStop()
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -67,8 +102,88 @@ class PhoneScanChannel(private val context: Context, messenger: BinaryMessenger)
 
     fun dispose() {
         stop()
+        nanStop()
         method.setMethodCallHandler(null)
         events.setStreamHandler(null)
+        nanEvents.setStreamHandler(null)
+    }
+
+    private var nanWanted = false
+    private var nanReceiver: BroadcastReceiver? = null
+
+    private fun nanStart(): Boolean {
+        if (Build.VERSION.SDK_INT < 26) return false
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)) return false
+        val mgr = context.getSystemService(Context.WIFI_AWARE_SERVICE) as? WifiAwareManager ?: return false
+        nanWanted = true
+        if (nanReceiver == null) {
+            val r = object : BroadcastReceiver() {
+                override fun onReceive(c: Context, intent: Intent) {
+                    if (!nanWanted) return
+                    if (mgr.isAvailable) {
+                        if (nanSession == null) nanAttach(mgr)
+                    } else {
+                        nanSubscribe = null
+                        nanSession = null
+                    }
+                }
+            }
+            val filter = IntentFilter(WifiAwareManager.ACTION_WIFI_AWARE_STATE_CHANGED)
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(r, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(r, filter)
+            }
+            nanReceiver = r
+        }
+        if (mgr.isAvailable && nanSession == null) nanAttach(mgr)
+        return true
+    }
+
+    private var nanAttaching = false
+
+    private fun nanAttach(mgr: WifiAwareManager) {
+        if (Build.VERSION.SDK_INT < 26 || nanAttaching) return
+        nanAttaching = true
+        mgr.attach(object : AttachCallback() {
+            override fun onAttached(session: WifiAwareSession) {
+                nanAttaching = false
+                if (!nanWanted) {
+                    session.close()
+                    return
+                }
+                nanSession = session
+                val cfg = SubscribeConfig.Builder()
+                    .setServiceName("org.opendroneid.remoteid")
+                    .setSubscribeType(SubscribeConfig.SUBSCRIBE_TYPE_PASSIVE)
+                    .build()
+                session.subscribe(cfg, object : DiscoverySessionCallback() {
+                    override fun onSubscribeStarted(s: SubscribeDiscoverySession) {
+                        nanSubscribe = s
+                    }
+
+                    override fun onServiceDiscovered(peer: PeerHandle, ssi: ByteArray, matchFilter: List<ByteArray>) {
+                        nanSink?.success(mapOf("peer" to peer.hashCode(), "ssi" to ssi))
+                    }
+                }, null)
+            }
+
+            override fun onAttachFailed() {
+                nanAttaching = false
+                nanSession = null
+            }
+        }, null)
+    }
+
+    private fun nanStop() {
+        nanWanted = false
+        nanReceiver?.let { context.unregisterReceiver(it) }
+        nanReceiver = null
+        if (Build.VERSION.SDK_INT < 26) return
+        nanSubscribe?.close()
+        nanSubscribe = null
+        nanSession?.close()
+        nanSession = null
     }
 
     private fun scanner() =

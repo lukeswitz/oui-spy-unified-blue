@@ -52,7 +52,7 @@ class WigleCsv {
 
       final mac = d.macAddress;
       final isBleDevice = d.isBleDetection;
-      if (isBleDevice && !_macPattern.hasMatch(mac)) continue;
+      if (!_macPattern.hasMatch(mac)) continue;
       final String rawSsid;
       if (d.engine == Engine.skySpy) {
         rawSsid = d.odid?.uavId ?? d.deviceName;

@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/odid/odid_ble.dart';
@@ -78,6 +80,34 @@ void main() {
     expect(d.method, 'odid_beacon');
     expect(d.channel, 6);
     expect(d.odid?.uavId, 'TESTDRONE1234567890');
+  });
+
+  test('Remote ID from a scan result service-data map (iOS and Android) decodes', () {
+    final ad = v['BLE_A']!;
+    final adv = AdvertisementData(
+      advName: '',
+      txPowerLevel: null,
+      appearance: null,
+      connectable: false,
+      manufacturerData: const {},
+      serviceData: {Guid('FFFA'): ad.sublist(4)},
+      serviceUuids: const [],
+    );
+    final o = OdidBleDecoder().feed('8C4F1A2B-0000-4000-8000-000000000001', PhoneBleSource.advBytes(adv))!;
+    expect(o.uavId, 'TESTDRONE1234567890');
+    expect(o.operatorId, 'OPERATOR01');
+  });
+
+  test('a Wi-Fi NAN service-specific info (counter + pack) becomes a Sky Spy NAN detection', () async {
+    final pack = v['BLE_A']!.sublist(6);
+    final ble = BleManager();
+    final got = ble.detections.first;
+    ble.addPhoneNanOdid(0x1234, [0x07, ...pack]);
+    final d = await got.timeout(const Duration(seconds: 2));
+    expect(d.method, 'odid_nan');
+    expect(d.macAddress, 'nan:1234');
+    expect(d.odid?.uavId, 'TESTDRONE1234567890');
+    expect(d.odid?.altitudeMsl, 101);
   });
 
   test('a phone advertisement with Remote ID becomes a Sky Spy detection', () async {

@@ -18,6 +18,16 @@ class NativePhoneScan {
 
   static Future<void> stop() => _method.invokeMethod<void>('stop');
 
+  static const _nanEvents = EventChannel('ouispy/phone_scan/nan');
+
+  static Stream<({int peer, List<int> ssi})> get nanResults => _nanEvents
+      .receiveBroadcastStream()
+      .map((e) => (peer: (e as Map)['peer'] as int, ssi: List<int>.from(e['ssi'] as List)));
+
+  static Future<bool> nanStart() async => await _method.invokeMethod<bool>('nanStart') ?? false;
+
+  static Future<void> nanStop() => _method.invokeMethod<void>('nanStop');
+
   static Future<List<({String bssid, int rssi, int freq, List<int> ie})>> wifiOdid() async {
     final raw = await _method.invokeListMethod<Object?>('wifiOdid') ?? const [];
     return [

@@ -40,6 +40,9 @@ List<List<int>> odidMessagesFromVendorIe(List<int> ie) {
   return _messagesFromBody(ie.sublist(5));
 }
 
+List<List<int>> odidMessagesFromNanSsi(List<int> ssi) =>
+    ssi.length < 1 + _msgSize ? const [] : _messagesFromBody(ssi.sublist(1));
+
 List<List<int>> _messagesFromBody(List<int> body) {
   if (body.length < _msgSize) return const [];
   if (body[0] >> 4 != _typePack) return [body.sublist(0, _msgSize)];
