@@ -730,6 +730,20 @@ class AppDatabase extends _$AppDatabase {
     return maps;
   }
 
+  Future<Map<String, dynamic>?> latestDetectionMapForMac(String mac, {String sessionId = ''}) async {
+    if (mac.isEmpty) return null;
+    final rows = await customSelect(
+      'SELECT * FROM detections WHERE lower(mac_address) = lower(?1) '
+      'ORDER BY (session_id = ?2) DESC, app_timestamp DESC, id DESC LIMIT 1',
+      variables: [Variable.withString(mac), Variable.withString(sessionId)],
+      readsFrom: {detections},
+    ).get();
+    if (rows.isEmpty) return null;
+    final maps = [_detectionRowMap(detections.map(rows.single.data))];
+    await _attachExt(maps);
+    return maps.single;
+  }
+
   Future<void> _attachExt(List<Map<String, dynamic>> maps) async {
     final ids = [for (final m in maps) m['id'] as int];
     final byId = <int, Map<String, dynamic>>{};
@@ -887,7 +901,7 @@ class AppDatabase extends _$AppDatabase {
       }
       seen['$mac|$cls'] = {
         'id': r.read<int>('id'),
-        'sessionId': '',
+        'sessionId': r.read<String>('session_id'),
         'nodeId': '',
         'macAddress': mac,
         'deviceName': r.read<String>('title'),

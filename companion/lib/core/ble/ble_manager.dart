@@ -2298,6 +2298,8 @@ class BleManager {
     }
   }
 
+  void injectDetectionFrame(List<int> data) => _onDetection(data);
+
   void _onDetection(List<int> data) {
     _lastRx = DateTime.now();
     if (_importing) {

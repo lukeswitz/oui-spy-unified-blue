@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert' show utf8;
+import 'dart:math' as math;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
@@ -128,7 +129,7 @@ Observation observationFromDetection(Detection d) {
     name: name,
     rssi: d.rssi,
     firstSeenMs: at,
-    lastSeenMs: at,
+    lastSeenMs: math.max(at, detectionLastSeenMs[d] ?? at),
     channel: ble ? 0 : d.channel,
     authMode: ble || d.method != 'wifi_ap' ? null : d.wardrive?.authMode,
     hiddenSsid: !ble && d.method == 'wifi_ap' && d.ssid.trim().isEmpty,

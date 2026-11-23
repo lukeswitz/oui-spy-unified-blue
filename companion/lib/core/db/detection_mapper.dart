@@ -69,6 +69,7 @@ Map<String, Object?> detectionExt(Detection d) {
   final o = d.odid;
   final x = d.detector;
   return {
+    'lastSeenMs': d.appTimestamp.millisecondsSinceEpoch,
     if (d.sourceNodeId.isNotEmpty) 'sourceNodeId': d.sourceNodeId,
     if (x != null) 'detectorConfidence': x.confidence,
     if (o != null) ...{
@@ -197,6 +198,8 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
           )
         : null,
   );
+  final lastSeen = ext['lastSeenMs'];
+  if (lastSeen is int) detectionLastSeenMs[d] = lastSeen;
   final cls = row['alertClass'];
   if (cls is String && cls.isNotEmpty) detectionAlertClass[d] = cls;
   return d;

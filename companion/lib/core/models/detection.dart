@@ -156,6 +156,8 @@ final wardriveAdvRaw = Expando<List<int>>('wardriveAdvRaw');
 
 final detectionAlertClass = Expando<String>('detectionAlertClass');
 
+final detectionLastSeenMs = Expando<int>('detectionLastSeenMs');
+
 @freezed
 class WardriveExtension with _$WardriveExtension {
   const factory WardriveExtension({

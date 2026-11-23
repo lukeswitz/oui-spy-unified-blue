@@ -313,27 +313,33 @@ class _PermissionsScreenState extends ConsumerState<PermissionsScreen> {
                 style: TextStyle(color: _notSet ? AppTheme.error : t.textDim, fontSize: 13),
               ),
               const SizedBox(height: 12),
-              if (_notSet) ...[
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: TextButton(onPressed: _advance, child: const Text('Skip for now')),
-                ),
-                const SizedBox(height: 8),
-              ],
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _busy ? null : _continue,
-                  child: _busy
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(_notSet ? 'Open Settings' : 'Continue'),
-                ),
+              Row(
+                children: [
+                  if (_notSet) ...[
+                    Expanded(
+                      child: SizedBox(
+                        height: 52,
+                        child: TextButton(onPressed: _advance, child: const Text('Skip for now')),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: _busy ? null : _continue,
+                        child: _busy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(_notSet ? 'Open Settings' : 'Continue'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

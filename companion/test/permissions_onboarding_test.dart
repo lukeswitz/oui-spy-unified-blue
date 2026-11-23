@@ -67,4 +67,31 @@ void main() {
     expect(asked, ['Bluetooth', 'Location', 'Notifications']);
     expect(done, isTrue);
   });
+
+  testWidgets('a step not granted shows Skip and Open Settings side by side', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      child: MaterialApp(
+        theme: AppTheme.themeFor(AppStyle.standard, Brightness.dark),
+        home: PermissionsScreen(
+          onDone: () {},
+          steps: [
+            PermissionStep(
+              icon: Icons.check,
+              title: 'Always',
+              body: 'Always body',
+              request: (_) async {},
+              done: () async => false,
+            ),
+          ],
+        ),
+      ),
+    ));
+    await tester.tap(find.text('Continue'));
+    await tester.pump();
+    await tester.pump();
+    final skip = tester.getRect(find.text('Skip for now'));
+    final open = tester.getRect(find.text('Open Settings'));
+    expect(skip.center.dy, closeTo(open.center.dy, 1));
+    expect(skip.right, lessThan(open.left));
+  });
 }

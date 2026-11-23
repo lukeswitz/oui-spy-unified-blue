@@ -109,14 +109,18 @@ class _AlertRow extends ConsumerWidget {
   }
 }
 
-void _showAlert(BuildContext context, WidgetRef ref, Map<String, dynamic> row, bool masked) {
-  final t = AppTheme.of(context);
+Future<void> _showAlert(BuildContext context, WidgetRef ref, Map<String, dynamic> row, bool masked) async {
   final kind = row['alertClass'] as String? ?? '';
   final subject = row['macAddress'] as String? ?? '';
+  final stored = await ref
+      .read(databaseProvider)
+      .latestDetectionMapForMac(subject, sessionId: row['sessionId'] as String? ?? '');
+  if (!context.mounted) return;
+  final t = AppTheme.of(context);
   final lat = row['latitude'] as double?;
   final lon = row['longitude'] as double?;
   final at = DateTime.fromMillisecondsSinceEpoch(row['appTimestamp'] as int);
-  final radio = !_notRadio.contains(kind) && subject.isNotEmpty;
+  final radio = stored != null || (!_notRadio.contains(kind) && subject.isNotEmpty);
   Widget line(String label, String value) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Row(
@@ -159,7 +163,7 @@ void _showAlert(BuildContext context, WidgetRef ref, Map<String, dynamic> row, b
                 label: const Text('Device details'),
                 onPressed: () {
                   Navigator.pop(ctx);
-                  showDetectionDetails(context, ref, detectionFromDbRow(row), showMapAction: false);
+                  showDetectionDetails(context, ref, detectionFromDbRow(stored ?? row), showMapAction: false);
                 },
               ),
             TextButton.icon(

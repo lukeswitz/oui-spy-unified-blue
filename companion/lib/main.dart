@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/app.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/bench_hook.dart';
+import 'package:oui_spy/smoke_hook.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
@@ -104,6 +105,7 @@ void main() async {
   });
 
   runBenchIfEnabled(container);
+  runSmokeIfEnabled(container);
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
     _forceCleanBleState().then((_) async {

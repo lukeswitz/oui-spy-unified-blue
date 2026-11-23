@@ -1,0 +1,208 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/gps/gps_provider.dart';
+import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/watch_alert_log.dart';
+
+const _enabled = bool.fromEnvironment('SMOKE');
+const _seconds = int.fromEnvironment('SMOKE_SECS', defaultValue: 40);
+
+List<int> _mac(String mac) => [for (final h in mac.split(':')) int.parse(h, radix: 16)];
+
+List<int> _str(String s, int len) {
+  final b = List<int>.filled(len, 0);
+  final u = utf8.encode(s);
+  for (var i = 0; i < u.length && i < len; i++) {
+    b[i] = u[i];
+  }
+  return b;
+}
+
+List<int> smokeFrame(Engine e, String mac, int rssi, int channel, int method, List<int> ext) {
+  final ts = DateTime.now().millisecondsSinceEpoch & 0xffffffff;
+  return [
+    e.index,
+    ..._mac(mac),
+    rssi & 0xff,
+    channel,
+    ts & 0xff,
+    (ts >> 8) & 0xff,
+    (ts >> 16) & 0xff,
+    (ts >> 24) & 0xff,
+    method,
+    ..._str('SMOKE', 5),
+    ...ext,
+  ];
+}
+
+List<int> _wardriveExt(String ssid, int auth, String name) => [
+      ..._str(ssid, 33),
+      auth,
+      ..._str(name, 21),
+    ];
+
+List<int> _flockExt({required bool raven, required String fw, required int signals, required String name}) => [
+      raven ? 1 : 0,
+      ..._str(fw, 16),
+      3,
+      ..._str(name, 32),
+      signals,
+    ];
+
+List<int> _detectorExt(String desc, int confidence) => [1, ..._str(desc, 32), confidence];
+
+List<int> smokeOdidExt({
+  required String uavId,
+  required String opId,
+  required double lat,
+  required double lon,
+  required double? pilotLat,
+  required double? pilotLon,
+  required int alt,
+  required int agl,
+  required int speed,
+  required int heading,
+  required String selfId,
+}) {
+  final b = ByteData(136);
+  void put(int off, List<int> v) {
+    for (var i = 0; i < v.length; i++) {
+      b.setUint8(off + i, v[i]);
+    }
+  }
+
+  put(0, _str(uavId, 21));
+  put(21, _str(opId, 21));
+  b.setFloat64(42, lat, Endian.little);
+  b.setFloat64(50, lon, Endian.little);
+  b.setInt16(58, alt, Endian.little);
+  b.setInt16(60, agl, Endian.little);
+  b.setInt16(62, speed, Endian.little);
+  b.setInt16(64, heading, Endian.little);
+  b.setFloat64(66, pilotLat ?? 0, Endian.little);
+  b.setFloat64(74, pilotLon ?? 0, Endian.little);
+  put(82, _str(selfId, 24));
+  b.setInt16(106, alt - 2, Endian.little);
+  b.setInt16(108, 1, Endian.little);
+  b.setInt16(110, pilotLat == null ? 0 : alt - agl, Endian.little);
+  b.setUint16(112, 1, Endian.little);
+  b.setUint16(114, 50, Endian.little);
+  b.setInt16(116, 120, Endian.little);
+  b.setInt16(118, 0, Endian.little);
+  b.setUint16(120, 1234, Endian.little);
+  put(122, [2, 1, 1, pilotLat == null ? 0 : 1, 1, 1, 2, 0, 2, 10, 4, 3, 2, 1]);
+  return b.buffer.asUint8List();
+}
+
+void runSmokeIfEnabled(ProviderContainer container) {
+  if (!_enabled) return;
+  final wd = container.read(wardriveProvider);
+  var started = false;
+  void onWd() {
+    if (started || wd.state != WardriveState.running) return;
+    started = true;
+    wd.removeListener(onWd);
+    _inject(container);
+  }
+
+  wd.addListener(onWd);
+  debugPrint('SMOKE: armed, waiting for a running session');
+}
+
+void _inject(ProviderContainer container) {
+  final ble = container.read(bleManagerProvider);
+  final log = container.read(watchAlertLogProvider);
+  final here = container.read(gpsProvider).lastPosition;
+  final lat0 = here?.latitude ?? 40.0;
+  final lon0 = here?.longitude ?? -105.0;
+  final counts = <String, int>{};
+  void send(String label, List<int> frame) {
+    ble.injectDetectionFrame(frame);
+    counts[label] = (counts[label] ?? 0) + 1;
+  }
+
+  var tick = 0;
+  debugPrint('SMOKE: injecting for ${_seconds}s around the phone fix');
+  Timer.periodic(const Duration(seconds: 1), (t) {
+    final r = tick % 5;
+    for (var i = 0; i < 6; i++) {
+      send('wifi_ap', smokeFrame(Engine.wardrive, '02:00:00:00:01:0$i', -60 - i - r, 1 + i, 0,
+          _wardriveExt('SmokeNet$i', 3 + (i % 3), '')));
+    }
+    for (var i = 0; i < 2; i++) {
+      send('wifi_client', smokeFrame(Engine.wardrive, '02:00:00:00:02:0$i', -70 - r, 1, 2,
+          [..._wardriveExt('', 0, ''), ..._mac('02:00:00:00:01:00')]));
+    }
+    for (var i = 0; i < 3; i++) {
+      send('ble_adv', smokeFrame(Engine.wardrive, '02:00:00:00:03:0$i', -65 - r, 37, 1,
+          _wardriveExt('', 0, 'SmokeBle$i')));
+    }
+    send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -55 - r, 37, 1,
+        _flockExt(raven: true, fw: '1.3.2', signals: 0x47, name: 'Smoke Flock BLE')));
+    send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
+        _flockExt(raven: false, fw: '', signals: 0x05, name: 'Smoke Flock WiFi')));
+    const detectors = {
+      'deauth_storm': 4,
+      'flipper': 3,
+      'glasses': 7,
+      'probe_ssid': 5,
+      'camera': 9,
+      'tracker': 2,
+    };
+    var k = 0;
+    for (final e in detectors.entries) {
+      send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, 6, e.value,
+          _detectorExt('Smoke ${e.key}', 1 + k % 3)));
+      k++;
+    }
+    final step = tick * 0.0001;
+    send('drone_full', smokeFrame(Engine.skySpy, '02:00:00:00:06:00', -62 - r, 6, 0, smokeOdidExt(
+      uavId: 'SMOKEUAV0001',
+      opId: 'SMOKEOP0001',
+      lat: lat0 + 0.002 + step,
+      lon: lon0 + 0.002,
+      pilotLat: lat0 + 0.001,
+      pilotLon: lon0 + 0.001,
+      alt: 1700 + tick,
+      agl: 60,
+      speed: 5,
+      heading: 0,
+      selfId: 'Smoke full drone',
+    )));
+    send('drone_partial', smokeFrame(Engine.skySpy, '02:00:00:00:06:01', -75 - r, 6, 0, smokeOdidExt(
+      uavId: 'SMOKEUAV0002',
+      opId: '',
+      lat: lat0 - 0.002,
+      lon: lon0 - 0.002 - step,
+      pilotLat: null,
+      pilotLon: null,
+      alt: 1650,
+      agl: 30,
+      speed: 3,
+      heading: 270,
+      selfId: '',
+    )));
+    send('uniPwn', smokeFrame(Engine.uniPwn, '02:00:00:00:07:00', -68 - r, 37, 0,
+        [..._str('Go2', 8), 0]));
+    send('foxhunter', smokeFrame(Engine.foxhunter, '02:00:00:00:08:00', -45 - r, 37, 0, const []));
+
+    if (tick == 3) {
+      log(kind: 'drone_loiter', title: 'Smoke drone loiter', reason: 'smoke test', subject: '02:00:00:00:06:00',
+          lat: lat0 + 0.0015, lon: lon0 + 0.0015);
+      log(kind: 'beacon_flood', title: 'Smoke beacon flood', reason: 'smoke test', subject: '02:00:00:00:09:00',
+          lat: lat0 - 0.0015, lon: lon0 + 0.0015);
+      log(kind: 'car_follow', title: 'Smoke car follow', reason: 'smoke test', subject: '02:00:00:00:03:00');
+      log(kind: 'trusted_network', title: 'Smoke evil twin', reason: 'smoke test', subject: '02:00:00:00:01:01',
+          lat: lat0 + 0.0005, lon: lon0 - 0.0015);
+      counts['alerts'] = 4;
+    }
+    if (++tick < _seconds) return;
+    t.cancel();
+    debugPrint('SMOKE: done ${jsonEncode(counts)}');
+  });
+}

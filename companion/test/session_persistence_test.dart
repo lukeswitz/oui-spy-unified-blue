@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/db/session_detection_store.dart';
@@ -153,6 +154,9 @@ void main() {
       final folded = foldSessionRows(rows).values.single;
       expect(folded.odid, live.odid);
       expect(folded.count, live.count);
+      expect(detectionLastSeenMs[folded], live.appTimestamp.millisecondsSinceEpoch);
+      expect(observationFromDetection(folded).lastSeenMs, live.appTimestamp.millisecondsSinceEpoch);
+      expect(observationFromDetection(folded).firstSeenMs, 1000);
       expect(rows.first.odid?.droneLat, 40.001);
       expect(rows.last.odid?.droneLat, 40.002);
       store.dispose();

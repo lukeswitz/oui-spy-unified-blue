@@ -166,13 +166,23 @@ Detection mergeWardriveSighting(Detection existing, Detection detection) {
 
 Map<String, Detection> foldSessionRows(Iterable<Detection> rowsAsc) {
   final out = <String, Detection>{};
+  final lastSeen = <String, int>{};
   for (final row in rowsAsc) {
     final key = '${row.macAddress}|${row.engine.name}';
     final existing = out.remove(key);
     out[key] = existing == null
         ? row
-        : mergeWardriveSighting(existing, row)
-            .copyWith(count: math.max(row.count, existing.count + 1));
+        : mergeWardriveSighting(existing, row).copyWith(
+            count: math.max(row.count, existing.count + 1),
+            appTimestamp: existing.appTimestamp.isBefore(row.appTimestamp)
+                ? existing.appTimestamp
+                : row.appTimestamp,
+          );
+    final seen = detectionLastSeenMs[row] ?? row.appTimestamp.millisecondsSinceEpoch;
+    lastSeen[key] = math.max(lastSeen[key] ?? 0, seen);
+  }
+  for (final e in out.entries) {
+    detectionLastSeenMs[e.value] = lastSeen[e.key];
   }
   return out;
 }
