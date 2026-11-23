@@ -5,8 +5,11 @@ import 'dart:io';
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:oui_spy/core/db/app_database.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:oui_spy/core/db/app_database.dart' hide Detection;
+import 'package:oui_spy/core/db/session_detection_store.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/link/wifi_adapter.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -155,6 +158,9 @@ class SdrController {
   final AppDatabase? _db;
   final GpsPosition? Function()? _gps;
   String _dbSession = '';
+  SessionDetectionStore? _store;
+  final Set<String> _storedKeys = {};
+  final Map<String, LatLng> _adsbStoredAt = {};
 
   final _state = StreamController<SdrState>.broadcast();
   final _frames = StreamController<SdrFrame>.broadcast();
@@ -194,17 +200,23 @@ class SdrController {
     _scanStatus = '';
     final db = _db;
     if (db != null) {
+      await _closeSession();
+      _store?.dispose();
+      _store = SessionDetectionStore(db);
+      _storedKeys.clear();
+      _adsbStoredAt.clear();
       _dbSession = 'sdr-${DateTime.now().microsecondsSinceEpoch}';
-      db
-          .insertSession(SessionsCompanion(
-            id: drift.Value(_dbSession),
-            name: drift.Value(
-                'SDR ${DateTime.now().toIso8601String().substring(0, 16)}'),
-            nodeId: const drift.Value('default'),
-            startedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
-            isWardrive: const drift.Value(false),
-          ))
-          .catchError((Object e) => DebugLog.log('SDR: insertSession failed: $e'));
+      try {
+        await db.insertSession(SessionsCompanion(
+          id: drift.Value(_dbSession),
+          name: drift.Value('SDR ${DateTime.now().toIso8601String().substring(0, 16)}'),
+          nodeId: const drift.Value('default'),
+          startedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+          isWardrive: const drift.Value(false),
+        ));
+      } catch (e) {
+        DebugLog.log('SDR: insertSession failed: $e');
+      }
     }
     await _sub?.cancel();
     _sub = Sdr.frames.listen(_onFrame, onError: (Object e) {
@@ -232,6 +244,7 @@ class SdrController {
     await _sub?.cancel();
     _sub = null;
     await Sdr.stop();
+    await _closeSession();
     _set(SdrState.idle);
   }
 
@@ -263,7 +276,7 @@ class SdrController {
         _pending.remove(key);
         sdrTrackUsage(d.fields, null, DateTime.now().millisecondsSinceEpoch);
         _detections.insert(0, d);
-        _persist(d);
+        _record(d);
       } else {
         if (idx >= 0) {
           final prev = _detections.removeAt(idx);
@@ -272,50 +285,95 @@ class SdrController {
         }
         _detections.insert(0, d);
         if (d.kind == 'adsb') _mergeAdsb(d);
+        _record(d);
       }
       if (_detections.length > 400) _detections.removeRange(400, _detections.length);
     }
     _frames.add(f);
   }
 
-  void _persist(SdrDetection d) {
-    final db = _db;
-    if (db == null || _dbSession.isEmpty) return;
+  static const _adsbTrackStepM = 250.0;
+
+  Detection _asDetection(SdrDetection d) {
     final f = d.fields;
     final model = (f['model'] ?? f['icao'] ?? d.kind).toString();
     final ident = (f['id'] ?? f['icao'] ?? '').toString();
-    final mac = ident.isNotEmpty ? '$model|$ident' : model;
     final cs = (f['callsign'] as String?)?.trim() ?? '';
-    final name = d.kind == 'adsb' && cs.isNotEmpty ? cs : model;
-    final rssi = (f['rssi'] as num?)?.toInt() ?? 0;
     final pos = _gps?.call();
-    final now = DateTime.now().millisecondsSinceEpoch;
-    db
-        .insertDetection(DetectionsCompanion(
-          sessionId: drift.Value(_dbSession),
-          nodeId: const drift.Value('default'),
-          macAddress: drift.Value(mac),
-          deviceName: drift.Value(name),
-          engine: drift.Value(Engine.sdr.name),
-          detectionMethod: drift.Value(d.kind),
-          rssi: drift.Value(rssi),
-          channel: const drift.Value(0),
-          ssid: drift.Value(jsonEncode({
-            for (final e in f.entries)
-              if (!e.key.startsWith('_')) e.key: e.value,
-          })),
-          deviceTimestampMs: drift.Value(now),
-          appTimestamp: drift.Value(now),
-          latitude: drift.Value(pos?.latitude),
-          longitude: drift.Value(pos?.longitude),
-          altitude: drift.Value(pos?.altitude),
-          speed: drift.Value(pos?.speed),
-          heading: drift.Value(pos?.heading),
-          accuracy: drift.Value(pos?.accuracy),
-          satelliteCount: drift.Value(pos?.satelliteCount),
-        ))
-        .catchError(
-            (Object e) => DebugLog.log('SDR: insertDetection failed: $e'));
+    final now = DateTime.now();
+    return Detection(
+      id: '',
+      sessionId: _dbSession,
+      nodeId: 'default',
+      macAddress: ident.isNotEmpty ? '$model|$ident' : model,
+      engine: Engine.sdr,
+      method: d.kind,
+      rssi: (f['rssi'] as num?)?.toInt() ?? 0,
+      channel: 0,
+      deviceTimestampMs: now.millisecondsSinceEpoch,
+      appTimestamp: now,
+      deviceName: d.kind == 'adsb' && cs.isNotEmpty ? cs : model,
+      ssid: jsonEncode({
+        for (final e in f.entries)
+          if (!e.key.startsWith('_')) e.key: e.value,
+      }),
+      count: (f['count'] as int?) ?? 1,
+      latitude: pos?.latitude,
+      longitude: pos?.longitude,
+      altitude: pos?.altitude,
+      speed: pos?.speed,
+      heading: pos?.heading,
+      accuracy: pos?.accuracy,
+      satelliteCount: pos?.satelliteCount,
+    );
+  }
+
+  void _record(SdrDetection d) {
+    final store = _store;
+    if (store == null || _dbSession.isEmpty) return;
+    if (d.kind != 'tpms' && d.kind != 'rtl433' && d.kind != 'adsb') return;
+    final det = _asDetection(d);
+    final key = det.macAddress;
+    var insert = !_storedKeys.contains(key);
+    if (d.kind == 'adsb' && !insert) {
+      final lat = (d.fields['lat'] as num?)?.toDouble();
+      final lon = (d.fields['lon'] as num?)?.toDouble();
+      if (lat != null && lon != null) {
+        final last = _adsbStoredAt[key];
+        if (last == null ||
+            const Distance().as(LengthUnit.Meter, last, LatLng(lat, lon)) >= _adsbTrackStepM) {
+          insert = true;
+        }
+      }
+    }
+    if (d.kind == 'adsb') {
+      final lat = (d.fields['lat'] as num?)?.toDouble();
+      final lon = (d.fields['lon'] as num?)?.toDouble();
+      if (insert && lat != null && lon != null) _adsbStoredAt[key] = LatLng(lat, lon);
+    }
+    if (insert) {
+      _storedKeys.add(key);
+      store.insert(key, _dbSession, det);
+    } else {
+      store.update(key, _dbSession, det);
+    }
+  }
+
+  Future<void> _closeSession() async {
+    final store = _store;
+    final db = _db;
+    if (store == null || db == null || _dbSession.isEmpty) return;
+    await store.flush();
+    try {
+      await db.updateSession(SessionsCompanion(
+        id: drift.Value(_dbSession),
+        endedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+        detectionCount: drift.Value(_storedKeys.length),
+        uniqueMacCount: drift.Value(_storedKeys.length),
+      ));
+    } catch (e) {
+      DebugLog.log('SDR: updateSession failed for $_dbSession: $e');
+    }
   }
 
   String? _dedupKey(SdrDetection d) {

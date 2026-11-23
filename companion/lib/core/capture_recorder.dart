@@ -35,7 +35,11 @@ class CaptureRecorder {
   late final Timer _timer;
   final _lastLogged = <String, int>{};
   final _macs = <String>{};
-  final _pending = <DetectionsCompanion>[];
+  final _pending = <({String key, DetectionsCompanion row, Map<String, Object?> ext})>[];
+  final _latest = <String, Detection>{};
+  final _rowIds = <String, int>{};
+  final _dirty = <String>{};
+  bool _needsRow = false;
   String? _sessionId;
   String _sessionName = '';
   int _startedAt = 0;
@@ -46,15 +50,35 @@ class CaptureRecorder {
   int get rows => _rows;
   int get pending => _pending.length;
 
+  String sessionIdForAlert() {
+    final id = _sessionId ?? _openSession(DateTime.now().millisecondsSinceEpoch);
+    _needsRow = true;
+    return id;
+  }
+
   void _onDetection(Detection d) {
     if (_recordingElsewhere() || _suppressed(d)) return;
     final now = d.appTimestamp.millisecondsSinceEpoch;
     final key = '${d.macAddress}|${d.engine.name}';
     final last = _lastLogged[key];
-    if (last != null && now - last < relogEvery.inMilliseconds) return;
+    final held = _latest[key];
+    if (last != null && now - last < relogEvery.inMilliseconds) {
+      if (held != null) {
+        _latest[key] = mergeWardriveSighting(held, d);
+        if (_rowIds.containsKey(key)) _dirty.add(key);
+      }
+      return;
+    }
     _lastLogged[key] = now;
     _macs.add(d.macAddress);
-    _pending.add(detectionCompanion(d, _sessionId ?? _openSession(now)));
+    final merged = held == null ? d : mergeWardriveSighting(held, d);
+    _latest[key] = merged;
+    _dirty.remove(key);
+    _pending.add((
+      key: key,
+      row: detectionCompanion(merged, _sessionId ?? _openSession(now)),
+      ext: detectionExt(merged),
+    ));
   }
 
   String _openSession(int now) {
@@ -67,35 +91,58 @@ class CaptureRecorder {
 
   Future<void> flush() async {
     var sid = _sessionId;
-    if (_flushing || _pending.isEmpty || sid == null) return;
+    if (_flushing || sid == null) return;
+    if (_pending.isEmpty && _dirty.isEmpty && !_needsRow) return;
     _flushing = true;
-    var batch = List<DetectionsCompanion>.of(_pending);
+    var batch = List<({String key, DetectionsCompanion row, Map<String, Object?> ext})>.of(_pending);
+    final dirtyKeys = Set<String>.of(_dirty);
     _pending.clear();
+    _dirty.clear();
     try {
       if (_rows > 0 && await _db.getSessionById(sid) == null) {
         final fresh = _openSession(DateTime.now().millisecondsSinceEpoch);
         _rows = 0;
         _macs.clear();
-        batch = [for (final c in batch) c.copyWith(sessionId: drift.Value(fresh))];
+        _rowIds.clear();
+        dirtyKeys.clear();
+        batch = [
+          for (final c in batch)
+            (key: c.key, row: c.row.copyWith(sessionId: drift.Value(fresh)), ext: c.ext),
+        ];
         for (final c in batch) {
-          _macs.add(c.macAddress.value);
+          _macs.add(c.row.macAddress.value);
         }
         sid = fresh;
       }
-      await _db.into(_db.sessions).insertOnConflictUpdate(SessionsCompanion(
-        id: drift.Value(sid),
-        name: drift.Value(_sessionName),
-        nodeId: const drift.Value('default'),
-        startedAt: drift.Value(_startedAt),
-        endedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
-        detectionCount: drift.Value(_rows + batch.length),
-        uniqueMacCount: drift.Value(_macs.length),
-        isWardrive: const drift.Value(false),
-      ));
-      await _db.batchInsertDetections(batch);
+      final ids = <String, int>{};
+      await _db.transaction(() async {
+        await _db.into(_db.sessions).insertOnConflictUpdate(SessionsCompanion(
+          id: drift.Value(sid!),
+          name: drift.Value(_sessionName),
+          nodeId: const drift.Value('default'),
+          startedAt: drift.Value(_startedAt),
+          endedAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
+          detectionCount: drift.Value(_rows + batch.length),
+          uniqueMacCount: drift.Value(_macs.length),
+          isWardrive: const drift.Value(false),
+        ));
+        for (final c in batch) {
+          ids[c.key] = await _db.insertDetectionRow(c.row, ext: c.ext);
+        }
+        for (final key in dirtyKeys) {
+          final id = ids[key] ?? _rowIds[key];
+          final d = _latest[key];
+          if (id != null && d != null) {
+            await _db.updateDetectionRow(id, detectionCompanion(d, sid!), ext: detectionExt(d));
+          }
+        }
+      });
+      _rowIds.addAll(ids);
       _rows += batch.length;
+      _needsRow = false;
     } catch (e) {
       _pending.insertAll(0, batch);
+      _dirty.addAll(dirtyKeys);
       DebugLog.log('CAPTURE: flush of ${batch.length} rows failed, kept for retry: $e');
     } finally {
       _flushing = false;
@@ -127,3 +174,9 @@ final captureRecorderProvider = Provider<CaptureRecorder>((ref) {
   ref.onDispose(recorder.dispose);
   return recorder;
 });
+
+final alertSessionIdProvider = Provider<String Function()>((ref) => () {
+      final wd = ref.read(wardriveProvider);
+      if (wd.isActive && wd.sessionId.isNotEmpty) return wd.sessionId;
+      return ref.read(captureRecorderProvider).sessionIdForAlert();
+    });

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/capture_recorder.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -59,6 +60,7 @@ final watchAlertLogProvider = Provider<WatchAlertLog>((ref) {
   final db = ref.read(databaseProvider);
   final notif = ref.read(notificationServiceProvider);
   final gps = ref.read(gpsProvider);
+  final sessionOf = ref.read(alertSessionIdProvider);
   return ({
     required String kind,
     required String title,
@@ -86,6 +88,7 @@ final watchAlertLogProvider = Provider<WatchAlertLog>((ref) {
           alertedAt: DateTime.now().millisecondsSinceEpoch,
           latitude: lat ?? here?.latitude,
           longitude: lon ?? here?.longitude,
+          sessionId: sessionOf(),
         )
         .then((_) => ref.read(alertsFeedProvider).changed())
         .catchError((Object e) => DebugLog.log('WATCH: alert log failed: $e'));

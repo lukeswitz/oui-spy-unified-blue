@@ -8,6 +8,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/capture_recorder.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
@@ -1147,6 +1148,7 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
         alertedAt: now,
         latitude: trail.isNotEmpty ? trail.last.lat : pos?.latitude,
         longitude: trail.isNotEmpty ? trail.last.lon : pos?.longitude,
+        sessionId: ref.read(alertSessionIdProvider)(),
       ).then((_) => ref.read(alertsFeedProvider).changed())
           .catchError((Object e) => DebugLog.log('CLASSIFY: alert log failed: $e'));
     };

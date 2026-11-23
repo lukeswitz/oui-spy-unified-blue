@@ -1064,7 +1064,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final recentLen = ref.read(appStateProvider).recentDetections.length;
     final focus = _focusedDetection;
     final alerted = ref.read(notificationServiceProvider).classAlertedMacs.length;
-    final key = '$alerted|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
+    final key = '$alerted|${wd.sessionAlertRows.length}|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
         '${wd.detectorFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
         '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
         '$_classGroupLabel|${_classGroup.length}|${wd.markerDistanceM.round()}';
@@ -1077,13 +1077,25 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
   _DetectionLayers _computeDetectionLayers(WardriveController wd) {
     final appState = ref.read(appStateProvider);
-    final alertedMacs = ref.read(notificationServiceProvider).classAlertedMacs;
-    final alertKinds = ref.read(notificationServiceProvider).classAlertKinds;
+    final notif = ref.read(notificationServiceProvider);
+    final alertedMacs = <String>{
+      if (wd.isActive) ...notif.classAlertedMacs,
+      ...wd.sessionAlertMacs,
+    };
+    final alertKinds = <String, String>{
+      if (wd.isActive) ...notif.classAlertKinds,
+      ...wd.sessionAlertKinds,
+    };
     bool isAlerted(Detection d) => alertedMacs.contains(d.macAddress.toUpperCase());
     final source = <Detection>[...wd.dedupedDetections];
     final seenKeys = <String>{
       for (final d in source) '${d.macAddress}|${d.engine.name}',
     };
+    for (final r in wd.sessionAlertRows) {
+      if (!_hasMapCoord(r['latitude'] as double?, r['longitude'] as double?)) continue;
+      final d = detectionFromDbRow(r);
+      if (seenKeys.add('${d.macAddress}|${d.engine.name}')) source.add(d);
+    }
     for (final d in appState.recentDetections) {
       if (d.engine != Engine.skySpy &&
           d.engine != Engine.flockBle &&
@@ -1362,7 +1374,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
         final dronePt = ridPt;
         final trackKey = AppState.droneTrackKey(d);
-        final droneTrack = appState.droneTrack(trackKey);
+        final droneTrack = wd.viewingSavedSession
+            ? wd.loadedDroneTrack(trackKey)
+            : appState.droneTrack(trackKey);
         if (droneTrack != null && droneTrack.length >= 2) {
           trails.add(Polyline(
             points: droneTrack,
@@ -1370,7 +1384,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             strokeWidth: 2.2,
           ));
         }
-        final pilotTrack = appState.pilotTrack(trackKey);
+        final pilotTrack = wd.viewingSavedSession
+            ? wd.loadedPilotTrack(trackKey)
+            : appState.pilotTrack(trackKey);
         if (pilotTrack != null && pilotTrack.length >= 2) {
           trails.add(Polyline(
             points: pilotTrack,

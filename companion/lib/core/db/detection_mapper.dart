@@ -36,7 +36,48 @@ DetectionsCompanion detectionCompanion(Detection detection, String sessionId) =>
       isRaven: drift.Value(detection.flock?.isRaven),
       ravenFirmware: drift.Value(detection.flock?.ravenFirmware),
       flockSignals: drift.Value(detection.flock?.signals),
+      count: drift.Value(detection.count),
+      approxGps: drift.Value(detection.approxGps),
+      robotType: drift.Value(detection.unipwn?.robotType),
+      exploited: drift.Value(detection.unipwn?.exploited),
+      robotSerial: drift.Value(detection.unipwn?.serialNumber),
+      filterDescription: drift.Value(detection.detector?.filterDescription),
+      isFullMac: drift.Value(detection.detector?.isFullMac),
     );
+
+Map<String, Object?> detectionExt(Detection d) {
+  final o = d.odid;
+  final x = d.detector;
+  return {
+    if (d.sourceNodeId.isNotEmpty) 'sourceNodeId': d.sourceNodeId,
+    if (x != null) 'detectorConfidence': x.confidence,
+    if (o != null) ...{
+      'odidSelfId': o.selfId,
+      'odidAltitudeBaro': o.altitudeBaro,
+      'odidVertSpeed': o.vertSpeed,
+      'odidOperatorAlt': o.operatorAlt,
+      'odidAreaCount': o.areaCount,
+      'odidAreaRadius': o.areaRadius,
+      'odidAreaCeiling': o.areaCeiling,
+      'odidAreaFloor': o.areaFloor,
+      'odidLocTimestamp': o.locTimestamp,
+      'odidUaType': o.uaType,
+      'odidIdType': o.idType,
+      'odidOpIdType': o.opIdType,
+      'odidOpLocationType': o.opLocationType,
+      'odidClassification': o.classification,
+      'odidCategoryEu': o.categoryEu,
+      'odidClassEu': o.classEu,
+      'odidHeightType': o.heightType,
+      'odidStatus': o.status,
+      'odidHorizAcc': o.horizAcc,
+      'odidVertAcc': o.vertAcc,
+      'odidBaroAcc': o.baroAcc,
+      'odidSpeedAcc': o.speedAcc,
+      'odidSelfIdType': o.selfIdType,
+    },
+  };
+}
 
 /// Maps a raw `detections` row map onto the app-side [Detection] model.
 Detection detectionFromDbRow(Map<String, dynamic> row) {
@@ -49,6 +90,7 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
   final ssid = (row['ssid'] as String?) ?? '';
   final authMode = (row['authMode'] as int?) ?? 0;
   final deviceName = (row['deviceName'] as String?) ?? '';
+  final ext = (row['ext'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
 
   final d = Detection(
     id: '${row['id']}',
@@ -64,6 +106,7 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
     appTimestamp: DateTime.fromMillisecondsSinceEpoch(row['appTimestamp'] as int),
     ssid: ssid,
     count: (row['count'] as int?) ?? 1,
+    sourceNodeId: (ext['sourceNodeId'] as String?) ?? '',
     latitude: row['latitude'] as double?,
     longitude: row['longitude'] as double?,
     altitude: row['altitude'] as double?,
@@ -94,6 +137,43 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
             droneHeading: row['droneHeading'] as int?,
             pilotLat: row['pilotLat'] as double?,
             pilotLon: row['pilotLon'] as double?,
+            selfId: ext['odidSelfId'] as String?,
+            altitudeBaro: ext['odidAltitudeBaro'] as int?,
+            vertSpeed: ext['odidVertSpeed'] as int?,
+            operatorAlt: ext['odidOperatorAlt'] as int?,
+            areaCount: ext['odidAreaCount'] as int?,
+            areaRadius: ext['odidAreaRadius'] as int?,
+            areaCeiling: ext['odidAreaCeiling'] as int?,
+            areaFloor: ext['odidAreaFloor'] as int?,
+            locTimestamp: ext['odidLocTimestamp'] as int?,
+            uaType: ext['odidUaType'] as int?,
+            idType: ext['odidIdType'] as int?,
+            opIdType: ext['odidOpIdType'] as int?,
+            opLocationType: ext['odidOpLocationType'] as int?,
+            classification: ext['odidClassification'] as int?,
+            categoryEu: ext['odidCategoryEu'] as int?,
+            classEu: ext['odidClassEu'] as int?,
+            heightType: ext['odidHeightType'] as int?,
+            status: ext['odidStatus'] as int?,
+            horizAcc: ext['odidHorizAcc'] as int?,
+            vertAcc: ext['odidVertAcc'] as int?,
+            baroAcc: ext['odidBaroAcc'] as int?,
+            speedAcc: ext['odidSpeedAcc'] as int?,
+            selfIdType: ext['odidSelfIdType'] as int?,
+          )
+        : null,
+    unipwn: engine == Engine.uniPwn
+        ? UnipwnExtension(
+            robotType: (row['robotType'] as String?) ?? '',
+            exploited: (row['exploited'] as bool?) ?? false,
+            serialNumber: row['robotSerial'] as String?,
+          )
+        : null,
+    detector: engine == Engine.detector
+        ? DetectorExtension(
+            filterDescription: row['filterDescription'] as String?,
+            isFullMac: (row['isFullMac'] as bool?) ?? false,
+            confidence: (ext['detectorConfidence'] as int?) ?? 0,
           )
         : null,
   );

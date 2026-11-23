@@ -117,11 +117,12 @@ class _FailOnceDb extends AppDatabase {
   var _failed = false;
 
   @override
-  Future<void> batchInsertDetections(List<DetectionsCompanion> batch) {
+  Future<int> insertDetectionRow(DetectionsCompanion detection,
+      {Map<String, Object?> ext = const {}}) {
     if (!_failed) {
       _failed = true;
       throw StateError('disk full');
     }
-    return super.batchInsertDetections(batch);
+    return super.insertDetectionRow(detection, ext: ext);
   }
 }

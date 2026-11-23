@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/db/sqlite_guard.dart';
+import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/db/tables.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -101,7 +103,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration {
@@ -113,6 +115,7 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
             'CREATE INDEX IF NOT EXISTS idx_detections_mac ON detections (mac_address)');
         await customStatement(_classAlertsDdl);
+        await _ensureDetectionExtTable();
       },
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
@@ -145,6 +148,10 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 9) {
           await customStatement(_classAlertsDdl);
+        }
+        if (from < 10) {
+          await _ensureDetectionExtTable();
+          await _ensureClassAlertSessionColumn();
         }
       },
     );
@@ -217,8 +224,22 @@ class AppDatabase extends _$AppDatabase {
 
   // -- Detection operations --
 
-  Future<void> insertDetection(DetectionsCompanion detection) =>
-      into(detections).insert(detection);
+  Future<void> insertDetection(DetectionsCompanion detection,
+          {Map<String, Object?> ext = const {}}) =>
+      insertDetectionRow(detection, ext: ext);
+
+  Future<int> insertDetectionRow(DetectionsCompanion detection,
+      {Map<String, Object?> ext = const {}}) async {
+    final id = await into(detections).insert(detection);
+    if (ext.isNotEmpty) await _putDetectionExt(id, ext);
+    return id;
+  }
+
+  Future<void> updateDetectionRow(int id, DetectionsCompanion detection,
+      {Map<String, Object?> ext = const {}}) async {
+    await (update(detections)..where((d) => d.id.equals(id))).write(detection);
+    if (ext.isNotEmpty) await _putDetectionExt(id, ext);
+  }
 
   Future<void> batchInsertDetections(List<DetectionsCompanion> batch) async {
     await this.batch((b) {
@@ -268,22 +289,70 @@ class AppDatabase extends _$AppDatabase {
         'isRaven': r.isRaven,
         'ravenFirmware': r.ravenFirmware,
         'flockSignals': r.flockSignals,
+        'robotType': r.robotType,
+        'exploited': r.exploited,
+        'robotSerial': r.robotSerial,
+        'filterDescription': r.filterDescription,
+        'isFullMac': r.isFullMac,
       };
 
   Future<List<Map<String, dynamic>>> getDetectionMapsForSession(
       String sessionId) async {
     final rows = await (select(detections)
           ..where((d) => d.sessionId.equals(sessionId))
-          ..orderBy([(d) => OrderingTerm.asc(d.appTimestamp)]))
+          ..orderBy([(d) => OrderingTerm.asc(d.appTimestamp), (d) => OrderingTerm.asc(d.id)]))
         .get();
-    return rows.map(_detectionRowMap).toList();
+    return _mapsWithExt(rows, sessionId: sessionId);
   }
 
   Future<List<Map<String, dynamic>>> getAllDetectionMaps() async {
     final rows = await (select(detections)
           ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))
         .get();
-    return rows.map(_detectionRowMap).toList();
+    return _mapsWithExt(rows);
+  }
+
+  static const _detectionExtDdl = 'CREATE TABLE IF NOT EXISTS detection_ext ('
+      'detection_id INTEGER PRIMARY KEY, '
+      'data TEXT NOT NULL)';
+
+  Future<void> _ensureDetectionExtTable() async {
+    await customStatement(_detectionExtDdl);
+    await customStatement('CREATE TRIGGER IF NOT EXISTS trg_detection_ext_delete '
+        'AFTER DELETE ON detections BEGIN '
+        'DELETE FROM detection_ext WHERE detection_id = OLD.id; END');
+  }
+
+  Future<void> _putDetectionExt(int id, Map<String, Object?> ext) => customInsert(
+        'INSERT OR REPLACE INTO detection_ext (detection_id, data) VALUES (?, ?)',
+        variables: [Variable.withInt(id), Variable.withString(jsonEncode(ext))],
+      );
+
+  Future<List<Map<String, dynamic>>> _mapsWithExt(List<Detection> rows,
+      {String? sessionId}) async {
+    final maps = rows.map(_detectionRowMap).toList();
+    if (maps.isEmpty) return maps;
+    final ext = sessionId == null
+        ? await customSelect('SELECT detection_id, data FROM detection_ext').get()
+        : await customSelect(
+            'SELECT e.detection_id, e.data FROM detection_ext e '
+            'JOIN detections d ON d.id = e.detection_id WHERE d.session_id = ?',
+            variables: [Variable.withString(sessionId)],
+          ).get();
+    final byId = <int, Map<String, dynamic>>{};
+    for (final e in ext) {
+      final id = e.read<int>('detection_id');
+      try {
+        byId[id] = Map<String, dynamic>.from(jsonDecode(e.read<String>('data')) as Map);
+      } on FormatException catch (err) {
+        DebugLog.log('DB: detection_ext row $id unreadable, details skipped: $err');
+      }
+    }
+    for (final m in maps) {
+      final x = byId[m['id'] as int];
+      if (x != null) m['ext'] = x;
+    }
+    return maps;
   }
 
   Future<int> uniqueMacCount(String sessionId) async {
@@ -631,7 +700,9 @@ class AppDatabase extends _$AppDatabase {
       e['memberMacs'] = (e['memberMacs'] as Set<String>).toList();
       e['transports'] = (e['transports'] as Set<String>).toList()..sort();
     }
-    return seen.values.toList();
+    final out = seen.values.toList();
+    await _attachExt(out);
+    return out;
   }
 
   /// Full-history detection search (MAC / name / SSID / method / node).
@@ -654,46 +725,34 @@ class AppDatabase extends _$AppDatabase {
       readsFrom: {detections},
     ).get();
 
-    return rows.map((r) {
-      final d = detections.map(r.data);
-      return {
-        'id': d.id,
-        'sessionId': d.sessionId,
-        'nodeId': d.nodeId,
-        'macAddress': d.macAddress,
-        'deviceName': d.deviceName,
-        'engine': d.engine,
-        'detectionMethod': d.detectionMethod,
-        'rssi': d.rssi,
-        'channel': d.channel,
-        'deviceTimestampMs': d.deviceTimestampMs,
-        'appTimestamp': d.appTimestamp,
-        'ssid': d.ssid,
-        'authMode': d.authMode,
-        'count': d.count,
-        'latitude': d.latitude,
-        'longitude': d.longitude,
-        'altitude': d.altitude,
-        'speed': d.speed,
-        'heading': d.heading,
-        'accuracy': d.accuracy,
-        'satelliteCount': d.satelliteCount,
-        'uavId': d.uavId,
-        'operatorId': d.operatorId,
-        'droneLat': d.droneLat,
-        'droneLon': d.droneLon,
-        'altitudeMsl': d.altitudeMsl,
-        'heightAgl': d.heightAgl,
-        'droneSpeed': d.droneSpeed,
-        'droneHeading': d.droneHeading,
-        'pilotLat': d.pilotLat,
-        'pilotLon': d.pilotLon,
-        'approxGps': d.approxGps,
-        'isRaven': d.isRaven,
-        'ravenFirmware': d.ravenFirmware,
-        'flockSignals': d.flockSignals,
-      };
-    }).toList();
+    final maps = rows.map((r) => _detectionRowMap(detections.map(r.data))).toList();
+    await _attachExt(maps);
+    return maps;
+  }
+
+  Future<void> _attachExt(List<Map<String, dynamic>> maps) async {
+    final ids = [for (final m in maps) m['id'] as int];
+    final byId = <int, Map<String, dynamic>>{};
+    for (var i = 0; i < ids.length; i += 500) {
+      final chunk = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
+      final ext = await customSelect(
+        'SELECT detection_id, data FROM detection_ext WHERE detection_id IN '
+        '(${List.filled(chunk.length, '?').join(',')})',
+        variables: [for (final id in chunk) Variable.withInt(id)],
+      ).get();
+      for (final e in ext) {
+        final id = e.read<int>('detection_id');
+        try {
+          byId[id] = Map<String, dynamic>.from(jsonDecode(e.read<String>('data')) as Map);
+        } on FormatException catch (err) {
+          DebugLog.log('DB: detection_ext row $id unreadable, details skipped: $err');
+        }
+      }
+    }
+    for (final m in maps) {
+      final x = byId[m['id'] as int];
+      if (x != null) m['ext'] = x;
+    }
   }
 
   /// Delete a single detection by its primary key.
@@ -712,7 +771,22 @@ class AppDatabase extends _$AppDatabase {
       'channel INTEGER NOT NULL, '
       'alerted_at INTEGER NOT NULL, '
       'latitude REAL, '
-      'longitude REAL)';
+      'longitude REAL, '
+      "session_id TEXT NOT NULL DEFAULT '')";
+
+  Future<void> _ensureClassAlertSessionColumn() async {
+    final cols = await customSelect('PRAGMA table_info(class_alerts)').get();
+    if (cols.isEmpty) {
+      await customStatement(_classAlertsDdl);
+      return;
+    }
+    if (!cols.any((c) => c.read<String>('name') == 'session_id')) {
+      await customStatement(
+          "ALTER TABLE class_alerts ADD COLUMN session_id TEXT NOT NULL DEFAULT ''");
+    }
+    await customStatement(
+        'CREATE INDEX IF NOT EXISTS idx_class_alerts_session ON class_alerts (session_id)');
+  }
 
   Future<void> insertClassAlert({
     required String macAddress,
@@ -726,11 +800,12 @@ class AppDatabase extends _$AppDatabase {
     required int alertedAt,
     double? latitude,
     double? longitude,
+    String sessionId = '',
   }) =>
       customInsert(
         'INSERT INTO class_alerts (mac_address, device_name, alert_class, title, reason, '
-        'is_ble, rssi, channel, alerted_at, latitude, longitude) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'is_ble, rssi, channel, alerted_at, latitude, longitude, session_id) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         variables: [
           Variable.withString(macAddress),
           Variable.withString(deviceName),
@@ -743,8 +818,40 @@ class AppDatabase extends _$AppDatabase {
           Variable.withInt(alertedAt),
           Variable<double>(latitude),
           Variable<double>(longitude),
+          Variable.withString(sessionId),
         ],
       );
+
+  Future<List<Map<String, dynamic>>> getClassAlertsForSession(String sessionId) async {
+    if (sessionId.isEmpty) return const [];
+    final rows = await customSelect(
+      'SELECT * FROM class_alerts WHERE session_id = ? ORDER BY alerted_at ASC',
+      variables: [Variable.withString(sessionId)],
+    ).get();
+    return [
+      for (final r in rows)
+        {
+          'id': r.read<int>('id'),
+          'sessionId': sessionId,
+          'nodeId': '',
+          'macAddress': r.read<String>('mac_address'),
+          'deviceName': r.read<String>('title'),
+          'engine': 'signature',
+          'detectionMethod': r.read<String>('reason'),
+          'alertClass': r.read<String>('alert_class'),
+          'isBle': r.read<bool>('is_ble'),
+          'rssi': r.read<int>('rssi'),
+          'channel': r.read<int>('channel'),
+          'deviceTimestampMs': 0,
+          'appTimestamp': r.read<int>('alerted_at'),
+          'ssid': r.read<String>('device_name'),
+          'authMode': 0,
+          'count': 1,
+          'latitude': r.readNullable<double>('latitude'),
+          'longitude': r.readNullable<double>('longitude'),
+        },
+    ];
+  }
 
   Future<void> deleteClassAlerts(String mac, String alertClass) => customUpdate(
         'DELETE FROM class_alerts WHERE mac_address = ? AND alert_class = ?',

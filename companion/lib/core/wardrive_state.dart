@@ -10,11 +10,13 @@ import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection, Session;
 import 'package:oui_spy/core/db/detection_mapper.dart';
+import 'package:oui_spy/core/db/session_detection_store.dart';
 import 'package:oui_spy/core/export/detections_csv.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
+import 'package:oui_spy/core/watch_alert_log.dart' show alertsFeedProvider;
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
@@ -160,6 +162,19 @@ Detection mergeWardriveSighting(Detection existing, Detection detection) {
     longitude: hasFix ? detection.longitude : existing.longitude,
     accuracy: hasFix ? detection.accuracy : existing.accuracy,
   );
+}
+
+Map<String, Detection> foldSessionRows(Iterable<Detection> rowsAsc) {
+  final out = <String, Detection>{};
+  for (final row in rowsAsc) {
+    final key = '${row.macAddress}|${row.engine.name}';
+    final existing = out.remove(key);
+    out[key] = existing == null
+        ? row
+        : mergeWardriveSighting(existing, row)
+            .copyWith(count: math.max(row.count, existing.count + 1));
+  }
+  return out;
 }
 
 class WardriveController extends ChangeNotifier {
@@ -535,6 +550,67 @@ class WardriveController extends ChangeNotifier {
 
   DateTime? startTime;
   final Map<String, Detection> _dedupedByMac = {};
+  late final SessionDetectionStore _store = SessionDetectionStore(_db);
+  List<Map<String, dynamic>> sessionAlertRows = const [];
+
+  Set<String> get sessionAlertMacs =>
+      {for (final r in sessionAlertRows) (r['macAddress'] as String).toUpperCase()};
+
+  Map<String, String> get sessionAlertKinds => {
+        for (final r in sessionAlertRows)
+          (r['macAddress'] as String).toUpperCase(): r['alertClass'] as String,
+      };
+
+  final Map<String, ({LatLng? drone, LatLng? pilot})> _storedDronePos = {};
+  static const double _droneStepKm = 0.003;
+
+  static LatLng? _ridPoint(double? lat, double? lon) {
+    if (lat == null || lon == null) return null;
+    if (!lat.isFinite || !lon.isFinite) return null;
+    if (lat == 0 && lon == 0) return null;
+    if (lat.abs() > 90 || lon.abs() > 180) return null;
+    return LatLng(lat, lon);
+  }
+
+  bool _droneMoved(String key, Detection d) {
+    final o = d.odid;
+    if (o == null) return false;
+    final drone = _ridPoint(o.droneLat, o.droneLon);
+    final pilot = _ridPoint(o.pilotLat, o.pilotLon);
+    final last = _storedDronePos[key];
+    if (last == null) return drone != null || pilot != null;
+    bool far(LatLng? now, LatLng? was) =>
+        now != null &&
+        (was == null ||
+            _haversineKm(now.latitude, now.longitude, was.latitude, was.longitude) >=
+                _droneStepKm);
+    return far(drone, last.drone) || far(pilot, last.pilot);
+  }
+
+  void _noteStoredDrone(String key, Detection d) {
+    final o = d.odid;
+    if (d.engine != Engine.skySpy || o == null) return;
+    _storedDronePos[key] = (
+      drone: _ridPoint(o.droneLat, o.droneLon) ?? _storedDronePos[key]?.drone,
+      pilot: _ridPoint(o.pilotLat, o.pilotLon) ?? _storedDronePos[key]?.pilot,
+    );
+  }
+
+  final Map<String, List<LatLng>> _loadedDroneTracks = {};
+  final Map<String, List<LatLng>> _loadedPilotTracks = {};
+  bool _loadedFromHistory = false;
+  bool get viewingSavedSession => !isActive && _loadedFromHistory;
+  List<LatLng>? loadedDroneTrack(String key) => _loadedDroneTracks[key];
+  List<LatLng>? loadedPilotTrack(String key) => _loadedPilotTracks[key];
+
+  Future<void> refreshSessionAlerts() async {
+    final sid = sessionId;
+    if (sid.isEmpty) return;
+    final rows = await _db.getClassAlertsForSession(sid);
+    if (sid != sessionId) return;
+    sessionAlertRows = rows;
+    notifyListeners();
+  }
   List<Detection>? _newestFirst;
   List<Detection> get detections =>
       _newestFirst ??= _dedupedByMac.values.toList().reversed.toList();
@@ -806,6 +882,12 @@ class WardriveController extends ChangeNotifier {
 
     startTime = DateTime.now();
     sessionId = const Uuid().v4();
+    _store.reset();
+    sessionAlertRows = const [];
+    _storedDronePos.clear();
+    _loadedDroneTracks.clear();
+    _loadedPilotTracks.clear();
+    _loadedFromHistory = false;
     _dedupedByMac.clear();
     _newestFirst = null;
     _track.clear();
@@ -973,6 +1055,7 @@ class WardriveController extends ChangeNotifier {
 
   Future<void> _finalizeSession() async {
     final sid = sessionId;
+    await _store.flush();
     if (sid.isNotEmpty && startTime != null) {
       try {
         await _db.updateSession(SessionsCompanion(
@@ -1122,16 +1205,50 @@ class WardriveController extends ChangeNotifier {
     routePoints.clear();
     distanceKm = 0;    lastGpsForDistance = null;
     foxhuntTarget = null;
+    sessionAlertRows = await _db.getClassAlertsForSession(sid);
 
     final lats = <double>[];
     final lons = <double>[];
-    for (final row in dbRows) {
-      final det = _detectionFromDb(row);
-      rawDetectionCount++;
+    final rows = [for (final row in dbRows) _detectionFromDb(row)];
+    _loadedDroneTracks.clear();
+    _loadedPilotTracks.clear();
+    _storedDronePos.clear();
+    for (final det in rows) {
+      if (_isPlausibleCoord(det.latitude, det.longitude)) {
+        lats.add(det.latitude!);
+        lons.add(det.longitude!);
+      }
+      final o = det.odid;
+      if (det.engine == Engine.skySpy && o != null) {
+        final id = o.uavId;
+        final trackKey = (id != null && id.isNotEmpty) ? id : det.macAddress;
+        void extend(Map<String, List<LatLng>> tracks, LatLng? p) {
+          if (p == null) return;
+          final t = tracks.putIfAbsent(trackKey, () => <LatLng>[]);
+          if (t.isEmpty || t.last != p) t.add(p);
+        }
+
+        extend(_loadedDroneTracks, _ridPoint(o.droneLat, o.droneLon));
+        extend(_loadedPilotTracks, _ridPoint(o.pilotLat, o.pilotLon));
+      }
+    }
+    _wifiNetworkMacs.clear();
+    for (final entry in foldSessionRows(rows).entries) {
+      final det = entry.value;
+      rawDetectionCount += det.count;
+      if (det.isBleDetection) {
+        rawBleCount += det.count;
+      } else {
+        rawWifiCount += det.count;
+      }
+      final src = det.sourceNodeId;
+      if (src.isNotEmpty) {
+        final counts = det.isBleDetection ? nodeBleCount : nodeWifiCounts;
+        counts[src] = (counts[src] ?? 0) + det.count;
+      }
       uniqueMacs.add(det.macAddress);
-      final isFlock =
-          det.engine == Engine.flockBle || det.engine == Engine.flockWifi;
-      if (isFlock) {
+      if (det.engine == Engine.wardrive) _wifiNetworkMacs.add(det.macAddress);
+      if (det.engine == Engine.flockBle || det.engine == Engine.flockWifi) {
         _flockMacs.add(det.macAddress);
         _flockByMac[det.macAddress] = det;
       }
@@ -1139,22 +1256,7 @@ class WardriveController extends ChangeNotifier {
         _detectorMacs.add(det.macAddress);
         _detectorByMac[det.macAddress] = det;
       }
-
-      final key = '${det.macAddress}|${det.engine.name}';
-      final existing = _dedupedByMac[key];
-      if (existing != null) {
-        _dedupedByMac[key] = existing.copyWith(
-          count: existing.count + 1,
-          rssi: det.rssi > existing.rssi ? det.rssi : existing.rssi,
-        );
-      } else {
-        _dedupedByMac[key] = det;
-      }
-
-      if (_isPlausibleCoord(det.latitude, det.longitude)) {
-        lats.add(det.latitude!);
-        lons.add(det.longitude!);
-      }
+      _dedupedByMac[entry.key] = det;
     }
 
     LatLng? center;
@@ -1206,6 +1308,7 @@ class WardriveController extends ChangeNotifier {
     }
 
     sessionId = sid;
+    _loadedFromHistory = true;
     _lastCompletedSessionId = sid;
     sessionLoadEpoch++;
     notifyListeners();
@@ -1567,41 +1670,13 @@ class WardriveController extends ChangeNotifier {
       return;
     }
     try {
-      await _db.insertDetection(DetectionsCompanion(
-        sessionId: drift.Value(sid),
-        nodeId: const drift.Value('default'),
-        macAddress: drift.Value(detection.macAddress),
-        deviceName: drift.Value(detection.deviceName),
-        engine: drift.Value(detection.engine.name),
-        detectionMethod: drift.Value(detection.method),
-        rssi: drift.Value(detection.rssi),
-        channel: drift.Value(detection.channel),
-        deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
+      await _db.insertDetection(detectionCompanion(detection, sid).copyWith(
         appTimestamp: drift.Value(wallClock.millisecondsSinceEpoch),
         latitude: drift.Value(g.lat),
         longitude: drift.Value(g.lon),
         accuracy: drift.Value(g.acc),
-        altitude: drift.Value(detection.altitude),
-        speed: drift.Value(detection.speed),
-        heading: drift.Value(detection.heading),
-        satelliteCount: drift.Value(detection.satelliteCount),
         approxGps: drift.Value(g.approx),
-        ssid: drift.Value(detection.ssid),
-        authMode: drift.Value(detection.wardrive?.authMode ?? 0),
-        uavId: drift.Value(detection.odid?.uavId),
-        operatorId: drift.Value(detection.odid?.operatorId),
-        droneLat: drift.Value(detection.odid?.droneLat),
-        droneLon: drift.Value(detection.odid?.droneLon),
-        altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
-        heightAgl: drift.Value(detection.odid?.heightAgl),
-        droneSpeed: drift.Value(detection.odid?.droneSpeed),
-        droneHeading: drift.Value(detection.odid?.droneHeading),
-        pilotLat: drift.Value(detection.odid?.pilotLat),
-        pilotLon: drift.Value(detection.odid?.pilotLon),
-        isRaven: drift.Value(detection.flock?.isRaven),
-        ravenFirmware: drift.Value(detection.flock?.ravenFirmware),
-        flockSignals: drift.Value(detection.flock?.signals),
-      ));
+      ), ext: detectionExt(detection));
     } catch (e) {
       DebugLog.log('SPOOL: insert failed for ${detection.macAddress}, batch stays on board: $e');
       return;
@@ -1705,41 +1780,12 @@ class WardriveController extends ChangeNotifier {
     final sid = _spoolSessionId ??= await (_spoolSessionIdFuture ??= _resolveSpoolSessionId());
     final g = _tagGps(detection, detection.appTimestamp.millisecondsSinceEpoch);
     try {
-      await _db.insertDetection(DetectionsCompanion(
-        sessionId: drift.Value(sid),
-        nodeId: const drift.Value('default'),
-        macAddress: drift.Value(detection.macAddress),
-        deviceName: drift.Value(detection.deviceName),
-        engine: drift.Value(detection.engine.name),
-        detectionMethod: drift.Value(detection.method),
-        rssi: drift.Value(detection.rssi),
-        channel: drift.Value(detection.channel),
-        deviceTimestampMs: drift.Value(detection.deviceTimestampMs),
-        appTimestamp: drift.Value(detection.appTimestamp.millisecondsSinceEpoch),
+      await _db.insertDetection(detectionCompanion(detection, sid).copyWith(
         latitude: drift.Value(g.lat),
         longitude: drift.Value(g.lon),
         accuracy: drift.Value(g.acc),
-        altitude: drift.Value(detection.altitude),
-        speed: drift.Value(detection.speed),
-        heading: drift.Value(detection.heading),
-        satelliteCount: drift.Value(detection.satelliteCount),
         approxGps: drift.Value(g.approx),
-        ssid: drift.Value(detection.ssid),
-        authMode: drift.Value(detection.wardrive?.authMode ?? 0),
-        uavId: drift.Value(detection.odid?.uavId),
-        operatorId: drift.Value(detection.odid?.operatorId),
-        droneLat: drift.Value(detection.odid?.droneLat),
-        droneLon: drift.Value(detection.odid?.droneLon),
-        altitudeMsl: drift.Value(detection.odid?.altitudeMsl),
-        heightAgl: drift.Value(detection.odid?.heightAgl),
-        droneSpeed: drift.Value(detection.odid?.droneSpeed),
-        droneHeading: drift.Value(detection.odid?.droneHeading),
-        pilotLat: drift.Value(detection.odid?.pilotLat),
-        pilotLon: drift.Value(detection.odid?.pilotLon),
-        isRaven: drift.Value(detection.flock?.isRaven),
-        ravenFirmware: drift.Value(detection.flock?.ravenFirmware),
-        flockSignals: drift.Value(detection.flock?.signals),
-      ));
+      ), ext: detectionExt(detection));
     } catch (e) {
       DebugLog.log('AWAY-LIVE: insert failed for ${detection.macAddress}: $e');
     }
@@ -1913,22 +1959,25 @@ class WardriveController extends ChangeNotifier {
 
     if (existing != null) {
       final rssiDelta = (detection.rssi - existing.rssi).abs();
-      final shouldRelog = rssiDelta >= threshold;
+      final shouldRelog = rssiDelta >= threshold ||
+          (detection.engine == Engine.skySpy && _droneMoved(key, detection));
       final updated = mergeWardriveSighting(existing, detection);
       _dedupedByMac.remove(key);
       _dedupedByMac[key] = updated;
       _newestFirst = null;
       if (!shouldRelog) {
+        _store.update(key, sessionId, updated);
         _scheduleNotify();
         return;
       }
+      _noteStoredDrone(key, updated);
+      _store.insert(key, sessionId, updated);
     } else {
       _dedupedByMac[key] = detection;
       _newestFirst = null;
+      _noteStoredDrone(key, detection);
+      _store.insert(key, sessionId, detection);
     }
-
-    _db.insertDetection(detectionCompanion(detection, sessionId))
-        .catchError((e) => DebugLog.log('WARDRIVE: insertDetection failed: $e'));
 
     _scheduleNotify();
   }
@@ -2002,6 +2051,7 @@ class WardriveController extends ChangeNotifier {
     _wdLogSub?.cancel();
     _awayLiveSub?.cancel();
     _spoolImportSub?.cancel();
+    _store.dispose();
     super.dispose();
   }
 
@@ -2051,5 +2101,12 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   ref.listen<UnitSystem>(unitSystemProvider, (_, next) {
     controller.isImperial = next == UnitSystem.imperial;
   });
+  final feed = ref.read(alertsFeedProvider);
+  void onAlertsChanged() {
+    if (controller.isActive) controller.refreshSessionAlerts();
+  }
+
+  feed.addListener(onAlertsChanged);
+  ref.onDispose(() => feed.removeListener(onAlertsChanged));
   return controller;
 });
