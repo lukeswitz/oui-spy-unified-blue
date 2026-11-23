@@ -25,7 +25,7 @@
 | Platform | Phone scans | Detects on its own (no board) | Add-ons |
 |---|---|---|---|
 | Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices, sorted into types such as trackers, cameras, glasses and hacking tools. Drones that send Remote ID over Bluetooth or Wi-Fi. Phones with Wi-Fi Aware also catch drones that send it that way | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
-| iPhone / macOS | Bluetooth | Bluetooth devices, sorted into types. Drones that send Remote ID over Bluetooth 4. Apple doesn't let apps receive Remote ID sent over Wi-Fi or Bluetooth 5 long range. A board adds Wi-Fi Remote ID | ESP32 board(s) |
+| iPhone / macOS | Bluetooth | Bluetooth devices, sorted into types. Drones are not detected without a board. Use a board running Sky Spy | ESP32 board(s) |
 
 </div>
 
@@ -91,7 +91,7 @@ DETECTIONS → HISTORY can filter by tier.
 | **App + board** | Phone app connected to an ESP32 board over Bluetooth | The board runs the engines. The app controls it, shows the feed and map, adds phone GPS, and saves PCAPs |
 | **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
 | **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
-| **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert, detect drones by Remote ID and foxhunt with the phone's own radios |
+| **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's own radios. Android also detects drones by Remote ID |
 | **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 315 / 433 / 915 MHz and ADS-B. A USB Wi-Fi adapter scans Wi-Fi, and the MT7921AU also scans Bluetooth LE. Both run alongside the phone's radios |
 
 - **Offline scan** (SETTINGS → NODE → OFFLINE SCAN): the board keeps scanning without the phone, even after a reboot, and uploads hits on reconnect. A directly connected board with a GPS module fix also wardrives, one row per device every 5 min, up to 1 MB. It stops after 60 s without a fix.
