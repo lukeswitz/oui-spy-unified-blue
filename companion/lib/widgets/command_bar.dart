@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -735,23 +737,45 @@ class CommandHeader extends StatelessWidget {
     final t = AppTheme.of(context);
     final gap = barGap(context);
     final style = Theme.of(context).textTheme.titleSmall;
+    final titleStyle = style?.copyWith(letterSpacing: 3, color: t.textDim, fontWeight: FontWeight.w700);
+    final scaler = MediaQuery.textScalerOf(context);
+    final dir = Directionality.of(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(gap * 2, gap * 1.5, gap * 2, gap * 1.5),
       child: Row(
         children: [
-          Flexible(
-            flex: 3,
-            child: Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: style?.copyWith(letterSpacing: 3, color: t.textDim, fontWeight: FontWeight.w700)),
-          ),
-          SizedBox(width: gap),
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(spacing: gap * 0.75, children: chips),
-            ),
+            child: LayoutBuilder(builder: (context, c) {
+              final tp = TextPainter(
+                text: TextSpan(text: title, style: titleStyle),
+                textDirection: dir,
+                textScaler: scaler,
+                maxLines: 1,
+              )..layout();
+              final need = tp.width.ceilToDouble() + 1;
+              tp.dispose();
+              final titleW = min(need, max(0.0, c.maxWidth - gap));
+              return Row(
+                children: [
+                  SizedBox(
+                    width: titleW,
+                    child: Text(title,
+                        key: const Key('command-header-title'),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: titleStyle),
+                  ),
+                  SizedBox(width: gap),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(spacing: gap * 0.75, children: chips),
+                    ),
+                  ),
+                ],
+              );
+            }),
           ),
           for (final i in indicators) ...[i, SizedBox(width: gap * 0.5)],
           Text(

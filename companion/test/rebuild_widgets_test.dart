@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
@@ -30,6 +31,50 @@ void main() {
     final title = tester.getTopLeft(find.text('DEVICES')).dy;
     final count = tester.getTopLeft(find.text('12/340')).dy;
     expect((title - count).abs(), lessThan(4));
+  });
+
+  for (final w in [320.0, 393.0]) {
+    testWidgets('HISTORY title is not cut off with five actions at $w wide', (tester) async {
+      await tester.pumpWidget(_host(
+        CommandHeader(
+          title: 'HISTORY',
+          count: '17',
+          actions: [
+            for (final i in [Icons.filter_alt, Icons.arrow_downward, Icons.sensors, Icons.folder_open, Icons.more_vert])
+              CommandBarAction(icon: i, label: '$i', onTap: () {}),
+          ],
+        ),
+        width: w,
+      ));
+      expect(tester.takeException(), isNull);
+      final title = find.byKey(const Key('command-header-title'));
+      final p = tester.renderObject<RenderParagraph>(find.descendant(of: title, matching: find.byType(RichText)));
+      expect(p.didExceedMaxLines, w < 393 ? anything : isFalse);
+    });
+  }
+
+  testWidgets('filter chips take no width from the HISTORY title', (tester) async {
+    Future<double> titleWidth(List<Widget> chips) async {
+      await tester.pumpWidget(_host(
+        CommandHeader(
+          title: 'HISTORY',
+          count: '3/17',
+          chips: chips,
+          actions: [
+            for (final i in [Icons.filter_alt, Icons.arrow_downward, Icons.sensors, Icons.folder_open, Icons.more_vert])
+              CommandBarAction(icon: i, label: '$i', onTap: () {}),
+          ],
+        ),
+        width: 393,
+      ));
+      expect(tester.takeException(), isNull);
+      return tester.getSize(find.byKey(const Key('command-header-title'))).width;
+    }
+
+    final bare = await titleWidth(const []);
+    final withChips = await titleWidth(
+        [for (var i = 0; i < 4; i++) CommandActiveChip(label: 'FILTER $i', color: AppTheme.accent, onClear: () {})]);
+    expect(withChips, bare);
   });
 
   testWidgets('WatchlistPanel shows empty state, then entries; SignaturesPanel renders', (tester) async {

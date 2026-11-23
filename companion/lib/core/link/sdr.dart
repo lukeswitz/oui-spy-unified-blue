@@ -10,10 +10,10 @@ import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/session_detection_store.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/link/wifi_adapter.dart';
 import 'package:oui_spy/core/models/engine.dart';
-import 'package:oui_spy/core/wardrive_state.dart';
 
 enum SdrMode { spectrum, adsb, tpms, rtl433 }
 
@@ -151,12 +151,14 @@ class AdsbAircraft {
 enum SdrState { idle, starting, running, error }
 
 class SdrController {
-  SdrController({AppDatabase? db, GpsPosition? Function()? gps})
+  SdrController({AppDatabase? db, GpsPosition? Function()? gps, Future<bool> Function()? startGps})
       : _db = db,
-        _gps = gps;
+        _gps = gps,
+        _startGps = startGps;
 
   final AppDatabase? _db;
   final GpsPosition? Function()? _gps;
+  final Future<bool> Function()? _startGps;
   String _dbSession = '';
   SessionDetectionStore? _store;
   final Set<String> _storedKeys = {};
@@ -191,6 +193,12 @@ class SdrController {
   Future<bool> start(String deviceId, SdrMode mode, int freqHz, int rate,
       {List<int> freqsHz = const [], bool raw = false, List<String> categories = const []}) async {
     _set(SdrState.starting);
+    final startGps = _startGps;
+    if (startGps != null) {
+      unawaited(startGps().then((ok) {
+        if (!ok) DebugLog.log('SDR: GPS did not start, hits will have no position');
+      }));
+    }
     if (mode != _mode) {
       _detections.clear();
       _pending.clear();
@@ -429,7 +437,8 @@ class SdrController {
 final sdrControllerProvider = Provider<SdrController>((ref) {
   final c = SdrController(
     db: ref.read(databaseProvider),
-    gps: () => ref.read(wardriveProvider).currentPosition,
+    gps: () => ref.read(gpsProvider).recentPosition(),
+    startGps: () => ref.read(gpsProvider).start(),
   );
   final attachSub = WifiAdapter.attachEvents.listen((e) async {
     if (!e.attached && c.state != SdrState.idle) {

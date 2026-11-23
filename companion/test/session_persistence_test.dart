@@ -25,8 +25,8 @@ Detection _base(Engine engine, {String mac = 'AA:BB:CC:DD:EE:01', int t = 1000, 
       ssid: 'MyNetwork',
       count: 3,
       sourceNodeId: 'N1',
-      latitude: 40.0,
-      longitude: -105.0,
+      latitude: 51.4,
+      longitude: -0.1,
       altitude: 1600,
       speed: 1.5,
       heading: 90,
@@ -38,14 +38,14 @@ Detection _base(Engine engine, {String mac = 'AA:BB:CC:DD:EE:01', int t = 1000, 
 const _odid = OdidExtension(
   uavId: 'UAV123',
   operatorId: 'OP9',
-  droneLat: 40.001,
-  droneLon: -105.002,
+  droneLat: 51.401,
+  droneLon: -0.102,
   altitudeMsl: 1650,
   heightAgl: 50,
   droneSpeed: 7,
   droneHeading: 180,
-  pilotLat: 40.0005,
-  pilotLon: -105.0006,
+  pilotLat: 51.4005,
+  pilotLon: -0.1006,
   selfId: 'training flight',
   altitudeBaro: 1649,
   vertSpeed: -1,
@@ -117,6 +117,22 @@ void main() {
       'uniPwn': _base(Engine.uniPwn).copyWith(
         unipwn: const UnipwnExtension(robotType: 'G1', exploited: true, serialNumber: 'SN1'),
       ),
+      'flockWifi': _base(Engine.flockWifi).copyWith(
+        method: 'wildcard_probe',
+        flock: const FlockExtension(signals: 0x05),
+        wardrive: const WardriveExtension(authMode: 3),
+      ),
+      'foxhunter': _base(Engine.foxhunter).copyWith(method: 'ble_proximity'),
+      'pcap': _base(Engine.pcap).copyWith(method: 'pcap'),
+      'sdr': _base(Engine.sdr).copyWith(method: 'sdr', ssid: '{"model":"Schrader","id":"0000"}'),
+      'board-local wardrive BLE': _base(Engine.wardrive).copyWith(
+        nodeId: 'OUISPY-AB12',
+        sourceNodeId: '',
+        ssid: '',
+        method: 'ble_adv',
+        channel: 0,
+        wardrive: const WardriveExtension(deviceName: 'dev'),
+      ),
     };
     for (final e in cases.entries) {
       test(e.key, () async {
@@ -139,12 +155,12 @@ void main() {
       store.insert(key, 's1', live);
 
       final moved = _base(Engine.skySpy, t: 2000, rssi: -65)
-          .copyWith(odid: _odid.copyWith(droneLat: 40.002, droneLon: -105.003));
+          .copyWith(odid: _odid.copyWith(droneLat: 51.402, droneLon: -0.103));
       live = mergeWardriveSighting(live, moved);
       store.insert(key, 's1', live);
 
       final again = _base(Engine.skySpy, t: 3000, rssi: -50)
-          .copyWith(odid: _odid.copyWith(droneLat: 40.002, droneLon: -105.003, altitudeMsl: 1700));
+          .copyWith(odid: _odid.copyWith(droneLat: 51.402, droneLon: -0.103, altitudeMsl: 1700));
       live = mergeWardriveSighting(live, again);
       store.update(key, 's1', live);
       await store.flush();
@@ -157,8 +173,8 @@ void main() {
       expect(detectionLastSeenMs[folded], live.appTimestamp.millisecondsSinceEpoch);
       expect(observationFromDetection(folded).lastSeenMs, live.appTimestamp.millisecondsSinceEpoch);
       expect(observationFromDetection(folded).firstSeenMs, 1000);
-      expect(rows.first.odid?.droneLat, 40.001);
-      expect(rows.last.odid?.droneLat, 40.002);
+      expect(rows.first.odid?.droneLat, 51.401);
+      expect(rows.last.odid?.droneLat, 51.402);
       store.dispose();
     });
 
@@ -236,8 +252,8 @@ void main() {
           rssi: -50,
           channel: 6,
           alertedAt: at,
-          latitude: 40,
-          longitude: -105,
+          latitude: 51.4,
+          longitude: -0.1,
           sessionId: sid,
         );
 
@@ -248,7 +264,7 @@ void main() {
       await alert('s2', 'deauth_storm', 4);
       final s1 = await db.getClassAlertsForSession('s1');
       expect(s1.map((r) => r['alertClass']), ['deauth_storm', 'deauth_storm', 'drone']);
-      expect(s1.every((r) => r['latitude'] == 40.0), isTrue);
+      expect(s1.every((r) => r['latitude'] == 51.4), isTrue);
       expect((await db.getClassAlertsForSession('s2')).length, 1);
       expect(await db.getClassAlertsForSession(''), isEmpty);
       final global = await db.getClassAlertMaps();
@@ -258,8 +274,8 @@ void main() {
 
   test('the session GPS track is stored in order and removed with the session', () async {
     await db.insertTrackPoints('s1', [
-      (ts: 2000, lat: 40.001, lon: -105.0),
-      (ts: 1000, lat: 40.0, lon: -105.0),
+      (ts: 2000, lat: 51.401, lon: -0.1),
+      (ts: 1000, lat: 51.4, lon: -0.1),
     ]);
     await db.insertTrackPoints('s2', [(ts: 1500, lat: 41.0, lon: -106.0)]);
     expect((await db.getSessionTrack('s1')).map((p) => p.ts), [1000, 2000]);

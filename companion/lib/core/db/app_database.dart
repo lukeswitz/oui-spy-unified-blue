@@ -945,6 +945,7 @@ class AppDatabase extends _$AppDatabase {
       final existing = seen['$mac|$cls'];
       if (existing != null) {
         existing['count'] = (existing['count'] as int) + 1;
+        existing['firstAlertedAt'] = r.read<int>('alerted_at');
         continue;
       }
       seen['$mac|$cls'] = {
@@ -961,6 +962,7 @@ class AppDatabase extends _$AppDatabase {
         'channel': r.read<int>('channel'),
         'deviceTimestampMs': 0,
         'appTimestamp': r.read<int>('alerted_at'),
+        'firstAlertedAt': r.read<int>('alerted_at'),
         'ssid': r.read<String>('device_name'),
         'authMode': 0,
         'count': 1,

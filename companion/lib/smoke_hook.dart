@@ -156,16 +156,17 @@ void _inject(ProviderContainer container) {
     send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
         _flockExt(raven: false, fw: '', signals: 0x05, name: 'Smoke Flock WiFi')));
     const detectors = {
-      'deauth_storm': 4,
-      'flipper': 3,
-      'glasses': 7,
-      'probe_ssid': 5,
-      'camera': 9,
-      'tracker': 2,
+      'deauth_storm': (4, 6),
+      'flipper': (3, 0),
+      'glasses': (7, 0),
+      'probe_ssid': (5, 6),
+      'camera': (9, 6),
+      'tracker': (2, 0),
     };
     var k = 0;
     for (final e in detectors.entries) {
-      send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, 6, e.value,
+      final (method, ch) = e.value;
+      send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, ch, method,
           _detectorExt('Smoke ${e.key}', 1 + k % 3)));
       k++;
     }

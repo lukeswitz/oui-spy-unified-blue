@@ -145,7 +145,9 @@ Detection detectionFromDbRow(Map<String, dynamic> row) {
     approxGps: (row['approxGps'] as bool?) ?? false,
     wardrive: engine == Engine.wardrive
         ? WardriveExtension(ssid: ssid, authMode: authMode, deviceName: deviceName)
-        : null,
+        : engine == Engine.flockWifi && authMode > 0
+            ? WardriveExtension(authMode: authMode)
+            : null,
     flock: (engine == Engine.flockBle || engine == Engine.flockWifi)
         ? FlockExtension(
             isRaven: (row['isRaven'] as bool?) ?? false,

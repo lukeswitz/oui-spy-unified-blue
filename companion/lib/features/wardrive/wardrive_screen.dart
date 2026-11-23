@@ -1240,6 +1240,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final sumLon = <double>[];
     final cellClusters = <int, List<int>>{};
     final clusterIdxOf = <int>[]; // parallel to clusterable
+    final members = <List<Detection>>[];
     int cellKey(int gx, int gy) => (gx & 0x3FFFFFF) << 26 | (gy & 0x3FFFFFF);
     for (final d in clusterable) {
       final yM = d.latitude! * 111320.0;
@@ -1269,7 +1270,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         engineMix.add(<Engine, int>{});
         sumLat.add(0);
         sumLon.add(0);
+        members.add(<Detection>[]);
       }
+      members[idx].add(d);
       counts[idx] = counts[idx] + 1;
       sumLat[idx] = sumLat[idx] + d.latitude!;
       sumLon[idx] = sumLon[idx] + d.longitude!;
@@ -1332,12 +1335,16 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         height: size + 16,
         alignment: Alignment.center,
         rotate: true,
-        child: _ClusterDot(
-          fill: heatColor,
-          engineColor: domColor,
-          secondaryEngineColor: secColor,
-          size: size,
-          count: n,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _showClusterDevices(context, ref, members[i]),
+          child: _ClusterDot(
+            fill: heatColor,
+            engineColor: domColor,
+            secondaryEngineColor: secColor,
+            size: size,
+            count: n,
+          ),
         ),
       ));
     }
@@ -1529,6 +1536,72 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         tethers: tethers,
         trails: trails,
         rings: rings);
+  }
+
+  static void _showClusterDevices(BuildContext context, WidgetRef ref, List<Detection> devices) {
+    final t = AppTheme.of(context);
+    final priv = ref.read(privacyScreenProvider);
+    final oui = ref.read(ouiLookupProvider);
+    final list = [...devices]..sort((a, b) => b.rssi.compareTo(a.rssi));
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: t.surface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text('${list.length} ${list.length == 1 ? 'DEVICE' : 'DEVICES'} HERE',
+                    style: TextStyle(color: t.textDim, fontSize: 12, letterSpacing: 2, fontWeight: FontWeight.w700)),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  key: const Key('cluster-list'),
+                  shrinkWrap: true,
+                  itemCount: list.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final d = list[i];
+                    final name = d.deviceName.isNotEmpty ? d.deviceName : d.ssid;
+                    final vendor = oui.lookup(d.macAddress);
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(d.engine.icon, color: d.engine.color),
+                      title: Text(
+                        name.isNotEmpty ? maskName(name, priv) : maskMac(d.macAddress.toUpperCase(), priv),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        [
+                          methodLabel(d.method),
+                          if (vendor != null && vendor.isNotEmpty) vendor,
+                          detectionScanner(d),
+                          '${d.rssi} dBm',
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: t.textDim, fontSize: 12),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        showDetectionDetails(context, ref, d);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   static double? _routeBearingRad(LatLng p, List<LatLng> route) {
