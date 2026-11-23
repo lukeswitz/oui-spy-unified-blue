@@ -49,7 +49,7 @@ class SessionDetectionStore {
           if (id == null) return;
           await _db.updateDetectionRow(
             id,
-            detectionCompanion(v.d, v.sessionId),
+            detectionUpdateCompanion(v.d),
             ext: detectionExt(v.d),
           );
         }));

@@ -786,7 +786,17 @@ class AppDatabase extends _$AppDatabase {
     }
     await customStatement(
         'CREATE INDEX IF NOT EXISTS idx_class_alerts_session ON class_alerts (session_id)');
+    await _linkOldAlertsToSessions();
   }
+
+  Future<void> _linkOldAlertsToSessions() => customStatement(
+        'UPDATE class_alerts SET session_id = COALESCE(('
+        'SELECT s.id FROM sessions s '
+        'WHERE class_alerts.alerted_at >= s.started_at '
+        'AND s.ended_at IS NOT NULL AND class_alerts.alerted_at <= s.ended_at '
+        'ORDER BY s.is_wardrive DESC, s.started_at DESC LIMIT 1), \'\') '
+        "WHERE session_id = ''",
+      );
 
   Future<void> insertClassAlert({
     required String macAddress,

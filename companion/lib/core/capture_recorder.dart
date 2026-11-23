@@ -133,7 +133,7 @@ class CaptureRecorder {
           final id = ids[key] ?? _rowIds[key];
           final d = _latest[key];
           if (id != null && d != null) {
-            await _db.updateDetectionRow(id, detectionCompanion(d, sid!), ext: detectionExt(d));
+            await _db.updateDetectionRow(id, detectionUpdateCompanion(d), ext: detectionExt(d));
           }
         }
       });

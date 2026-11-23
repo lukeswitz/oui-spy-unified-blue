@@ -152,12 +152,42 @@ void main() {
       expect(rows.length, 2);
       final folded = foldSessionRows(rows).values.single;
       expect(folded.odid, live.odid);
-      expect(folded.rssi, live.rssi);
       expect(folded.count, live.count);
-      expect(folded.latitude, live.latitude);
-      expect(folded.appTimestamp, live.appTimestamp);
       expect(rows.first.odid?.droneLat, 40.001);
       expect(rows.last.odid?.droneLat, 40.002);
+      store.dispose();
+    });
+
+    test('updates never change the fields the WiGLE CSV reads', () async {
+      final store = SessionDetectionStore(db, flushEvery: const Duration(milliseconds: 10));
+      const key = 'AA:BB:CC:DD:EE:01|wardrive';
+      final first = _base(Engine.wardrive, t: 1000, rssi: -80).copyWith(
+        method: 'wifi_ap',
+        count: 1,
+        ssid: '',
+        wardrive: const WardriveExtension(ssid: '', authMode: 0, deviceName: ''),
+      );
+      store.insert(key, 's1', first);
+      final later = _base(Engine.wardrive, t: 9000, rssi: -40).copyWith(
+        method: 'wifi_ap',
+        latitude: 41.0,
+        longitude: -106.0,
+        ssid: 'MyNetwork',
+        wardrive: const WardriveExtension(ssid: 'MyNetwork', authMode: 4, deviceName: ''),
+      );
+      store.update(key, 's1', mergeWardriveSighting(first, later));
+      await store.flush();
+
+      final row = (await _load(db, 's1')).single;
+      expect(row.appTimestamp, first.appTimestamp);
+      expect(row.rssi, first.rssi);
+      expect(row.latitude, first.latitude);
+      expect(row.longitude, first.longitude);
+      expect(row.channel, first.channel);
+      expect(row.method, 'wifi_ap');
+      expect(row.count, 2);
+      expect(row.ssid, 'MyNetwork');
+      expect(row.wardrive?.authMode, 4);
       store.dispose();
     });
 
@@ -217,15 +247,23 @@ void main() {
           'alert_class TEXT NOT NULL, title TEXT NOT NULL, reason TEXT NOT NULL DEFAULT \'\', '
           'is_ble INTEGER NOT NULL, rssi INTEGER NOT NULL, channel INTEGER NOT NULL, '
           'alerted_at INTEGER NOT NULL, latitude REAL, longitude REAL)');
+      raw.execute('CREATE TABLE sessions (id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, '
+          'ended_at INTEGER, is_wardrive INTEGER NOT NULL DEFAULT 0)');
+      raw.execute("INSERT INTO sessions VALUES ('cap', 0, 1000, 0), ('wd', 100, 200, 1), "
+          "('crashed', 4000, NULL, 1)");
       raw.execute("INSERT INTO class_alerts (mac_address, alert_class, title, is_ble, rssi, channel, alerted_at) "
-          "VALUES ('AA:BB:CC:DD:EE:01', 'drone', 't', 0, -50, 6, 1)");
+          "VALUES ('AA:BB:CC:DD:EE:01', 'drone', 't', 0, -50, 6, 150), "
+          "('AA:BB:CC:DD:EE:02', 'drone', 't', 0, -50, 6, 500), "
+          "('AA:BB:CC:DD:EE:03', 'drone', 't', 0, -50, 6, 5000)");
       raw.execute('PRAGMA user_version = 9');
     }));
     addTearDown(old.close);
     final cols = await old.customSelect('PRAGMA table_info(class_alerts)').get();
     expect(cols.map((c) => c.read<String>('name')), contains('session_id'));
-    final kept = await old.customSelect('SELECT session_id FROM class_alerts').getSingle();
-    expect(kept.read<String>('session_id'), '');
+    final linked = await old
+        .customSelect('SELECT mac_address, session_id FROM class_alerts ORDER BY alerted_at')
+        .get();
+    expect(linked.map((r) => r.read<String>('session_id')), ['wd', 'cap', '']);
     final ext = await old
         .customSelect("SELECT name FROM sqlite_master WHERE name IN ('detection_ext', 'trg_detection_ext_delete')")
         .get();

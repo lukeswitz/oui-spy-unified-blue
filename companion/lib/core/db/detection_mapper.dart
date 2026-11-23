@@ -45,6 +45,26 @@ DetectionsCompanion detectionCompanion(Detection detection, String sessionId) =>
       isFullMac: drift.Value(detection.detector?.isFullMac),
     );
 
+DetectionsCompanion detectionUpdateCompanion(Detection d) => detectionCompanion(d, '').copyWith(
+      sessionId: const drift.Value.absent(),
+      nodeId: const drift.Value.absent(),
+      macAddress: const drift.Value.absent(),
+      engine: const drift.Value.absent(),
+      detectionMethod: const drift.Value.absent(),
+      rssi: const drift.Value.absent(),
+      channel: const drift.Value.absent(),
+      deviceTimestampMs: const drift.Value.absent(),
+      appTimestamp: const drift.Value.absent(),
+      latitude: const drift.Value.absent(),
+      longitude: const drift.Value.absent(),
+      altitude: const drift.Value.absent(),
+      speed: const drift.Value.absent(),
+      heading: const drift.Value.absent(),
+      accuracy: const drift.Value.absent(),
+      satelliteCount: const drift.Value.absent(),
+      approxGps: const drift.Value.absent(),
+    );
+
 Map<String, Object?> detectionExt(Detection d) {
   final o = d.odid;
   final x = d.detector;
