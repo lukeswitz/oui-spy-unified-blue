@@ -92,7 +92,7 @@ class Sdr {
   }
 
   static Future<bool> start(String id, SdrMode mode, int freqHz, int rate,
-      {List<int> freqsHz = const [], bool raw = false, List<String> categories = const []}) async {
+      {List<int> freqsHz = const [], bool raw = false}) async {
     if (!supported) return false;
     return await _methods.invokeMethod<bool>('sdrStart', {
           'id': id,
@@ -101,7 +101,6 @@ class Sdr {
           'rate': rate,
           'freqsHz': freqsHz,
           'raw': raw,
-          'categories': categories,
         }) ??
         false;
   }
@@ -177,7 +176,6 @@ class SdrController {
   String _scanStatus = '';
   SdrMode? _mode;
   final Set<int> bands = {315, 433, 915};
-  final Set<String> categories = {'weather', 'meter', 'security', 'fob', 'environmental'};
 
   SdrState get state => _current;
   SdrMode? get mode => _mode;
@@ -191,7 +189,7 @@ class SdrController {
   Stream<SdrFrame> get frameStream => _frames.stream;
 
   Future<bool> start(String deviceId, SdrMode mode, int freqHz, int rate,
-      {List<int> freqsHz = const [], bool raw = false, List<String> categories = const []}) async {
+      {List<int> freqsHz = const [], bool raw = false}) async {
     _set(SdrState.starting);
     final startGps = _startGps;
     if (startGps != null) {
@@ -232,7 +230,7 @@ class SdrController {
       _set(SdrState.error);
     });
     try {
-      final ok = await Sdr.start(deviceId, mode, freqHz, rate, freqsHz: freqsHz, raw: raw, categories: categories);
+      final ok = await Sdr.start(deviceId, mode, freqHz, rate, freqsHz: freqsHz, raw: raw);
       if (!ok) {
         _set(SdrState.error);
         await _sub?.cancel();

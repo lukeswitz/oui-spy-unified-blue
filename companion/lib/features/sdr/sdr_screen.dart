@@ -8,6 +8,7 @@ import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:oui_spy/features/sdr/sdr_adsb_list.dart';
 import 'package:oui_spy/features/sdr/sdr_foxhunt.dart';
+import 'package:oui_spy/features/sdr/ssn_mesh.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/copied_toast.dart';
 
@@ -100,8 +101,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
     setState(() => _busy = true);
     await _c.start(_deviceId!, _mode, _freqHz(), _rateFor(_mode),
         freqsHz: _isIsm ? _bandsHz() : const [],
-        raw: _showRaw,
-        categories: _mode == SdrMode.rtl433 ? _c.categories.toList() : const []);
+        raw: _showRaw);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -310,21 +310,22 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
               ),
             ],
             const SizedBox(height: 12),
-            if (_mode == SdrMode.rtl433 && !running) ...[
+            if (_mode == SdrMode.rtl433) ...[
               StreamBuilder<SdrFrame>(
                 stream: _c.frameStream,
-                builder: (context, _) => _CategoryBar(
-                  detections: _c.detections,
-                  selected: _c.categories,
-                  t: t,
-                  onToggle: (c) => setState(() {
-                    if (_c.categories.contains(c)) {
-                      if (_c.categories.length > 1) _c.categories.remove(c);
-                    } else {
-                      _c.categories.add(c);
-                    }
-                  }),
-                ),
+                builder: (context, _) {
+                  final mesh = ssnSummary(_c.detections.map((d) => d.fields));
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _CategoryBar(detections: _c.detections, t: t),
+                      if (mesh != null) ...[
+                        const SizedBox(height: 6),
+                        Text(mesh.text, style: TextStyle(color: t.textSecondary, fontSize: 12)),
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 8),
             ],
@@ -464,12 +465,10 @@ class _BandSelector extends StatelessWidget {
 }
 
 class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({required this.detections, required this.selected, required this.t, required this.onToggle});
+  const _CategoryBar({required this.detections, required this.t});
 
   final List<SdrDetection> detections;
-  final Set<String> selected;
   final ResolvedTheme t;
-  final void Function(String) onToggle;
 
   static const _scanCats = [
     Sdr433Category.weather,
@@ -477,6 +476,7 @@ class _CategoryBar extends StatelessWidget {
     Sdr433Category.security,
     Sdr433Category.fob,
     Sdr433Category.environmental,
+    Sdr433Category.tpms,
   ];
 
   @override
@@ -491,8 +491,7 @@ class _CategoryBar extends StatelessWidget {
           label: c.label,
           count: counts[c] ?? 0,
           color: _catColor(c),
-          active: selected.contains(c.name),
-          onTap: () => onToggle(c.name),
+          active: (counts[c] ?? 0) > 0,
         );
     Widget rowOf(List<Sdr433Category> cs) => Row(
           children: [
@@ -517,12 +516,8 @@ class _CategoryBar extends StatelessWidget {
     required int count,
     required Color color,
     required bool active,
-    required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
+    return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         alignment: Alignment.center,
         decoration: BoxDecoration(
@@ -554,8 +549,7 @@ class _CategoryBar extends StatelessWidget {
                 )),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -700,13 +694,17 @@ void _showSdrInfo(BuildContext context, ResolvedTheme t, SdrMode mode) {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         child: switch (mode) {
-          SdrMode.rtl433 => _scanInfoBody(t),
+          SdrMode.rtl433 => _infoBody(t, 'Scan', const [
+              'Decodes every device type it knows on 315, 433 and 915 MHz.',
+              'The chips count what it found: weather, meters, security, remotes, home and tires.',
+              'Tap a row to see what the device is and what it sent.',
+              'Raw shows bursts it could not decode.',
+            ]),
           SdrMode.adsb => _infoBody(t, 'ADS-B — aircraft', const [
               'Aircraft broadcasting their position and identity on 1090 MHz.',
-              'List: aircraft with real data, enriched by ICAO address with operator (airline), type, registration, and a photo.',
-              'Map: aircraft with a position fix, with their flight path drawn.',
-              'Upload the aircraft you have heard to WDGWars.',
-              'Bare ICAO-only replies show in the raw feed, not the list.',
+              'List: each aircraft with its operator, type, registration and photo.',
+              'Map: aircraft with a position, and their flight path.',
+              'Upload heard aircraft to WDGWars. ICAO-only replies stay in the raw feed.',
             ]),
           SdrMode.tpms => _infoBody(t, 'TPMS — tire sensors', const [
               'Tire-pressure sensors in passing vehicles on 315, 433.92, or 915 MHz.',
@@ -757,68 +755,6 @@ Widget _infoBody(ResolvedTheme t, String title, List<String> lines) {
   );
 }
 
-Widget _scanInfoBody(ResolvedTheme t) {
-  const cats = [
-    Sdr433Category.weather,
-    Sdr433Category.meter,
-    Sdr433Category.security,
-    Sdr433Category.fob,
-    Sdr433Category.environmental,
-  ];
-  const examples = {
-    Sdr433Category.weather: 'Weather stations — temperature, humidity, wind, rain (Acurite, Oregon, LaCrosse, Fine Offset, TFA, Bresser).',
-    Sdr433Category.meter: 'Utility meters — power, water, gas (ERT/SCM, Neptune, Elster, M-Bus).',
-    Sdr433Category.security: 'Alarms and sensors — door, motion, smoke (Honeywell, DSC, Visonic, Kidde).',
-    Sdr433Category.fob: 'Remotes and key fobs — garage, gate, car (KeeLoq, Nice, Somfy, car keys).',
-    Sdr433Category.environmental: 'Home and property — water leak, air quality, thermostats, soil moisture, BBQ/meat probes, oil tank.',
-  };
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('Scan categories',
-          style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 4),
-      Text('Choose which 315 / 433 / 915 MHz device types to decode. Fewer types means less load.',
-          style: TextStyle(color: t.textDim, fontSize: 12)),
-      const SizedBox(height: 16),
-      for (final c in cats) ...[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(_catIcon(c), size: 20, color: _catColor(c)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(c.label,
-                      style: TextStyle(color: _catColor(c), fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(examples[c]!,
-                      style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.3)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-      ],
-      Divider(height: 1, color: t.border),
-      const SizedBox(height: 12),
-      Row(
-        children: [
-          Icon(Icons.tire_repair, size: 16, color: t.textDim),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('Tire sensors use the TPMS tab, aircraft use the ADS-B tab.',
-                style: TextStyle(color: t.textDim, fontSize: 11)),
-          ),
-        ],
-      ),
-    ],
-  );
-}
 
 void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
   final cat = _categoryOf(d);
@@ -837,13 +773,15 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
     'adsb' => ((f['callsign'] as String?)?.trim().isNotEmpty ?? false)
         ? (f['callsign'] as String).trim()
         : '${f['icao'] ?? 'ADS-B'}',
+    'rtl433' when isSsn(f) => ssnTitle(f),
     'tpms' || 'rtl433' => '${f['model'] ?? d.kind}',
     'ism' => '${f['modulation'] ?? 'burst'}',
     _ => hz != null ? '${(hz / 1e6).toStringAsFixed(3)} MHz' : 'RF',
   };
 
-  final rows = <(String, String)>[];
-  for (final e in f.entries) {
+  final ssn = isSsn(f);
+  final rows = <(String, String)>[if (ssn) ...ssnDetailRows(f)];
+  for (final e in ssn ? const <MapEntry<String, dynamic>>[] : f.entries) {
     if (e.key == 'kind' || e.key.startsWith('_')) continue;
     final v = e.value;
     if (v == null) continue;
@@ -860,7 +798,7 @@ void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
     final c = (f['tempC'] as num?)?.toDouble();
     if (c != null) rows.add(('Temperature (°F)', (c * 9 / 5 + 32).toStringAsFixed(1)));
   }
-  if (hz != null) {
+  if (hz != null && !ssn) {
     rows.add(('Frequency', '${(hz / 1e6).toStringAsFixed(3)} MHz'));
   }
 
@@ -1065,6 +1003,12 @@ class _DetectionCard extends StatelessWidget {
         if (tc != null) specs.add('${tc.toStringAsFixed(0)}°C');
         final flags = f['flags'] as String?;
         if (flags != null && flags.isNotEmpty) specs.add(flags);
+        break;
+      case 'rtl433' when isSsn(f):
+        badge = cat?.label ?? 'RTL433';
+        title = ssnTitle(f);
+        sub = ssnAction(f);
+        specs.addAll(ssnSpecs(f));
         break;
       case 'rtl433':
         badge = cat?.label ?? 'RTL433';

@@ -2169,7 +2169,7 @@ internal object SilverSpringMesh : Rtl433Decoder() {
             fields["retry"] = extras.retry
         }
         if (extras.haveFet) fields["fet"] = extras.fet
-        if (extras.haveRssi) fields["rssi"] = extras.rssi
+        if (extras.haveRssi) fields["link_rssi"] = extras.rssi
         if (extras.haveCli) {
             fields["cli_tx_pri"] = extras.cliTxPri
             fields["cli_tx_time"] = extras.cliTxTime
