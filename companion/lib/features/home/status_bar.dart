@@ -238,13 +238,10 @@ class _PhoneScanSheetState extends ConsumerState<_PhoneScanSheet> {
       PhoneBleSource.canScanWifi ? 'Bluetooth and Wi-Fi' : 'Bluetooth only';
 
   static String get _limits => Platform.isAndroid
-      ? 'Works with or without a board. Compared with a board: Android allows 4 Wi-Fi scans '
-          'every 2 minutes, and 1 every 30 minutes in the background. Bluetooth scans '
-          'continuously during a session, or on the BLE duration and interval settings when a board is connected. '
-          'No Flock, drone ID, probe-request, deauth or PCAP detection.'
-      : 'Bluetooth only, while the app is open. Apple hides device MAC addresses, so these hits '
-          'cannot be foxhunted or uploaded to WiGLE. No Wi-Fi, Flock, drone ID or PCAP detection; '
-          'those need a board.';
+      ? 'Works with or without a board. Android allows 4 Wi-Fi scans every 2 minutes. '
+          'Flock, probe-request, deauth and PCAP detection need a board.'
+      : 'Bluetooth only, while the app is open. Apple hides MAC addresses, so hits cannot be '
+          'foxhunted or uploaded to WiGLE. Wi-Fi, Flock, drone and PCAP detection need a board.';
 
   @override
   Widget build(BuildContext context) {

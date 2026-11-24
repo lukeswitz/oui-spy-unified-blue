@@ -245,12 +245,10 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
         _InfoHeader(
           label: 'Radio privacy',
           lines: const [
-            'Receive only stops every scan from transmitting. It applies to each board you connect, and a manager passes it to its mesh nodes.',
-            'Boards send no Wi-Fi probe requests and no Bluetooth scan requests. They still advertise so this phone can reach them, and mesh nodes still talk to each other.',
-            'Android phones only hear scans that other apps already run, so the phone finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.',
-            'iPhones always send scan requests while an app scans, so the phone scan pauses on iOS.',
-            'This phone never connects to nearby devices, and "Make it play a sound" is off.',
-            'USB Wi-Fi adapters and RTL-SDR dongles only receive.',
+            'Boards and their mesh nodes stop sending scan requests. They still advertise so this phone can reach them.',
+            'Android only hears scans other apps run, so it finds far fewer devices.',
+            'iPhone scanning pauses, because iOS always sends scan requests.',
+            'This phone never connects to nearby devices. USB adapters and SDR dongles only receive.',
           ],
         ),
         ConfigToggleRow(
