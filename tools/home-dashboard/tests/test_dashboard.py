@@ -143,6 +143,18 @@ class AccessTest(unittest.TestCase):
         self.assertTrue(access.origin_allowed("GET", "https://evil.example", "127.0.0.1:5077"))
 
 
+class LinkSummaryTest(unittest.TestCase):
+    def test_summary_has_what_the_app_reads(self):
+        snap = {"home": {"id": "A1B2", "alive": True}, "nodes": [{"online": True}, {"online": False}]}
+        out = connectors.link_summary(snap, {"serial": {"connected": True, "detail": "x"}},
+                                      {"mqtt": {"enabled": False}, "retention_days": 7, "secret": 1}, "live")
+        self.assertEqual(out["home"], {"id": "A1B2", "alive": True})
+        self.assertEqual(out["nodes"], {"total": 2, "online": 1})
+        self.assertEqual(out["board"], {"connected": True, "detail": "x"})
+        self.assertEqual(out["settings"]["retention_days"], 7)
+        self.assertNotIn("secret", out["settings"])
+
+
 class TakTest(unittest.TestCase):
     def test_cot_is_valid_xml_with_escaped_text(self):
         x = connectors.cot_event("ouispy-node-A1B2", "a-f-G-U-C", 10.0, 20.0, 'AP "<1>"', "a & b", now=0)

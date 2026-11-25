@@ -830,6 +830,12 @@ def api_settings_set():
     return jsonify(public_settings())
 
 
+@app.route("/api/link")
+def api_link():
+    return jsonify(connectors.link_summary(fleet.snapshot(lists=False), sources_status(), public_settings(),
+                                           "demo" if args.demo else "live"))
+
+
 @app.route("/api/tak")
 def api_tak():
     return jsonify(tak.status())

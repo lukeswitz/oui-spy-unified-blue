@@ -25,6 +25,16 @@ TAK_EVERY = 10
 STALE_S = 60
 
 
+def link_summary(snapshot, sources, settings, mode):
+    """What the OUI-APEX app polls: is the board feed alive, and the state of every link."""
+    board = sources.get("serial") or sources.get("demo") or {}
+    nodes = snapshot.get("nodes", [])
+    return {"mode": mode, "home": {"id": snapshot["home"].get("id"), "alive": bool(snapshot["home"].get("alive"))},
+            "nodes": {"total": len(nodes), "online": sum(1 for n in nodes if n.get("online"))},
+            "board": {"connected": bool(board.get("connected")), "detail": board.get("detail", "")},
+            "settings": {k: settings.get(k) for k in ("mqtt", "tak", "rns", "retention_days")}}
+
+
 def cot_event(uid, ctype, lat, lon, callsign, remarks="", how="m-g", stale=STALE_S, link_uid=None, now=None):
     now = time.time() if now is None else now
     iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
