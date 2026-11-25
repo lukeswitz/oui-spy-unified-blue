@@ -243,7 +243,8 @@ class ReticulumLink:
         self.q = queue.Queue()
         self.last_alert = {}
         self.stop_evt = threading.Event()
-        threading.Thread(target=self._loop, daemon=True, name="reticulum").start()
+        self.thread = threading.Thread(target=self._loop, daemon=True, name="reticulum")
+        self.thread.start()
 
     def status(self):
         return {"enabled": bool((self.get_cfg() or {}).get("enabled")), "state": self.state,
@@ -252,6 +253,7 @@ class ReticulumLink:
 
     def stop(self):
         self.stop_evt.set()
+        self.thread.join(3)
 
     def alert(self, kind, text):
         c = {**RNS_DEFAULTS, **(self.get_cfg() or {})}
@@ -319,7 +321,7 @@ class ReticulumLink:
                     continue
             self.state = "connected"
             try:
-                kind, text = self.q.get(timeout=1)
+                kind, text = self.q.get(timeout=0.2)
             except queue.Empty:
                 continue
             for r in c["recipients"]:
