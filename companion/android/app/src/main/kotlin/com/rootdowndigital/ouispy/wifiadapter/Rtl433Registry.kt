@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // Kotlin reimplementation of rtl_433's device row and dispatch (include/r_device.h, src/r_api.c run_ook_demods/run_fsk_demods, src/r_flow.c; GPL-3 reference, algorithm transcribed as facts).
 package com.rootdowndigital.ouispy.wifiadapter
 

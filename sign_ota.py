@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Luke Switzer
 import argparse
 import base64
 import os

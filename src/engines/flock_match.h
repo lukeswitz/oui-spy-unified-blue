@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef FLOCK_MATCH_H
 #define FLOCK_MATCH_H
 

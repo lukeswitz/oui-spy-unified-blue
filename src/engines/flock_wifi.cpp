@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "flock_wifi.h"
 extern volatile uint32_t g_flockOuiSuppressed;
 extern volatile uint32_t g_flockOuiAllowed;

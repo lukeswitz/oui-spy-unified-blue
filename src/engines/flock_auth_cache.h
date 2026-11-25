@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef FLOCK_AUTH_CACHE_H
 #define FLOCK_AUTH_CACHE_H
 

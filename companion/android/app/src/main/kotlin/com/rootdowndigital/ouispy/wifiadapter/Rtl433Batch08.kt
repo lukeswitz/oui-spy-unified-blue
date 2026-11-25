@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // Kotlin transcription of rtl_433 device decoders (batch 08). GPL-3 reference; constants, bit offsets and CRC parameters transcribed as facts.
 package com.rootdowndigital.ouispy.wifiadapter
 

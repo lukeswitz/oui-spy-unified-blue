@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 package com.rootdowndigital.ouispy.wifiadapter
 
 internal object AdsbEnrich {

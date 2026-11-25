@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:flutter/material.dart';
 import 'package:oui_spy/core/ota/ota_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:convert';
 
 import 'package:flutter/material.dart';

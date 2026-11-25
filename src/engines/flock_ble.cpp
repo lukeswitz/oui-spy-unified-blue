@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "flock_ble.h"
 #include "protocol.h"
 #include "flock_match.h"

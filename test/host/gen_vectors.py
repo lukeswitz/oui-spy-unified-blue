@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Luke Switzer
 import datetime
 import json
 import os

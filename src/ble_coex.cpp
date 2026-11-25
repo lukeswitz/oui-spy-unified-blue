@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "ble_coex.h"
 #include "mesh_espnow.h"
 #include <Arduino.h>

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';

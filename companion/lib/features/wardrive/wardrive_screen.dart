@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:convert';
 import 'dart:math';
 import 'dart:math' as math;

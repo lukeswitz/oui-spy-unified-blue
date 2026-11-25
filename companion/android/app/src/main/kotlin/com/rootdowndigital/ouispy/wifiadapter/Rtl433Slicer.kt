@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // Kotlin reimplementation of rtl_433 pulse slicers (src/pulse_slicer.c; GPL-3 reference, algorithm transcribed as facts).
 package com.rootdowndigital.ouispy.wifiadapter
 

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Reads rtw88 u32 PHY init arrays from the downloaded table source and walks its if/else/endif conditions (Linux rtw88 phy.c, GPL-2.0 OR BSD-3-Clause).

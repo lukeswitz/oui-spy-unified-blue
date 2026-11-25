@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef PCAP_H
 #define PCAP_H
 

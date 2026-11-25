@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifdef OUISPY_BLE_TARGET
 #include <Arduino.h>
 #include <NimBLEDevice.h>

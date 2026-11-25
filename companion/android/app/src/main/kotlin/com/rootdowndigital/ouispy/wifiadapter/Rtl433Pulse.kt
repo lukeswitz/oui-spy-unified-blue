@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // Kotlin reimplementation of rtl_433 pulse detection (pulse_data.h, pulse_detect.c, pulse_detect_fsk.c, baseband.c; GPL-3 reference, algorithm transcribed as facts).
 package com.rootdowndigital.ouispy.wifiadapter
 

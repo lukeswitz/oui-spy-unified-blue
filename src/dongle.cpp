@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifdef OUISPY_DONGLE
 
 #include "dongle.h"

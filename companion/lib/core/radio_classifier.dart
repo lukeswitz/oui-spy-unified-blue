@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:math';
 
 import 'package:oui_spy/core/models/detection.dart';

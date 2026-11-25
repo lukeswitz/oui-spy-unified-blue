@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 part of 'device_config.dart';
 
 enum _DetSort {

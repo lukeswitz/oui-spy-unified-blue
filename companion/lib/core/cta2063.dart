@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 const _makerPrefixes = <String, String>{
   '1581F': 'DJI',
   '1748C': 'Autel Robotics',

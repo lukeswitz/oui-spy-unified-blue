@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "enow_hub.h"
 #include "detector.h"
 #include "../engine_registry.h"

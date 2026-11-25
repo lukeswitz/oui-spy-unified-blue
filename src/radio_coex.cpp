@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "radio_coex.h"
 #include "engine_registry.h"
 #include "protocol.h"

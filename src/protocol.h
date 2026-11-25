@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 

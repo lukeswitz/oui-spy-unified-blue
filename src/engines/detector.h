@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef ENGINE_DETECTOR_H
 #define ENGINE_DETECTOR_H
 

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import java.util.Properties
 import java.io.FileInputStream
 

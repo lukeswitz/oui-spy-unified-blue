@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Hardware constants transcribed from the Linux ath9k driver (Atheros Communications, ISC license); not copied driver code.

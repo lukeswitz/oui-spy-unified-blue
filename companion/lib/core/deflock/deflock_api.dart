@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:dio/dio.dart';
 import 'package:latlong2/latlong.dart';
 

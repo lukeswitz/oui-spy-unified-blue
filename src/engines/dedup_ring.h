@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef DEDUP_RING_H
 #define DEDUP_RING_H
 

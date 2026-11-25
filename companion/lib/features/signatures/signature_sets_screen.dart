@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

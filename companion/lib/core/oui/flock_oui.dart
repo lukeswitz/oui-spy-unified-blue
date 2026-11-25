@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 class FlockOui {
   const FlockOui._();
 

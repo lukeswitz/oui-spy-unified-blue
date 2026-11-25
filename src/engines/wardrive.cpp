@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "wardrive.h"
 extern bool flockAllowOuiOnly;
 extern volatile uint32_t g_flockOuiSuppressed;

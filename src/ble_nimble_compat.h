@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef BLE_NIMBLE_COMPAT_H
 #define BLE_NIMBLE_COMPAT_H
 

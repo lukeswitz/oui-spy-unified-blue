@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "skyspy.h"
 #include "protocol.h"
 #include "../mesh_espnow.h"

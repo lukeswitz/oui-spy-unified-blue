@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:io';
 
 import 'package:flutter/services.dart' show rootBundle;

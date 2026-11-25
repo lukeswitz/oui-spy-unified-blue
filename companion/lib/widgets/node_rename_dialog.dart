@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';

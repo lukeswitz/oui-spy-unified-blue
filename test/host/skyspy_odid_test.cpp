@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include <cstdio>
 #include <cstring>
 #include "../../src/engines/skyspy_odid.h"

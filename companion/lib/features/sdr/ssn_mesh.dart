@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 const ssnModel = 'SilverSpring-Mesh';
 
 bool isSsn(Map<String, dynamic> f) => f['model'] == ssnModel;

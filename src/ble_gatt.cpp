@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "ble_gatt.h"
 #include "det_spool.h"
 #include "engine_registry.h"

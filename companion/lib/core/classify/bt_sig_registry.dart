@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:oui_spy/core/classify/adv_decoder.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/vendor_class.dart';

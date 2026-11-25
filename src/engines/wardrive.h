@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef WARDRIVE_H
 #define WARDRIVE_H
 

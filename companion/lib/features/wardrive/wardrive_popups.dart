@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 part of 'wardrive_screen.dart';
 
 class _ScanningPill extends StatefulWidget {

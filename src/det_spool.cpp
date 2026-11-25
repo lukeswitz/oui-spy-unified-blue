@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "det_spool.h"
 #include <LittleFS.h>
 #include <string.h>

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';

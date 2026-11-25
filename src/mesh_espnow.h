@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef MESH_ESPNOW_H
 #define MESH_ESPNOW_H
 

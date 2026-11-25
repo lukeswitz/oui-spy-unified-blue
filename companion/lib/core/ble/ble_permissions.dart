@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';

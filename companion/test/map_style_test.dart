@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';

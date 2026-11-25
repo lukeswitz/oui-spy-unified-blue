@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // ignore_for_file: avoid_print
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';

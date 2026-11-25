@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 //
 //  OuiSpyLiveActivityAttributes.swift
 //  Shared between Runner and OuiSpyLiveActivity targets

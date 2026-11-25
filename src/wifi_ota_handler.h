@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef WIFI_OTA_HANDLER_H
 #define WIFI_OTA_HANDLER_H
 

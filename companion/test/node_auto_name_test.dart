@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/app_state.dart';
 

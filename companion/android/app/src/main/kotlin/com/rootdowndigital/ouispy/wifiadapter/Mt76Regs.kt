@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Register addresses and values transcribed from the Linux mt76 driver

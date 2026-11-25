@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/models/detection.dart';

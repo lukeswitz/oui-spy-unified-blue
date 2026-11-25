@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef ENGINE_TRACKER_RING_H
 #define ENGINE_TRACKER_RING_H
 

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef OTA_PUBKEY_H
 #define OTA_PUBKEY_H
 

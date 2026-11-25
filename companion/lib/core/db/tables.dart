@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:drift/drift.dart';
 
 class Nodes extends Table {

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 package com.rootdowndigital.ouispy.wifiadapter
 
 // RTL8814AU constants transcribed from Linux rtw88 rtw8814a.c and rtw8814a_table.c, SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause (USB entries only).

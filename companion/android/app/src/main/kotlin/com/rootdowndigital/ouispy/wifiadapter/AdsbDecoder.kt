@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // 1090 MHz Mode-S / ADS-B decoder for 2 MS/s u8 IQ, reimplemented from antirez dump1090 (BSD-3-Clause).
 package com.rootdowndigital.ouispy.wifiadapter
 

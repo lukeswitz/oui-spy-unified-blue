@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;

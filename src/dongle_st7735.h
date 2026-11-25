@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef DONGLE_ST7735_H
 #define DONGLE_ST7735_H
 

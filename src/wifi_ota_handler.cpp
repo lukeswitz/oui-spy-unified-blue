@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "wifi_ota_handler.h"
 #include "ota_handler.h"
 #include <Arduino.h>

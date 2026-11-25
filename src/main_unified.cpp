@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>

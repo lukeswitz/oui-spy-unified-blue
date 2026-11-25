@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef ENGINE_FLOCK_BLE_H
 #define ENGINE_FLOCK_BLE_H
 

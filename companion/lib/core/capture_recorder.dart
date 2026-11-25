@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:async';
 
 import 'package:drift/drift.dart' as drift;

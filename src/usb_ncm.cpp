@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "usb_link.h"
 
 #if defined(OUISPY_USB_NCM) && defined(OUISPY_USB_LINK)

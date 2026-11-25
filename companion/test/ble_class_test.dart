@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/ble_class.dart';
 import 'package:oui_spy/core/classify/device_explain.dart';

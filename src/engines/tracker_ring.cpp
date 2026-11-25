@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "tracker_ring.h"
 #include "../ble_coex.h"
 #include <Arduino.h>

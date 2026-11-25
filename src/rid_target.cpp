@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifdef OUISPY_RID_TARGET
 #include <Arduino.h>
 #include <WiFi.h>

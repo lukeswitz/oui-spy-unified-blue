@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import ActivityKit
 import Flutter
 import Foundation

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:typed_data';
 
 const linkProtocolVersion = 1;

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef BLE_GATT_H
 #define BLE_GATT_H
 

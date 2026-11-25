@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 // Kotlin reimplementation of the bit buffer API from rtl_433 (include/bitbuffer.h, src/bitbuffer.c; GPL-3 reference, algorithm transcribed as facts).
 package com.rootdowndigital.ouispy.wifiadapter
 

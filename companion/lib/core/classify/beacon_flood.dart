@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'flood.dart' show FloodNotice;
 import 'observation.dart';
 

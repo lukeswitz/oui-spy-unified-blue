@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef CAMERA_OUI_H
 #define CAMERA_OUI_H
 

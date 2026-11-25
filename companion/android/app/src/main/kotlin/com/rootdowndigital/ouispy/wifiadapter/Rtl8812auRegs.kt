@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Values transcribed from Linux rtw88 (rtw8812a*, rtw88xxa*, reg.h), SPDX GPL-2.0 OR BSD-3-Clause, Copyright(c) 2018-2019 and 2024 Realtek Corporation.

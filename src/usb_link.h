@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #ifndef USB_LINK_H
 #define USB_LINK_H
 

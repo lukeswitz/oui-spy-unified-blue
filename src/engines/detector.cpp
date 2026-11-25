@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 #include "detector.h"
 #include "protocol.h"
 #include "../mesh_espnow.h"

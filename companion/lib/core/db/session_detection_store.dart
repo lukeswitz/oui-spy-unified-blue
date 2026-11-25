@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:async';
 
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:async';
 import 'dart:convert' show utf8;
 import 'dart:math' as math;
