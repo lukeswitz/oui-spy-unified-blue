@@ -433,6 +433,16 @@ The app can link to the [home dashboard](tools/home-dashboard/README.md) running
 - **Connectors:** with the link up, **MQTT**, **TAK server** and **Reticulum** each have a switch. Hosts, certificates and addresses are set on the dashboard's Settings tab. The app only turns each link on or off and shows its state. If the dashboard refuses the change, the app shows why.
 - **History kept** sets how many days the dashboard keeps detections (0 keeps everything). **Clear detection history** deletes every detection on the dashboard after two confirmations. Devices, names, groups and drones stay.
 
+### Meshtastic radio
+
+The app can pair this phone's own Meshtastic radio over Bluetooth, so you can send a message or your position by LoRa radio when you have no network. It is off until you pick a radio: SETTINGS → DATA → Export → **Meshtastic radio**.
+
+- **Find a radio:** scans for radios that advertise the Meshtastic Bluetooth service. A radio talks to one phone at a time, so close the Meshtastic app first. If Android asks for a PIN, the radio's default is 123456.
+- **Channel:** the app sends only on a channel that has a key of its own. It never sends on the public channel (no key, or the one-byte default key), and it cannot be chosen. If the radio has no private channel, add one in the Meshtastic app. The app reads each channel's key length to tell the two apart and does not keep or show the key.
+- **Send a message** sends up to 200 characters. **Send my position** sends this phone's last position once, after you confirm. Nothing else is sent: the app does not send in the background or relay your catches.
+- **Heard on the radio** lists the last text messages the radio received on the private channel. **Sent / heard** counts them.
+- **Change radio** scans again. **Forget this radio** disconnects and removes the saved radio and channel.
+
 ### App updates
 
 SETTINGS → About has **Check for update** and **Check at launch** (off by default). The app makes no update request until you tap **Check for update** or turn on **Check at launch**.
@@ -672,6 +682,7 @@ Over-the-air updates must be signed with the release key. A board flashed over U
 
 - Upstream engines: [Detector](https://github.com/colonelpanichacks/ouispy-detector), [Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter), [Flock You](https://github.com/colonelpanichacks/flock-you), [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy), [UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) by **colonelpanichacks**.
 - **colonelpanichacks** (Colonel Panic, MIT): `tools/home-dashboard/` is adapted from the `home-dashboard` folder of [ouispy-detector](https://github.com/colonelpanichacks/ouispy-detector). Details in [companion/NOTICE](companion/NOTICE).
+- **Meshtastic** ([protobufs](https://github.com/meshtastic/protobufs), GPL-3.0): the Meshtastic radio link uses the Bluetooth UUIDs and message field numbers from the Meshtastic protocol. No Meshtastic code is included. Details in [companion/NOTICE](companion/NOTICE).
 - **Will Greenberg** ([flock-you](https://github.com/wgreenberg/flock-you)): XUNTONG `0x09C8` detection.
 - **@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)): promiscuous Flock OUI set and the addr1 receiver technique.
 - **DeFlockJoplin** ([flock-you](https://github.com/DeflockJoplin/flock-you)): wildcard-probe signature.

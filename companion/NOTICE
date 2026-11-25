@@ -101,6 +101,19 @@ device definitions. Only those identifiers are used. No Theengs Decoder code or
 text is included. Theengs Decoder is licensed under GPL-3.0.
 
 --------------------------------------------------------------------------------
+Meshtastic
+https://github.com/meshtastic/protobufs
+https://meshtastic.org/docs/development/device/client-api/
+
+lib/core/meshtastic/ speaks to a Meshtastic radio over Bluetooth. It uses the
+Bluetooth service and characteristic UUIDs from the Meshtastic client API
+documentation, and the field numbers, port numbers and enum values of the
+messages in mesh.proto, channel.proto and portnums.proto, so that the radio
+accepts and understands them. Only those identifiers are used. No Meshtastic
+code or .proto text is included. The Meshtastic protobufs are licensed under
+GPL-3.0.
+
+--------------------------------------------------------------------------------
 WhisperPair
 https://github.com/KULeuven-COSIC/WhisperPair
 KU Leuven COSIC
