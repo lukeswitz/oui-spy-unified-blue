@@ -117,11 +117,13 @@ class _IconBtn extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.active = false,
+    this.disabled = false,
     this.tooltip,
   });
   final IconData icon;
   final VoidCallback onTap;
   final bool active;
+  final bool disabled;
   final String? tooltip;
 
   @override
@@ -150,7 +152,11 @@ class _IconBtn extends StatelessWidget {
           child: Icon(
             icon,
             size: 22,
-            color: active ? AppTheme.accent : t.textSecondary,
+            color: active
+                ? AppTheme.accent
+                : disabled
+                    ? t.textDim.withValues(alpha: 0.4)
+                    : t.textSecondary,
           ),
         ),
       ),

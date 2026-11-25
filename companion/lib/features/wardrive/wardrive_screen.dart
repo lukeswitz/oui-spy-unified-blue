@@ -44,6 +44,8 @@ import 'package:oui_spy/core/map_pins.dart';
 import 'package:oui_spy/core/node_positions.dart';
 import 'package:oui_spy/core/triangulation.dart';
 import 'package:oui_spy/core/triangulation_state.dart';
+import 'package:oui_spy/core/offline/offline_maps.dart' show offlineAllowed, offlineRefusal, offlineSizeLabel;
+import 'package:oui_spy/features/wardrive/offline_download_dialog.dart';
 import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/core/app_time.dart';
@@ -444,6 +446,34 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           _measurePts.clear();
         }),
       );
+
+  Widget _downloadButton() {
+    final style = ref.watch(mapStyleProvider);
+    final allowed = offlineAllowed(style);
+    return _IconBtn(
+      icon: Icons.download,
+      disabled: !allowed,
+      tooltip: allowed ? 'Save this map area for offline use' : offlineRefusal,
+      onTap: () async {
+        final messenger = ScaffoldMessenger.of(context);
+        if (!allowed) {
+          messenger.showSnackBar(const SnackBar(content: Text(offlineRefusal)));
+          return;
+        }
+        final cam = _mapController.camera;
+        final area = await showOfflineDownloadDialog(
+          context,
+          style: style,
+          bounds: cam.visibleBounds,
+          zoom: cam.zoom,
+        );
+        if (area == null) return;
+        messenger.showSnackBar(SnackBar(
+          content: Text('Saved ${area.styleLabel} map area (${offlineSizeLabel(area.bytes)})'),
+        ));
+      },
+    );
+  }
 
   List<Widget> _pinAndMeasureLayers() {
     final t = AppTheme.of(context);
@@ -1298,7 +1328,15 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
               Positioned(
                 top: (wd.hasSessionData ? _completedBarHeight : 0) + 12,
                 right: 12,
-                child: _measureButton(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _measureButton(),
+                    const SizedBox(height: 6),
+                    _downloadButton(),
+                  ],
+                ),
               ),
 
             // Idle: mode selector + start
@@ -1333,6 +1371,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                     ),
                     const SizedBox(height: 6),
                     _measureButton(),
+                    const SizedBox(height: 6),
+                    _downloadButton(),
                     if (_currentRotation.abs() > 0.5) ...[
                       const SizedBox(height: 6),
                       _CompassResetBtn(

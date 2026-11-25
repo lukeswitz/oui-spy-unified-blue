@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart' show showSessionHistory;
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/config/atak_section.dart';
+import 'package:oui_spy/features/config/saved_map_areas_section.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
 import 'package:oui_spy/features/signatures/signature_sets_screen.dart';
@@ -411,7 +412,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Accounts', 'WiGLE and WDGWars upload accounts', Icons.cloud_upload, () => const _WardriveConfigTab(showAccounts: true)),
             ('Capture Database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
-            ('Export', 'Data and backup, ATAK, OUI database', Icons.ios_share, _buildExportTab),
+            ('Export', 'Data and backup, saved map areas, ATAK, OUI database', Icons.ios_share, _buildExportTab),
             ('Triangulation', 'Signal model for placed mesh nodes', Icons.hub, () => ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: const [_TriangulationSection()],
@@ -677,6 +678,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           onTap: () => context.push('/export'),
           trailing: Icon(Icons.chevron_right, size: 18, color: t.textDim),
         ),
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'Offline maps'),
+        const SavedMapAreasSection(),
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'ATAK'),
         const AtakSection(),

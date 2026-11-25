@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' show ThemeReader;
 
+import 'package:oui_spy/core/offline/offline_maps.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 const tileCacheTtl = Duration(days: 7);
@@ -55,7 +56,10 @@ Future<void> pruneTileCache(Directory dir, DateTime now,
 @visibleForTesting
 Future<Uint8List> cachedTileBytes(
     Directory dir, String url, Map<String, String> headers,
-    {Future<Uint8List> Function(String url, Map<String, String> headers)? fetch}) async {
+    {Future<Uint8List> Function(String url, Map<String, String> headers)? fetch,
+    OfflineStore? offline}) async {
+  final saved = await offline?.readTile(urlTileName(url));
+  if (saved != null) return saved;
   final file = File('${dir.path}/${sha1.convert(utf8.encode(url))}');
   final stat = await file.stat();
   final cached = stat.type == FileSystemEntityType.file;
@@ -105,7 +109,7 @@ class _CachedTileImage extends ImageProvider<_CachedTileImage> {
   Future<ui.Codec> _load(_CachedTileImage key, ImageDecoderCallback decode) async {
     try {
       final dir = await (_tileDir ??= _openTileDir());
-      final bytes = await cachedTileBytes(dir, url, headers);
+      final bytes = await cachedTileBytes(dir, url, headers, offline: await openOfflineStore());
       return await decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     } catch (_) {
       scheduleMicrotask(() => PaintingBinding.instance.imageCache.evict(key));
@@ -141,7 +145,40 @@ Object? cssColorKeywords(Object? v) => switch (v) {
       _ => v,
     };
 
+class OfflineFirstTileProvider extends VectorTileProvider {
+  OfflineFirstTileProvider(this.delegate, this.store, this.source);
+
+  final VectorTileProvider delegate;
+  final OfflineStore store;
+  final String source;
+
+  @override
+  TileProviderType get type => delegate.type;
+
+  @override
+  int get maximumZoom => delegate.maximumZoom;
+
+  @override
+  int get minimumZoom => delegate.minimumZoom;
+
+  @override
+  Future<Uint8List> provide(TileIdentity tile) async =>
+      await store.readTile(sourceTileName(source, tile.z, tile.x, tile.y)) ?? await delegate.provide(tile);
+}
+
 Future<Style> _readStyle(MapStyle m) async {
+  if (!offlineAllowed(m)) return _readStyleOnline(m, null);
+  final store = await openOfflineStore();
+  try {
+    return await _readStyleOnline(m, store);
+  } catch (_) {
+    final saved = await store.savedStyle(m);
+    if (saved == null) rethrow;
+    return identifiedStyle(savedOfflineStyle(saved, store), m);
+  }
+}
+
+Future<Style> _readStyleOnline(MapStyle m, OfflineStore? store) async {
   final s = await StyleReader(uri: m.url).read();
   final raw = await _tileDio.get<List<int>>(m.url);
   final json = cssColorKeywords(jsonDecode(utf8.decode(raw.data!))) as Map<String, dynamic>;
@@ -149,12 +186,57 @@ Future<Style> _readStyle(MapStyle m) async {
       Style(
         name: s.name,
         theme: ThemeReader().read(json),
-        providers: s.providers,
+        providers: store == null
+            ? s.providers
+            : TileProviders({
+                for (final e in s.providers.tileProviderBySource.entries)
+                  e.key: OfflineFirstTileProvider(e.value, store, e.key),
+              }),
         sprites: s.sprites,
         center: s.center,
         zoom: s.zoom,
       ),
       m);
+}
+
+@visibleForTesting
+Style savedOfflineStyle(ResolvedVectorStyle saved, OfflineStore store) => Style(
+      theme: ThemeReader().read(cssColorKeywords(saved.styleJson) as Map<String, dynamic>),
+      providers: TileProviders({
+        for (final s in saved.sources)
+          s.name: OfflineFirstTileProvider(
+              NetworkVectorTileProvider(
+                urlTemplate: s.template,
+                type: s.kind == OfflineKind.raster ? TileProviderType.raster : TileProviderType.vector,
+                maximumZoom: s.maxZoom,
+                minimumZoom: s.minZoom,
+              ),
+              store,
+              s.name),
+      }),
+    );
+
+Future<({List<OfflineSource> sources, ResolvedVectorStyle? vectorStyle})> resolveOfflineSources(
+    MapStyle m, String userAgent) async {
+  if (m.isVector) {
+    final r = await resolveVectorStyle(m, userAgent);
+    return (sources: r.sources, vectorStyle: r);
+  }
+  final provider = _CachedTileProvider();
+  final options = TileLayer(urlTemplate: m.url);
+  return (
+    sources: [
+      OfflineSource(
+        name: 'tiles',
+        kind: OfflineKind.layer,
+        template: m.url,
+        minZoom: 0,
+        maxZoom: m.maxNativeZoom,
+        urlOverride: (z, x, y) => provider.getTileUrl(TileCoordinates(x, y, z), options),
+      ),
+    ],
+    vectorStyle: null,
+  );
 }
 
 @visibleForTesting
