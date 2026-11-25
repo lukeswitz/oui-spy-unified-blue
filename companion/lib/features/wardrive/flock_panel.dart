@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/features/feed/detection_row.dart'
+    show detectionHeadline, detectorTitle, methodLabel;
+import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneColorForMac;
 import 'package:oui_spy/theme/app_theme.dart';
 
 Color _flockConfColor(FlockConfidence c) => switch (c) {
   FlockConfidence.verified => AppTheme.success,
   FlockConfidence.high => AppTheme.success,
   FlockConfidence.suspected => AppTheme.warning,
-};
-
-String _flockConfShort(FlockConfidence c) => switch (c) {
-  FlockConfidence.verified => 'V',
-  FlockConfidence.high => 'H',
-  FlockConfidence.suspected => 'S',
 };
 
 class FlockPanel extends StatefulWidget {
@@ -89,7 +87,7 @@ class _FlockPanelState extends State<FlockPanel> {
         if (_expanded && widget.detections.isNotEmpty)
           Container(
             margin: const EdgeInsets.only(top: 4),
-            constraints: const BoxConstraints(maxHeight: 140, maxWidth: 240),
+            constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: t.background.withValues(alpha: 0.95),
@@ -111,6 +109,30 @@ class _FlockPanelState extends State<FlockPanel> {
   }
 }
 
+class _Tag extends StatelessWidget {
+  const _Tag(this.text, this.color);
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(AppRadius.chip),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
+        ),
+      );
+}
+
 class _Row extends ConsumerWidget {
   const _Row({required this.d, this.onTap});
   final Detection d;
@@ -120,83 +142,113 @@ class _Row extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final priv = ref.watch(privacyScreenProvider);
-    final isBle = d.engine == Engine.flockBle;
-    final color = isBle ? AppTheme.flockBle : AppTheme.flockWifi;
-    final isRaven = d.flock?.isRaven ?? false;
     final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
     final hasGps = d.latitude != null && d.longitude != null;
 
+    final macUpper = d.macAddress.toUpperCase();
+    final headline = detectionHeadline(d);
+    final named = headline != macUpper;
+    final cls = detectionAlertClass[d];
+    final isFlock = d.engine == Engine.flockBle || d.engine == Engine.flockWifi;
+    final isDrone = d.engine == Engine.skySpy;
+    final uasId = d.odid?.uavId ?? '';
+
+    final String title;
+    if (named) {
+      title = maskName(headline, priv);
+    } else if (isFlock) {
+      title = 'Flock Safety device';
+    } else if (isDrone) {
+      title = uasId.isNotEmpty ? 'UAS $uasId' : 'Drone';
+    } else if (d.detector != null) {
+      title = detectorTitle(d);
+    } else if (cls != null) {
+      title = alertKindLabel(cls);
+    } else {
+      title = maskMac(macUpper, priv);
+    }
+
+    final Color color;
+    final String typeLabel;
+    if (isFlock) {
+      color = d.engine == Engine.flockBle ? AppTheme.flockBle : AppTheme.flockWifi;
+      typeLabel = d.engine == Engine.flockBle ? 'FLOCK BLE' : 'FLOCK WIFI';
+    } else if (isDrone) {
+      color = droneColorForMac(d.macAddress);
+      typeLabel = 'DRONE';
+    } else {
+      color = cls != null ? alertKindColor(cls) : d.engine.color;
+      typeLabel = (cls != null ? alertKindLabel(cls) : methodLabel(d.method)).toUpperCase();
+    }
+
+    final flock = d.flock;
+
     return GestureDetector(
       onTap: hasGps && onTap != null ? () => onTap!(d) : null,
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      child: Row(
-        children: [
-          Container(
-            width: 2, height: 16,
-            decoration: BoxDecoration(color: color),
-          ),
-          const SizedBox(width: 5),
-          Expanded(
-            child: Row(children: [
-              Text(
-                maskMac(d.macAddress.toUpperCase(), priv),
-                style: TextStyle(
-                  color: t.textPrimary, fontSize: 9,
-                  fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(AppRadius.chip),
-                ),
-                child: Text(
-                  isBle ? 'B' : 'W',
-                  style: TextStyle(color: color, fontSize: 7, fontWeight: FontWeight.w700),
-                ),
-              ),
-              if (isRaven) ...[
-                const SizedBox(width: 2),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
-                  decoration: BoxDecoration(
-                    color: AppTheme.warning.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(AppRadius.chip),
-                  ),
-                  child: Text('R',
-                    style: TextStyle(color: AppTheme.warning, fontSize: 7, fontWeight: FontWeight.w700)),
-                ),
-              ],
-              if (d.flock != null) ...[
-                const SizedBox(width: 2),
-                Builder(builder: (_) {
-                  final fc = d.flock!.confidence(d.method);
-                  final cc = _flockConfColor(fc);
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0.5),
-                    decoration: BoxDecoration(
-                      color: cc.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(AppRadius.chip),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        padding: const EdgeInsets.fromLTRB(8, 3, 4, 3),
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: color, width: 3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
                     ),
-                    child: Text(_flockConfShort(fc),
-                      style: TextStyle(color: cc, fontSize: 7, fontWeight: FontWeight.w700)),
-                  );
-                }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${d.rssi}',
+                  style: TextStyle(
+                    color: rssiColor,
+                    fontSize: 13,
+                    fontFamily: AppTheme.mono,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
-            ]),
-          ),
-          Text('${d.rssi}', style: TextStyle(
-            color: rssiColor, fontSize: 9,
-            fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
-          )),
-        ],
+            ),
+            const SizedBox(height: 3),
+            Wrap(
+              spacing: 6,
+              runSpacing: 3,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _Tag(typeLabel, color),
+                if (flock?.isRaven ?? false) _Tag('RAVEN', AppTheme.warning),
+                if (flock != null)
+                  Builder(builder: (_) {
+                    final fc = flock.confidence(d.method);
+                    return _Tag(fc.name.toUpperCase(), _flockConfColor(fc));
+                  }),
+                Text(
+                  maskMac(macUpper, priv),
+                  style: TextStyle(
+                    color: t.textDim,
+                    fontSize: 11,
+                    fontFamily: AppTheme.mono,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 }

@@ -53,15 +53,15 @@ IconData classIcon(SignatureClass c) => switch (c) {
       SignatureClass.other => Icons.devices_other,
     };
 
-const _watchKinds = <String, (String, IconData)>{
-  'trusted_network': ('LOOKALIKE WI-FI', Icons.wifi_lock),
-  'cell_watch': ('CELL NETWORK', Icons.cell_tower),
-  'gps_watch': ('GPS', Icons.gps_off),
-  'car_follow': ('CAR FOLLOWING', Icons.directions_car),
-  'aircraft_circle': ('AIRCRAFT CIRCLING', Icons.connecting_airports),
-  'drone_loiter': ('DRONE NEAR YOU', Icons.flight_land),
-  'mesh_crossing': ('MESH CROSSING', Icons.route),
-  'beacon_flood': ('BEACON FLOOD', Icons.wifi_channel),
+const _watchKinds = <String, (String, IconData, Color)>{
+  'trusted_network': ('LOOKALIKE WI-FI', Icons.wifi_lock, Color(0xFFE65A6B)),
+  'cell_watch': ('CELL NETWORK', Icons.cell_tower, Color(0xFF6B8AFF)),
+  'gps_watch': ('GPS', Icons.gps_off, Color(0xFFEAB308)),
+  'car_follow': ('CAR FOLLOWING', Icons.directions_car, Color(0xFF84CC16)),
+  'aircraft_circle': ('AIRCRAFT CIRCLING', Icons.connecting_airports, Color(0xFF5AE6D6)),
+  'drone_loiter': ('DRONE NEAR YOU', Icons.flight_land, Color(0xFFE6A85A)),
+  'mesh_crossing': ('MESH CROSSING', Icons.route, Color(0xFFA855F7)),
+  'beacon_flood': ('BEACON FLOOD', Icons.wifi_channel, Color(0xFFE66B9B)),
 };
 
 SignatureClass? _classOfKind(String? kind) {
@@ -73,20 +73,21 @@ SignatureClass? _classOfKind(String? kind) {
 
 Color alertKindColor(String? kind) {
   if (kind == 'flock') return AppTheme.flockWifi;
+  if (_watchKinds[kind] case (_, _, final color)) return AppTheme.themed(color);
   final c = _classOfKind(kind);
   return c == null ? AppTheme.warning : classColor(c);
 }
 
 IconData alertKindIcon(String? kind) {
   if (kind == 'flock') return Icons.videocam;
-  if (_watchKinds[kind] case (_, final icon)) return icon;
+  if (_watchKinds[kind] case (_, final icon, _)) return icon;
   final c = _classOfKind(kind);
   return c == null ? Icons.warning_amber : classIcon(c);
 }
 
 String alertKindLabel(String? kind) {
   if (kind == 'flock') return 'FLOCK';
-  if (_watchKinds[kind] case (final label, _)) return label;
+  if (_watchKinds[kind] case (final label, _, _)) return label;
   final c = _classOfKind(kind);
   return c == null ? 'SIGNATURE' : c.label.toUpperCase();
 }

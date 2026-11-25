@@ -40,8 +40,8 @@ void main() {
 
   test('the smoke phone Remote ID advertisement decodes', () {
     final o = OdidBleDecoder().feed('02:00:00:00:06:02', smokePhoneOdidAdv(51.4, -0.1, 1))!;
-    expect(o.uavId, 'SMOKEPHONE01');
-    expect(o.operatorId, 'SMOKEPHONEOP');
+    expect(o.uavId, 'DEMO5K6L7M8N9P');
+    expect(o.operatorId, 'GBR-OP-DEMO0002');
     expect(o.altitudeMsl, 120);
     expect(o.heightAgl, 30);
     expect(o.droneSpeed, 5);

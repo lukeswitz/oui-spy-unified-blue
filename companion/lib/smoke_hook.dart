@@ -102,14 +102,14 @@ List<int> smokeOdidExt({
 
 List<int> smokePhoneOdidAdv(double lat, double lon, int counter) {
   List<int> le(int v, int n) => [for (var i = 0; i < n; i++) (v >> (8 * i)) & 0xff];
-  final basic = [0x02, (1 << 4) | 2, ..._str('SMOKEPHONE01', 20), 0, 0, 0];
+  final basic = [0x02, (1 << 4) | 2, ..._str('DEMO5K6L7M8N9P', 20), 0, 0, 0];
   final loc = [
     0x12, 2 << 4, 45, 20, 0,
     ...le((lat * 1e7).round(), 4), ...le((lon * 1e7).round(), 4),
     ...le((1120 * 2), 2), ...le((1120 * 2), 2), ...le((1030 * 2), 2),
     0, 0, ...le(1234, 2), 0, 0,
   ];
-  final op = [0x52, 0, ..._str('SMOKEPHONEOP', 20), 0, 0, 0];
+  final op = [0x52, 0, ..._str('GBR-OP-DEMO0002', 20), 0, 0, 0];
   final pack = [0xF2, 0x19, 3, ...basic, ...loc, ...op];
   final data = [0x16, 0xFA, 0xFF, 0x0D, counter & 0xff, ...pack];
   return [data.length, ...data];
@@ -138,26 +138,38 @@ void _inject(ProviderContainer container) {
   final lon0 = here?.longitude ?? -0.0015;
   var tick = 0;
   final counts = <String, int>{};
-  final spots = <String, int>{};
+  final heardAt = <String, (double, double)>{};
   void send(String label, List<int> frame) {
     final mac = frame.sublist(1, 7).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':');
-    final spot = spots.putIfAbsent(mac, () => spots.length);
-    final jitter = (tick % 3 - 1) * 0.00002;
-    ble.updateGps(
-      latitude: lat0 + (spot ~/ 6) * 0.0012 - 0.003 + jitter,
-      longitude: lon0 + (spot % 6) * 0.0012 - 0.003 + jitter,
-      accuracy: 5,
-    );
+    final at = heardAt.putIfAbsent(mac, () {
+      final fix = container.read(gpsProvider).lastPosition;
+      final h = frame[5] * 31 + frame[6] * 17;
+      return (
+        (fix?.latitude ?? lat0) + ((h % 41) - 20) * 0.00002,
+        (fix?.longitude ?? lon0) + (((h ~/ 41) % 41) - 20) * 0.00003,
+      );
+    });
+    ble.updateGps(latitude: at.$1, longitude: at.$2, accuracy: 5);
     ble.injectDetectionFrame(frame);
     counts[label] = (counts[label] ?? 0) + 1;
   }
 
-  debugPrint('SMOKE: injecting for ${_seconds}s around the phone fix');
+  debugPrint('SMOKE: injecting for ${_seconds}s, devices placed where first heard');
   Timer.periodic(const Duration(seconds: 1), (t) {
     final r = tick % 5;
+    final block = tick ~/ 6;
+    const ssids = [
+      'Harbor Cafe', 'Library_Guest', 'Riverside Flats', 'PrintShop-5G', 'Bakery WiFi', 'Studio 4B',
+      'Corner Deli', 'Hotel Lobby', 'Gym-Members', 'Dental Office', 'Bus Shelter Free', 'Florist',
+      'Flat 12', 'Kings Arms Guest', 'Museum Visitors', 'Market Stall 3', 'Bike Shop', 'Pharmacy',
+      'Bookshop WiFi', 'School Office', 'Taxi Rank', 'Hair Studio', 'Pizza Place', 'Laundrette',
+    ];
     for (var i = 0; i < 6; i++) {
-      send('wifi_ap', smokeFrame(Engine.wardrive, '02:00:00:00:01:0$i', -60 - i - r, 1 + i, 0,
-          _wardriveExt('SmokeNet$i', 3 + (i % 3), '')));
+      final mac = block == 0
+          ? '02:00:00:00:01:0$i'
+          : '02:00:00:01:${(block & 0xff).toRadixString(16).padLeft(2, '0')}:0$i';
+      send('wifi_ap', smokeFrame(Engine.wardrive, mac, -60 - i - r, 1 + (block + i) % 11, 0,
+          _wardriveExt(ssids[(block * 6 + i) % ssids.length], 3 + ((block + i) % 3), '')));
     }
     for (var i = 0; i < 2; i++) {
       send('wifi_client', smokeFrame(Engine.wardrive, '02:00:00:00:02:0$i', -70 - r, 1, 2,
@@ -165,35 +177,48 @@ void _inject(ProviderContainer container) {
     }
     for (var i = 0; i < 3; i++) {
       send('wifi_mesh', smokeFrame(Engine.wardrive, '02:00:00:00:0a:0$i', -66 - i - r, 11, 0,
-          _wardriveExt('SmokeMesh', 3, '')));
+          _wardriveExt('Parkside Mesh', 3, '')));
     }
+    const bleNames = [
+      'Galaxy Buds2', 'Charge 6', 'JBL Flip 6', 'Apple Watch', 'Tile', 'Bose QC45',
+      'Pixel Buds', 'Mi Band 8', 'Kindle', 'Sonos Roam', 'Garmin Fenix', 'LE-Bose',
+    ];
     for (var i = 0; i < 3; i++) {
-      send('ble_adv', smokeFrame(Engine.wardrive, '02:00:00:00:03:0$i', -65 - r, 37, 1,
-          _wardriveExt('', 0, 'SmokeBle$i')));
+      final mac = block == 0
+          ? '02:00:00:00:03:0$i'
+          : '02:00:00:03:${(block & 0xff).toRadixString(16).padLeft(2, '0')}:0$i';
+      send('ble_adv', smokeFrame(Engine.wardrive, mac, -65 - r, 37, 1,
+          _wardriveExt('', 0, bleNames[(block * 3 + i) % bleNames.length])));
     }
-    send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -55 - r, 37, 1,
-        _flockExt(raven: true, fw: '1.3.2', signals: 0x47, name: 'Smoke Flock BLE')));
-    send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
-        _flockExt(raven: false, fw: '', signals: 0x05, name: 'Smoke Flock WiFi')));
+    if (tick >= 12) {
+      send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -55 - r, 37, 1,
+          _flockExt(raven: true, fw: '1.3.2', signals: 0x47, name: 'Penguin-1234567890')));
+    }
+    if (tick >= 20) {
+      send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
+          _flockExt(raven: false, fw: '', signals: 0x05, name: 'Flock-A1B2C3')));
+    }
     const detectors = {
-      'deauth_storm': (4, 6),
-      'flipper': (3, 0),
-      'glasses': (7, 0),
-      'probe_ssid': (5, 6),
-      'camera': (9, 6),
-      'tracker': (2, 0),
+      'deauth_storm': (4, 6, 'Deauth flood'),
+      'flipper': (3, 0, 'Flipper Zero'),
+      'glasses': (7, 0, 'Ray-Ban Meta'),
+      'probe_ssid': (5, 6, 'Directed probe'),
+      'camera': (9, 6, 'Ring Doorbell'),
+      'tracker': (2, 0, 'AirTag'),
     };
     var k = 0;
     for (final e in detectors.entries) {
-      final (method, ch) = e.value;
-      send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, ch, method,
-          _detectorExt('Smoke ${e.key}', 1 + k % 3)));
+      final (method, ch, desc) = e.value;
+      if (tick >= 4 + k * 5) {
+        send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, ch, method,
+            _detectorExt(desc, 1 + k % 3)));
+      }
       k++;
     }
     final step = tick * 0.0001;
     send('drone_full', smokeFrame(Engine.skySpy, '02:00:00:00:06:00', -62 - r, 6, 0, smokeOdidExt(
-      uavId: 'SMOKEUAV0001',
-      opId: 'SMOKEOP0001',
+      uavId: 'DEMO1A2B3C4D5E',
+      opId: 'GBR-OP-DEMO0001',
       lat: lat0 + 0.002 + step,
       lon: lon0 + 0.002,
       pilotLat: lat0 + 0.0005 + step / 4,
@@ -202,10 +227,10 @@ void _inject(ProviderContainer container) {
       agl: 60,
       speed: 5,
       heading: 0,
-      selfId: 'Smoke full drone',
+      selfId: 'Survey flight',
     )));
     send('drone_partial', smokeFrame(Engine.skySpy, '02:00:00:00:06:01', -75 - r, 6, 0, smokeOdidExt(
-      uavId: 'SMOKEUAV0002',
+      uavId: 'DEMO9Z8Y7X6W5V',
       opId: '',
       lat: lat0 - 0.002,
       lon: lon0 - 0.002 - step,
@@ -217,26 +242,29 @@ void _inject(ProviderContainer container) {
       heading: 270,
       selfId: '',
     )));
-    send('uniPwn', smokeFrame(Engine.uniPwn, '02:00:00:00:07:00', -68 - r, 37, 0,
-        [..._str('Go2', 8), 0]));
-    send('foxhunter', smokeFrame(Engine.foxhunter, '02:00:00:00:08:00', -45 - r, 37, 0, const []));
+    if (tick >= 30) {
+      send('uniPwn', smokeFrame(Engine.uniPwn, '02:00:00:00:07:00', -68 - r, 37, 0,
+          [..._str('Go2', 8), 0]));
+      send('foxhunter', smokeFrame(Engine.foxhunter, '02:00:00:00:08:00', -45 - r, 37, 0, const []));
+    }
     ble.addPhoneOdid('02:00:00:00:06:02', -70 - r,
         smokePhoneOdidAdv(lat0 - 0.0025 + step, lon0 + 0.0025, tick));
     counts['phone_odid'] = (counts['phone_odid'] ?? 0) + 1;
 
     if (tick == 3) {
-      log(kind: 'drone_loiter', title: 'Smoke drone loiter', reason: 'smoke test', subject: '02:00:00:00:06:00',
-          lat: lat0 + 0.0015, lon: lon0 + 0.0015);
-      log(kind: 'beacon_flood', title: 'Smoke beacon flood', reason: 'smoke test', subject: '02:00:00:00:09:00',
-          lat: lat0 - 0.0035, lon: lon0 + 0.0035);
-      log(kind: 'car_follow', title: 'Smoke car follow', reason: 'smoke test', subject: '02:00:00:00:03:00');
-      log(kind: 'trusted_network', title: 'Smoke evil twin', reason: 'smoke test', subject: '02:00:00:00:01:01',
-          lat: lat0 + 0.0035, lon: lon0 - 0.0035);
-      log(kind: 'cell_watch', title: 'Smoke cell downgrade', reason: 'smoke test', subject: 'CELL',
+      log(kind: 'drone_loiter', title: 'Drone near you', reason: 'Hovering 180 m away for 6 min',
+          subject: '02:00:00:00:06:00', lat: lat0 + 0.0015, lon: lon0 + 0.0015);
+      log(kind: 'beacon_flood', title: 'Wi-Fi beacon flood', reason: '24 networks from one radio',
+          subject: '02:00:00:00:09:00', lat: lat0 - 0.0035, lon: lon0 + 0.0035);
+      log(kind: 'car_follow', title: 'Car following you', reason: 'Same tire sensors over 3 km and 14 min',
+          subject: '02:00:00:00:03:00');
+      log(kind: 'trusted_network', title: 'Possible evil twin of "Harbor Cafe"', reason: 'Weaker security',
+          subject: '02:00:00:00:01:01', lat: lat0 + 0.0035, lon: lon0 - 0.0035);
+      log(kind: 'cell_watch', title: 'Cell network warning', reason: 'Dropped to 2G', subject: 'CELL',
           lat: lat0 - 0.0035, lon: lon0 - 0.0035);
-      log(kind: 'gps_watch', title: 'Smoke GPS jump', reason: 'smoke test', subject: 'GPS');
-      log(kind: 'aircraft_circle', title: 'Smoke aircraft circling', reason: 'smoke test', subject: 'ABC123',
-          lat: lat0 + 0.004, lon: lon0);
+      log(kind: 'gps_watch', title: 'GPS warning', reason: 'Position jumped 4 km', subject: 'GPS');
+      log(kind: 'aircraft_circle', title: 'Aircraft circling you', reason: 'DEM123 (ABC123) circled twice',
+          subject: 'ABC123', lat: lat0 + 0.004, lon: lon0);
       counts['alerts'] = 7;
     }
     final sdr = container.read(sdrControllerProvider);
@@ -249,7 +277,7 @@ void _inject(ProviderContainer container) {
       }),
       SdrDetection(kind: 'tpms', fields: {'model': 'Schrader', 'id': '0000ABCD', 'pressure_kPa': 230, 'rssi': -30}),
       SdrDetection(kind: 'adsb', fields: {
-        'icao': 'ABC123', 'callsign': 'SMK123', 'lat': lat0 + 0.01, 'lon': lon0, 'alt_ft': 3000 + tick * 10,
+        'icao': 'ABC123', 'callsign': 'DEM123', 'lat': lat0 + 0.01, 'lon': lon0, 'alt_ft': 3000 + tick * 10,
         'speed_kt': 120, 'heading': 90,
       }),
     ]) {
