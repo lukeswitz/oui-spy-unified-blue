@@ -130,6 +130,8 @@ class BleManager {
   final _meshStatusStream = StreamController<MeshStatusData>.broadcast();
   final _pcapStatsStream = StreamController<PcapStats>.broadcast();
   final _pcapDataStream = StreamController<Uint8List>.broadcast();
+  final _pcapWifiRecords = StreamController<Uint8List>.broadcast();
+  bool _pcapWifiOpen = false;
   PcapStats _latestPcapStats = PcapStats.empty;
 
   final _importedDetections = StreamController<Detection>.broadcast();
@@ -198,6 +200,7 @@ class BleManager {
   Stream<MeshStatusData> get meshStatusUpdates => _meshStatusStream.stream;
   Stream<PcapStats> get pcapStats => _pcapStatsStream.stream;
   Stream<Uint8List> get pcapData => _pcapDataStream.stream;
+  Stream<Uint8List> get pcapWifiRecords => _pcapWifiRecords.stream;
   PcapStats get latestPcapStats => _latestPcapStats;
 
   File? _pcapFile;
@@ -254,6 +257,7 @@ class BleManager {
     final dir = await _pcapDir();
     final ts = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now().toLocal());
     final suffix = switch (mode) { 1 => 'ble', 2 => '154', _ => 'wifi' };
+    _pcapWifiOpen = mode == 0;
     String name;
     if (stats != null && stats.isAutoTriggered) {
       final macFlat = stats.autoTriggerMac
@@ -359,6 +363,7 @@ class BleManager {
       }
       final rec = Uint8List.sublistView(_pcapRx, i + 8, i + 8 + recLen);
       _pcapSink!.add(rec);
+      if (_pcapWifiOpen && _pcapWifiRecords.hasListener) _pcapWifiRecords.add(Uint8List.fromList(rec));
       totalWritten += recLen;
       i += 8 + recLen + 4;
     }
@@ -2272,6 +2277,7 @@ class BleManager {
     _fleetOtaStream.close();
     _pcapStatsStream.close();
     _pcapDataStream.close();
+    _pcapWifiRecords.close();
   }
 
   // -- PCAP --

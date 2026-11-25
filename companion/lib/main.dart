@@ -26,6 +26,7 @@ import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/phone_watch.dart';
+import 'package:oui_spy/core/probes/probe_store.dart';
 import 'package:oui_spy/core/watch_alerts.dart';
 import 'package:oui_spy/core/triangulation_state.dart';
 import 'package:oui_spy/core/prefs.dart';
@@ -91,6 +92,7 @@ void main() async {
   container.read(wardriveProvider);
   container.read(deviceRegistryProvider);
   if (const int.fromEnvironment('BENCH') == 0) container.read(captureRecorderProvider);
+  container.read(probeStoreProvider);
   container.read(melodyProvider);
   container.read(usbAutoConnectProvider);
   container.read(wifiAdapterControllerProvider);

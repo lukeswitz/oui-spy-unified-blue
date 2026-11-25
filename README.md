@@ -384,6 +384,7 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 - **802.15.4** mode needs a C5 board; on any other it stays visible, disabled, with the reason. The **5 GHz** setting under Wi-Fi works the same way. Pick a channel range from 11 to 26; the board hops through it. Frames save with link type 195 (IEEE 802.15.4 with FCS, recomputed from the frames the radio accepted) in a `_154_` file. A T-Dongle-C5 also writes `cap_*_154.pcap` to its SD card. The pcap carries no channel or signal level.
 - Auto-PCAP records 3–120 s whenever an engine fires.
 - SETTINGS → DATA → PCAPS lists saved captures.
+- **PROBES** (the toggle at the top of the PCAP screen, next to **CAPTURE**) is the probe database: which Wi-Fi networks nearby phones and laptops ask for by name. It fills from the detector's probe-request check and from every Wi-Fi capture, and is kept on the phone. **DEVICES** lists each asking device with its maker, probe count, signal, band, first and last heard and every network it names (a device that names the same networks as other MACs is flagged); **NAMED** hides devices that only ask for any network; **NETWORKS** ranks the names by how many devices ask, with their makers and any matching access points from your wardrives. Search, sort, **THIS RUN** and **CLEAR** are on the same screen.
 
 ### 802.15.4 wardrive (C5 boards)
 

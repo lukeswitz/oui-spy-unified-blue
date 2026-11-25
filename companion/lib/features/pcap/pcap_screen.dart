@@ -13,6 +13,7 @@ import 'package:oui_spy/core/board_caps.dart';
 import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
+import 'package:oui_spy/features/pcap/probes_view.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
 import 'package:path_provider/path_provider.dart';
@@ -28,6 +29,7 @@ class PcapScreen extends ConsumerStatefulWidget {
 
 class _PcapScreenState extends ConsumerState<PcapScreen> {
   PcapMode _mode = PcapMode.wifi;
+  bool _showProbes = false;
   int _chanStart = 1;
   int _chanEnd = 11;
   int _mode5g = 1;
@@ -229,7 +231,24 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<PcapStats>(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: _ViewSelector(
+              probes: _showProbes,
+              onChanged: (v) => setState(() => _showProbes = v),
+            ),
+          ),
+          Expanded(child: _showProbes ? const ProbesView() : _captureBody(context, t, ble)),
+        ],
+      ),
+    );
+  }
+
+  Widget _captureBody(BuildContext context, ResolvedTheme t, BleManager ble) {
+    return StreamBuilder<PcapStats>(
         stream: ble.pcapStats,
         initialData: ble.latestPcapStats,
         builder: (context, snap) {
@@ -460,7 +479,51 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
             ),
           );
         },
+      );
+  }
+}
+
+class _ViewSelector extends StatelessWidget {
+  const _ViewSelector({required this.probes, required this.onChanged});
+  final bool probes;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    Widget btn(String label, bool value) {
+      final selected = probes == value;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onChanged(value),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.accent.withValues(alpha: 0.18) : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.chip),
+            ),
+            alignment: Alignment.center,
+            child: Text(label,
+                style: TextStyle(
+                  color: selected ? AppTheme.accent : t.textPrimary,
+                  fontFamily: AppTheme.mono,
+                  letterSpacing: 2,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 12,
+                )),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        border: Border.all(color: t.border),
       ),
+      child: Row(children: [btn('CAPTURE', false), btn('PROBES', true)]),
     );
   }
 }

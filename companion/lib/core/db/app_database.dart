@@ -543,6 +543,17 @@ class AppDatabase extends _$AppDatabase {
     ];
   }
 
+  Future<({int aps, int placed, int lastMs})> wardriveSsidSummary(String ssid) async {
+    final r = await customSelect(
+      'SELECT COUNT(DISTINCT mac_address) AS aps, '
+      'COUNT(DISTINCT CASE WHEN latitude IS NOT NULL THEN mac_address END) AS placed, '
+      'COALESCE(MAX(app_timestamp), 0) AS last '
+      "FROM detections WHERE detection_method = 'wifi_ap' AND ssid = ?",
+      variables: [Variable.withString(ssid)],
+    ).getSingle();
+    return (aps: r.read<int>('aps'), placed: r.read<int>('placed'), lastMs: r.read<int>('last'));
+  }
+
   Future<List<(double, double)>> sessionRoute(String sessionId) async {
     final rows = await customSelect(
       'SELECT app_timestamp / 10000 AS b, AVG(latitude) AS la, AVG(longitude) AS lo FROM detections '
