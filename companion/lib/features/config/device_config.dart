@@ -29,6 +29,8 @@ import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/update/update_controller.dart';
+import 'package:oui_spy/core/update/update_service.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/privacy.dart';
@@ -570,6 +572,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
         const _VersionRow(),
+        const _AppUpdateSection(),
         ConfigActionRow(
           icon: Icons.code,
           label: 'Source Code',

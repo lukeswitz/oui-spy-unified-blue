@@ -27,6 +27,7 @@ import 'package:oui_spy/core/phone_watch.dart';
 import 'package:oui_spy/core/watch_alerts.dart';
 import 'package:oui_spy/core/triangulation_state.dart';
 import 'package:oui_spy/core/prefs.dart';
+import 'package:oui_spy/core/update/update_controller.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -106,6 +107,10 @@ void main() async {
     final kind = notif.takeLaunchKind();
     if (kind != null) _openFromNotification(container, kind);
   });
+
+  if (container.read(updateCheckAtLaunchProvider)) {
+    unawaited(container.read(updateControllerProvider.notifier).check(quiet: true));
+  }
 
   runBenchIfEnabled(container);
   runSmokeIfEnabled(container);

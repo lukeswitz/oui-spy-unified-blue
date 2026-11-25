@@ -291,7 +291,7 @@ jobs:
 
             ### Companion App
 
-            App builds are attached to this release by hand; the workflow uploads firmware only.
+            App builds are attached to this release by hand; the workflow uploads firmware only. Attach `release.json` and `release.json.sig` from `python3 sign_ota.py release` too, or the in-app update check refuses this release.
 
             | Platform | File | Instructions |
             |----------|------|--------------|

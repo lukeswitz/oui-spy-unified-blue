@@ -27,6 +27,9 @@
     <!-- Wake lock for wardrive sessions -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
+    <!-- In-app update: hands a verified APK to the system installer -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
     <!-- BLE hardware feature (not required, but declare support) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
     <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
@@ -65,6 +68,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <provider
+            android:name=".ApkFileProvider"
+            android:authorities="${applicationId}.apkprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/apk_paths"/>
+        </provider>
         <service
             android:name=".KillTaskService"
             android:exported="false"

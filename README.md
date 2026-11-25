@@ -383,6 +383,16 @@ The app sends catches and Remote ID drones to ATAK as Cursor-on-Target markers o
 - **What it sends:** a drone and its pilot, linked, from Remote ID. Any other catch is placed where the phone was when it was heard. Wardrive and capture rows are not sent. Each marker repeats at most every 5 seconds.
 - **SA multicast (off by default):** also sends to `239.2.3.1:6969`. Every device on the same Wi-Fi network can read it.
 
+### App updates
+
+SETTINGS → About has **Check for update** and **Check at launch** (off by default). The app makes no update request until you tap **Check for update** or turn on **Check at launch**.
+
+- **What it checks:** the latest release of `lukeswitz/oui-spy-unified-blue` over https. The release must carry `release.json` and `release.json.sig`. The app refuses the update unless the signature verifies with the same release key that signs firmware (`src/ota_pubkey.h`), the manifest's tag matches the release, and its version and build are newer than the installed app. It then checks that the downloaded file has the signed size and SHA-256.
+- **Android:** **Install** hands the verified APK to the system installer. Android asks once to allow installs from OUI-APEX, and it still checks the APK's signing certificate.
+- **macOS:** **Save to Downloads** saves the verified zip and shows it in Finder. Quit the app and replace it yourself.
+- **iOS:** the app does not update itself. **Open TestFlight** copies the TestFlight link.
+- **Release maintainers:** `python3 sign_ota.py release <apk> <macos zip>` writes `release.json` and `release.json.sig` from the version in `companion/pubspec.yaml`, using the key in `~/.config/oui-spy/`. Upload both with the builds. `python3 sign_ota.py verify-release <folder>` re-checks them.
+
 ## USB radios on Android
 
 OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle with no root, kernel driver or custom ROM.
@@ -564,6 +574,7 @@ These settings limit what the boards and the phone send over the air and what th
 | [OpenFreeMap](https://openfreemap.org) styles: Dark (default), Fiord, Liberty, Bright, Positron | A map is on screen | Tile numbers in view | No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap". |
 | [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map): Satellite (US) | You pick Satellite (US) | Tile numbers in view | Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit. |
 | [GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) | You tap **Check for Update** (Settings → Node → Firmware) | Nothing about you or your board | UA `oui-spy-companion/1.0`. 60 checks/hour per IP; pauses to GitHub's reset. Firmware comes from the same release. |
+| [GitHub](https://github.com/lukeswitz/oui-spy-unified-blue/releases) releases | You tap **Check for update** or turn on **Check at launch** (Settings → About) | Nothing about you or your phone | UA `oui-spy-companion/1.0`. Downloads `release.json` and its signature, and the app file only when you tap **Install** or **Save to Downloads**. Off by default; no background checks. |
 | Signature sets: [Fieldwatch](https://github.com/OffGridPete/Fieldwatch), [Home Assistant](https://github.com/home-assistant/core), or a link you add | You turn a set on or tap **Update** (Settings → Detection & Alerts → Your Lists → Signature sets) | Nothing | UA `oui-spy-companion/1.0`. https only, 8 MB limit. No background checks. |
 | [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** (Settings → Data → Export → OUI DATABASE) | Nothing | Fetches the MAC vendor list at most every 7 days. UA `oui-spy-companion/1.0`. |
 | [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** on a drone | The drone's Remote ID serial | UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×. |

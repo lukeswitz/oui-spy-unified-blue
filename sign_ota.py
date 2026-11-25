@@ -2,6 +2,8 @@
 # Copyright (c) 2026 Luke Switzer
 import argparse
 import base64
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -15,6 +17,14 @@ TRAILER_LEN = len(MAGIC) + SIG_LEN
 APP_MAGIC = 0xE9
 DEFAULT_KEY = Path.home() / ".config" / "oui-spy" / "ota_signing_key.pem"
 PUBKEY_HEADER = Path(__file__).resolve().parent / "src" / "ota_pubkey.h"
+PUBSPEC = Path(__file__).resolve().parent / "companion" / "pubspec.yaml"
+RELEASE_CONTEXT = b"OSR1\n"
+RELEASE_FORMAT = 1
+RELEASE_APP = "oui-spy"
+MANIFEST_NAME = "release.json"
+MANIFEST_SIG_NAME = "release.json.sig"
+VERSION_RE = re.compile(r"^\d{1,4}\.\d{1,4}\.\d{1,4}$")
+FILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 SPKI_PREFIX = bytes.fromhex("3059301306072a8648ce3d020106082a8648ce3d030107034200")
 NOT_APP_SUFFIXES = ("-bootloader.bin", "-partitions.bin", "-boot_app0.bin")
 
@@ -158,6 +168,103 @@ def cmd_verify(args):
     return rc
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def pubspec_version():
+    match = re.search(r"^version:\s*(\d+\.\d+\.\d+)\+(\d+)\s*$", PUBSPEC.read_text(), re.M)
+    if not match:
+        raise ValueError(f"no version like 1.2.3+4 in {PUBSPEC}")
+    return match.group(1), int(match.group(2))
+
+
+def write_atomic(path, data):
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def cmd_release(args):
+    key = Path(args.key).expanduser()
+    public = key_public_raw(key)
+    if public != header_public_raw():
+        print(f"{key} does not match {PUBKEY_HEADER}", file=sys.stderr)
+        return 1
+    default_version, default_build = pubspec_version()
+    version = args.version or default_version
+    build = args.build if args.build is not None else default_build
+    tag = args.tag or f"v{version}"
+    if not VERSION_RE.match(version):
+        print(f"version {version!r} is not like 1.2.3", file=sys.stderr)
+        return 1
+    if build < 0:
+        print("build must not be negative", file=sys.stderr)
+        return 1
+    files = []
+    seen = set()
+    for name in args.files:
+        path = Path(name)
+        if not path.is_file():
+            print(f"{path} is not a file", file=sys.stderr)
+            return 1
+        if not FILE_NAME_RE.match(path.name) or path.name in (MANIFEST_NAME, MANIFEST_SIG_NAME):
+            print(f"refuse {path}: file name not allowed in a release", file=sys.stderr)
+            return 1
+        if path.name in seen:
+            print(f"refuse {path}: {path.name} listed twice", file=sys.stderr)
+            return 1
+        seen.add(path.name)
+        files.append({"name": path.name, "size": path.stat().st_size, "sha256": sha256_file(path)})
+    manifest = {
+        "format": RELEASE_FORMAT,
+        "app": RELEASE_APP,
+        "tag": tag,
+        "version": version,
+        "build": build,
+        "files": files,
+    }
+    body = (json.dumps(manifest, indent=2) + "\n").encode()
+    rs = der_to_rs(openssl("dgst", "-sha256", "-sign", str(key), data=RELEASE_CONTEXT + body))
+    if not signature_valid(public, RELEASE_CONTEXT + body, rs):
+        print("refuse: new signature failed verification", file=sys.stderr)
+        return 1
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    write_atomic(out / MANIFEST_NAME, body)
+    write_atomic(out / MANIFEST_SIG_NAME, rs)
+    print(f"signed {out / MANIFEST_NAME}: {tag}, {len(files)} files")
+    return 0
+
+
+def cmd_verify_release(args):
+    out = Path(args.dir)
+    body = (out / MANIFEST_NAME).read_bytes()
+    rs = (out / MANIFEST_SIG_NAME).read_bytes()
+    if len(rs) != SIG_LEN or not signature_valid(header_public_raw(), RELEASE_CONTEXT + body, rs):
+        print(f"BAD SIGNATURE {out / MANIFEST_NAME}")
+        return 1
+    manifest = json.loads(body)
+    rc = 0
+    for entry in manifest["files"]:
+        path = out / entry["name"]
+        if not path.is_file():
+            print(f"MISSING {path}")
+            rc = 1
+        elif path.stat().st_size != entry["size"] or sha256_file(path) != entry["sha256"]:
+            print(f"MISMATCH {path}")
+            rc = 1
+        else:
+            print(f"OK {path}")
+    if rc == 0:
+        print(f"OK {out / MANIFEST_NAME}: {manifest['tag']}")
+    return rc
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sign OUI-SPY firmware images for over-the-air updates.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -171,6 +278,17 @@ def main():
     verify = sub.add_parser("verify", help="check images against the key in src/ota_pubkey.h")
     verify.add_argument("files", nargs="+")
     verify.set_defaults(func=cmd_verify)
+    release = sub.add_parser("release", help="write and sign release.json for the app builds")
+    release.add_argument("--key", default=str(DEFAULT_KEY))
+    release.add_argument("--version", help="default: version in companion/pubspec.yaml")
+    release.add_argument("--build", type=int, help="default: build number in companion/pubspec.yaml")
+    release.add_argument("--tag", help="default: v<version>")
+    release.add_argument("--out", default=".", help="folder for release.json and release.json.sig")
+    release.add_argument("files", nargs="+", help="app builds to list, such as the .apk and macOS .zip")
+    release.set_defaults(func=cmd_release)
+    verify_release = sub.add_parser("verify-release", help="check release.json, its signature and the listed files")
+    verify_release.add_argument("dir", help="folder holding release.json, release.json.sig and the files")
+    verify_release.set_defaults(func=cmd_verify_release)
     args = parser.parse_args()
     try:
         return args.func(args)

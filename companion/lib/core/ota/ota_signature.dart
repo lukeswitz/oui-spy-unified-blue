@@ -26,15 +26,24 @@ class OtaSignature {
       if (file[imageLen + i] != _magic[i]) return false;
     }
     final sigStart = imageLen + _magic.length;
+    return verifyDetached(
+      Uint8List.sublistView(file, 0, imageLen),
+      Uint8List.sublistView(file, sigStart),
+    );
+  }
+
+  static bool verifyDetached(Uint8List message, Uint8List rs, {List<int> key = publicKey}) {
+    if (rs.length != _sigLen) return false;
     final domain = ECCurve_secp256r1();
-    final point = domain.curve.decodePoint(publicKey);
+    final point = domain.curve.decodePoint(key);
+    if (point == null) return false;
     final signer = ECDSASigner(SHA256Digest())
       ..init(false, PublicKeyParameter<ECPublicKey>(ECPublicKey(point, domain)));
     return signer.verifySignature(
-      Uint8List.sublistView(file, 0, imageLen),
+      message,
       ECSignature(
-        _unsigned(Uint8List.sublistView(file, sigStart, sigStart + _sigLen ~/ 2)),
-        _unsigned(Uint8List.sublistView(file, sigStart + _sigLen ~/ 2)),
+        _unsigned(Uint8List.sublistView(rs, 0, _sigLen ~/ 2)),
+        _unsigned(Uint8List.sublistView(rs, _sigLen ~/ 2)),
       ),
     );
   }

@@ -445,6 +445,82 @@ class _TriangulationSection extends ConsumerWidget {
   }
 }
 
+class _AppUpdateSection extends ConsumerWidget {
+  const _AppUpdateSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(updateControllerProvider);
+    final atLaunch = ref.watch(updateCheckAtLaunchProvider);
+    final controller = ref.read(updateControllerProvider.notifier);
+    final offer = s.offer;
+    final t = AppTheme.of(context);
+    final canAct = offer != null && !s.busy;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ConfigActionRow(
+          icon: Icons.system_update_alt,
+          label: 'Check for update',
+          subtitle: s.message.isEmpty ? 'Looks for a signed release on GitHub' : s.message,
+          color: s.phase == UpdatePhase.error ? AppTheme.error : null,
+          onTap: s.busy ? null : controller.check,
+          trailing: s.phase == UpdatePhase.checking
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.accent),
+                )
+              : null,
+        ),
+        if (offer != null && s.phase != UpdatePhase.upToDate)
+          ConfigActionRow(
+            icon: offer.target == UpdateTarget.ios ? Icons.open_in_new : Icons.download,
+            label: switch (offer.target) {
+              UpdateTarget.android => 'Install version ${offer.version}',
+              UpdateTarget.macos => 'Save version ${offer.version} to Downloads',
+              _ => 'Open TestFlight for version ${offer.version}',
+            },
+            subtitle: offer.target == UpdateTarget.ios ? 'Copies the TestFlight link' : null,
+            onTap: !canAct
+                ? null
+                : offer.target == UpdateTarget.ios
+                    ? () async {
+                        await Clipboard.setData(const ClipboardData(text: UpdateService.testFlightUrl));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Link copied to clipboard')),
+                          );
+                        }
+                      }
+                    : controller.install,
+            trailing: s.phase == UpdatePhase.downloading
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      value: s.fraction == 0 ? null : s.fraction,
+                      strokeWidth: 1.5,
+                      color: AppTheme.accent,
+                    ),
+                  )
+                : Icon(Icons.chevron_right, size: 18, color: t.textDim),
+          ),
+        ConfigToggleRow(
+          icon: Icons.update,
+          label: 'Check at launch',
+          subtitle: atLaunch
+              ? 'Looks for a new version each time the app opens'
+              : 'No network call until you tap Check for update',
+          color: AppTheme.accent,
+          value: atLaunch,
+          onChanged: (v) => ref.read(updateCheckAtLaunchProvider.notifier).set(v),
+        ),
+      ],
+    );
+  }
+}
+
 class _VersionRow extends StatelessWidget {
   const _VersionRow();
 
