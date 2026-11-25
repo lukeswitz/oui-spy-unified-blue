@@ -8,6 +8,7 @@ import 'package:oui_spy/features/analysis/analysis_screen.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/config/device_config.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
+import 'package:oui_spy/features/drones/drones_screen.dart';
 import 'package:oui_spy/features/engines/detector_screen.dart';
 import 'package:oui_spy/features/engines/foxhunter_screen.dart';
 import 'package:oui_spy/features/engines/skyspy_screen.dart';
@@ -80,6 +81,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/engine/skyspy',
         builder: (context, state) => const SkySpyScreen(),
+      ),
+      GoRoute(
+        path: '/drones',
+        builder: (context, state) => const DronesScreen(),
       ),
       GoRoute(
         path: '/engine/unipwn',

@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/drone_tags.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -74,13 +75,16 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
     final mapStyle = ref.watch(mapStyleProvider);
     final here = ref.watch(gpsProvider).lastPosition;
     final appState = ref.watch(appStateProvider);
+    final tags = ref.watch(droneTagsProvider);
+    final units = ref.watch(unitSystemProvider);
 
     final markers = <Marker>[];
     final tethers = <Polyline>[];
     final trails = <Polyline>[];
     final rings = <CircleMarker>[];
+    final spotMarkers = <Marker>[];
     for (final d in widget.drones) {
-      final color = droneColorForMac(d.macAddress);
+      final color = droneMarkerColor(d, tags);
       final droneTrack = appState.droneTrack(d.macAddress);
       if (droneTrack != null && droneTrack.length >= 2) {
         trails.add(Polyline(points: droneTrack, color: color, strokeWidth: 2.2));
@@ -95,6 +99,16 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
         ));
       }
       final dp = droneRidPoint(d);
+      final spot = detectionLocationLayers(
+        here: appState.droneHome(AppState.droneTrackKey(d)),
+        drone: dp,
+        color: color,
+        units: units,
+      );
+      if (spot != null) {
+        tethers.add(spot.line);
+        spotMarkers.addAll(spot.markers);
+      }
       if (dp != null) {
         markers.add(Marker(
           point: dp,
@@ -193,6 +207,7 @@ class _DroneMapViewState extends ConsumerState<DroneMapView> {
               child: const _SelfDot(),
             ),
           ]),
+        if (spotMarkers.isNotEmpty) MarkerLayer(markers: spotMarkers),
         if (markers.isNotEmpty) MarkerLayer(markers: markers),
         mapAttribution(mapStyle),
       ],

@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/drone_flights.dart';
+import 'package:oui_spy/core/drone_log.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -117,6 +119,12 @@ class AppState extends ChangeNotifier {
   final Map<String, List<LatLng>> _pilotTracks = {};
   List<LatLng>? droneTrack(String mac) => _droneTracks[mac];
   List<LatLng>? pilotTrack(String mac) => _pilotTracks[mac];
+
+  final Map<String, ({LatLng point, DateTime first, DateTime last, bool up})> _droneHomes = {};
+  void Function(DroneReport report)? onDroneReport;
+
+  /// Where this phone was when the current flight of [key] was first heard.
+  LatLng? droneHome(String key) => _droneHomes[key]?.point;
   final Map<String, int> _dedupeIndex = {}; // "mac|engine" → index in list
   static const int maxRecentDetections = 500;
 
@@ -894,10 +902,12 @@ class AppState extends ChangeNotifier {
     if (byUav) {
       _droneTracks.remove(uav);
       _pilotTracks.remove(uav);
+      _droneHomes.remove(uav);
     }
     for (final m in macs) {
       _droneTracks.remove(m);
       _pilotTracks.remove(m);
+      _droneHomes.remove(m);
       for (final s in _uniqueMacsPerEngine.values) {
         s.remove(m);
       }
@@ -993,6 +1003,7 @@ class AppState extends ChangeNotifier {
     _dedupeIndex.clear();
     _droneTracks.clear();
     _pilotTracks.clear();
+    _droneHomes.clear();
     notifyListeners();
   }
 
@@ -1008,6 +1019,25 @@ class AppState extends ChangeNotifier {
     final key = droneTrackKey(det);
     _appendTrack(_droneTracks, key, o.droneLat, o.droneLon);
     _appendTrack(_pilotTracks, key, o.pilotLat, o.pilotLon);
+    _recordDroneHome(key, det);
+    onDroneReport?.call(DroneReport.fromDetection(det));
+  }
+
+  void _recordDroneHome(String key, Detection det) {
+    if (!validCoord(det.latitude, det.longitude)) return;
+    final prev = _droneHomes[key];
+    final at = det.appTimestamp;
+    final here = LatLng(det.latitude!, det.longitude!);
+    final up = (det.odid?.heightAgl ?? 0) >= 10;
+    final sameFlight = prev != null &&
+        at.difference(prev.last).abs() <=
+            (up && prev.up ? const Duration(seconds: 1500) : const Duration(seconds: 300));
+    _droneHomes[key] = (
+      point: sameFlight ? prev.point : here,
+      first: sameFlight ? prev.first : at,
+      last: at,
+      up: up,
+    );
   }
 
   void _appendTrack(
@@ -1049,5 +1079,8 @@ final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   final notif = ref.read(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
   final atak = ref.read(atakConnectorProvider.notifier);
-  return AppState(ble, gps, allowlist, geofence, notif, liveActivity)..onAccepted = atak.send;
+  final droneLog = ref.read(droneLogProvider);
+  return AppState(ble, gps, allowlist, geofence, notif, liveActivity)
+    ..onAccepted = atak.send
+    ..onDroneReport = droneLog.add;
 });

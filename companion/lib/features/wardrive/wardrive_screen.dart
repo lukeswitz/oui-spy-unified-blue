@@ -34,6 +34,7 @@ import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
+import 'package:oui_spy/core/drone_tags.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
@@ -847,6 +848,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final mapStyle = ref.watch(mapStyleProvider);
     final wd = ref.watch(wardriveProvider);
     final appEngines = ref.watch(appStateProvider);
+    ref.watch(droneTagsProvider);
+    ref.watch(unitSystemProvider);
     final gpsPos = ref.watch(gpsProvider).lastPosition;
     final selfPos = wd.currentPosition ?? gpsPos;
     final center = wd.currentPosition != null
@@ -1198,7 +1201,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                       if (_followDroneDet != null)
                         _FollowDroneChip(
                           label: followLabel,
-                          color: droneColorForMac(_followDroneDet!.macAddress),
+                          color: droneMarkerColor(_followDroneDet!, ref.watch(droneTagsProvider)),
                           onClear: _releaseDroneFollow,
                         ),
                       if (wd.isActive && (wd.inExclusion || wd.geofenceSuppressed > 0))
@@ -1471,7 +1474,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final key = '$alerted|${wd.sessionAlertRows.length}|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
         '${wd.detectorFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
         '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
-        '$_classGroupLabel|${_classGroup.length}|${wd.markerDistanceM.round()}';
+        '$_classGroupLabel|${_classGroup.length}|${wd.markerDistanceM.round()}|'
+        '${Object.hashAll(ref.read(droneTagsProvider).entries.map((e) => '${e.key}${e.value.name}'))}|'
+        '${ref.read(unitSystemProvider).name}';
     if (_cachedLayersKey == key && _cachedLayers != null) return _cachedLayers!;
     final layers = _computeDetectionLayers(wd);
     _cachedLayers = layers;
@@ -1745,8 +1750,20 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final fan = fanGeometry(gi, grpCount[pk] ?? 1, baseAngle: base);
 
       if (isDrone) {
-        final color = droneColorForMac(d.macAddress);
+        final color = droneMarkerColor(d, ref.read(droneTagsProvider));
         final ridPt = droneRidPoint(d);
+        final spot = wd.viewingSavedSession
+            ? null
+            : detectionLocationLayers(
+                here: appState.droneHome(AppState.droneTrackKey(d)),
+                drone: ridPt,
+                color: color,
+                units: ref.read(unitSystemProvider),
+              );
+        if (spot != null) {
+          tethers.add(spot.line);
+          pins.addAll(spot.markers);
+        }
 
         if (ridPt == null) {
           final isBle = isBleMethod(d.method);

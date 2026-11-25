@@ -40,7 +40,10 @@ import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/devices/devices_screen.dart' show deviceFlagIcons, rssiSparkFor;
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneColorForMac, droneRidPoint, kDroneSvgAsset;
+import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneMarkerColor, droneRidPoint, kDroneSvgAsset;
+import 'package:oui_spy/core/drone_flights.dart' show droneIdOf;
+import 'package:oui_spy/core/drone_tags.dart';
+import 'package:oui_spy/features/drones/drone_page.dart';
 import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
@@ -497,7 +500,7 @@ void showDetectionDetails(
         : isZigbee
             ? zigbeeColor
             : detection.engine == Engine.skySpy
-                ? droneColorForMac(detection.macAddress)
+                ? droneMarkerColor(detection, ref.read(droneTagsProvider))
                 : detection.engine.color;
     final chipLabel = alertCls != null
         ? alertKindLabel(alertCls).toUpperCase()
@@ -723,6 +726,20 @@ void showDetectionDetails(
                       icon: const Icon(Icons.volume_up, size: 18),
                       label: Text(ref.read(rxOnlyProvider) == true ? 'Play a sound (off: Receive only)' : 'Make it play a sound'),
                       onPressed: ref.read(rxOnlyProvider) == true ? null : () => _ringTracker(ctx, ref, detection.macAddress),
+                    ),
+                  ],
+                  if (detection.engine == Engine.skySpy) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      key: const Key('detail-drone-page'),
+                      icon: const Icon(Icons.flight, size: 18),
+                      label: Text(ref.watch(droneTagsProvider)[droneIdOf(detection)]?.label ??
+                          'Drone page, tag and log'),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.of(host).push(MaterialPageRoute<void>(
+                            builder: (_) => DronePage(id: droneIdOf(detection))));
+                      },
                     ),
                   ],
                   if (detection.engine == Engine.skySpy && droneRidPoint(detection) != null) ...[

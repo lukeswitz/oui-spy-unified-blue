@@ -3,8 +3,11 @@
 
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:oui_spy/core/drone_flights.dart';
+import 'package:oui_spy/core/drone_tags.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -97,6 +100,69 @@ class _LeaderPainter extends CustomPainter {
   @override
   bool shouldRepaint(_LeaderPainter old) =>
       old.dx != dx || old.dy != dy || old.color != color;
+}
+
+Color droneMarkerColor(Detection d, Map<String, DroneTag> tags) =>
+    tags[droneIdOf(d)]?.color ?? droneColorForMac(d.macAddress);
+
+String droneRangeText(double meters, UnitSystem units) => meters < 1000
+    ? UnitFormatter.altitude(meters, units)
+    : UnitFormatter.distance(meters / 1000, units);
+
+/// The dashed line from where you first heard a flight to the drone, with its range.
+({Polyline line, List<Marker> markers})? detectionLocationLayers({
+  required LatLng? here,
+  required LatLng? drone,
+  required Color color,
+  required UnitSystem units,
+}) {
+  if (here == null || drone == null) return null;
+  final meters = metersBetween(here, drone);
+  final mid = LatLng((here.latitude + drone.latitude) / 2,
+      (here.longitude + drone.longitude) / 2);
+  return (
+    line: Polyline(
+      points: [here, drone],
+      color: color.withValues(alpha: 0.75),
+      strokeWidth: 1.6,
+      pattern: StrokePattern.dashed(segments: const [3, 6]),
+    ),
+    markers: [
+      Marker(
+        point: here,
+        width: 22,
+        height: 22,
+        child: Container(
+          key: const Key('detection-location-pin'),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppTheme.gpsGood,
+            border: Border.all(color: color, width: 2.4),
+          ),
+          child: const Icon(Icons.hearing, size: 12, color: Colors.black),
+        ),
+      ),
+      Marker(
+        point: mid,
+        width: 78,
+        height: 22,
+        child: Container(
+          key: const Key('detection-range-label'),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(AppRadius.chip),
+            border: Border.all(color: color, width: 1),
+          ),
+          child: Text(
+            droneRangeText(meters, units),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 const String kDroneSvgAsset = 'assets/icons/drone.svg';

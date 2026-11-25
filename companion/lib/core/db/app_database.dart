@@ -371,6 +371,18 @@ class AppDatabase extends _$AppDatabase {
     return _mapsWithExt(rows);
   }
 
+  Future<List<Map<String, dynamic>>> getNonDroneDetectionMapsBetween(
+      DateTime from, DateTime to) async {
+    final rows = await (select(detections)
+          ..where((d) =>
+              d.appTimestamp.isBetweenValues(
+                  from.millisecondsSinceEpoch, to.millisecondsSinceEpoch) &
+              d.engine.equals('skySpy').not())
+          ..orderBy([(d) => OrderingTerm.asc(d.appTimestamp)]))
+        .get();
+    return _mapsWithExt(rows);
+  }
+
   static const _detectionExtDdl = 'CREATE TABLE IF NOT EXISTS detection_ext ('
       'detection_id INTEGER PRIMARY KEY, '
       'data TEXT NOT NULL)';

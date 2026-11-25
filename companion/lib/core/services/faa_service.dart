@@ -152,6 +152,9 @@ class FaaService extends ChangeNotifier {
     }
   }
 
+  Future<FaaRegistration?> cached(String uasId) =>
+      uasId.isEmpty ? Future.value(null) : _fromCache(uasId);
+
   Future<FaaRegistration?> lookup(String uasId) async {
     if (uasId.isEmpty) return null;
 

@@ -3,7 +3,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/drone_tags.dart';
+import 'package:oui_spy/features/drones/drone_data.dart';
 import 'package:oui_spy/core/engine_control.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -20,6 +23,7 @@ class SkySpyScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
+    final tags = ref.watch(droneTagsProvider);
     final isActive = state.isEngineActive(Engine.skySpy);
     final groups = groupDronesByUavId(state.recentDetections);
     final droneList = groups.map((g) => g.representative).toList();
@@ -29,6 +33,12 @@ class SkySpyScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('SKY SPY'),
         actions: [
+          IconButton(
+            key: const Key('skyspy-drones-list'),
+            icon: const Icon(Icons.history),
+            tooltip: 'Drone list and log',
+            onPressed: () => context.push('/drones'),
+          ),
           IconButton(
             icon: const Icon(Icons.info_outline),
             tooltip: 'About',
@@ -73,7 +83,7 @@ class SkySpyScreen extends ConsumerWidget {
                         onTap: () => showDetectionDetails(
                             context, ref, g.representative,
                             showMapAction: false),
-                        child: _DroneRow(group: g),
+                        child: _DroneRow(group: g, tag: tags[g.uavId]),
                       );
                     },
                   ),
@@ -85,8 +95,9 @@ class SkySpyScreen extends ConsumerWidget {
 }
 
 class _DroneRow extends StatelessWidget {
-  const _DroneRow({required this.group});
+  const _DroneRow({required this.group, this.tag});
   final DroneGroup group;
+  final DroneTag? tag;
 
   static String _transport(String method) {
     switch (method) {
@@ -127,6 +138,10 @@ class _DroneRow extends StatelessWidget {
                 group.uavId,
                 style: TextStyle(color: AppTheme.skySpy, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: AppTheme.mono),
               )),
+              if (tag != null) ...[
+                DroneTagBadge(tag!),
+                const SizedBox(width: 8),
+              ],
               Text('${detection.rssi} dBm',
                   style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: AppTheme.mono)),
               const SizedBox(width: 8),
