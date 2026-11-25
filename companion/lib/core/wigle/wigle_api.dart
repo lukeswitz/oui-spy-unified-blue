@@ -60,7 +60,7 @@ class WigleApi {
   }
 
   /// Upload a WiGLE CSV file.
-  Future<WigleUploadResult> uploadCsv(File csvFile, {bool donate = true}) async {
+  Future<WigleUploadResult> uploadCsv(File csvFile, {bool donate = false}) async {
     final bytes = await csvFile.length();
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(

@@ -31,7 +31,7 @@ class WigleProvider extends ChangeNotifier {
   final Map<String, bool> _uploadingMap = {};
 
   static const _keyDonate = 'wigle_donate';
-  bool _donate = true;
+  bool _donate = false;
   bool get donate => _donate;
 
   Future<void> setDonate(bool v) async {
@@ -64,7 +64,7 @@ class WigleProvider extends ChangeNotifier {
   bool isUploading(String sessionId) => _uploadingMap[sessionId] == true;
 
   Future<void> _loadCredentials() async {
-    _donate = (await SharedPreferences.getInstance()).getBool(_keyDonate) ?? true;
+    _donate = (await SharedPreferences.getInstance()).getBool(_keyDonate) ?? false;
     _apiName = await _storage.read(key: _keyApiName) ?? '';
     _apiToken = await _storage.read(key: _keyApiToken) ?? '';
     if (_apiName.isNotEmpty && _apiToken.isNotEmpty) {

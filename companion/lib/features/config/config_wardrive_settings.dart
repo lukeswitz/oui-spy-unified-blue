@@ -494,8 +494,8 @@ class _WigleSectionState extends ConsumerState<_WigleSection> {
           _WigleStatsCard(stats: wigle.stats),
           ConfigToggleRow(
             icon: Icons.volunteer_activism,
-            label: 'Donate uploads to WiGLE',
-            subtitle: 'Sends WiGLE\'s "donate" flag with each upload (always sent before this setting existed). The upload itself is the same either way.',
+            label: 'Donate data to WiGLE',
+            subtitle: 'Lets WiGLE license an anonymized copy of your uploads to companies. Off keeps them for non-commercial use.',
             color: AppTheme.accent,
             value: wigle.donate,
             onChanged: (v) => ref.read(wigleProvider).setDonate(v),
