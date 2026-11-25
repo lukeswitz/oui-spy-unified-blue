@@ -17,6 +17,7 @@ import 'package:oui_spy/features/wardrive/wardrive_screen.dart' show showSession
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/config/atak_section.dart';
 import 'package:oui_spy/features/assistant/assistant_settings_screen.dart';
+import 'package:oui_spy/features/config/home_dashboard_section.dart';
 import 'package:oui_spy/widgets/text_prompt_dialog.dart';
 import 'package:oui_spy/features/config/saved_map_areas_section.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
@@ -693,6 +694,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'ATAK'),
         const AtakSection(),
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'Home dashboard'),
+        const HomeDashboardSection(),
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'OUI database'),
         const _OuiDatabaseSection(),

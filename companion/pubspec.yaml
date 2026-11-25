@@ -32,6 +32,8 @@ dependencies:
   json_annotation: ^4.9.0
   # HTTP
   dio: ^5.7.0
+  # Home dashboard discovery (mDNS)
+  multicast_dns: ^0.3.3
   # Export / sharing
   share_plus: ^13.3.1
   path_provider: ^2.1.0

@@ -422,6 +422,17 @@ A language model can read what the app has seen and, when you allow it, change t
 - **Changes:** CONTROL lets it name a device in the app, turn the Detector, Flock BLE, Flock Wi-Fi or Sky Spy engine on or off, start or stop a capture and restart the board. Every call that reaches the board waits for your OK, one call at a time. It cannot start the wardriver or any engine that transmits.
 - **Irreversible:** IRREVERSIBLE lets it ask for a factory reset or a wipe of the board's saved Wi-Fi login. Each call still waits for your OK. Firmware updates, the mesh key and paired phones are not offered to it at all.
 
+### Home dashboard
+
+The app can link to the [home dashboard](tools/home-dashboard/README.md) running on your computer. It is off by default. Turn it on in SETTINGS → DATA → Export → **Home dashboard**.
+
+- **Address:** the dashboard's IP address or name, with a port if it is not 5077. Start the dashboard with `--lan` so the phone can reach it.
+- **Find on this network (off by default):** looks for a dashboard started with `--lan --advertise` using multicast DNS, and only while this is on.
+- **Access token:** the token the dashboard printed once when `--lan` made it. The app keeps it in the phone's secure storage and sends it with each request.
+- **Link:** shows **Off**, **Waiting** (no address yet or none found), **Connecting**, **Live**, **Home down** (the dashboard answers but its board has gone silent), **Refused** (the dashboard wants a token) or **Not connected**. The app asks the dashboard every 10 seconds while this screen is open.
+- **Connectors:** with the link up, **MQTT**, **TAK server** and **Reticulum** each have a switch. Hosts, certificates and addresses are set on the dashboard's Settings tab. The app only turns each link on or off and shows its state. If the dashboard refuses the change, the app shows why.
+- **History kept** sets how many days the dashboard keeps detections (0 keeps everything). **Clear detection history** deletes every detection on the dashboard after two confirmations. Devices, names, groups and drones stay.
+
 ### App updates
 
 SETTINGS → About has **Check for update** and **Check at launch** (off by default). The app makes no update request until you tap **Check for update** or turn on **Check at launch**.
@@ -620,6 +631,7 @@ These settings limit what the boards and the phone send over the air and what th
 
 | Service | When the app connects | What it sends | Usage rules the app follows |
 |---|---|---|---|
+| Home dashboard on your computer | You turn on **Home dashboard** (Settings → Data → Export) | Plain HTTP requests to the address you set, every 10 s while that screen is open. Carries the access token if you saved one. | UA `OUI-APEX-app`. No address, no requests. With **Find on this network** on, also one multicast DNS question for `_ouispy._tcp`. |
 | [WiGLE](https://api.wigle.net) | Sign in or upload a session | API name + token; session file on upload | On HTTP 429, pauses WiGLE 24h. Each session uploads once, on confirm. |
 | [WDGWars](https://wdgwars.pl) | Link an account, upload a session, or turn on **WDG TERRITORY** | API key; compressed session file; territory requests | UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min. |
 | [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (`overpass-api.de`, fallback `overpass.private.coffee`) | **MAPPED ALPRs** on (off by default) and you move the map or open a Flock hit | The map corners in view | UA `oui-spy-companion/1.0`. Caches areas 7 days, one request at a time. On HTTP 429 waits 30s or longer. |
