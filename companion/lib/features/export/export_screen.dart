@@ -8,6 +8,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart' show bleManagerProvider;
 import 'package:oui_spy/core/db/app_database.dart' show AppDatabase, databaseProvider;
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
+import 'package:oui_spy/core/export/detections_export.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -194,38 +195,11 @@ class ExportScreen extends ConsumerWidget {
   }
 
   Future<void> _exportJson(BuildContext context, List<Detection> detections) async {
-    final buf = StringBuffer();
-    buf.writeln('[');
-    for (int i = 0; i < detections.length; i++) {
-      final d = detections[i];
-      buf.write('  {"mac":"${d.macAddress}","engine":"${d.engine.name}","method":"${d.method}",'
-          '"rssi":${d.rssi},"channel":${d.channel},'
-          '"timestamp":"${d.appTimestamp.toIso8601String()}"');
-      if (d.latitude != null) buf.write(',"lat":${d.latitude},"lon":${d.longitude}');
-      if (d.deviceName.isNotEmpty) buf.write(',"name":"${d.deviceName}"');
-      if (d.odid?.uavId != null) buf.write(',"uav_id":"${d.odid!.uavId}"');
-      buf.write('}');
-      if (i < detections.length - 1) buf.writeln(',');
-    }
-    buf.writeln('\n]');
-    await _shareFile(context, buf.toString(), 'oui_spy_detections.json');
+    await _shareFile(context, detectionsJson(detections), 'oui_spy_detections.json');
   }
 
   Future<void> _exportKml(BuildContext context, List<Detection> detections) async {
-    final geoDetections = detections.where((d) => d.latitude != null).toList();
-    final buf = StringBuffer();
-    buf.writeln('<?xml version="1.0" encoding="UTF-8"?>');
-    buf.writeln('<kml xmlns="http://www.opengis.net/kml/2.2">');
-    buf.writeln('<Document><name>OUI-SPY Detections</name>');
-    for (final d in geoDetections) {
-      buf.writeln('<Placemark>');
-      buf.writeln('  <name>${d.macAddress}</name>');
-      buf.writeln('  <description>${d.engine.name} | ${d.method} | ${d.rssi}dBm</description>');
-      buf.writeln('  <Point><coordinates>${d.longitude},${d.latitude},0</coordinates></Point>');
-      buf.writeln('</Placemark>');
-    }
-    buf.writeln('</Document></kml>');
-    await _shareFile(context, buf.toString(), 'oui_spy_detections.kml');
+    await _shareFile(context, detectionsKml(detections), 'oui_spy_detections.kml');
   }
 
   Future<void> _shareFile(BuildContext context, String content, String filename) async {
