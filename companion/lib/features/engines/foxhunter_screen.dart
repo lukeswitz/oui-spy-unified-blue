@@ -1,13 +1,18 @@
 // Copyright (c) 2026 Luke Switzer
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/find_it.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/features/engines/find_it_pulse.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
 
 class FoxhunterScreen extends ConsumerStatefulWidget {
@@ -20,9 +25,20 @@ class FoxhunterScreen extends ConsumerStatefulWidget {
 class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
   final _macController = TextEditingController();
   String? _lastSyncedTarget;
+  bool _buzz = true;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void dispose() {
+    _tick?.cancel();
     _macController.dispose();
     super.dispose();
   }
@@ -58,10 +74,12 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
     final state = ref.watch(appStateProvider);
     final isActive = state.isEngineActive(Engine.foxhunter);
     final target = state.foxhunterTarget;
-    final rssi = state.foxhunterRssi;
+    final reading = target == null ? null : state.foxhunterReading();
+    final rssi = reading?.rssi ?? state.foxhunterRssi;
     final intervalMs = state.foxhunterIntervalMs;
     final channel = state.foxhunterChannel;
-    final targetLost = isActive && intervalMs == 0;
+    final targetLost = isActive && intervalMs == 0 && reading == null;
+    final canBuzz = findItHapticsAvailable();
     final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
     final color = targetLost
         ? t.textDim
@@ -190,23 +208,46 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
             const Spacer(),
             SizedBox(
               width: 200, height: 200,
-              child: CustomPaint(
-                painter: RssiGaugePainter(rssi: rssi, normalized: normalized, color: color),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('$rssi', style: TextStyle(
-                        color: color, fontSize: 48, fontWeight: FontWeight.w300, fontFamily: AppTheme.mono,
-                      )),
-                      Text(targetLost ? 'LOST' : 'dBm', style: TextStyle(
-                        color: color.withValues(alpha: 0.6), fontSize: 14,
-                      )),
-                    ],
+              child: FindItPulse(
+                rssi: reading?.rssi,
+                color: color,
+                onPulse: _buzz && canBuzz ? HapticFeedback.heavyImpact : null,
+                child: CustomPaint(
+                  painter: RssiGaugePainter(rssi: rssi, normalized: normalized, color: color),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$rssi', style: TextStyle(
+                          color: color, fontSize: 48, fontWeight: FontWeight.w300, fontFamily: AppTheme.mono,
+                        )),
+                        Text(targetLost ? 'LOST' : 'dBm', style: TextStyle(
+                          color: color.withValues(alpha: 0.6), fontSize: 14,
+                        )),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
+            if (target != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                key: const Key('find-it-heard-by'),
+                reading == null
+                    ? 'Waiting for a node to hear it.'
+                    : 'Strongest at ${state.labelForNode(reading.nodeId)}. Walk toward the faster pulse.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: t.textDim, fontSize: 12),
+              ),
+              TextButton.icon(
+                key: const Key('find-it-buzz'),
+                onPressed: canBuzz ? () => setState(() => _buzz = !_buzz) : null,
+                icon: Icon(_buzz && canBuzz ? Icons.vibration : Icons.mobile_off, size: 18),
+                label: Text(_buzz && canBuzz ? 'Buzz on' : 'Buzz off'),
+              ),
+              if (!canBuzz) const DisabledReason('This device cannot vibrate: no phone buzz on a Mac or Linux.'),
+            ],
             const SizedBox(height: 24),
             Text(targetLost ? 'TARGET LOST — scanning...' : 'Beep interval: ${intervalMs}ms',
                 style: TextStyle(

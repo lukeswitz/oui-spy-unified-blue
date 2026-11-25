@@ -14,6 +14,7 @@ import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/drone_log.dart';
+import 'package:oui_spy/core/find_it.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -131,15 +132,44 @@ class AppState extends ChangeNotifier {
   // Foxhunter
   int foxhunterRssi = -100;
   int foxhunterIntervalMs = 3000;
+  DateTime? foxhunterRssiAt;
   String? foxhunterTarget;
   String? foxhunterTargetNodeId;
 
   int foxhunterChannel = 0;
 
+  final Map<String, FindItHeard> _targetHeard = {};
+
+  /// Each node's latest signal from the hunted device, by node id.
+  Map<String, FindItHeard> get foxhunterHeardBy => _targetHeard;
+
+  void _noteTargetHeard(Detection det) {
+    final target = foxhunterTarget;
+    if (target == null || det.macAddress.toUpperCase() != target.toUpperCase()) return;
+    final node = det.sourceNodeId.isNotEmpty ? det.sourceNodeId : det.nodeId;
+    _targetHeard[node] = (rssi: det.rssi, at: DateTime.now());
+  }
+
+  /// The hunted device's strongest fresh signal and the node that hears it best.
+  FindItReading? foxhunterReading([DateTime? now]) => pickFindItReading(
+        boardRssi: foxhunterRssi,
+        boardIntervalMs: foxhunterIntervalMs,
+        boardAt: foxhunterRssiAt,
+        boardNodeId: foxhuntViaPhone
+            ? BleManager.phoneNodeId
+            : (foxhunterTargetNodeId ?? nodeId),
+        heard: _targetHeard,
+        now: now ?? DateTime.now(),
+      );
+
   bool _foxFromPhone = false;
 
   void setFoxhunterTarget(String mac, {int channel = 0, String? nodeId, bool fromPhone = false}) {
     _foxFromPhone = fromPhone;
+    if (foxhunterTarget?.toUpperCase() != mac.toUpperCase()) {
+      _targetHeard.clear();
+      foxhunterRssiAt = null;
+    }
     final effective = nodeId
         ?? foxhunterTargetNodeId
         ?? (isManagerConnected && knownNodes.isNotEmpty
@@ -207,6 +237,8 @@ class AppState extends ChangeNotifier {
     foxhunterTargetNodeId = null;
     foxhunterRssi = -100;
     foxhunterIntervalMs = 3000;
+    foxhunterRssiAt = null;
+    _targetHeard.clear();
     _ble.disableEngine(Engine.foxhunter, targetNodeId: nodeId);
     endFoxhuntLiveActivity();
     notifyListeners();
@@ -664,6 +696,7 @@ class AppState extends ChangeNotifier {
       _recordUniqueMac(det.engine, det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
       (_recentSeen[det.engine] ??= {})[det.macAddress] = DateTime.now();
+      _noteTargetHeard(det);
       _upsertDetection(det);
       _recordDroneTrack(det);
       onAccepted?.call(det);
@@ -681,6 +714,7 @@ class AppState extends ChangeNotifier {
       final previousRssi = foxhunterRssi;
       foxhunterRssi = data.rssi;
       foxhunterIntervalMs = data.intervalMs;
+      foxhunterRssiAt = DateTime.now();
 
       if (foxhunterTarget != null) {
         _notificationService.onFoxhuntProximity(
