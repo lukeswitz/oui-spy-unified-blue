@@ -20,6 +20,7 @@ import 'package:oui_spy/features/signatures/signature_sets_screen.dart';
 import 'package:oui_spy/core/classify/user_signatures.dart';
 import 'package:oui_spy/core/classify/signature_sets.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
+import 'package:oui_spy/core/triangulation_state.dart';
 import 'package:oui_spy/core/phone_watch.dart';
 import 'package:oui_spy/core/watch_alerts.dart';
 import 'package:latlong2/latlong.dart';
@@ -328,7 +329,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               'fw $_fwVersion',
               if (temp != null) formatTempC(temp, ref.read(unitSystemProvider)),
             ].join(' · ')}',
-      _ => 'Accounts, capture database, captures, export',
+      _ => 'Accounts, capture database, captures, export, triangulation',
     };
   }
 
@@ -409,6 +410,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Capture Database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
             ('Export', 'Data and backup, ATAK, OUI database', Icons.ios_share, _buildExportTab),
+            ('Triangulation', 'Signal model for placed mesh nodes', Icons.hub, () => ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  children: const [_TriangulationSection()],
+                )),
           ],
         _ => null,
       };
@@ -1363,7 +1368,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final mgr = ble.isManagerConnected;
     final canControl = appState.isConnected && online && id != 'LOCAL' && (isSelf ? !mgr : mgr);
     return showNodeRenameDialog(context, appState, id,
-        allowForget: true, control: canControl ? ble.sendNodeControl : null, targeted: !isSelf);
+        allowForget: true, control: canControl ? ble.sendNodeControl : null, targeted: !isSelf, ref: ref);
   }
 
   Widget _buildFirmwareTab() {

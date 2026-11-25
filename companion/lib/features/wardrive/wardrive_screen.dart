@@ -41,6 +41,9 @@ import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/core/map_pins.dart';
+import 'package:oui_spy/core/node_positions.dart';
+import 'package:oui_spy/core/triangulation.dart';
+import 'package:oui_spy/core/triangulation_state.dart';
 import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/core/app_time.dart';
@@ -610,6 +613,112 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     ];
   }
 
+  List<Widget> _triangulationLayers() {
+    final settings = ref.watch(triSettingsProvider);
+    if (!settings.enabled) return const [];
+    final t = AppTheme.of(context);
+    final placed = ref.watch(nodePositionsProvider);
+    if (placed.isEmpty) return const [];
+    final app = ref.watch(appStateProvider);
+    final units = ref.watch(unitSystemProvider);
+    final priv = ref.watch(privacyScreenProvider);
+    final fixes = ref.watch(triangulationProvider).fixes;
+    final lines = <Polyline>[];
+    final rings = <CircleMarker>[];
+    final fixMarkers = <Marker>[];
+    for (final f in fixes) {
+      final c = f.fix.errM < kTriGoodErrorM ? AppTheme.success : AppTheme.warning;
+      rings.add(CircleMarker(
+        point: f.fix.at,
+        radius: max(f.fix.errM, 2.0),
+        useRadiusInMeter: true,
+        color: c.withValues(alpha: 0.14),
+        borderColor: c,
+        borderStrokeWidth: 1.6,
+      ));
+      for (final r in f.fix.ranges) {
+        lines.add(Polyline(
+          points: [r.at, f.fix.at],
+          color: c.withValues(alpha: 0.7),
+          strokeWidth: 1.2,
+          pattern: StrokePattern.dashed(segments: const [5, 5]),
+        ));
+      }
+      fixMarkers.add(Marker(
+        point: f.fix.at,
+        width: 150,
+        height: 46,
+        alignment: Alignment.topCenter,
+        rotate: true,
+        child: GestureDetector(
+          key: Key('tri-fix-${f.mac}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            for (final d in app.recentDetections) {
+              if (d.macAddress.toUpperCase() == f.mac) {
+                showDetectionDetails(context, ref, d);
+                return;
+              }
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: t.surface.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                  border: Border.all(color: c),
+                ),
+                child: Text(
+                  '${maskMac(f.mac, priv)}  ±${UnitFormatter.altitude(f.fix.errM, units)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: t.textPrimary, fontSize: 10, fontFamily: AppTheme.mono, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Icon(Icons.my_location, size: 20, color: c),
+            ],
+          ),
+        ),
+      ));
+    }
+    return [
+      if (rings.isNotEmpty) CircleLayer(circles: rings),
+      if (lines.isNotEmpty) PolylineLayer(polylines: lines),
+      MarkerLayer(markers: [
+        for (final e in placed.entries)
+          Marker(
+            point: e.value,
+            width: 140,
+            height: 46,
+            alignment: Alignment.topCenter,
+            rotate: true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: t.surface.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(AppRadius.control),
+                    border: Border.all(color: t.border),
+                  ),
+                  child: Text(app.labelForNode(e.key),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: t.textPrimary, fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+                Icon(Icons.hub, size: 22, color: AppTheme.success),
+              ],
+            ),
+          ),
+        ...fixMarkers,
+      ]),
+    ];
+  }
+
   GeoBounds? _visibleGeoBounds() {
     try {
       final v = _mapController.camera.visibleBounds;
@@ -909,6 +1018,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 if (detectionLayers.heat.isNotEmpty)
                   CircleLayer(circles: detectionLayers.heat),
                 ..._exclusionZoneLayers(),
+                ..._triangulationLayers(),
                 ..._pinAndMeasureLayers(),
                 if (wd.routePoints.length >= 2)
                   PolylineLayer(polylines: [

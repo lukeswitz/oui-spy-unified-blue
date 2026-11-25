@@ -283,6 +283,7 @@ class _MeasuredBoxState extends State<_MeasuredBox> {
 
 const String _kAlprLayerAction = 'alpr-layer';
 const String _kTerritoryLayerAction = 'wdg-territory-layer';
+const String _kTriangulationLayerAction = 'triangulation-layer';
 
 class _LayerLoadingPill extends StatelessWidget {
   const _LayerLoadingPill({
@@ -344,6 +345,7 @@ class _MapStyleButton extends StatelessWidget {
     final t = AppTheme.of(context);
     final wdg = ref.watch(wdgwarsProvider);
     final df = ref.watch(deflockProvider);
+    final tri = ref.watch(triSettingsProvider);
     return PopupMenuButton<Object?>(
       initialValue: mapStyle,
       onSelected: (choice) async {
@@ -353,6 +355,8 @@ class _MapStyleButton extends StatelessWidget {
           final on = !df.showAlpr;
           await ref.read(deflockProvider).setShowAlpr(on);
           if (on) onAlprToggled?.call();
+        } else if (choice == _kTriangulationLayerAction) {
+          await ref.read(triSettingsProvider.notifier).setEnabled(!tri.enabled);
         } else if (choice == _kTerritoryLayerAction) {
           final messenger = ScaffoldMessenger.of(context);
           final w = ref.read(wdgwarsProvider);
@@ -435,6 +439,31 @@ class _MapStyleButton extends StatelessWidget {
                 )
               else if (df.showAlpr)
                 Icon(Icons.check, size: 14, color: AppTheme.flockWifi),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem<Object?>(
+          value: _kTriangulationLayerAction,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(
+                Icons.hub,
+                size: 14,
+                color: tri.enabled ? AppTheme.success : t.textDim,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'TRIANGULATION',
+                style: TextStyle(
+                  color: tri.enabled ? AppTheme.success : t.textPrimary,
+                  fontSize: 12,
+                  fontWeight: tri.enabled ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+              const Spacer(),
+              if (tri.enabled) Icon(Icons.check, size: 14, color: AppTheme.success),
             ],
           ),
         ),

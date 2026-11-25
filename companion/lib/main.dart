@@ -25,6 +25,7 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/phone_watch.dart';
 import 'package:oui_spy/core/watch_alerts.dart';
+import 'package:oui_spy/core/triangulation_state.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,7 +35,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(
-      const ['Fieldwatch', 'buttplug.io', 'Theengs Decoder', 'WhisperPair', 'Home Assistant'],
+      const ['Fieldwatch', 'buttplug.io', 'Theengs Decoder', 'WhisperPair', 'Home Assistant', 'ouispy-detector'],
       await rootBundle.loadString('NOTICE'),
     );
   });
@@ -92,6 +93,7 @@ void main() async {
   container.read(wifiAdapterControllerProvider);
   container.read(phoneWatchProvider);
   container.read(watchAlertsProvider);
+  container.read(triangulationProvider);
 
   runApp(UncontrolledProviderScope(
     container: container,

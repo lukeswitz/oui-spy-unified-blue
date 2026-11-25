@@ -402,6 +402,49 @@ class _NodeRenameRowState extends ConsumerState<_NodeRenameRow> {
   }
 }
 
+class _TriangulationSection extends ConsumerWidget {
+  const _TriangulationSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(triSettingsProvider);
+    final n = ref.read(triSettingsProvider.notifier);
+    return Column(
+      children: [
+        const ConfigSectionHeader(label: 'Signal model'),
+        ConfigToggleRow(
+          icon: Icons.hub,
+          label: 'Triangulation',
+          subtitle: 'Locate devices heard by 3 or more placed nodes',
+          color: AppTheme.success,
+          value: s.enabled,
+          onChanged: n.setEnabled,
+        ),
+        ConfigSliderRow(
+          icon: Icons.signal_cellular_alt,
+          label: 'Signal at 1 m',
+          valueLabel: '${s.p0.round()} dBm',
+          min: -90,
+          max: -30,
+          divisions: 60,
+          value: s.p0.clamp(-90.0, -30.0),
+          onChanged: (v) => n.setP0(v.roundToDouble()),
+        ),
+        ConfigSliderRow(
+          icon: Icons.show_chart,
+          label: 'Path-loss exponent',
+          valueLabel: s.n.toStringAsFixed(1),
+          min: 1.5,
+          max: 5.0,
+          divisions: 35,
+          value: s.n.clamp(1.5, 5.0),
+          onChanged: (v) => n.setN(double.parse(v.toStringAsFixed(1))),
+        ),
+      ],
+    );
+  }
+}
+
 class _VersionRow extends StatelessWidget {
   const _VersionRow();
 

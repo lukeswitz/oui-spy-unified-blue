@@ -111,6 +111,40 @@ assets/fast_pair/model_ids.csv is model_ids.csv from WhisperPair commit
 266e39fcc421, unchanged. The app uses it to name Google Fast Pair devices.
 
 --------------------------------------------------------------------------------
+ouispy-detector
+https://github.com/colonelpanichacks/ouispy-detector
+Copyright (c) 2025-2026 colonelpanichacks
+MIT License (text below)
+
+lib/core/triangulation.dart follows the position model in
+home-dashboard/tri.py: RSSI to distance by log-distance path loss (signal at
+1 m -59 dBm, exponent 2.7), a mean RSSI per node over a time window, and the
+local meters-per-degree constants. The solver is our own weighted least squares
+on the range residuals. tri.py searches a probability grid instead.
+
+MIT License
+
+Copyright (c) 2025-2026 colonelpanichacks
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
 Home Assistant
 https://github.com/home-assistant/core
 Apache License 2.0 (text below)
