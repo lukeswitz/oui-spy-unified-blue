@@ -348,6 +348,7 @@ These features add their own alerts and set how alerts sound.
 - **Cell and GPS watch** (Android, SETTINGS → Detection & Alerts → This Phone) warns when the phone drops to 2G or 3G, meets a new tower at a known place, or its GPS looks faked or jammed.
 - **Movement alerts** (Detection & Alerts → What to Watch For, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
 - **Watchlist** imports and exports as CSV or JSON in SETTINGS → Detection & Alerts → Your Lists.
+- **Alert when a board hears it** (tap a Bluetooth device in the feed) adds its exact MAC to the watchlist. The connected board, and through a manager every mesh node, then reports it as a detection. **UNDO** in the message takes it back off. A device with a random address may change it.
 - **Alert sounds** plays a built-in melody or one you compose for each alert type. You can preview it on the board.
 
 ### Map layers and geofences

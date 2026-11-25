@@ -9,6 +9,7 @@ import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/core/export/device_export.dart';
 import 'package:oui_spy/core/export/kmz.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -70,6 +71,38 @@ Future<void> showDeviceNotesEditor(BuildContext context, WidgetRef ref, String m
   group.dispose();
   notes.dispose();
   if (saved != null) await ref.read(deviceNotesProvider.notifier).set(mac, saved);
+}
+
+String watchMacKey(String mac) {
+  final hex = mac.replaceAll(RegExp('[^0-9A-Fa-f]'), '').toUpperCase();
+  if (hex.length != 12) return '';
+  return [for (var i = 0; i < 12; i += 2) hex.substring(i, i + 2)].join(':');
+}
+
+bool isWatchedMac(List<WatchlistEntry> entries, String mac) {
+  final key = watchMacKey(mac);
+  return key.isNotEmpty && entries.any((e) => e.isFullMac && e.identifier.toUpperCase() == key);
+}
+
+/// Adds the device to the watchlist by its exact MAC; the board and its mesh nodes then report it.
+Future<void> flagDeviceAsDetection(BuildContext context, WidgetRef ref, String mac, String label) async {
+  final key = watchMacKey(mac);
+  if (key.isEmpty) return;
+  final entry = WatchlistEntry(
+    identifier: key,
+    matchType: WatchlistMatchType.fullMac,
+    description: label.length > 31 ? label.substring(0, 31) : label,
+  );
+  final list = ref.read(watchlistProvider);
+  await list.add(entry);
+  if (!context.mounted) return;
+  final random = int.parse(key.substring(0, 2), radix: 16) & 0x02 != 0;
+  ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+    content: Text(random
+        ? 'Watching $key on the board and its mesh nodes. This address is random, so the device may change it'
+        : 'Watching $key on the board and its mesh nodes'),
+    action: SnackBarAction(label: 'UNDO', onPressed: () => list.remove(entry)),
+  ));
 }
 
 Future<void> showDeviceExport(BuildContext context, WidgetRef ref, String mac) async {

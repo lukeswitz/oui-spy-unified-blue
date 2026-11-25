@@ -30,6 +30,7 @@ import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/devices/devices_screen.dart' show deviceFlagIcons, rssiSparkFor;
@@ -652,6 +653,21 @@ void showDetectionDetails(
                           icon: Icon(trusted ? Icons.verified_user : Icons.verified_user_outlined, size: 18),
                           label: Text(trusted ? 'Trusted network' : 'Trust this network'),
                           onPressed: trusted ? null : () => trustNetwork(ref, detection.ssid),
+                        );
+                      },
+                    ),
+                  ],
+                  if (detection.isBleDetection && watchMacKey(detection.macAddress).isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Consumer(
+                      builder: (_, r, _) {
+                        final watched = isWatchedMac(r.watch(watchlistProvider).entries, detection.macAddress);
+                        return OutlinedButton.icon(
+                          icon: Icon(watched ? Icons.notifications_active : Icons.add_alert_outlined, size: 18),
+                          label: Text(watched ? 'On your watchlist' : 'Alert when a board hears it'),
+                          onPressed: watched
+                              ? null
+                              : () => flagDeviceAsDetection(host, ref, detection.macAddress, detectionHeadline(detection)),
                         );
                       },
                     ),
