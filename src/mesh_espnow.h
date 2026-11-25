@@ -60,9 +60,28 @@ struct MeshLiveNode {
     uint32_t fw_version;
     uint8_t  board;
     int8_t   temp_c;
+    int8_t   rssi;
+    uint32_t rssi_ms;
 };
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms);
 int8_t meshChipTempC(void);
+void meshNoteRssi(const uint8_t* mac, int rssi);
+#ifndef OUISPY_NIMBLE2
+void meshRxTap(void* buf, int type);
+#endif
+
+#ifdef OUISPY_ROLE_MANAGER
+struct MeshNeighbor {
+    uint8_t id[2];
+    int8_t  rssi;
+};
+struct MeshNeighborRow {
+    uint8_t      id[2];
+    uint8_t      count;
+    MeshNeighbor e[MESH_NBR_MAX];
+};
+size_t meshGetNeighborRows(MeshNeighborRow* out, size_t maxOut);
+#endif
 
 #ifdef OUISPY_ROLE_MANAGER
 struct MeshNodeDetail {

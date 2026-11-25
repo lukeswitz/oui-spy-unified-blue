@@ -263,7 +263,79 @@ bool meshIsFleetMac(const uint8_t* mac) {
     return false;
 }
 
-static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32_t fw_version = 0) {
+#define MESH_RSSI_SLOTS 16
+#define MESH_RSSI_FRESH_MS 4000
+#define MESH_RSSI_STALE_MS 15000
+struct RssiSlot {
+    uint8_t  mac[6];
+    int8_t   rssi;
+    uint32_t ms;
+};
+static RssiSlot g_rssiSlots[MESH_RSSI_SLOTS] = {};
+static portMUX_TYPE g_rssiMux = portMUX_INITIALIZER_UNLOCKED;
+
+static inline bool IRAM_ATTR macEq6(const uint8_t* a, const uint8_t* b) {
+    for (int i = 0; i < 6; i++) if (a[i] != b[i]) return false;
+    return true;
+}
+
+void IRAM_ATTR meshNoteRssi(const uint8_t* mac, int rssi) {
+    if (!mac) return;
+    if (rssi < -127) rssi = -127;
+    if (rssi > 0) rssi = 0;
+    uint32_t now = millis();
+    portENTER_CRITICAL_ISR(&g_rssiMux);
+    int slot = -1, oldest = 0;
+    uint32_t oldestMs = 0xFFFFFFFFu;
+    for (int i = 0; i < MESH_RSSI_SLOTS; i++) {
+        if (g_rssiSlots[i].ms != 0 && macEq6(g_rssiSlots[i].mac, mac)) { slot = i; break; }
+        if (g_rssiSlots[i].ms < oldestMs) { oldestMs = g_rssiSlots[i].ms; oldest = i; }
+    }
+    if (slot < 0) {
+        slot = oldest;
+        for (int i = 0; i < 6; i++) g_rssiSlots[slot].mac[i] = mac[i];
+        g_rssiSlots[slot].rssi = (int8_t)rssi;
+    } else if ((now - g_rssiSlots[slot].ms) < MESH_RSSI_FRESH_MS) {
+        g_rssiSlots[slot].rssi = (int8_t)(((int)g_rssiSlots[slot].rssi * 3 + rssi) / 4);
+    } else {
+        g_rssiSlots[slot].rssi = (int8_t)rssi;
+    }
+    g_rssiSlots[slot].ms = now ? now : 1;
+    portEXIT_CRITICAL_ISR(&g_rssiMux);
+}
+
+static int8_t rssiForMac(const uint8_t* mac) {
+    if (!mac) return MESH_RSSI_UNKNOWN;
+    int8_t r = MESH_RSSI_UNKNOWN;
+    uint32_t now = millis();
+    portENTER_CRITICAL(&g_rssiMux);
+    for (int i = 0; i < MESH_RSSI_SLOTS; i++) {
+        if (g_rssiSlots[i].ms != 0 && macEq6(g_rssiSlots[i].mac, mac)) {
+            if ((now - g_rssiSlots[i].ms) < MESH_RSSI_FRESH_MS) r = g_rssiSlots[i].rssi;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&g_rssiMux);
+    return r;
+}
+
+#ifndef OUISPY_NIMBLE2
+void IRAM_ATTR meshRxTap(void* buf, int type) {
+    if (type != WIFI_PKT_MGMT || !buf) return;
+    const wifi_promiscuous_pkt_t* p = (const wifi_promiscuous_pkt_t*)buf;
+    const uint8_t* f = p->payload;
+    if (p->rx_ctrl.sig_len < 28 || f[0] != 0xD0) return;
+    if (f[24] != 127 || f[25] != 0x18 || f[26] != 0xFE || f[27] != 0x34) return;
+    const uint8_t* src = f + 10;
+    int n = fleetMacCount;
+    for (int i = 0; i < n; i++) {
+        if (macEq6(fleetMacs[i], src)) { meshNoteRssi(src, p->rx_ctrl.rssi); return; }
+    }
+}
+#endif
+
+static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32_t fw_version = 0,
+                           int8_t rssi = MESH_RSSI_UNKNOWN) {
     if (!liveMutex) return;
     if (id[0] == 0) return;
     if (memcmp(id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
@@ -282,6 +354,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
             liveNodes[i].role = role;
             liveNodes[i].active_engines = engines;
             if (fw_version) liveNodes[i].fw_version = fw_version;
+            if (rssi != MESH_RSSI_UNKNOWN) { liveNodes[i].rssi = rssi; liveNodes[i].rssi_ms = now ? now : 1; }
             xSemaphoreGive(liveMutex);
             return;
         }
@@ -298,6 +371,8 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
     liveNodes[slot].fw_version = fw_version;
     liveNodes[slot].board = 0;
     liveNodes[slot].temp_c = OUISPY_TEMP_UNKNOWN;
+    liveNodes[slot].rssi = rssi;
+    liveNodes[slot].rssi_ms = rssi != MESH_RSSI_UNKNOWN ? (now ? now : 1) : 0;
     gNewNodeJoined = true;
     xSemaphoreGive(liveMutex);
 }
@@ -347,6 +422,24 @@ int8_t meshChipTempC(void) {
     if (isnan(c) || c < -100.0f || c > 127.0f) return OUISPY_TEMP_UNKNOWN;
     return (int8_t)lroundf(c);
 #endif
+}
+
+static size_t appendNeighbors(uint8_t* out) {
+    out[0] = 0;
+    if (!liveMutex || xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return 1;
+    uint32_t now = millis();
+    uint8_t n = 0;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX && n < MESH_NBR_MAX; i++) {
+        if (liveNodes[i].id[0] == 0 || (now - liveNodes[i].last_ms) > MESH_NODE_TIMEOUT_MS) continue;
+        uint8_t* e = out + 1 + n * MESH_NBR_ENTRY;
+        if (!meshIdToBytes(liveNodes[i].id, e)) continue;
+        bool fresh = liveNodes[i].rssi_ms != 0 && (now - liveNodes[i].rssi_ms) < MESH_RSSI_STALE_MS;
+        e[2] = (uint8_t)(fresh ? liveNodes[i].rssi : MESH_RSSI_UNKNOWN);
+        n++;
+    }
+    xSemaphoreGive(liveMutex);
+    out[0] = n;
+    return 1 + (size_t)n * MESH_NBR_ENTRY;
 }
 
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
@@ -416,6 +509,68 @@ size_t meshGetNodeDetails(MeshNodeDetail* out, size_t maxOut, uint32_t ttl_ms) {
             continue;
         }
         out[n++] = nodeDetails[i];
+    }
+    xSemaphoreGive(detailMutex);
+    return n;
+}
+
+#define MESH_NBR_ROW_TTL_MS 30000
+struct NbrRow {
+    char         id[MESH_NODE_ID_LEN];
+    uint32_t     ms;
+    uint8_t      count;
+    MeshNeighbor e[MESH_NBR_MAX];
+};
+static NbrRow nbrRows[MESH_LIVE_NODES_MAX] = {};
+
+static void storeNeighbors(const char* id, const uint8_t* t, size_t avail) {
+    if (avail < 1 || !detailMutex) return;
+    uint8_t cnt = t[0];
+    if (cnt > MESH_NBR_MAX || avail < 1 + (size_t)cnt * MESH_NBR_ENTRY) return;
+    if (xSemaphoreTake(detailMutex, pdMS_TO_TICKS(10)) != pdTRUE) return;
+    int slot = -1, oldest = 0;
+    uint32_t oldestMs = 0xFFFFFFFFu;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (nbrRows[i].id[0] == 0) { if (slot < 0) slot = i; continue; }
+        if (memcmp(nbrRows[i].id, id, MESH_NODE_ID_LEN) == 0) { slot = i; break; }
+        if (nbrRows[i].ms < oldestMs) { oldestMs = nbrRows[i].ms; oldest = i; }
+    }
+    if (slot < 0) slot = oldest;
+    NbrRow& r = nbrRows[slot];
+    memcpy(r.id, id, MESH_NODE_ID_LEN);
+    r.ms = millis();
+    r.count = cnt;
+    for (uint8_t i = 0; i < cnt; i++) {
+        r.e[i].id[0] = t[1 + i * MESH_NBR_ENTRY];
+        r.e[i].id[1] = t[2 + i * MESH_NBR_ENTRY];
+        r.e[i].rssi = (int8_t)t[3 + i * MESH_NBR_ENTRY];
+    }
+    xSemaphoreGive(detailMutex);
+}
+
+size_t meshGetNeighborRows(MeshNeighborRow* out, size_t maxOut) {
+    if (!out || maxOut == 0) return 0;
+    size_t n = 0;
+    uint8_t own[1 + MESH_NBR_MAX * MESH_NBR_ENTRY];
+    appendNeighbors(own);
+    if (meshIdToBytes(localNodeId, out[0].id)) {
+        out[0].count = own[0];
+        for (uint8_t i = 0; i < own[0]; i++) {
+            out[0].e[i].id[0] = own[1 + i * MESH_NBR_ENTRY];
+            out[0].e[i].id[1] = own[2 + i * MESH_NBR_ENTRY];
+            out[0].e[i].rssi = (int8_t)own[3 + i * MESH_NBR_ENTRY];
+        }
+        n = 1;
+    }
+    if (!detailMutex || xSemaphoreTake(detailMutex, pdMS_TO_TICKS(20)) != pdTRUE) return n;
+    uint32_t now = millis();
+    for (int i = 0; i < MESH_LIVE_NODES_MAX && n < maxOut; i++) {
+        if (nbrRows[i].id[0] == 0) continue;
+        if ((now - nbrRows[i].ms) > MESH_NBR_ROW_TTL_MS) { memset(&nbrRows[i], 0, sizeof(nbrRows[i])); continue; }
+        if (!meshIdToBytes(nbrRows[i].id, out[n].id)) continue;
+        out[n].count = nbrRows[i].count;
+        for (uint8_t k = 0; k < nbrRows[i].count; k++) out[n].e[k] = nbrRows[i].e[k];
+        n++;
     }
     xSemaphoreGive(detailMutex);
     return n;
@@ -1008,7 +1163,8 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         MeshHeartbeatPacket hb;
         memcpy(&hb, plainBuf, sizeof(hb));
         if (memcmp(hb.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0) {
-            recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask, hb.fw_version);
+            recordLiveNode(hb.source_node_id, hb.role, hb.active_engines_mask, hb.fw_version,
+                           rssiForMac(macAddr));
             Serial.printf("[HB] rx id=%.4s role=%u eng=0x%02X fw=0x%06X phone=%u\n",
                           hb.source_node_id, hb.role, hb.active_engines_mask,
                           (unsigned)hb.fw_version, hb.phone_connected);
@@ -1047,6 +1203,11 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
             }
             xSemaphoreGive(liveMutex);
         }
+#ifdef OUISPY_ROLE_MANAGER
+        if (plainLen > sizeof(ni) && ni.source_node_id[0] &&
+            memcmp(ni.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0)
+            storeNeighbors(ni.source_node_id, plainBuf + sizeof(ni), plainLen - sizeof(ni));
+#endif
         return;
     }
 
@@ -1412,6 +1573,7 @@ static void meshRxWorkerFn(void* arg) {
 #ifdef OUISPY_NIMBLE2
 static void onEspNowRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
     const uint8_t* macAddr = info ? info->src_addr : nullptr;
+    if (info && info->rx_ctrl && macAddr) meshNoteRssi(macAddr, info->rx_ctrl->rssi);
 #else
 static void onEspNowRecv(const uint8_t* macAddr, const uint8_t* data, int len) {
 #endif
@@ -2624,7 +2786,10 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     memcpy(ni.source_node_id, localNodeId, MESH_NODE_ID_LEN);
     ni.board = ouispyBoardCode();
     ni.temp_c = meshChipTempC();
-    if (!encryptPacket((const uint8_t*)&ni, sizeof(ni), enc, &encLen)) return;
+    uint8_t raw[sizeof(ni) + 1 + MESH_NBR_MAX * MESH_NBR_ENTRY];
+    memcpy(raw, &ni, sizeof(ni));
+    size_t rawLen = sizeof(ni) + appendNeighbors(raw + sizeof(ni));
+    if (!encryptPacket(raw, rawLen, enc, &encLen)) return;
     enqueueTx(enc, encLen);
 }
 

@@ -3,6 +3,7 @@
 #include "engine_registry.h"
 #include "protocol.h"
 #include "wifi_ota_handler.h"
+#include "mesh_espnow.h"
 #include <Arduino.h>
 #include "esp_bt.h"
 #ifdef OUISPY_NIMBLE2
@@ -122,6 +123,9 @@ static portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool g_sniffPaused = false;
 
 static void IRAM_ATTR wifiCoexDispatch(void* buf, wifi_promiscuous_pkt_type_t type) {
+#ifndef OUISPY_NIMBLE2
+    meshRxTap(buf, (int)type);
+#endif
     WifiRxParser local[WIFI_COEX_MAX];
     portENTER_CRITICAL_ISR(&g_mux);
     int n = g_count;

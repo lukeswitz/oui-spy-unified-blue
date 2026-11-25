@@ -43,6 +43,12 @@ typedef MeshFilterResult = ({String id, int status, int filterMacs, int filterUu
 /// The manager's latest detector-list push and which nodes have answered it.
 typedef MeshFilterPush = ({int seq, int macs, int uuids, int expected, List<MeshFilterResult> results});
 
+/// One peer a node hears; rssi is null when the node hears it but cannot measure the strength.
+typedef MeshHeard = ({String id, int? rssi});
+
+/// What one node hears: the grid row for [id].
+typedef MeshSignalRow = ({String id, List<MeshHeard> hears});
+
 typedef MeshStatusData = ({
   bool enabled,
   int peerCount,
@@ -53,6 +59,7 @@ typedef MeshStatusData = ({
   int? keyFailures,
   List<MeshNodeDetail> details,
   MeshFilterPush? filterPush,
+  List<MeshSignalRow> signal,
 });
 
 /// Binary encode/decode for GATT characteristic payloads.
@@ -460,6 +467,7 @@ class BleProtocol {
 
   static const meshTlvNodeDetail = 0x01;
   static const meshTlvFilterPush = 0x02;
+  static const meshTlvNeighbors = 0x03;
 
   static String _nodeIdFromBytes(Uint8List b, int off) =>
       (b[off].toRadixString(16).padLeft(2, '0') + b[off + 1].toRadixString(16).padLeft(2, '0')).toUpperCase();
@@ -476,11 +484,13 @@ class BleProtocol {
         keyFailures: null,
         details: const [],
         filterPush: null,
+        signal: const [],
       );
     }
     int? keyFailures;
     var details = <MeshNodeDetail>[];
     MeshFilterPush? filterPush;
+    var signal = <MeshSignalRow>[];
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
     final live = <MeshLiveEntry>[];
@@ -515,6 +525,7 @@ class BleProtocol {
           final body = pos + 2;
           if (type == meshTlvNodeDetail) details = _decodeNodeDetails(bytes, view, body, len);
           if (type == meshTlvFilterPush) filterPush = _decodeFilterPush(bytes, body, len);
+          if (type == meshTlvNeighbors) signal = _decodeSignal(bytes, body, len);
           pos = body + len;
         }
       }
@@ -529,7 +540,27 @@ class BleProtocol {
       keyFailures: keyFailures,
       details: details,
       filterPush: filterPush,
+      signal: signal,
     );
+  }
+
+  static List<MeshSignalRow> _decodeSignal(Uint8List b, int at, int len) {
+    final rows = <MeshSignalRow>[];
+    var o = at;
+    final end = at + len;
+    while (o + 3 <= end) {
+      final id = _nodeIdFromBytes(b, o);
+      final k = b[o + 2];
+      o += 3;
+      if (o + k * 3 > end) break;
+      final hears = <MeshHeard>[];
+      for (var i = 0; i < k; i++, o += 3) {
+        final r = b[o + 2];
+        hears.add((id: _nodeIdFromBytes(b, o), rssi: r == 0x80 ? null : r - (r >= 128 ? 256 : 0)));
+      }
+      rows.add((id: id, hears: hears));
+    }
+    return rows;
   }
 
   static MeshFilterPush? _decodeFilterPush(Uint8List b, int at, int len) {

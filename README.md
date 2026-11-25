@@ -546,6 +546,7 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - Any mix of node boards works under one manager.
 - **Read all** (SETTINGS → NODE → MESH → **Fleet control**) asks every node for its build, filter count, uptime and how many peers it hears. The answers show under each node in **Nodes**. **Read status** in a node's own dialog asks just that node. Nodes on older firmware do not answer.
 - **Watchlist results:** after the manager pushes the watchlist, each node answers whether it took it. The message after **Alert when a board hears it** says how many nodes did, such as "On 3 of 4 nodes; NODE2 refused (list too long for it)". Each node in **Nodes** shows its own result. A node refuses when its firmware has no detector, when the manager has turned its detector off, or when the list does not fit. Nodes on older firmware take the list without answering.
+- **Signal** (SETTINGS → NODE → MESH → **Signal**) is a grid of who hears whom: each row is a board and each cell is how strongly that board hears the column's board, colored strong (-60 dBm and up), good, weak or poor (below -80). A cell can differ from the one mirrored across the grid. A board reads dBm when it is an ESP32-C5 or is running a Wi-Fi engine; otherwise its row says **heard**. The manager updates the grid about every 6 seconds.
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 
 ## Optional GPS module

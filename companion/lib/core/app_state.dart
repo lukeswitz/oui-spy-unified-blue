@@ -308,6 +308,8 @@ class AppState extends ChangeNotifier {
   String? nodeBoard(String id) => _nodeBoard[canonicalNodeId(id)];
   final Map<String, int> _nodeTempC = {};
   int? nodeTempC(String id) => _nodeTempC[canonicalNodeId(id)];
+  List<MeshSignalRow> _meshSignal = const [];
+  List<MeshSignalRow> get meshSignal => _meshSignal;
   MeshFilterPush? _filterPush;
   MeshFilterPush? get filterPush => _filterPush;
   int get filterPushSeq => _filterPush?.seq ?? 0;
@@ -611,6 +613,7 @@ class AppState extends ChangeNotifier {
       }
       if (state == NodeConnectionState.disconnected) {
         _filterPush = null;
+        _meshSignal = const [];
         _nodeDetail.clear();
       }
       notifyListeners();
@@ -709,6 +712,7 @@ class AppState extends ChangeNotifier {
         if (tempC != null) _nodeTempC[canon] = tempC;
       }
       if (data.filterPush != null) _filterPush = data.filterPush;
+      _meshSignal = data.signal;
       for (final d in data.details) {
         final canon = canonicalNodeId(d.id);
         if (canon.isEmpty) continue;

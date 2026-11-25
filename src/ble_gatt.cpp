@@ -3344,22 +3344,6 @@ void bleGattDebugForcePhone(bool on) { phoneConnected = on; }
 #define MESH_TLV_NODE_DETAIL 0x01
 #define MESH_TLV_DETAIL_ENTRY 15
 
-static bool meshIdToBytes(const char* id, uint8_t out[2]) {
-    for (int i = 0; i < 2; i++) {
-        int v = 0;
-        for (int j = 0; j < 2; j++) {
-            char c = id[i * 2 + j];
-            int d = (c >= '0' && c <= '9') ? c - '0'
-                  : (c >= 'A' && c <= 'F') ? c - 'A' + 10
-                  : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : -1;
-            if (d < 0) return false;
-            v = (v << 4) | d;
-        }
-        out[i] = (uint8_t)v;
-    }
-    return true;
-}
-
 static size_t meshStatusLimit(size_t cap) {
     size_t lim = 500;
     if (pServer != nullptr) {
@@ -3434,6 +3418,35 @@ static size_t meshAppendFilterPush(uint8_t* buf, size_t off, size_t limit) {
     buf[start + 1] = (uint8_t)(off - start - 2);
     return off;
 }
+
+#define MESH_TLV_NEIGHBORS 0x03
+
+static size_t meshAppendNeighbors(uint8_t* buf, size_t off, size_t limit) {
+    static MeshNeighborRow rows[MESH_LIVE_NODES_MAX + 1];
+    size_t n = meshGetNeighborRows(rows, MESH_LIVE_NODES_MAX + 1);
+    size_t start = off;
+    if (n == 0 || off + 2 > limit) return off;
+    buf[off] = MESH_TLV_NEIGHBORS;
+    off += 2;
+    size_t written = 0;
+    for (size_t i = 0; i < n; i++) {
+        size_t need = 3 + (size_t)rows[i].count * MESH_NBR_ENTRY;
+        if (off + need > limit || off - start - 2 + need > 255) break;
+        buf[off++] = rows[i].id[0];
+        buf[off++] = rows[i].id[1];
+        buf[off++] = rows[i].count;
+        for (uint8_t k = 0; k < rows[i].count; k++) {
+            buf[off++] = rows[i].e[k].id[0];
+            buf[off++] = rows[i].e[k].id[1];
+            int8_t r = rows[i].e[k].rssi;
+            buf[off++] = (uint8_t)(r == MESH_RSSI_UNKNOWN ? r : (int8_t)(r & 0xFC));
+        }
+        written++;
+    }
+    if (written == 0) return start;
+    buf[start + 1] = (uint8_t)(off - start - 2);
+    return off;
+}
 #endif
 
 void bleGattNotifyMeshStatus(void) {
@@ -3467,6 +3480,7 @@ void bleGattNotifyMeshStatus(void) {
         size_t lim = meshStatusLimit(sizeof(buf));
         if (off < lim) off = meshAppendFilterPush(buf, off, lim);
         if (off < lim) off = meshAppendNodeDetail(buf, off, lim);
+        if (off < lim) off = meshAppendNeighbors(buf, off, lim);
     }
 #endif
 

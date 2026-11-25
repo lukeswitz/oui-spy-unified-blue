@@ -138,6 +138,68 @@ void main() {
         'watchlist refused: detector turned off for it');
   });
 
+  List<int> neighbors(List<(List<int>, List<(List<int>, int)>)> rows) {
+    final body = <int>[];
+    for (final (id, hears) in rows) {
+      body.addAll([...id, hears.length]);
+      for (final (pid, r) in hears) {
+        body.addAll([...pid, r & 0xFF]);
+      }
+    }
+    return [BleProtocol.meshTlvNeighbors, body.length, ...body];
+  }
+
+  test('neighbor block decodes rows, negative dBm and unknown strength', () {
+    final s = BleProtocol.decodeMeshStatus([
+      ..._base(1),
+      ...neighbors([
+        ([0xAB, 0x12], [([0xCD, 0x34], -60), ([0xEF, 0x56], -84)]),
+        ([0xCD, 0x34], [([0xAB, 0x12], -128)]),
+      ]),
+    ]);
+    expect(s.signal.map((r) => r.id).toList(), ['AB12', 'CD34']);
+    expect(s.signal[0].hears.map((h) => (h.id, h.rssi)).toList(), [('CD34', -60), ('EF56', -84)]);
+    expect(s.signal[1].hears.single.rssi, isNull);
+  });
+
+  test('neighbor block cut short drops the incomplete row', () {
+    final full = neighbors([
+      ([0xAB, 0x12], [([0xCD, 0x34], -60)]),
+      ([0xCD, 0x34], [([0xAB, 0x12], -70), ([0xEF, 0x56], -72)]),
+    ]);
+    final cut = [..._base(1), ...full.sublist(0, full.length - 3)];
+    cut[_base(1).length + 1] = full[1] - 3;
+    final s = BleProtocol.decodeMeshStatus(cut);
+    expect(s.signal.map((r) => r.id).toList(), ['AB12']);
+  });
+
+  test('older firmware has no signal rows', () {
+    expect(BleProtocol.decodeMeshStatus(_base(1)).signal, isEmpty);
+  });
+
+  test('signal levels use the strong, good, weak, poor bands', () {
+    expect(signalLevel(-45), SignalLevel.strong);
+    expect(signalLevel(-60), SignalLevel.strong);
+    expect(signalLevel(-61), SignalLevel.good);
+    expect(signalLevel(-70), SignalLevel.good);
+    expect(signalLevel(-71), SignalLevel.weak);
+    expect(signalLevel(-80), SignalLevel.weak);
+    expect(signalLevel(-81), SignalLevel.poor);
+    expect(signalLevel(null), SignalLevel.heard);
+  });
+
+  test('grid axes list reporters first, then peers that only get heard; cells are asymmetric', () {
+    final rows = <MeshSignalRow>[
+      (id: 'AB12', hears: [(id: 'CD34', rssi: -55), (id: 'EF56', rssi: -90)]),
+      (id: 'CD34', hears: [(id: 'AB12', rssi: -75)]),
+    ];
+    expect(signalGridIds(rows), ['AB12', 'CD34', 'EF56']);
+    expect(signalCell(rows, 'AB12', 'CD34')!.rssi, -55);
+    expect(signalCell(rows, 'CD34', 'AB12')!.rssi, -75);
+    expect(signalCell(rows, 'CD34', 'EF56'), isNull);
+    expect(signalCell(rows, 'EF56', 'AB12'), isNull);
+  });
+
   test('formatters', () {
     expect(formatFwVersion(0x000702), '0.7.2');
     expect(formatUptime(45), '45s');

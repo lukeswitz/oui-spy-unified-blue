@@ -523,6 +523,27 @@ typedef struct __attribute__((packed)) {
     int8_t   temp_c;
 } MeshNodeInfoPacket;
 
+// MESH_PKT_NODE_INFO may carry a neighbor table after temp_c: [count:1] then count x [id:2 binary, rssi:1].
+#define MESH_NBR_MAX 12
+#define MESH_NBR_ENTRY 3
+#define MESH_RSSI_UNKNOWN ((int8_t)-128)
+
+static inline bool meshIdToBytes(const char* id, uint8_t out[2]) {
+    for (int i = 0; i < 2; i++) {
+        int v = 0;
+        for (int j = 0; j < 2; j++) {
+            char c = id[i * 2 + j];
+            int d = (c >= '0' && c <= '9') ? c - '0'
+                  : (c >= 'A' && c <= 'F') ? c - 'A' + 10
+                  : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : -1;
+            if (d < 0) return false;
+            v = (v << 4) | d;
+        }
+        out[i] = (uint8_t)v;
+    }
+    return true;
+}
+
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;              // MESH_PKT_NODE_STATUS (node -> manager, answers NODE_CTL_STATUS)
     char     source_node_id[MESH_NODE_ID_LEN];

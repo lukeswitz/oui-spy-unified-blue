@@ -55,6 +55,47 @@ String? filterPushSummary(MeshFilterPush p, String Function(String id) label) {
   return parts.join('; ');
 }
 
+enum SignalLevel { strong, good, weak, poor, heard }
+
+/// Strong from -60 dBm up, good from -70, weak from -80, poor below; heard when a node hears a peer but cannot measure it.
+SignalLevel signalLevel(int? rssi) {
+  if (rssi == null) return SignalLevel.heard;
+  if (rssi >= -60) return SignalLevel.strong;
+  if (rssi >= -70) return SignalLevel.good;
+  if (rssi >= -80) return SignalLevel.weak;
+  return SignalLevel.poor;
+}
+
+String signalLevelName(SignalLevel l) => switch (l) {
+      SignalLevel.strong => 'Strong',
+      SignalLevel.good => 'Good',
+      SignalLevel.weak => 'Weak',
+      SignalLevel.poor => 'Poor',
+      SignalLevel.heard => 'Heard',
+    };
+
+/// Grid axes: every node that reports, then every peer that is heard but does not report.
+List<String> signalGridIds(List<MeshSignalRow> rows) {
+  final ids = <String>[for (final r in rows) r.id];
+  for (final r in rows) {
+    for (final h in r.hears) {
+      if (!ids.contains(h.id)) ids.add(h.id);
+    }
+  }
+  return ids;
+}
+
+/// What [row] hears of [col]: null when it does not hear it, otherwise the reading.
+({int? rssi})? signalCell(List<MeshSignalRow> rows, String row, String col) {
+  for (final r in rows) {
+    if (r.id != row) continue;
+    for (final h in r.hears) {
+      if (h.id == col) return (rssi: h.rssi);
+    }
+  }
+  return null;
+}
+
 /// The lines shown in a node's dialog after a status read.
 List<String> nodeDetailLines(MeshNodeDetail d, int ageS) => [
       'Build ${formatFwVersion(d.fwVersion)}',
