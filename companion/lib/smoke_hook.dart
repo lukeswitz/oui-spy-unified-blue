@@ -147,14 +147,14 @@ void _inject(ProviderContainer container) {
 
   (double, double) placeOf(String mac) => heardAt.putIfAbsent(mac, fixNow);
   void send(String label, List<int> frame) {
-    final mac = frame.sublist(1, 7).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':');
-    final at = placeOf(mac);
-    ble.updateGps(latitude: at.$1, longitude: at.$2, accuracy: 5);
+    final (lat, lon) = fixNow();
+    ble.updateGps(latitude: lat, longitude: lon, accuracy: 5);
     ble.injectDetectionFrame(frame);
     counts[label] = (counts[label] ?? 0) + 1;
   }
 
-  debugPrint('SMOKE: injecting for ${_seconds}s, devices placed where first heard');
+  final win = math.max(8, (_seconds * 0.08).round());
+  debugPrint('SMOKE: injecting for ${_seconds}s, each device heard for ${win}s at the current fix');
   var waitedForFix = 0;
   Timer.periodic(const Duration(seconds: 1), (t) {
     if (tick == 0 && container.read(gpsProvider).lastPosition == null && waitedForFix++ < 20) return;
@@ -173,13 +173,17 @@ void _inject(ProviderContainer container) {
       send('wifi_ap', smokeFrame(Engine.wardrive, mac, -60 - i - r, 1 + (block + i) % 11, 0,
           _wardriveExt(ssids[(block * 6 + i) % ssids.length], 3 + ((block + i) % 3), '')));
     }
-    for (var i = 0; i < 2; i++) {
-      send('wifi_client', smokeFrame(Engine.wardrive, '02:00:00:00:02:0$i', -70 - r, 1, 2,
-          [..._wardriveExt('', 0, ''), ..._mac('02:00:00:00:01:00')]));
-    }
-    for (var i = 0; i < 3; i++) {
-      send('wifi_mesh', smokeFrame(Engine.wardrive, '02:00:00:00:0a:0$i', -66 - i - r, 11, 0,
-          _wardriveExt('Parkside Mesh', 3, '')));
+    int at(double share) => (_seconds * share).round();
+    bool inRange(double share) => tick >= at(share) && tick < at(share) + win;
+    if (inRange(0)) {
+      for (var i = 0; i < 2; i++) {
+        send('wifi_client', smokeFrame(Engine.wardrive, '02:00:00:00:02:0$i', -70 - r, 1, 2,
+            [..._wardriveExt('', 0, ''), ..._mac('02:00:00:00:01:00')]));
+      }
+      for (var i = 0; i < 3; i++) {
+        send('wifi_mesh', smokeFrame(Engine.wardrive, '02:00:00:00:0a:0$i', -66 - i - r, 11, 0,
+            _wardriveExt('Parkside Mesh', 3, '')));
+      }
     }
     const bleNames = [
       'Galaxy Buds2', 'Charge 6', 'JBL Flip 6', 'Apple Watch', 'Tile', 'Bose QC45',
@@ -192,12 +196,11 @@ void _inject(ProviderContainer container) {
       send('ble_adv', smokeFrame(Engine.wardrive, mac, -65 - r, 37, 1,
           _wardriveExt('', 0, bleNames[(block * 3 + i) % bleNames.length])));
     }
-    int at(double share) => (_seconds * share).round();
-    if (tick >= at(0.25)) {
+    if (inRange(0.25)) {
       send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -55 - r, 37, 1,
           _flockExt(raven: true, fw: '1.3.2', signals: 0x47, name: 'Penguin-1234567890')));
     }
-    if (tick >= at(0.55)) {
+    if (inRange(0.55)) {
       send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
           _flockExt(raven: false, fw: '', signals: 0x05, name: 'Flock-A1B2C3')));
     }
@@ -212,7 +215,7 @@ void _inject(ProviderContainer container) {
     var k = 0;
     for (final e in detectors.entries) {
       final (method, ch, desc) = e.value;
-      if (tick >= at(0.08 + k * 0.13)) {
+      if (inRange(0.08 + k * 0.13)) {
         send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, ch, method,
             _detectorExt(desc, 1 + k % 3)));
       }
@@ -232,7 +235,7 @@ void _inject(ProviderContainer container) {
       heading: ((orbit * 180 / math.pi + 90) % 360).round(),
       selfId: 'Survey flight',
     )));
-    if (tick >= at(0.35)) {
+    if (inRange(0.35)) {
       final hover = placeOf('02:00:00:00:06:01');
       send('drone_partial', smokeFrame(Engine.skySpy, '02:00:00:00:06:01', -75 - r, 6, 0, smokeOdidExt(
         uavId: 'DEMO9Z8Y7X6W5V',
@@ -248,12 +251,12 @@ void _inject(ProviderContainer container) {
         selfId: '',
       )));
     }
-    if (tick >= at(0.85)) {
+    if (inRange(0.85)) {
       send('uniPwn', smokeFrame(Engine.uniPwn, '02:00:00:00:07:00', -68 - r, 37, 0,
           [..._str('Go2', 8), 0]));
       send('foxhunter', smokeFrame(Engine.foxhunter, '02:00:00:00:08:00', -45 - r, 37, 0, const []));
     }
-    if (tick >= at(0.65)) {
+    if (inRange(0.65)) {
       final hover = placeOf('02:00:00:00:06:02');
       ble.addPhoneOdid('02:00:00:00:06:02', -70 - r, smokePhoneOdidAdv(hover.$1, hover.$2, tick));
       counts['phone_odid'] = (counts['phone_odid'] ?? 0) + 1;

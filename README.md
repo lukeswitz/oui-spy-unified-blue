@@ -12,7 +12,7 @@
 </div>
 
 <div align="center">
-<b>OUI-APEX detects surveillance hardware, trackers and drones.</b> It also works as a wardriving and recon tool. 
+<b>OUI-APEX detects surveillance hardware, trackers and drones.</b> Wardriving and recon app with support for external USB devices.
 <p>
 
 <a href="#quick-start"><b>Quick start</b></a> &middot; <a href="#a-tour-of-the-app"><b>Tour</b></a> &middot; <a href="#engines"><b>Engines</b></a> &middot; <a href="#boards"><b>Boards</b></a> &middot; <a href="#mesh"><b>Mesh</b></a> &middot; <a href="#usb-radios-on-android"><b>USB radios</b></a>
@@ -28,7 +28,7 @@
 | Platform | Phone scans | Detects on its own (no board) | Add-ons |
 |---|---|---|---|
 | Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices, sorted into types such as trackers, cameras, glasses and hacking tools. Drones that send Remote ID over Bluetooth or Wi-Fi. Phones with Wi-Fi Aware also catch drones that send it that way | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
-| iPhone / macOS | Bluetooth | Bluetooth devices, sorted into types. Drones are not detected without a board. Use a board running Sky Spy | ESP32 board(s) |
+| iPhone / macOS | Bluetooth | Bluetooth devices, sorted into types. Does not detect drones without an ESP32 | ESP32 board(s) |
 
 </div>
 
@@ -168,28 +168,73 @@ Choose which device types alert you. Every alert lands in one list.
 
 ### Map
 
-Every hit is placed where you heard it. The numbers are how many hits share a spot.
+Every hit is placed where you heard it, along your route. The numbers are how many hits share a spot.
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/09-map.png" alt="Map during a wardrive" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Map during a wardrive with the Flock list open" />
       <ol>
         <li><b>Session</b>: time recording, and counts of Wi-Fi, Flock, drone, detector and BLE hits.</li>
-        <li><b>Layers</b>: map style and extra layers.</li>
-        <li><b>Show on map</b>: Flock, drone and detector hits.</li>
-        <li><b>Sources</b>: hits per radio, such as this phone or a board.</li>
-        <li><b>Lists</b>: Flock, drone and detector hits. Tap one to open it.</li>
-        <li><b>A cluster</b>: tap it to list the devices there.</li>
-        <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
-        <li><b>DEVICES</b>: the full list for this session.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Detector hits list on the map" />
-      <ol>
-        <li><b>Detector list</b>: tap the chip to open or close it.</li>
+        <li><b>Flock list</b>: tap the chip to open or close it. Drones and detector hits have their own.</li>
         <li><b>Each hit</b>: its name, type, address and signal. Tap a row to zoom the map to it.</li>
+        <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/09-map.png" alt="A saved wardrive session on the map" />
+      <ol>
+        <li><b>Saved session</b>: unique devices, total hits and distance.</li>
+        <li><b>Lists</b>: Flock, drone and detector hits from this session.</li>
+        <li><b>CSV</b>: export the session as a WiGLE CSV.</li>
+        <li><b>Layers</b>: map style and extra layers.</li>
+        <li><b>A drone</b>: its flight path and its pilot.</li>
+        <li><b>A cluster</b>: tap it to list the devices there.</li>
+        <li><b>Targets</b>: what the next session looks for.</li>
+        <li><b>Radio</b>: Wi-Fi, BLE or both.</li>
+        <li><b>START</b>: start a new session.</li>
+        <li><b>SESSIONS</b>: open, export or delete saved sessions.</li>
       </ol></td>
   </tr>
 </table>
+
+### Sessions and reports
+
+Every session is saved. Open one to replay it on the map, or open its report.
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
+      <ol>
+        <li><b>SELECT, IMPORT, CLEAR ALL</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
+        <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
+        <li><b>REPORT</b>: opens the report.</li>
+        <li><b>CSV, DELETE</b>: export or remove this session.</li>
+      </ol></td>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
+      <ol>
+        <li><b>Session</b>: start time, length and distance.</li>
+        <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
+        <li><b>Route</b>: where you drove.</li>
+        <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
+        <li><b>Share</b>: sends the report as text.</li>
+      </ol></td>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+      <ol>
+        <li><b>Security</b>: how many networks use each kind of security.</li>
+        <li><b>Top makers</b>: the most common device makers.</li>
+        <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
+        <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Tips
+
+- **Rename a board or mesh node:** go to SETTINGS → NODE → MESH → **Nodes**, tap the node, type a name of up to 32 characters, and tap **SAVE**. Leave it blank or tap **CLEAR** to go back to the node ID. The name is kept on this phone. You can also tap the pencil next to a board on the Connect screen after its first connection.
+- **Remove an old node:** in the same **Nodes** list, tap a node you no longer use and tap **FORGET**. The board you are connected to cannot be forgotten there.
+- **Forget a paired board:** hold it on the Connect screen.
+- **Too many notifications:** when alerts pile up within a minute, the app offers to turn off notifications for one noisy type. Its detections are still logged.
+- **Filter by maker:** on LIVE, tap a vendor in the strip above the list to show only its devices.
+- **Hide addresses for screenshots:** turn on **Mask identifiers on screen** in SETTINGS → Detection & Alerts → Privacy.
+- **What does this icon mean:** tap the info button on a screen. It explains each tab and icon there.
 
 ## Engines
 
