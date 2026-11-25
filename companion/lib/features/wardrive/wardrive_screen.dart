@@ -69,6 +69,10 @@ class WardriveScreen extends ConsumerStatefulWidget {
 class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBindingObserver {
   final _mapController = MapController();
   bool _followMode = true;
+  String? _followDroneKey;
+  Detection? _followDroneDet;
+  LatLng? _followDroneLast;
+  bool _followDroneZoom = false;
   bool _measuring = false;
   final List<LatLng> _measurePts = [];
   int _lastSessionLoadEpoch = 0;
@@ -238,6 +242,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     setState(() {
       _focusedDetection = d;
       _followMode = false;
+      _followDroneKey = null;
+      _followDroneDet = null;
     });
     _cameraTo(d, LatLng(d.latitude!, d.longitude!));
   }
@@ -310,6 +316,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       _classGroup = geo;
       _classGroupLabel = _classLabelOf(f);
       _followMode = false;
+      _followDroneKey = null;
+      _followDroneDet = null;
     });
     _fitToPoints([for (final d in geo) LatLng(d.latitude!, d.longitude!)]);
   }
@@ -319,6 +327,57 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     setState(() {
       _classGroup = const [];
       _classGroupLabel = '';
+    });
+  }
+
+  void _startDroneFollow(Detection d) {
+    _followDroneKey = AppState.droneTrackKey(d);
+    _followDroneDet = d;
+    _followDroneLast = null;
+    _followDroneZoom = true;
+    _followMode = false;
+    _initialFitDone = true;
+    _focusedDetection = null;
+    _classGroup = const [];
+    _classGroupLabel = '';
+  }
+
+  void _releaseDroneFollow() {
+    if (_followDroneKey == null) return;
+    setState(() {
+      _followDroneKey = null;
+      _followDroneDet = null;
+      _followDroneLast = null;
+    });
+  }
+
+  LatLng? _followedDronePoint() {
+    final key = _followDroneKey;
+    if (key == null) return null;
+    final app = ref.read(appStateProvider);
+    final track = app.droneTrack(key);
+    if (track != null && track.isNotEmpty) return track.last;
+    for (final d in app.recentDetections) {
+      if (d.engine == Engine.skySpy && AppState.droneTrackKey(d) == key) {
+        final p = droneRidPoint(d);
+        if (p != null) return p;
+      }
+    }
+    final seed = _followDroneDet;
+    return seed == null ? null : droneRidPoint(seed);
+  }
+
+  void _trackFollowedDrone() {
+    final p = _followedDronePoint();
+    if (p == null) return;
+    final last = _followDroneLast;
+    if (last != null && last.latitude == p.latitude && last.longitude == p.longitude) return;
+    _followDroneLast = p;
+    final firstLock = _followDroneZoom;
+    _followDroneZoom = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _followDroneKey == null) return;
+      _centerInView(p, zoom: firstLock ? math.max(_mapController.camera.zoom, 16.0) : null);
     });
   }
 
@@ -335,6 +394,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   static const double _povMoveOffThreshold = 0.1; // m/s — disengage (hysteresis)
 
   void _focusMap(WardriveController wd) {
+    _releaseDroneFollow();
     final pos = wd.currentPosition ?? ref.read(gpsProvider).lastPosition;
     if (pos == null) return;
     if (!_followMode) setState(() => _followMode = true);
@@ -366,10 +426,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   double _bottomHeight = 0;
   final _bottomKey = GlobalKey();
 
-  void _centerInView(LatLng here) {
+  void _centerInView(LatLng here, {double? zoom}) {
     final top = _statsHeight + 8 + _chipsHeight;
     final bottom = _bottomHeight + 16;
-    _mapController.move(here, _mapController.camera.zoom, offset: Offset(0, (top - bottom) / 2));
+    _mapController.move(here, zoom ?? _mapController.camera.zoom, offset: Offset(0, (top - bottom) / 2));
   }
 
   Widget _measureButton() => _IconBtn(
@@ -682,6 +742,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       _classGroup = const [];
       _classGroupLabel = '';
       _followMode = false;
+      _followDroneKey = null;
+      _followDroneDet = null;
       _initialFitDone = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -706,6 +768,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final zoom = wd.consumeZoomTarget()!;
       final focus = wd.consumeZoomDetection();
       _followMode = false;
+      _followDroneKey = null;
+      _followDroneDet = null;
       _initialFitDone = true;
       _focusedDetection = focus;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -717,6 +781,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
         }
       });
     }
+
+    final followReq = wd.consumeFollowDrone();
+    if (followReq != null) _startDroneFollow(followReq);
+    _trackFollowedDrone();
 
     final gpsPos2 = wd.currentPosition ?? gpsPos;
     final povActive = gpsPos2 != null && wd.isActive && _followMode;
@@ -766,6 +834,14 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     ref.watch(notificationServiceProvider.select((n) => n.classAlertedMacs.length));
     final detectionLayers = _buildDetectionLayers(wd);
     final darkBase = mapStyle.isDark;
+    final screenPrivacy = ref.watch(privacyScreenProvider);
+    final followDet = _followDroneDet;
+    final followId = followDet?.odid?.uavId;
+    final followLabel = followDet == null
+        ? ''
+        : (followId != null && followId.isNotEmpty)
+            ? maskName(followId, screenPrivacy)
+            : maskMac(followDet.macAddress.toUpperCase(), screenPrivacy);
 
     final mapWidget = FlutterMap(
               mapController: _mapController,
@@ -797,6 +873,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   };
                   if (userSources.contains(event.source)) {
                     if (_followMode) setState(() => _followMode = false);
+                    _releaseDroneFollow();
                   }
                   if (event is MapEventMove ||
                       event is MapEventMoveEnd ||
@@ -993,6 +1070,12 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                           label: _classGroupLabel,
                           count: _classGroup.length,
                           onClear: _clearClassGroup,
+                        ),
+                      if (_followDroneDet != null)
+                        _FollowDroneChip(
+                          label: followLabel,
+                          color: droneColorForMac(_followDroneDet!.macAddress),
+                          onClear: _releaseDroneFollow,
                         ),
                       if (wd.isActive && (wd.inExclusion || wd.geofenceSuppressed > 0))
                         Container(

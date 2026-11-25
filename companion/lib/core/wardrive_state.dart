@@ -617,6 +617,20 @@ class WardriveController extends ChangeNotifier {
     return d;
   }
 
+  Detection? pendingFollowDrone;
+
+  /// Ask the map to lock its camera on this Remote ID drone.
+  void requestFollowDrone(Detection drone) {
+    pendingFollowDrone = drone;
+    notifyListeners();
+  }
+
+  Detection? consumeFollowDrone() {
+    final d = pendingFollowDrone;
+    pendingFollowDrone = null;
+    return d;
+  }
+
   DateTime? startTime;
   final Map<String, Detection> _dedupedByMac = {};
   late final SessionDetectionStore _store = SessionDetectionStore(_db);

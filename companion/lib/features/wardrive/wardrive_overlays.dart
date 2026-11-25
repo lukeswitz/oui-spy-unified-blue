@@ -104,6 +104,64 @@ class _NodeStatsOverlay extends ConsumerWidget {
   }
 }
 
+class _FollowDroneChip extends StatelessWidget {
+  const _FollowDroneChip({required this.label, required this.color, required this.onClear});
+  final String label;
+  final Color color;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    return Container(
+      key: const Key('follow-drone-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: t.surface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+        border: Border.all(color: color.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.flight, size: 12, color: color),
+          const SizedBox(width: 6),
+          Text('FOLLOWING',
+              style: TextStyle(
+                color: color,
+                fontSize: 8,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+              )),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            key: const Key('follow-drone-close'),
+            onTap: onClear,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Icon(Icons.close, size: 14, color: t.textDim),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CurrentPosMarker extends StatelessWidget {
   const _CurrentPosMarker();
 

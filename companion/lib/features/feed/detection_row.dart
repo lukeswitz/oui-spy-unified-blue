@@ -36,7 +36,7 @@ import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/devices/devices_screen.dart' show deviceFlagIcons, rssiSparkFor;
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneColorForMac, kDroneSvgAsset;
+import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneColorForMac, droneRidPoint, kDroneSvgAsset;
 import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
@@ -334,6 +334,11 @@ Future<void> detectionZoomOnMap(
     detection: detection,
   );
   if (context.mounted) context.go('/wardrive');
+}
+
+void detectionFollowOnMap(BuildContext context, WidgetRef ref, Detection drone) {
+  ref.read(wardriveProvider).requestFollowDrone(drone);
+  context.go('/wardrive');
 }
 
 void detectionStartFoxhunt(
@@ -690,6 +695,17 @@ void showDetectionDetails(
                       icon: const Icon(Icons.volume_up, size: 18),
                       label: Text(ref.read(rxOnlyProvider) == true ? 'Play a sound (off: Receive only)' : 'Make it play a sound'),
                       onPressed: ref.read(rxOnlyProvider) == true ? null : () => _ringTracker(ctx, ref, detection.macAddress),
+                    ),
+                  ],
+                  if (detection.engine == Engine.skySpy && droneRidPoint(detection) != null) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.my_location, size: 18),
+                      label: const Text('Follow on map'),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        detectionFollowOnMap(host, ref, detection);
+                      },
                     ),
                   ],
                   const SizedBox(height: 10),

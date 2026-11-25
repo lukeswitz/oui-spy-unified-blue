@@ -355,6 +355,7 @@ These features add their own alerts and set how alerts sound.
 
 - **Pins:** press and hold the map to drop a pin with an optional name. Tap a pin to rename or remove it. Pins are kept on this phone.
 - **Measure:** tap the ruler button, then tap the map to add points. The label shows the total length. Tap the ruler again to stop.
+- **Follow on map:** tap a drone that sends Remote ID, then **Follow on map**. The map opens and keeps the drone centered as its position updates. A chip at the top names it. Tap its **X**, drag the map, or tap the follow button to let go.
 - **MAPPED ALPRs** checks each Flock hit against license plate cameras mapped in OpenStreetMap. It marks a hit `ON MAP` within 75 m and `UNMAPPED` beyond 250 m.
 - **WDG TERRITORY** shows a linked account's WDGWars territory.
 - **Geofences:** draw a zone with the fence button on the map and pick **QUIET** or **ALERT**. Inside a quiet zone, detections drop from the feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
