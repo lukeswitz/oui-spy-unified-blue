@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
@@ -26,6 +27,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   int _chanStart = 1;
   int _chanEnd = 11;
   int _mode5g = 1;
+  int _zbStart = zigbeeChannelMin;
+  int _zbEnd = zigbeeChannelMax;
   bool _toggling = false;
   String? _targetNode;
   PcapStats? _heldStats;
@@ -72,17 +75,27 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
       _chanStart = (p.getInt('pcap_chanStart') ?? 1).clamp(1, 14);
       _chanEnd = (p.getInt('pcap_chanEnd') ?? 11).clamp(_chanStart, 14);
       _mode5g = (p.getInt('pcap_mode5g') ?? 1).clamp(0, 2);
+      _zbStart = (p.getInt('pcap_zbStart') ?? zigbeeChannelMin).clamp(zigbeeChannelMin, zigbeeChannelMax);
+      _zbEnd = (p.getInt('pcap_zbEnd') ?? zigbeeChannelMax).clamp(_zbStart, zigbeeChannelMax);
       final modeIdx = p.getInt('pcap_mode') ?? 0;
-      _mode = modeIdx == 1 ? PcapMode.ble : PcapMode.wifi;
+      _mode = modeIdx == 1
+          ? PcapMode.ble
+          : modeIdx == 2 && _zigbeeAvailable
+              ? PcapMode.zigbee
+              : PcapMode.wifi;
     });
   }
+
+  bool get _zigbeeAvailable => boardHas802154(ref.read(bleManagerProvider).board);
 
   Future<void> _savePrefs() async {
     final p = await SharedPreferences.getInstance();
     await p.setInt('pcap_chanStart', _chanStart);
     await p.setInt('pcap_chanEnd', _chanEnd);
-    await p.setInt('pcap_mode', _mode == PcapMode.ble ? 1 : 0);
+    await p.setInt('pcap_mode', _mode.index);
     await p.setInt('pcap_mode5g', _mode5g);
+    await p.setInt('pcap_zbStart', _zbStart);
+    await p.setInt('pcap_zbEnd', _zbEnd);
   }
 
   @override
@@ -135,9 +148,9 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
     });
     try {
       await ref.read(bleManagerProvider).startPcap(
-            mode: _mode == PcapMode.ble ? 1 : 0,
-            channelStart: _chanStart,
-            channelEnd: _chanEnd,
+            mode: _mode.index,
+            channelStart: _mode == PcapMode.zigbee ? _zbStart : _chanStart,
+            channelEnd: _mode == PcapMode.zigbee ? _zbEnd : _chanEnd,
             mode5g: _mode5g,
             targetNodeId: mgr ? target : null,
           );
@@ -205,7 +218,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
             icon: const Icon(Icons.info_outline),
             tooltip: 'About',
             onPressed: () => showInfoSheet(context, t, 'PCAP', const [
-              'Captures raw 802.11 or BLE advertising frames to a Wireshark .pcap file.',
+              'Captures raw 802.11, BLE advertising or 802.15.4 (Zigbee, Thread) frames to a Wireshark .pcap file. 802.15.4 capture needs a C5 board and is receive only.',
               'Files save on the phone; open the library to view or share them.',
             ]),
           ),
@@ -312,11 +325,33 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 _ModeSelector(
                   mode: _mode,
                   enabled: !isCapturing,
+                  showZigbee: _zigbeeAvailable,
                   onChanged: (m) {
                     setState(() => _mode = m);
                     _savePrefs();
                   },
                 ),
+                if (_mode == PcapMode.zigbee) ...[
+                  const SizedBox(height: 12),
+                  _WifiConfigCard(
+                    chanStart: _zbStart,
+                    chanEnd: _zbEnd,
+                    enabled: !isCapturing,
+                    lo: zigbeeChannelMin,
+                    hi: zigbeeChannelMax,
+                    onChanStart: (v) {
+                      setState(() {
+                        _zbStart = v;
+                        if (v > _zbEnd) _zbEnd = v;
+                      });
+                      _savePrefs();
+                    },
+                    onChanEnd: (v) {
+                      setState(() => _zbEnd = v);
+                      _savePrefs();
+                    },
+                  ),
+                ],
                 if (_mode == PcapMode.wifi) ...[
                   const SizedBox(height: 12),
                   _WifiConfigCard(
@@ -363,6 +398,8 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 const SizedBox(height: 16),
                 if (activeMode == PcapMode.wifi)
                   _WifiStatsGrid(stats: gridStats, t: t)
+                else if (activeMode == PcapMode.zigbee)
+                  _ZigbeeStatsGrid(stats: gridStats, t: t)
                 else
                   _BleStatsGrid(stats: gridStats, t: t),
                 const SizedBox(height: 16),
@@ -463,7 +500,7 @@ class _StateCard extends StatelessWidget {
                   style: TextStyle(color: t.textDim, fontFamily: AppTheme.mono,
                       fontSize: 11, letterSpacing: 2)),
               const Spacer(),
-              if (stats.modeEnum == PcapMode.wifi)
+              if (stats.modeEnum != PcapMode.ble)
                 Text('CH ${stats.currentChannel}',
                     style: TextStyle(color: t.textDim, fontFamily: AppTheme.mono)),
             ],
@@ -534,9 +571,10 @@ class _StateCard extends StatelessWidget {
 }
 
 class _ModeSelector extends StatelessWidget {
-  const _ModeSelector({required this.mode, required this.enabled, required this.onChanged});
+  const _ModeSelector({required this.mode, required this.enabled, required this.onChanged, this.showZigbee = false});
   final PcapMode mode;
   final bool enabled;
+  final bool showZigbee;
   final ValueChanged<PcapMode> onChanged;
 
   @override
@@ -553,6 +591,7 @@ class _ModeSelector extends StatelessWidget {
         children: [
           Expanded(child: _modeBtn(context, PcapMode.wifi, 'WIFI 802.11')),
           Expanded(child: _modeBtn(context, PcapMode.ble, 'BLE LL PHDR')),
+          if (showZigbee) Expanded(child: _modeBtn(context, PcapMode.zigbee, '802.15.4')),
         ],
       ),
     );
@@ -587,10 +626,13 @@ class _WifiConfigCard extends StatelessWidget {
   const _WifiConfigCard({
     required this.chanStart, required this.chanEnd, required this.enabled,
     required this.onChanStart, required this.onChanEnd,
+    this.lo = 1, this.hi = 14,
   });
   final int chanStart;
   final int chanEnd;
   final bool enabled;
+  final int lo;
+  final int hi;
   final ValueChanged<int> onChanStart;
   final ValueChanged<int> onChanEnd;
 
@@ -612,9 +654,9 @@ class _WifiConfigCard extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              Expanded(child: _ChanDropdown(label: 'START', value: chanStart, enabled: enabled, onChanged: onChanStart)),
+              Expanded(child: _ChanDropdown(label: 'START', value: chanStart, enabled: enabled, min: lo, max: hi, onChanged: onChanStart)),
               const SizedBox(width: 8),
-              Expanded(child: _ChanDropdown(label: 'END', value: chanEnd, enabled: enabled, min: chanStart, onChanged: onChanEnd)),
+              Expanded(child: _ChanDropdown(label: 'END', value: chanEnd, enabled: enabled, min: chanStart, max: hi, onChanged: onChanEnd)),
             ],
           ),
         ],
@@ -626,18 +668,19 @@ class _WifiConfigCard extends StatelessWidget {
 class _ChanDropdown extends StatelessWidget {
   const _ChanDropdown({
     required this.label, required this.value, required this.enabled,
-    required this.onChanged, this.min = 1,
+    required this.onChanged, this.min = 1, this.max = 14,
   });
   final String label;
   final int value;
   final bool enabled;
   final int min;
+  final int max;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    final items = <int>[for (int i = min; i <= 14; i++) i];
+    final items = <int>[for (int i = min; i <= max; i++) i];
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
@@ -673,6 +716,25 @@ class _WifiStatsGrid extends StatelessWidget {
        _StatTile(label: 'DATA', value: stats.dataCount, color: AppTheme.success)),
       (_StatTile(label: 'CTRL', value: stats.ctrlCount, color: t.textDim),
        _StatTile(label: 'MGMT OTHER', value: stats.mgmtOtherCount, color: t.textDim)),
+      (_StatTile(label: 'DROPPED', value: stats.droppedFrames, color: AppTheme.error),
+       _StatTile(label: 'TX BYTES', value: stats.bytesWritten, color: t.textSecondary)),
+    ];
+    return _gridBox(context, rows);
+  }
+}
+
+class _ZigbeeStatsGrid extends StatelessWidget {
+  const _ZigbeeStatsGrid({required this.stats, required this.t});
+  final PcapStats stats;
+  final ResolvedTheme t;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(_StatTile, _StatTile)>[
+      (_StatTile(label: 'BEACONS', value: stats.beaconCount, color: zigbeeColor),
+       _StatTile(label: 'DATA', value: stats.dataCount, color: AppTheme.success)),
+      (_StatTile(label: 'ACKS', value: stats.ctrlCount, color: t.textDim),
+       _StatTile(label: 'COMMANDS / OTHER', value: stats.mgmtOtherCount, color: AppTheme.warning)),
       (_StatTile(label: 'DROPPED', value: stats.droppedFrames, color: AppTheme.error),
        _StatTile(label: 'TX BYTES', value: stats.bytesWritten, color: t.textSecondary)),
     ];
@@ -925,12 +987,13 @@ class _PcapRow extends StatelessWidget {
     final t = AppTheme.of(context);
     final name = file.uri.pathSegments.last;
     final isBle = name.contains('_ble_');
+    final isZb = name.contains('_154_');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Icon(isBle ? Icons.bluetooth : Icons.wifi,
-              color: isBle ? AppTheme.flockBle : AppTheme.accent, size: 16),
+          Icon(isZb ? zigbeeIcon : isBle ? Icons.bluetooth : Icons.wifi,
+              color: isZb ? zigbeeColor : isBle ? AppTheme.flockBle : AppTheme.accent, size: 16),
           const SizedBox(width: 10),
           Expanded(
             child: FutureBuilder<int>(

@@ -224,6 +224,7 @@ class BleManager {
 
   static const int _kPcapLtWifi = 127;
   static const int _kPcapLtBle = 256;
+  static const int _kPcapLt802154Fcs = 195;
   static const int _kPcapSnap = 2500;
   static const int _kPcapMagic = 0xCAFEBABE;
   static const int _kPcapEnd = 0xDEADBEEF;
@@ -251,7 +252,7 @@ class BleManager {
     await _closePcapFile(silent: true);
     final dir = await _pcapDir();
     final ts = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now().toLocal());
-    final suffix = mode == 1 ? 'ble' : 'wifi';
+    final suffix = switch (mode) { 1 => 'ble', 2 => '154', _ => 'wifi' };
     String name;
     if (stats != null && stats.isAutoTriggered) {
       final macFlat = stats.autoTriggerMac
@@ -263,7 +264,7 @@ class BleManager {
     }
     _pcapFile = File('${dir.path}/$name');
     _pcapSink = _pcapFile!.openWrite(mode: FileMode.writeOnly);
-    final lt = mode == 1 ? _kPcapLtBle : _kPcapLtWifi;
+    final lt = switch (mode) { 1 => _kPcapLtBle, 2 => _kPcapLt802154Fcs, _ => _kPcapLtWifi };
     _pcapSink!.add(_buildPcapHeader(lt));
     _pcapBytesWritten = 24;
     _pcapRx = Uint8List(0);

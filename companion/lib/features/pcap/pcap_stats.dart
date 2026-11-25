@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Luke Switzer
 import 'dart:typed_data';
 
-enum PcapMode { wifi, ble }
+enum PcapMode { wifi, ble, zigbee }
 
 /// Mirrors firmware PcapStats struct in src/protocol.h (packed little-endian, 60 bytes).
 class PcapStats {
@@ -73,7 +73,11 @@ class PcapStats {
 
   final String sourceNodeId;
 
-  PcapMode get modeEnum => mode == 1 ? PcapMode.ble : PcapMode.wifi;
+  PcapMode get modeEnum => switch (mode) {
+        1 => PcapMode.ble,
+        2 => PcapMode.zigbee,
+        _ => PcapMode.wifi,
+      };
 
   bool get isAutoTriggered =>
       autoTriggerSrc != 0xFF && autoTriggerMac.any((b) => b != 0);
@@ -167,5 +171,9 @@ class PcapStats {
         _ => 'UNKNOWN',
       };
 
-  String get modeLabel => mode == 1 ? 'BLE LL' : 'WIFI 802.11';
+  String get modeLabel => switch (mode) {
+        1 => 'BLE LL',
+        2 => '802.15.4',
+        _ => 'WIFI 802.11',
+      };
 }

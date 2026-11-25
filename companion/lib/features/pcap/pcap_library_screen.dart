@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/app_time.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 class PcapLibraryScreen extends ConsumerStatefulWidget {
@@ -224,13 +225,16 @@ class _PcapLibraryScreenState extends ConsumerState<PcapLibraryScreen> {
                       final e = list[i];
                       final name = e.file.path.split('/').last;
                       final isBle = name.contains('_ble_');
+                      final isZb = name.contains('_154_');
                       final active = _isActiveCapture(e.file);
                       return ListTile(
                         leading: Icon(
-                          isBle ? Icons.bluetooth : Icons.wifi,
-                          color: isBle
-                              ? AppTheme.flockBle
-                              : AppTheme.detector,
+                          isZb ? zigbeeIcon : isBle ? Icons.bluetooth : Icons.wifi,
+                          color: isZb
+                              ? zigbeeColor
+                              : isBle
+                                  ? AppTheme.flockBle
+                                  : AppTheme.detector,
                         ),
                         title: Row(
                           children: [

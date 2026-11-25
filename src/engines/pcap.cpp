@@ -16,9 +16,14 @@
 #ifdef OUISPY_DONGLE
 #include "../dongle.h"
 #endif
+#ifdef OUISPY_DUAL_BAND
+#include "ieee802154.h"
+#include "ieee802154_frame.h"
+#endif
 
 #define PCAP_LT_WIFI         127u
 #define PCAP_LT_BLE          256u
+#define PCAP_LT_802154_FCS   195u
 #define PCAP_RADIOTAP_LEN    18u
 #define PCAP_SNAPLEN         2324u
 #ifdef OUISPY_TINYRAM
@@ -42,6 +47,11 @@ static uint8_t pcap5gMode = 1;
 #define PCAP_MAX_HOPS 48
 #else
 #define PCAP_MAX_HOPS 32
+#endif
+#ifdef OUISPY_DUAL_BAND
+static uint8_t pcapZbStart = ZB154_CH_MIN;
+static uint8_t pcapZbEnd   = ZB154_CH_MAX;
+static bool    pcapZbOn    = false;
 #endif
 static uint8_t pcapHopList[PCAP_MAX_HOPS];
 static uint8_t pcapHopListLen = 0;
@@ -211,6 +221,24 @@ static void IRAM_ATTR pcapWifiCb(void* buf, wifi_promiscuous_pkt_type_t type) {
     memcpy(body + PCAP_RADIOTAP_LEN, p, len);
     appendFrame(body, (uint32_t)(PCAP_RADIOTAP_LEN + len));
 }
+
+#ifdef OUISPY_DUAL_BAND
+static void IRAM_ATTR pcapZbCb(const uint8_t* mac, uint8_t macLen, int8_t, uint8_t, uint8_t) {
+    if (!pcapActive || pcapPaused || macLen < 2 || macLen > 125) return;
+    switch (mac[0] & 0x07) {
+        case ZB154_FRAME_BEACON: cntBeacon++; break;
+        case ZB154_FRAME_DATA:   cntData++; break;
+        case ZB154_FRAME_ACK:    cntCtrl++; break;
+        default:                 cntMgmtOther++; break;
+    }
+    uint8_t body[127];
+    memcpy(body, mac, macLen);
+    const uint16_t fcs = zb154Crc16(mac, macLen);
+    body[macLen] = (uint8_t)(fcs & 0xFF);
+    body[macLen + 1] = (uint8_t)(fcs >> 8);
+    appendFrame(body, (uint32_t)macLen + 2u);
+}
+#endif
 
 static uint8_t mapPduType(uint8_t advType) {
     switch (advType) {
@@ -397,6 +425,13 @@ static void pcapInit(void) {
 static void pcapBuildHopList(void) {
     pcapHopListLen = 0;
     pcapRendezvousInSet = false;
+#ifdef OUISPY_DUAL_BAND
+    if (pcapMode == PCAP_MODE_802154) {
+        for (uint8_t c = pcapZbStart; c <= pcapZbEnd && pcapHopListLen < PCAP_MAX_HOPS; c++) pcapHopList[pcapHopListLen++] = c;
+        if (pcapHopListLen == 0) { pcapHopList[0] = ZB154_CH_MIN; pcapHopListLen = 1; }
+        return;
+    }
+#endif
     for (uint8_t c = pcapChanStart; c <= pcapChanEnd && pcapHopListLen < PCAP_MAX_HOPS; c++) {
         if (!wifiChanEnabled(c)) continue;
         if (c == 1) pcapRendezvousInSet = true;
@@ -463,9 +498,26 @@ static void pcapStart(void) {
     }
 
 #ifdef OUISPY_DONGLE
-    donglePcapOpen(pcapMode == PCAP_MODE_BLE ? PCAP_LT_BLE : PCAP_LT_WIFI);
+    donglePcapOpen(pcapMode == PCAP_MODE_BLE ? PCAP_LT_BLE
+                   : pcapMode == PCAP_MODE_802154 ? PCAP_LT_802154_FCS : PCAP_LT_WIFI);
 #endif
 
+#ifdef OUISPY_DUAL_BAND
+    if (pcapMode == PCAP_MODE_802154) {
+        pcapZbOn = zb154Register(pcapZbCb);
+        if (!pcapZbOn) {
+            Serial.println("[PCAP] 802.15.4 driver unavailable");
+            pcapActive = false;
+            pcapState = 3;
+            if (pcapSenderHandle) xTaskNotifyGive(pcapSenderHandle);
+            engineSetState(ENGINE_PCAP, ESTATE_DISABLED);
+            bleGattNotifyPcapStats();
+            return;
+        }
+        zb154Tune(pcapCurChan);
+        Serial.printf("[PCAP] 802.15.4 receive on, ch=%u\n", pcapCurChan);
+    } else
+#endif
     if (pcapMode == PCAP_MODE_WIFI) {
         bool meshOn = meshIsEnabled();
         if (!meshOn) {
@@ -505,6 +557,14 @@ static void pcapStop(void) {
     pcapActive = false;
     pcapPaused = false;
 
+#ifdef OUISPY_DUAL_BAND
+    if (pcapMode == PCAP_MODE_802154) {
+        if (pcapZbOn) {
+            zb154Unregister(pcapZbCb);
+            pcapZbOn = false;
+        }
+    } else
+#endif
     if (pcapMode == PCAP_MODE_WIFI) {
         wifiCoexUnregister(pcapWifiCb);
     } else {
@@ -572,6 +632,17 @@ static void pcapLoop(void) {
         }
     }
 #endif
+#ifdef OUISPY_DUAL_BAND
+    if (pcapMode == PCAP_MODE_802154) {
+        if (pcapZbOn && pcapHopListLen > 1 && wifiCoexShouldHop(ENGINE_PCAP) && now - pcapLastHop >= pcapDwellMs) {
+            pcapHopIdx++;
+            if (pcapHopIdx >= pcapHopListLen) pcapHopIdx = 0;
+            pcapCurChan = pcapHopList[pcapHopIdx];
+            zb154Tune(pcapCurChan);
+            pcapLastHop = now;
+        }
+    } else
+#endif
     if (pcapMode == PCAP_MODE_WIFI) {
         if (wifiCoexShouldHop(ENGINE_PCAP) && now - pcapLastHop >= pcapDwellMs) {
             const bool meshOn = meshIsEnabled();
@@ -620,7 +691,18 @@ static void pcapConfig(const uint8_t* payload, uint8_t len) {
         case PCAP_CTRL_START:
             if (len >= 2) {
                 pcapMode = (payload[1] == PCAP_MODE_BLE) ? PCAP_MODE_BLE : PCAP_MODE_WIFI;
+#ifdef OUISPY_DUAL_BAND
+                if (payload[1] == PCAP_MODE_802154) pcapMode = PCAP_MODE_802154;
+#endif
             }
+#ifdef OUISPY_DUAL_BAND
+            if (len >= 4 && pcapMode == PCAP_MODE_802154) {
+                uint8_t cs = payload[2];
+                uint8_t ce = payload[3];
+                if (cs >= ZB154_CH_MIN && cs <= ZB154_CH_MAX) pcapZbStart = cs;
+                if (ce >= pcapZbStart && ce <= ZB154_CH_MAX) pcapZbEnd = ce;
+            } else
+#endif
             if (len >= 4) {
                 uint8_t cs = payload[2];
                 uint8_t ce = payload[3];
