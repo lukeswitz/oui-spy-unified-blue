@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/board_caps.dart';
 import 'package:oui_spy/core/zigbee.dart';
+import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
@@ -210,6 +212,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final ble = ref.watch(bleManagerProvider);
+    final caps = ref.watch(boardCapsProvider);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -327,12 +330,13 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                 _ModeSelector(
                   mode: _mode,
                   enabled: !isCapturing,
-                  showZigbee: _zigbeeAvailable,
+                  zigbee: caps.ieee802154,
                   onChanged: (m) {
                     setState(() => _mode = m);
                     _savePrefs();
                   },
                 ),
+                if (!caps.ieee802154.enabled) DisabledReason(caps.ieee802154.reason!),
                 if (_mode == PcapMode.zigbee) ...[
                   const SizedBox(height: 12),
                   _WifiConfigCard(
@@ -372,30 +376,31 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
                       _savePrefs();
                     },
                   ),
-                  if (ref.read(bleManagerProvider).board.toLowerCase().contains('c5')) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Text('5 GHz', style: Theme.of(context).textTheme.bodyMedium),
-                        const SizedBox(width: 12),
-                        DropdownButton<int>(
-                          value: _mode5g,
-                          onChanged: isCapturing
-                              ? null
-                              : (v) {
-                                  if (v == null) return;
-                                  setState(() => _mode5g = v);
-                                  _savePrefs();
-                                },
-                          items: const [
-                            DropdownMenuItem(value: 0, child: Text('Off')),
-                            DropdownMenuItem(value: 1, child: Text('Regular (non-DFS)')),
-                            DropdownMenuItem(value: 2, child: Text('+ DFS')),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text('5 GHz', style: Theme.of(context).textTheme.bodyMedium),
+                      const SizedBox(width: 12),
+                      Expanded(child: DropdownButton<int>(
+                        key: const Key('pcap-5ghz'),
+                        isExpanded: true,
+                        value: _mode5g,
+                        onChanged: isCapturing || !caps.wifi5Ghz.enabled
+                            ? null
+                            : (v) {
+                                if (v == null) return;
+                                setState(() => _mode5g = v);
+                                _savePrefs();
+                              },
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('Off')),
+                          DropdownMenuItem(value: 1, child: Text('Regular (non-DFS)')),
+                          DropdownMenuItem(value: 2, child: Text('+ DFS')),
+                        ],
+                      )),
+                    ],
+                  ),
+                  if (!caps.wifi5Ghz.enabled) DisabledReason(caps.wifi5Ghz.reason!),
                 ],
                 const SizedBox(height: 16),
                 if (activeMode == PcapMode.wifi)
@@ -573,10 +578,10 @@ class _StateCard extends StatelessWidget {
 }
 
 class _ModeSelector extends StatelessWidget {
-  const _ModeSelector({required this.mode, required this.enabled, required this.onChanged, this.showZigbee = false});
+  const _ModeSelector({required this.mode, required this.enabled, required this.onChanged, required this.zigbee});
   final PcapMode mode;
   final bool enabled;
-  final bool showZigbee;
+  final Cap zigbee;
   final ValueChanged<PcapMode> onChanged;
 
   @override
@@ -593,16 +598,18 @@ class _ModeSelector extends StatelessWidget {
         children: [
           Expanded(child: _modeBtn(context, PcapMode.wifi, 'WIFI 802.11')),
           Expanded(child: _modeBtn(context, PcapMode.ble, 'BLE LL PHDR')),
-          if (showZigbee) Expanded(child: _modeBtn(context, PcapMode.zigbee, '802.15.4')),
+          Expanded(child: _modeBtn(context, PcapMode.zigbee, '802.15.4', usable: zigbee.enabled)),
         ],
       ),
     );
   }
 
-  Widget _modeBtn(BuildContext context, PcapMode m, String label) {
+  Widget _modeBtn(BuildContext context, PcapMode m, String label, {bool usable = true}) {
     final t = AppTheme.of(context);
     final selected = mode == m;
+    final enabled = this.enabled && usable;
     return GestureDetector(
+      key: Key('pcap-mode-${m.name}'),
       onTap: enabled ? () => onChanged(m) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),

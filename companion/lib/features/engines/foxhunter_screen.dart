@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/board_caps.dart';
 import 'package:oui_spy/core/find_it.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/features/engines/find_it_pulse.dart';
@@ -80,6 +81,7 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
     final channel = state.foxhunterChannel;
     final targetLost = isActive && intervalMs == 0 && reading == null;
     final canBuzz = findItHapticsAvailable();
+    final managerCap = ref.watch(boardCapsProvider).managerOnly;
     final normalized = ((rssi + 100) / 70).clamp(0.0, 1.0);
     final color = targetLost
         ? t.textDim
@@ -136,15 +138,14 @@ class _FoxhunterScreenState extends ConsumerState<FoxhunterScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            if (state.isManagerConnected) ...[
-              _NodeTargetPicker(
-                selected: state.foxhunterTargetNodeId,
-                enabled: !isActive,
-                onChanged: (v) =>
-                    ref.read(appStateProvider).setFoxhunterTargetNode(v),
-              ),
-              const SizedBox(height: 12),
-            ],
+            _NodeTargetPicker(
+              selected: state.foxhunterTargetNodeId,
+              enabled: !isActive && managerCap.enabled,
+              onChanged: (v) =>
+                  ref.read(appStateProvider).setFoxhunterTargetNode(v),
+            ),
+            if (!managerCap.enabled) DisabledReason(managerCap.reason!),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(

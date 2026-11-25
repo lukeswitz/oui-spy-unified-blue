@@ -29,6 +29,8 @@ import 'package:oui_spy/core/phone_watch.dart';
 import 'package:oui_spy/core/watch_alerts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/app_state.dart';
+import 'package:oui_spy/core/board_caps.dart';
+import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -401,7 +403,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Privacy', 'Receive only, mask identifiers on screen', Icons.privacy_tip_outlined, () => const _DetectionSettingsTab(part: _DetPart.privacy)),
           ],
         3 => [
-            ('Sound & Lights', _hasBuzzer ? 'Buzzer, alert sounds, status LED, NeoPixel' : 'Status LED, NeoPixel', Icons.volume_up, () => _buildHardwareTab(_HwPart.sound)),
+            ('Sound & Lights', 'Buzzer, alert sounds, status LED, NeoPixel', Icons.volume_up, () => _buildHardwareTab(_HwPart.sound)),
             ('GPS Source', 'Phone or on-board GPS module', Icons.satellite_alt, () => _buildHardwareTab(_HwPart.gps)),
             ('Flock Detection', 'Extended OUI set, OUI-only Wi-Fi hits', Icons.camera_outdoor, () => _buildHardwareTab(_HwPart.flock)),
             ('Radio Privacy', 'Active Wi-Fi probing, passive Bluetooth', Icons.cell_tower, () => _buildHardwareTab(_HwPart.radio)),
@@ -815,12 +817,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     );
   }
 
-  bool get _hasBuzzer => !const {'tdongle_s3', 'tdongle_c5', 'stickc'}.contains(ref.read(bleManagerProvider).board);
-
   Widget _buildHardwareTab(_HwPart part) {
     final appState = ref.watch(appStateProvider);
     if (!appState.isConnected) return _buildDisconnectedPlaceholder();
-    final hasBuzzer = _hasBuzzer;
+    final buzzerCap = ref.watch(boardCapsProvider).buzzer;
+    final hasBuzzer = buzzerCap.enabled;
     final rxOnly = ref.watch(rxOnlyProvider) == true;
     final policy = _radioPolicy == null ? 0 : (rxOnly ? BleManager.rxOnlyPolicy(_radioPolicy!) : _radioPolicy!);
 
@@ -828,43 +829,57 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       children: [
         if (part == _HwPart.sound) ...[
-        if (hasBuzzer) const ConfigSectionHeader(label: 'Audio'),
-        if (hasBuzzer) ConfigToggleRow(
+        const ConfigSectionHeader(label: 'Audio'),
+        ConfigToggleRow(
           icon: Icons.volume_up,
           label: 'Buzzer',
           subtitle: 'Audible alerts on detections',
           color: AppTheme.accent,
-          value: _buzzerEnabled,
-          onChanged: (v) {
-            setState(() => _buzzerEnabled = v);
-            _writeHardwareConfig();
-          },
+          value: hasBuzzer && _buzzerEnabled,
+          onChanged: hasBuzzer
+              ? (v) {
+                  setState(() => _buzzerEnabled = v);
+                  _writeHardwareConfig();
+                }
+              : null,
         ),
-        if (hasBuzzer && _buzzerEnabled)
-          ConfigSliderRow(
-            icon: Icons.graphic_eq,
-            label: 'Buzzer Volume',
-            valueLabel: '$_buzzerVolume',
-            min: 1,
-            max: 255,
-            divisions: 254,
-            value: _buzzerVolume.toDouble(),
-            color: AppTheme.accent,
-            onChanged: (v) => setState(() => _buzzerVolume = v.round()),
-            onChangeEnd: (_) => _writeHardwareConfig(),
+        if (!hasBuzzer || _buzzerEnabled)
+          Opacity(
+            opacity: hasBuzzer ? 1 : 0.45,
+            child: IgnorePointer(
+              ignoring: !hasBuzzer,
+              child: ConfigSliderRow(
+                icon: Icons.graphic_eq,
+                label: 'Buzzer Volume',
+                valueLabel: '$_buzzerVolume',
+                min: 1,
+                max: 255,
+                divisions: 254,
+                value: _buzzerVolume.toDouble(),
+                color: AppTheme.accent,
+                onChanged: (v) => setState(() => _buzzerVolume = v.round()),
+                onChangeEnd: (_) => _writeHardwareConfig(),
+              ),
+            ),
           ),
-        if (hasBuzzer && _buzzerEnabled)
-          ConfigActionRow(
-            icon: Icons.music_note,
-            label: 'Alert sounds',
-            subtitle: 'Compose melodies and assign them to detections',
-            color: AppTheme.accent,
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => const AlertSoundsScreen(),
-            )),
+        if (!hasBuzzer || _buzzerEnabled)
+          Opacity(
+            opacity: hasBuzzer ? 1 : 0.45,
+            child: ConfigActionRow(
+              icon: Icons.music_note,
+              label: 'Alert sounds',
+              subtitle: 'Compose melodies and assign them to detections',
+              color: AppTheme.accent,
+              onTap: hasBuzzer
+                  ? () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const AlertSoundsScreen(),
+                      ))
+                  : null,
+            ),
           ),
+        if (!hasBuzzer) DisabledReason(buzzerCap.reason!),
 
-        if (hasBuzzer) const SizedBox(height: 16),
+        const SizedBox(height: 16),
         ConfigSectionHeader(label: 'Lighting'),
         ConfigToggleRow(
           icon: Icons.lightbulb,
@@ -1266,29 +1281,37 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ),
           MeshSignalGrid(rows: appState.meshSignal, label: appState.labelForNode),
         ],
-        if (appState.isConnected && ref.read(bleManagerProvider).isManagerConnected) ...[
-          const SizedBox(height: 16),
-          const ConfigSectionHeader(label: 'Fleet control'),
-          ConfigActionRow(
-            icon: Icons.campaign_outlined,
-            label: 'Identify all',
-            subtitle: 'Every node beeps and blinks for 10 seconds',
-            onTap: () => _fleetControl(BleProtocol.encodeNodeIdentify(null), 'Identify sent to every node'),
-          ),
-          ConfigActionRow(
-            icon: Icons.fact_check_outlined,
-            label: 'Read all',
-            subtitle: 'Every node reports its build, filters, uptime and peers',
-            onTap: () => _fleetControl(BleProtocol.encodeNodeStatusRequest(null), 'Status requested from every node'),
-          ),
-          ConfigActionRow(
-            icon: Icons.restart_alt,
-            label: 'Reboot all nodes',
-            subtitle: 'Every node restarts and rejoins. The manager stays up',
-            destructive: true,
-            onTap: _confirmRebootAllNodes,
-          ),
-        ],
+        ...() {
+          final fleetCap = ref.watch(boardCapsProvider).managerOnly;
+          return [
+            const SizedBox(height: 16),
+            const ConfigSectionHeader(label: 'Fleet control'),
+            ConfigActionRow(
+              icon: Icons.campaign_outlined,
+              label: 'Identify all',
+              subtitle: 'Every node beeps and blinks for 10 seconds',
+              onTap: fleetCap.enabled
+                  ? () => _fleetControl(BleProtocol.encodeNodeIdentify(null), 'Identify sent to every node')
+                  : null,
+            ),
+            ConfigActionRow(
+              icon: Icons.fact_check_outlined,
+              label: 'Read all',
+              subtitle: 'Every node reports its build, filters, uptime and peers',
+              onTap: fleetCap.enabled
+                  ? () => _fleetControl(BleProtocol.encodeNodeStatusRequest(null), 'Status requested from every node')
+                  : null,
+            ),
+            ConfigActionRow(
+              icon: Icons.restart_alt,
+              label: 'Reboot all nodes',
+              subtitle: 'Every node restarts and rejoins. The manager stays up',
+              destructive: true,
+              onTap: fleetCap.enabled ? _confirmRebootAllNodes : null,
+            ),
+            if (!fleetCap.enabled) DisabledReason(fleetCap.reason!),
+          ];
+        }(),
       ],
     );
   }

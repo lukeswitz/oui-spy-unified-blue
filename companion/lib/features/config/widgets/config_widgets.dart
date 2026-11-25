@@ -46,7 +46,9 @@ class ConfigToggleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
-    return InkWell(
+    return Opacity(
+      opacity: onChanged == null ? 0.45 : 1,
+      child: InkWell(
       onTap: onChanged == null ? null : () => onChanged!(!value),
       child: Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -85,6 +87,7 @@ class ConfigToggleRow extends StatelessWidget {
             onChanged: onChanged,
           ),
         ],
+      ),
       ),
       ),
     );
@@ -234,7 +237,9 @@ class ConfigActionRow extends StatelessWidget {
     final c = destructive
         ? AppTheme.error
         : (color ?? AppTheme.accent);
-    return Material(
+    return Opacity(
+      opacity: onTap == null ? 0.45 : 1,
+      child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -268,6 +273,7 @@ class ConfigActionRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

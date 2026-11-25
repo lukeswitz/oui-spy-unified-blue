@@ -734,17 +734,26 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
                 label: Text('Install via WiFi — ${_availableRelease!.tag}'),
               ),
             ),
-            if (ref.read(bleManagerProvider).isManagerConnected)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: ElevatedButton.icon(
-                  onPressed: _fleetRunning ? null : _updateAll,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accent),
-                  icon: const Icon(Icons.system_update_alt, size: 16),
-                  label: const Text('Update All — manager + nodes (WiFi)'),
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElevatedButton.icon(
+                    key: const Key('ota-update-all'),
+                    onPressed: _fleetRunning || !ref.watch(boardCapsProvider).managerOnly.enabled
+                        ? null
+                        : _updateAll,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accent),
+                    icon: const Icon(Icons.system_update_alt, size: 16),
+                    label: const Text('Update All — manager + nodes (WiFi)'),
+                  ),
+                  if (!ref.watch(boardCapsProvider).managerOnly.enabled)
+                    DisabledReason(ref.watch(boardCapsProvider).managerOnly.reason!),
+                ],
               ),
+            ),
           ] else
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),

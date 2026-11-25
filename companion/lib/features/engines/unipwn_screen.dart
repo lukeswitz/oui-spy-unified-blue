@@ -7,10 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/board_caps.dart';
 import 'package:oui_spy/core/engine_control.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
 
 class UnipwnScreen extends ConsumerStatefulWidget {
@@ -66,6 +68,7 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
     final t = AppTheme.of(context);
     final state = ref.watch(appStateProvider);
     final isActive = state.isEngineActive(Engine.uniPwn);
+    final managerCap = ref.watch(boardCapsProvider).managerOnly;
     final robots = _robots.values.toList()
       ..sort((a, b) => b.rssi.compareTo(a.rssi));
 
@@ -95,15 +98,20 @@ class _UnipwnScreenState extends ConsumerState<UnipwnScreen> {
       ),
       body: Column(
         children: [
-          if (state.isManagerConnected)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: _UnipwnNodePicker(
-                selected: _selectedNode,
-                enabled: !isActive,
-                onChanged: (v) => setState(() => _selectedNode = v),
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _UnipwnNodePicker(
+                  selected: _selectedNode,
+                  enabled: !isActive && managerCap.enabled,
+                  onChanged: (v) => setState(() => _selectedNode = v),
+                ),
+                if (!managerCap.enabled) DisabledReason(managerCap.reason!),
+              ],
             ),
+          ),
           SizedBox(
             height: 160,
             child: robots.isEmpty

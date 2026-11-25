@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/board_caps.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
@@ -17,6 +18,7 @@ import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool targetEngineRunning(AppState app, WardriveTarget m) {
@@ -95,6 +97,7 @@ class SessionTargets extends ConsumerWidget {
     final t = AppTheme.of(context);
     final wd = ref.watch(wardriveProvider);
     final app = ref.watch(appStateProvider);
+    final zigbeeCap = ref.watch(boardCapsProvider).ieee802154;
     final live = {
       for (final x in WardriveController.selectableTargets)
         if (targetEngineRunning(app, x)) x,
@@ -226,7 +229,7 @@ class SessionTargets extends ConsumerWidget {
                 children: [for (final r in radios) segment(r)],
               ),
             ),
-            if (wd.zigbeeAvailable) ...[
+            ...[
               const SizedBox(height: 8),
               Container(
                 key: const ValueKey('zigbee-toggle'),
@@ -257,12 +260,13 @@ class SessionTargets extends ConsumerWidget {
                     ),
                     Switch.adaptive(
                       key: const ValueKey('zigbee-switch'),
-                      value: wd.zigbee,
-                      onChanged: busy ? null : wd.setZigbee,
+                      value: wd.zigbee && zigbeeCap.enabled,
+                      onChanged: busy || !zigbeeCap.enabled ? null : wd.setZigbee,
                     ),
                   ],
                 ),
               ),
+              if (!zigbeeCap.enabled) DisabledReason(zigbeeCap.reason!),
             ],
           ],
         ],
