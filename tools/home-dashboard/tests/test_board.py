@@ -234,5 +234,34 @@ class SourceTest(unittest.TestCase):
         self.assertEqual((f["dom"], f["node"], f["type"], f["info"]), ("wifi", "A1B2", "OUI_ADDR1", {"ch": 11}))
 
 
+class IngestTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(os.path.join(self.tmp.name, "t.db"))
+        self.events = []
+        self.fleet = Fleet(self.store, lambda e, p: self.events.append((e, p)))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def dets(self):
+        return [p for e, p in self.events if e == "det"]
+
+    def test_text_rssi_from_mqtt_is_dropped(self):
+        self.fleet.feed_detection({"mac": "AA:BB:CC:DD:EE:01", "rssi": "<img src=x onerror=alert(1)>",
+                                   "type": "OUI"}, "mqtt")
+        self.assertIsNone(self.dets()[0]["rssi"])
+
+    def test_numeric_rssi_strings_become_ints(self):
+        self.fleet.feed_detection({"mac": "AA:BB:CC:DD:EE:02", "rssi": "-61", "type": "OUI"}, "mqtt")
+        self.assertEqual(self.dets()[0]["rssi"], -61)
+
+    def test_text_node_rssi_in_telemetry_is_dropped(self):
+        self.fleet.feed_tlm({"id": "A1B2", "role": "home",
+                             "nodes": [{"id": "C3D4", "role": "remote", "rssi": "<b>x</b>"}]}, "mqtt")
+        n = {x["id"]: x for x in self.fleet.snapshot()["nodes"]}["C3D4"]
+        self.assertIsNone(n["rssi"])
+
+
 if __name__ == "__main__":
     unittest.main()

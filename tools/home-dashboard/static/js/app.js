@@ -304,7 +304,7 @@ function renderNodes() {
                 <span class="role ${role}">${role}</span>
             </div>
             <div class="node-meta">
-                <span class="nm-sig">${n.is_home ? `<span class="nm-usb">USB</span>` : `${bars(n.rssi)}${n.rssi ? `<b>${n.rssi}</b>` : "<b>-</b>"}<i>dBm</i>`}</span>
+                <span class="nm-sig">${n.is_home ? `<span class="nm-usb">USB</span>` : `${bars(n.rssi)}${n.rssi ? `<b>${esc(n.rssi)}</b>` : "<b>-</b>"}<i>dBm</i>`}</span>
                 <span class="nm-age" data-age="${n.last_seen || 0}">${st === "offline" ? "last " : ""}${ago(n.last_seen)}</span>
                 <span class="nm-pkt">${n.is_home ? "<b>-</b>" : `<b>${n.pkts || 0}</b>`}<i>pkts</i></span>
                 <span class="nm-det"><b>${dc}</b><i>det</i></span>
@@ -576,7 +576,7 @@ function wantedLinks() {
             if (n.is_home || !placed(n) || !n.online) continue;
             const st = nodeState(n);
             out.push({ key: "h:" + n.id, a: home, b: n, r: n.rssi, faded: st === "stale", oneWay: false,
-                       tip: `<b>${n.rssi ? n.rssi + " dBm" : "no rssi"}</b> | ${fmtDist(metres(home, n))}`,
+                       tip: `<b>${n.rssi ? esc(n.rssi) + " dBm" : "no rssi"}</b> | ${fmtDist(metres(home, n))}`,
                        sel: S.selected === n.id || S.selected === home.id });
         }
         return out;
@@ -599,7 +599,7 @@ function wantedLinks() {
         const rs = [ab, ba].filter((x) => x && x.rssi).map((x) => x.rssi);
         const r = rs.length ? Math.max(...rs) : 0;
         const fresh = [ab, ba].some((x) => x && x.age < 30) && p.a.online && p.b.online;
-        const one = (name, x) => x ? `${esc(name)} hears it at ${x.rssi ? x.rssi + " dBm" : "?"}` : `${esc(name)}: not heard`;
+        const one = (name, x) => x ? `${esc(name)} hears it at ${x.rssi ? esc(x.rssi) + " dBm" : "?"}` : `${esc(name)}: not heard`;
         out.push({ key: p.key, a: p.a, b: p.b, r, faded: !fresh, oneWay: !(ab && ba),
                    tip: `<b>${esc(nodeName(p.a.id))} - ${esc(nodeName(p.b.id))}</b><br>${one(nodeName(p.a.id), ab)}<br>${one(nodeName(p.b.id), ba)}<br>${fmtDist(metres(p.a, p.b))}`,
                    sel: S.selected === p.a.id || S.selected === p.b.id });
@@ -972,7 +972,7 @@ function detHtml(d, fresh) {
             ${devAlias(d.mac, d.alias) ? `<span class="mal">${esc(devAlias(d.mac, d.alias))}</span>` : ""}
             ${devName(d.mac, d.name) ? `<span class="dname" title="Name it broadcasts">"${esc(devName(d.mac, d.name))}"</span>` : ""}
             ${groupTag(d.mac)}
-            <span class="rssi-v">${d.rssi ?? "?"} dBm</span>
+            <span class="rssi-v">${esc(d.rssi ?? "?")} dBm</span>
             <span class="det-node ${home ? "home" : ""}">via ${esc(nodeName(d.node))}</span>
         </div>
         ${d.seen_by && d.seen_by.length > 1 ? `<div class="det-seen" title="Every node that heard it in the last minute, strongest signal first. Strongest = closest (roughly: walls and antennas skew it).">
@@ -1476,7 +1476,7 @@ function renderTargets() {
         if (!p) continue;
         keep.add(t.mac);
         let g = S.targets[t.mac];
-        const label = !S.triOn ? `${esc(t.name)}<br><b>${esc(nodeName(t.closest))}</b> ${t.seen[0].rssi} dBm`
+        const label = !S.triOn ? `${esc(t.name)}<br><b>${esc(nodeName(t.closest))}</b> ${esc(t.seen[0].rssi)} dBm`
             : fix && fix.ok ? `${esc(t.name)}<br><b>&plusmn;${fix.err} m</b> (68%)${fix.rough ? " <span class=\"uncal\">rough</span>" : ""}${fix.cal ? "" : " <span class=\"uncal\">uncalibrated</span>"}`
             : `${esc(t.name)}<br>no fix: ${esc(fix ? fix.why : "no signal")}; closest <b>${esc(nodeName(t.closest))}</b>`;
         if (!g) {
@@ -1525,8 +1525,8 @@ function renderTargets() {
             <button class="near-eye" data-mac="${esc(t.mac)}" title="${S.tgtHidden.has(t.mac) ? "Show this device on the map" : "Hide this device on the map"}">${S.tgtHidden.has(t.mac) ? "Hidden" : "On map"}</button>
             <span class="near-name">${esc(t.name)}</span>
             <span class="near-mac">${esc(t.mac)}</span>
-            <span class="near-close">${esc(nodeName(t.closest))} ${t.seen[0].rssi} dBm</span>
-            ${t.seen.slice(1).map((s) => `<span class="near-other">${esc(nodeName(s.node))} ${s.rssi}</span>`).join("")}
+            <span class="near-close">${esc(nodeName(t.closest))} ${esc(t.seen[0].rssi)} dBm</span>
+            ${t.seen.slice(1).map((s) => `<span class="near-other">${esc(nodeName(s.node))} ${esc(s.rssi)}</span>`).join("")}
         </div>`).join("") : "";
     if (box.innerHTML !== html) {
         box.innerHTML = html;
@@ -1719,7 +1719,7 @@ function histFiltered() { return [...histParams().keys()].length > 0; }
 function histRow(d) {
     return `<tr class="${d.is_new ? "new" : ""}"><td>${fullTime(d.ts)}</td><td>${esc(nodeName(d.node))}</td>
         <td>${esc(d.mac)}</td><td class="v">${devAlias(d.mac, d.alias) ? `<span class="mal">${esc(devAlias(d.mac, d.alias))}</span> ` : ""}${esc(d.descr || d.match || "")}</td>
-        <td>${d.dom === "wifi" ? "WiFi" : "BLE"} ${esc(d.type || "")}</td><td>${d.rssi ?? ""}</td><td>${esc(d.source || "")}</td></tr>`;
+        <td>${d.dom === "wifi" ? "WiFi" : "BLE"} ${esc(d.type || "")}</td><td>${esc(d.rssi ?? "")}</td><td>${esc(d.source || "")}</td></tr>`;
 }
 async function loadHistory(append) {
     if (!append) S.hist.offset = 0;
@@ -3270,7 +3270,7 @@ function droneCard(d) {
             <span class="dr-st">${esc(d.live ? (d.status || "LIVE") : `seen ${ago(d.last)}`)}</span></div>
         <div class="dr-sub">${esc(d.ua_type || "UA type not sent")} | ${esc((d.src || "").toUpperCase())} | via ${esc(nodeName(d.closest))}</div>
         ${d.id ? `<div class="dr-id">${esc(d.id)}</div>` : ""}
-        <div class="dr-cells">${cells.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("")}</div>
+        <div class="dr-cells">${cells.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join("")}</div>
     </div>`;
 }
 let drRenderAt = 0, drRenderTimer = null;
@@ -3328,7 +3328,7 @@ function fillDroneLive(d) {
         ["Pilot distance", d.pilot_dist_m != null ? `${d.pilot_dist_m} m` : "-"], ["Signal", d.rssi != null ? `${d.rssi} dBm` : "-"],
         ["Reports", d.reports ?? "-"],
     ];
-    $("drStats").innerHTML = cells.map(([k, v]) => `<div class="hs"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    $("drStats").innerHTML = cells.map(([k, v]) => `<div class="hs"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("");
     const rows = [];
     const row = (k, v, cls) => { if (v !== undefined && v !== null && v !== "") rows.push(`<div class="ik">${k}</div><div class="iv ${cls || ""}">${v}</div>`); };
     row("Serial / UAS ID", d.id ? `<code>${esc(d.id)}</code>` : "", "hl");
@@ -3344,7 +3344,7 @@ function fillDroneLive(d) {
     row("Pilot altitude", d.palt != null ? `${Math.round(d.palt)} m MSL` : "");
     row("Broadcast over", esc({ wifi: "WiFi beacon", nan: "WiFi NAN", ble: "Bluetooth", skyspy: "Sky-Spy (USB)" }[d.src] || d.src || ""));
     const nodes = Object.entries(d.nodes || {}).sort((a, b) => (b[1].rssi ?? -200) - (a[1].rssi ?? -200));
-    row("Heard by", nodes.map(([n, v]) => `<span class="chip">${esc(nodeName(n))} ${v.rssi ?? "?"} dBm, ${v.n}x</span>`).join(""));
+    row("Heard by", nodes.map(([n, v]) => `<span class="chip">${esc(nodeName(n))} ${esc(v.rssi ?? "?")} dBm, ${esc(v.n)}x</span>`).join(""));
     row("First seen", esc(fullTime(d.first)));
     $("drInfo").innerHTML = `<h4>Remote ID</h4><div class="igrid">${rows.join("")}</div>`;
 }

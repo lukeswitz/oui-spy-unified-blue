@@ -25,6 +25,15 @@ BROADCAST_GAP = 0.25     # s: fleet updates are coalesced to <= 4 a second (firs
 HOME_STAT_KEYS = ("rx", "tx", "up", "heap", "dev", "n", "mode", "mesh", "role")
 
 
+def as_int(v):
+    if isinstance(v, bool):
+        return None
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def intel_name(intel):
     """The name a device gives itself: BLE local name, else an AP's SSID."""
     if not intel:
@@ -127,7 +136,7 @@ class Fleet:
                 with self.lock:
                     for n in t.get("nodes", []):
                         if n.get("id") and n.get("id") != self.home_id:
-                            self._node_seen(n["id"], n.get("role"), n.get("last", 0), None, n.get("rssi"), now)
+                            self._node_seen(n["id"], n.get("role"), n.get("last", 0), None, as_int(n.get("rssi")), now)
                     self._node_seen(nid, "remote", 0, None, None, now)
                 self._broadcast()
             return
@@ -147,7 +156,7 @@ class Fleet:
                     continue
                 seen.add(nid)
                 self._node_seen(nid, n.get("role"), n.get("last", 0), n.get("pkts"),
-                                n.get("rssi") or None, now)
+                                as_int(n.get("rssi")) or None, now)
             for nid, st in list(self.nodes.items()):
                 if st["online"] and nid not in seen and nid != self.home_id:
                     self._node_offline(nid)
@@ -159,6 +168,7 @@ class Fleet:
     # ------------------------------------------------------------------
     def feed_detection(self, d, source="serial"):
         now = time.time()
+        d = {**d, "rssi": as_int(d.get("rssi"))}
         mac = str(d.get("mac", "")).upper()
         if not mac:
             return
