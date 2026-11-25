@@ -25,6 +25,67 @@ TAK_EVERY = 10
 STALE_S = 60
 
 
+MQTT_DEFAULTS = {"enabled": False, "host": "", "port": 1883, "user": "", "tls": False, "topic": "+/detection"}
+MQTT_KEYS = tuple(MQTT_DEFAULTS)
+
+
+def mqtt_password(environ=None):
+    """The MQTT password comes only from the OUISPY_MQTT_PASSWORD environment variable: never from the
+    database and never from a path that the HTTP API could be told to read."""
+    return (os.environ if environ is None else environ).get("OUISPY_MQTT_PASSWORD", "")
+
+
+def clean_mqtt(new, cur):
+    """Merge an API update into the saved MQTT settings. Only the keys in MQTT_KEYS are taken; a password or
+    a password file is refused, and an old saved password_file is dropped."""
+    for k in ("password", "password_file"):
+        if new.get(k):
+            raise ValueError("the MQTT password is not set here: set OUISPY_MQTT_PASSWORD before starting the dashboard")
+    out = {**MQTT_DEFAULTS, **{k: v for k, v in (cur or {}).items() if k in MQTT_KEYS}}
+    out.update({k: v for k, v in new.items() if k in MQTT_KEYS})
+    out["port"] = int(out.get("port") or 1883)
+    return out
+
+
+TAK_CERT_DIR = os.path.expanduser("~/.config/ouispy/tak")
+
+
+def _in_cert_dir(path, cert_dir):
+    base = os.path.realpath(cert_dir)
+    real = os.path.realpath(os.path.join(base, path))
+    return real.startswith(base + os.sep)
+
+
+def clean_tak(new, cur, cert_dir=None):
+    """Merge an API update into the saved TAK settings. TLS files are named relative to the TAK certificate
+    folder (~/.config/ouispy/tak) and must stay inside it, so the API cannot point the dashboard at any file."""
+    cert_dir = cert_dir or TAK_CERT_DIR
+    out = {**TAK_DEFAULTS, **(cur or {})}
+    if "enabled" in new:
+        out["enabled"] = bool(new["enabled"])
+    for k in ("host", "callsign"):
+        if k in new:
+            out[k] = str(new[k] or "").strip()[:200]
+    for k in ("ca_file", "cert_file", "key_file"):
+        if k in new:
+            name = str(new[k] or "").strip()[:200]
+            if name and (os.path.isabs(name) or not _in_cert_dir(name, cert_dir)):
+                raise ValueError(f"{k}: give a file name inside {cert_dir}")
+            out[k] = name
+    if "proto" in new:
+        if new["proto"] not in ("tcp", "udp", "tls"):
+            raise ValueError("protocol must be tcp, udp or tls")
+        out["proto"] = new["proto"]
+    if "port" in new:
+        p = int(new["port"])
+        if not 1 <= p <= 65535:
+            raise ValueError("port must be 1-65535")
+        out["port"] = p
+    if out["enabled"] and not out["host"]:
+        raise ValueError("a TAK server address is needed")
+    return out
+
+
 def link_summary(snapshot, sources, settings, mode):
     """What the OUI-APEX app polls: is the board feed alive, and the state of every link."""
     board = sources.get("serial") or sources.get("demo") or {}
@@ -116,9 +177,13 @@ class TakLink:
         raw = socket.create_connection((c["host"], int(c["port"])), timeout=5)
         if proto != "tls":
             return raw
-        ctx = ssl.create_default_context(cafile=c["ca_file"] or None)
+        def path(name):
+            if name and (os.path.isabs(name) or not _in_cert_dir(name, TAK_CERT_DIR)):
+                raise ValueError("TLS files must be inside the TAK certificate folder")
+            return os.path.join(TAK_CERT_DIR, name) if name else None
+        ctx = ssl.create_default_context(cafile=path(c["ca_file"]))
         if c["cert_file"]:
-            ctx.load_cert_chain(c["cert_file"], c["key_file"] or None)
+            ctx.load_cert_chain(path(c["cert_file"]), path(c["key_file"]))
         return ctx.wrap_socket(raw, server_hostname=c["host"])
 
     def _send(self, c, xml):

@@ -332,7 +332,7 @@
                     </div>
                     <div class="two">
                         <div><label>User</label><input type="text" id="mUser" class="field"></div>
-                        <div><label>Password file</label><input type="text" id="mPass" class="field" placeholder="path, or set OUISPY_MQTT_PASSWORD" autocomplete="off"></div>
+                        <div><label>Password</label><div class="help-text" id="mPass"></div></div>
                     </div>
                     <label>Topic filter</label><input type="text" id="mTopic" class="field" placeholder="+/detection">
                 </div>
@@ -347,8 +347,8 @@
                         <div><label>Protocol</label><select id="tProto" class="field"><option value="tcp">TCP</option><option value="udp">UDP</option><option value="tls">TLS</option></select></div>
                         <div><label>Callsign prefix</label><input type="text" id="tCall" class="field" placeholder="OUISPY"></div>
                     </div>
-                    <label>TLS files (PEM paths)</label>
-                    <input type="text" id="tCa" class="field mono" placeholder="CA certificate">
+                    <label>TLS files (names inside ~/.config/ouispy/tak)</label>
+                    <input type="text" id="tCa" class="field mono" placeholder="CA certificate, e.g. ca.pem">
                     <input type="text" id="tCert" class="field mono" placeholder="Client certificate">
                     <input type="text" id="tKey" class="field mono" placeholder="Client key (no passphrase)">
                     <div class="help-text" id="tStatus"></div>

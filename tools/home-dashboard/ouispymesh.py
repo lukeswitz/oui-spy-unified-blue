@@ -46,8 +46,7 @@ DEFAULT_SETTINGS = {
     "tri": {"p0_ble": -59, "p0_wifi": -40, "n": 2.7, "sigma": 4.0, "max_err": 8.0,
             "offsets": {}, "devices": {}, "smooth": 0.35},
     "serial_port": "auto",          # auto | off | a port: COM5, /dev/ttyACM0 | tcp:192.0.2.5[:4700]
-    "mqtt": {"enabled": False, "host": "", "port": 1883, "user": "", "password_file": "", "tls": False,
-             "topic": "+/detection"},
+    "mqtt": dict(connectors.MQTT_DEFAULTS),
     "tak": dict(connectors.TAK_DEFAULTS),
     "rns": dict(connectors.RNS_DEFAULTS),
 }
@@ -97,7 +96,8 @@ def _peer():
 
 def _authorized():
     peer, fwd = _peer()
-    return access.authorized(peer, fwd, request.cookies.get(COOKIE) or request.args.get("token"), tokens)
+    return access.authorized(peer, fwd, request.cookies.get(COOKIE) or request.args.get("token"), tokens,
+                             request.host, args.port)
 
 
 @app.before_request
@@ -128,7 +128,8 @@ seen_drones = set()
 def settings():
     s = dict(DEFAULT_SETTINGS)
     s.update(store.all_settings())
-    for k in ("mqtt", "tak", "rns"):
+    s["mqtt"] = connectors.clean_mqtt({}, s.get("mqtt"))
+    for k in ("tak", "rns"):
         s[k] = {**DEFAULT_SETTINGS[k], **(s.get(k) or {})}
     return s
 
@@ -183,22 +184,11 @@ tak = connectors.TakLink(lambda: settings()["tak"], _collect)
 rns = connectors.ReticulumLink(lambda: settings()["rns"])
 
 
-def mqtt_password(m):
-    """From the environment or a file the user keeps: never from the dashboard's database."""
-    if os.environ.get("OUISPY_MQTT_PASSWORD"):
-        return os.environ["OUISPY_MQTT_PASSWORD"]
-    try:
-        with open(os.path.expanduser(m.get("password_file") or os.devnull)) as f:
-            return f.read().strip()
-    except OSError:
-        return ""
-
-
 def public_settings():
     s = settings()
     st = sources_status().get("mqtt") or {}
     s["mqtt"] = {**s["mqtt"], "connected": bool(st.get("connected")), "detail": st.get("detail", ""),
-                 "password_set": bool(mqtt_password(s["mqtt"]))}
+                 "password_set": bool(connectors.mqtt_password())}
     s["tak"] = {**s["tak"], **{k: v for k, v in tak.status().items() if k in ("state", "sent", "last", "error")}}
     s["rns"] = {**s["rns"], **{k: v for k, v in rns.status().items() if k in ("state", "address", "error")}}
     return s
@@ -244,7 +234,7 @@ def start_sources():
                 m["topic"] = args.topic
         if m.get("enabled") and m.get("host"):
             new["mqtt"] = MqttSource(fleet, on_source_status, m["host"], m["port"], m.get("user", ""),
-                                     mqtt_password(m), m.get("topic"), m.get("tls"))
+                                     connectors.mqtt_password(), m.get("topic"), m.get("tls"))
     with src_lock:
         sources.update(new)
     for src in new.values():
@@ -749,27 +739,6 @@ def clean_tri(new, cur):
     return out
 
 
-def clean_tak(new, cur):
-    out = {**cur}
-    if "enabled" in new:
-        out["enabled"] = bool(new["enabled"])
-    for k in ("host", "callsign", "ca_file", "cert_file", "key_file"):
-        if k in new:
-            out[k] = str(new[k] or "").strip()[:200]
-    if "proto" in new:
-        if new["proto"] not in ("tcp", "udp", "tls"):
-            raise ValueError("protocol must be tcp, udp or tls")
-        out["proto"] = new["proto"]
-    if "port" in new:
-        p = int(new["port"])
-        if not 1 <= p <= 65535:
-            raise ValueError("port must be 1-65535")
-        out["port"] = p
-    if out["enabled"] and not out["host"]:
-        raise ValueError("a TAK server address is needed")
-    return out
-
-
 def clean_rns(new, cur):
     out = {**cur}
     if "enabled" in new:
@@ -804,7 +773,7 @@ def api_settings_set():
             store.set_setting("tri", clean_tri(data["tri"], settings().get("tri") or {}))
         except (TypeError, ValueError) as e:
             return jsonify({"ok": False, "error": f"triangulation settings: {e}"}), 400
-    for key, fn in (("tak", clean_tak), ("rns", clean_rns)):
+    for key, fn in (("tak", connectors.clean_tak), ("rns", clean_rns)):
         if key in data and isinstance(data[key], dict):
             try:
                 store.set_setting(key, fn(data[key], settings()[key]))
@@ -814,14 +783,10 @@ def api_settings_set():
         store.set_setting("serial_port", str(data["serial_port"]) or "auto")
         restart = True
     if "mqtt" in data and isinstance(data["mqtt"], dict):
-        if data["mqtt"].get("password"):
-            return jsonify({"ok": False, "error": "passwords are not stored here: set OUISPY_MQTT_PASSWORD "
-                            "or point password_file at a file only you can read"}), 400
-        cur = settings()["mqtt"]
-        new = {**cur, **{k: v for k, v in data["mqtt"].items()
-                         if k in ("enabled", "host", "port", "user", "password_file", "topic", "tls")}}
-        new["port"] = int(new.get("port") or 1883)
-        store.set_setting("mqtt", new)
+        try:
+            store.set_setting("mqtt", connectors.clean_mqtt(data["mqtt"], settings()["mqtt"]))
+        except (TypeError, ValueError) as e:
+            return jsonify({"ok": False, "error": f"MQTT: {e}"}), 400
         restart = True
     if restart and not args.demo:
         start_sources()

@@ -53,17 +53,24 @@ class TokenStore:
         return bool(want and token) and hmac.compare_digest(hash_token(token), want)
 
 
-def is_local(peer, forwarded_for=""):
-    """This computer only: a loopback peer that is not relaying someone else (a proxy sets X-Forwarded-For)."""
-    return peer in LOOPBACK and not forwarded_for
+def loopback_host(host_header, port):
+    """True when the Host header names this computer with the dashboard's own port."""
+    host = (host_header or "").lower()
+    names = ("127.0.0.1", "localhost", "[::1]")
+    return host in {f"{n}:{port}" for n in names} or (port == 80 and host in names)
+
+
+def is_local(peer, forwarded_for="", host_header=None, port=None):
+    """This computer only: a loopback peer that is not relaying someone else (a proxy sets X-Forwarded-For)
+    and that reached the dashboard by a loopback name. A web page that rebinds its own name to 127.0.0.1
+    arrives from a loopback peer but with its own name as Host, so it is not local."""
+    return peer in LOOPBACK and not forwarded_for and loopback_host(host_header, port)
 
 
 def host_allowed(host_header, port, lan):
-    """DNS-rebinding guard: when bound to loopback only the loopback names are accepted as Host."""
-    if lan:
-        return True
-    host = (host_header or "").lower()
-    return host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}", "127.0.0.1", "localhost", "[::1]")
+    """DNS-rebinding guard: when bound to loopback only the loopback names are accepted as Host. With --lan
+    other names are let through to the token check, which only the token holder passes."""
+    return True if lan else loopback_host(host_header, port)
 
 
 def origin_allowed(method, origin, host_header):
@@ -76,7 +83,7 @@ def origin_allowed(method, origin, host_header):
         return False
 
 
-def authorized(peer, forwarded_for, token_given, tokens):
-    if is_local(peer, forwarded_for):
+def authorized(peer, forwarded_for, token_given, tokens, host_header=None, port=None):
+    if is_local(peer, forwarded_for, host_header, port):
         return True
     return tokens.verify(token_given or "")

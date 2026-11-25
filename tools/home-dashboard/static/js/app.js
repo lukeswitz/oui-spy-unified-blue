@@ -2550,7 +2550,7 @@ async function loadSettingsForm() {
     $("mHost").value = m.host || "";
     $("mPort").value = m.port || 1883;
     $("mUser").value = m.user || "";
-    $("mPass").value = m.password_file || "";
+    $("mPass").textContent = m.password_set ? "Set (OUISPY_MQTT_PASSWORD)." : "Set OUISPY_MQTT_PASSWORD before starting the dashboard.";
     $("mTopic").value = m.topic || "+/detection";
     const tk = s.tak || {};
     $("tEn").checked = !!tk.enabled;
@@ -2595,7 +2595,7 @@ $("saveSettings").onclick = async () => {
         retention_days: Math.max(0, parseInt($("sRetention").value, 10) || 0),
         status_poll: Math.max(0, parseInt($("sPoll").value, 10) || 0),
         mqtt: { enabled: $("mEn").checked, host: $("mHost").value.trim(), port: Number($("mPort").value) || 1883,
-                user: $("mUser").value, password_file: $("mPass").value.trim(), topic: $("mTopic").value.trim() || "+/detection" },
+                user: $("mUser").value, topic: $("mTopic").value.trim() || "+/detection" },
         tak: { enabled: $("tEn").checked, host: $("tHost").value.trim(), port: Number($("tPort").value) || 8087,
                proto: $("tProto").value, callsign: $("tCall").value.trim() || "OUISPY",
                ca_file: $("tCa").value.trim(), cert_file: $("tCert").value.trim(), key_file: $("tKey").value.trim() },

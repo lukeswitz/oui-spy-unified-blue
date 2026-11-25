@@ -45,7 +45,8 @@ The dashboard can reboot nodes, so it is private by default.
 - `--lan` is the only way to listen on other interfaces. Once you use it, every device except this computer needs the access token.
 - The first `--lan` run makes the token and prints it once. Only its SHA-256 is saved, in `~/.config/ouispy/dashboard_token.sha256` with mode `0600`. If you lose the token, run `--new-token`.
 - Open `http://HOST:5077/?token=TOKEN` once. The browser keeps the token in a cookie and removes it from the address.
-- The dashboard refuses a request whose `Host` header is not a loopback name when it listens on this computer only, and it refuses a change that comes from another web site.
+- A request counts as coming from this computer only when it arrives from a loopback address and its `Host` header is `localhost`, `127.0.0.1` or `[::1]` with the dashboard's port. A web page that points its own name at `127.0.0.1` fails that test, so it needs the token like any other device.
+- When the dashboard listens on this computer only, it refuses any other `Host` header. It also refuses a change that comes from another web site.
 - The link is plain HTTP. Use `--lan` on a network you trust, or put an HTTPS proxy or a VPN in front of it.
 - Nothing starts by itself. There is no launch agent, service or scheduled task. If you want one, write it yourself and stop it before you flash a board.
 - Passwords are never stored in the database. See [MQTT](#mqtt).
@@ -85,12 +86,7 @@ The dashboard owns these links. The OUI-APEX app shows them and switches them on
 
 MQTT carries detections from nodes that are on Wi-Fi into the dashboard. You set the broker, port, user, topic filter (default `+/detection`) and TLS in **Settings** → **MQTT**.
 
-The dashboard does not store the password. Give it one of these:
-
-1. Set `OUISPY_MQTT_PASSWORD` in the environment before you start the dashboard.
-2. Put the password in a file only you can read and enter that file's path in **Password file**.
-
-A request that contains a `password` field is refused.
+The dashboard does not store the password and never reads one from a path. Set `OUISPY_MQTT_PASSWORD` in the environment before you start the dashboard. A settings request that contains a `password` or `password_file` field is refused.
 
 ### TAK server
 
@@ -101,7 +97,7 @@ The dashboard sends Cursor-on-Target events to a TAK server every 10 seconds: ea
 | `host`, `port` | The TAK server's address. | none, 8087 |
 | `proto` | `tcp`, `udp` or `tls`. | `tcp` |
 | `callsign` | Prefix for node names. | `OUISPY` |
-| `ca_file`, `cert_file`, `key_file` | Paths to PEM files for `tls`. The key file must not need a passphrase. | none |
+| `ca_file`, `cert_file`, `key_file` | Names of PEM files for `tls`. Put the files in `~/.config/ouispy/tak/`. A name that points outside that folder is refused. The key file must not need a passphrase. | none |
 
 You set them in **Settings** → **TAK server**. `GET /api/tak` returns `enabled`, `state` (`off`, `connecting`, `connected` or `error`), `host`, `proto`, `port`, `callsign`, `sent`, `last` and `error`.
 

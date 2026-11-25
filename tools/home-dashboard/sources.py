@@ -67,7 +67,7 @@ class Source(threading.Thread):
 
 class MqttSource(Source):
     """Detections published by nodes that are on Wi-Fi. The password is never kept in the
-    dashboard's database: it comes from the environment or a file (see ouispymesh.mqtt_password)."""
+    dashboard's database: it comes from the environment (see connectors.mqtt_password)."""
     kind = "mqtt"
 
     def __init__(self, fleet, on_status, host, port=1883, user="", password="",

@@ -118,22 +118,43 @@ class AccessTest(unittest.TestCase):
 
     def test_only_this_computer_skips_the_token(self):
         t = self.tokens.create()
-        self.assertTrue(access.authorized("127.0.0.1", "", None, self.tokens))
-        self.assertTrue(access.authorized("::1", "", None, self.tokens))
-        self.assertFalse(access.authorized("192.0.2.9", "", None, self.tokens))
-        self.assertFalse(access.authorized("192.0.2.9", "", "wrong", self.tokens))
-        self.assertTrue(access.authorized("192.0.2.9", "", t, self.tokens))
-        self.assertFalse(access.authorized("127.0.0.1", "192.0.2.9", None, self.tokens))
-        self.assertTrue(access.authorized("127.0.0.1", "192.0.2.9", t, self.tokens))
+        lo = ("localhost:5077", 5077)
+        self.assertTrue(access.authorized("127.0.0.1", "", None, self.tokens, *lo))
+        self.assertTrue(access.authorized("::1", "", None, self.tokens, "[::1]:5077", 5077))
+        self.assertFalse(access.authorized("192.0.2.9", "", None, self.tokens, *lo))
+        self.assertFalse(access.authorized("192.0.2.9", "", "wrong", self.tokens, *lo))
+        self.assertTrue(access.authorized("192.0.2.9", "", t, self.tokens, *lo))
+        self.assertFalse(access.authorized("127.0.0.1", "192.0.2.9", None, self.tokens, *lo))
+        self.assertTrue(access.authorized("127.0.0.1", "192.0.2.9", t, self.tokens, *lo))
+
+    def test_dns_rebinding_page_is_not_local(self):
+        t = self.tokens.create()
+        for host in ("evil.example:5077", "evil.example", "127.0.0.1:9999", "localhost", None, ""):
+            self.assertFalse(access.is_local("127.0.0.1", "", host, 5077), host)
+            self.assertFalse(access.authorized("127.0.0.1", "", None, self.tokens, host, 5077), host)
+            self.assertFalse(access.authorized("127.0.0.1", "", "wrong", self.tokens, host, 5077), host)
+            self.assertTrue(access.authorized("127.0.0.1", "", t, self.tokens, host, 5077), host)
+
+    def test_lan_mode_lets_other_names_in_only_with_the_token(self):
+        t = self.tokens.create()
+        self.assertTrue(access.host_allowed("evil.example:5077", 5077, True))
+        self.assertFalse(access.authorized("127.0.0.1", "", None, self.tokens, "evil.example:5077", 5077))
+        self.assertTrue(access.authorized("127.0.0.1", "", t, self.tokens, "evil.example:5077", 5077))
+        self.assertTrue(access.is_local("127.0.0.1", "", "127.0.0.1:5077", 5077))
+
+    def test_bare_loopback_name_counts_only_on_port_80(self):
+        self.assertTrue(access.loopback_host("localhost", 80))
+        self.assertFalse(access.loopback_host("localhost", 5077))
 
     def test_no_token_set_means_no_remote_access(self):
-        self.assertFalse(access.authorized("192.0.2.9", "", "anything", self.tokens))
+        self.assertFalse(access.authorized("192.0.2.9", "", "anything", self.tokens, "localhost:5077", 5077))
 
     def test_loopback_only_accepts_loopback_host_names(self):
         self.assertTrue(access.host_allowed("127.0.0.1:5077", 5077, False))
         self.assertTrue(access.host_allowed("localhost:5077", 5077, False))
         self.assertFalse(access.host_allowed("evil.example:5077", 5077, False))
         self.assertFalse(access.host_allowed("127.0.0.1:9999", 5077, False))
+        self.assertFalse(access.host_allowed("localhost", 5077, False))
         self.assertTrue(access.host_allowed("evil.example:5077", 5077, True))
 
     def test_cross_site_writes_are_refused(self):
@@ -141,6 +162,51 @@ class AccessTest(unittest.TestCase):
         self.assertTrue(access.origin_allowed("POST", "http://127.0.0.1:5077", "127.0.0.1:5077"))
         self.assertFalse(access.origin_allowed("POST", "https://evil.example", "127.0.0.1:5077"))
         self.assertTrue(access.origin_allowed("GET", "https://evil.example", "127.0.0.1:5077"))
+
+
+class SettingsPathTest(unittest.TestCase):
+    def test_mqtt_password_is_read_only_from_the_environment(self):
+        self.assertEqual(connectors.mqtt_password({"OUISPY_MQTT_PASSWORD": "s3cret"}), "s3cret")
+        self.assertEqual(connectors.mqtt_password({}), "")
+        with tempfile.NamedTemporaryFile("w", suffix=".txt") as f:
+            f.write("from-a-file")
+            f.flush()
+            saved = connectors.clean_mqtt({"host": "192.0.2.1"}, {"password_file": f.name})
+            self.assertNotIn("password_file", saved)
+            self.assertEqual(connectors.mqtt_password({}), "")
+
+    def test_mqtt_update_refuses_a_password_or_a_path(self):
+        for key in ("password", "password_file"):
+            with self.assertRaises(ValueError, msg=key) as cm:
+                connectors.clean_mqtt({key: "/etc/hosts"}, {})
+            self.assertIn("OUISPY_MQTT_PASSWORD", str(cm.exception))
+
+    def test_mqtt_update_keeps_only_known_keys(self):
+        out = connectors.clean_mqtt({"host": "192.0.2.1", "port": "8883", "tls": True, "evil": 1},
+                                    {"user": "u", "password_file": "/x"})
+        self.assertEqual(out, {"enabled": False, "host": "192.0.2.1", "port": 8883, "user": "u", "tls": True,
+                               "topic": "+/detection"})
+
+    def test_tak_tls_files_must_stay_in_the_certificate_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            ok = connectors.clean_tak({"proto": "tls", "ca_file": "ca.pem", "cert_file": "sub/c.pem"}, {}, d)
+            self.assertEqual((ok["ca_file"], ok["cert_file"]), ("ca.pem", "sub/c.pem"))
+            for bad in ("/etc/passwd", "../../etc/passwd", "sub/../../x"):
+                with self.assertRaises(ValueError, msg=bad):
+                    connectors.clean_tak({"key_file": bad}, {}, d)
+            os.symlink("/etc/hosts", os.path.join(d, "link.pem"))
+            with self.assertRaises(ValueError):
+                connectors.clean_tak({"ca_file": "link.pem"}, {}, d)
+
+    def test_tak_update_validates_the_rest(self):
+        with self.assertRaises(ValueError):
+            connectors.clean_tak({"enabled": True}, {})
+        with self.assertRaises(ValueError):
+            connectors.clean_tak({"proto": "ftp"}, {})
+        with self.assertRaises(ValueError):
+            connectors.clean_tak({"port": 70000}, {})
+        out = connectors.clean_tak({"enabled": True, "host": "192.0.2.10", "port": "8089", "proto": "udp"}, {})
+        self.assertEqual((out["host"], out["port"], out["proto"]), ("192.0.2.10", 8089, "udp"))
 
 
 class LinkSummaryTest(unittest.TestCase):
