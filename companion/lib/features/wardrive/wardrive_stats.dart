@@ -22,6 +22,7 @@ class WardriveStats extends ConsumerWidget {
     final label = Theme.of(context).textTheme.labelSmall;
     final hasWifi = stats.wifiDetections > 0 || stats.wifiTotal > 0;
     final hasBle = stats.bleDetections > 0 || stats.bleTotal > 0;
+    final hasZigbee = stats.zigbeeDetections > 0 || stats.zigbeeTotal > 0;
     final counts = <({String key, String label, int unique, int? total})>[
       if (hasWifi)
         (key: 'wifi', label: 'WIFI', unique: stats.wifiDetections, total: stats.wifiTotal),
@@ -33,6 +34,8 @@ class WardriveStats extends ConsumerWidget {
         (key: 'detect', label: 'DETECT', unique: stats.detectorCount, total: null),
       if (hasBle)
         (key: 'ble', label: 'BLE', unique: stats.bleDetections, total: stats.bleTotal),
+      if (hasZigbee)
+        (key: 'zigbee', label: '802.15.4', unique: stats.zigbeeDetections, total: stats.zigbeeTotal),
     ];
 
     return Padding(

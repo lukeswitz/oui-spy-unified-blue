@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/zigbee.dart';
 
 const _bleMethods = {
   'ble_adv',
@@ -36,8 +37,10 @@ const _wifiMethods = {
 
 bool isBleMethod(String method) => _bleMethods.contains(method);
 bool isWifiMethod(String method) => _wifiMethods.contains(method);
+bool isZigbeeMethod(String method) => method == zigbeeMethod;
 
 bool isBleDetectionRaw({required String method, required Engine engine, required int channel}) {
+  if (isZigbeeMethod(method)) return false;
   if (_bleMethods.contains(method)) return true;
   if (_wifiMethods.contains(method)) return false;
   if (engine.isBle && !engine.isDualRadio) return true;
@@ -50,8 +53,9 @@ bool isBleDetectionRaw({required String method, required Engine engine, required
 extension DetectionRadio on Detection {
   bool get isBleDetection =>
       engine != Engine.sdr && isBleDetectionRaw(method: method, engine: engine, channel: channel);
+  bool get isZigbeeDetection => engine != Engine.sdr && isZigbeeMethod(method);
   bool get isWifiDetection =>
-      engine != Engine.sdr && !isBleDetectionRaw(method: method, engine: engine, channel: channel);
+      engine != Engine.sdr && !isZigbeeMethod(method) && !isBleDetectionRaw(method: method, engine: engine, channel: channel);
 }
 
 double rssiToMeters(int rssi, {required bool isBle}) {

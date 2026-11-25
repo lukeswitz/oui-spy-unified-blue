@@ -51,6 +51,7 @@ class WigleCsv {
         continue;
       }
 
+      if (d.isZigbeeDetection) continue;
       final mac = d.macAddress;
       final isBleDevice = d.isBleDetection;
       if (!_macPattern.hasMatch(mac)) continue;

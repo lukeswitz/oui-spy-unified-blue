@@ -653,11 +653,11 @@ class _DetectionList extends StatelessWidget {
     final byKey = <String, List<Detection>>{};
     for (final d in detections) {
       final key = d.engine == Engine.wardrive
-          ? (d.isBleDetection ? 'WARDRIVE BLE' : 'WARDRIVE WIFI')
+          ? (d.isZigbeeDetection ? 'WARDRIVE 802.15.4' : d.isBleDetection ? 'WARDRIVE BLE' : 'WARDRIVE WIFI')
           : d.engine.label;
       (byKey[key] ??= []).add(d);
     }
-    int rank(String k) => k == 'WARDRIVE BLE' ? 2 : k == 'WARDRIVE WIFI' ? 1 : 0;
+    int rank(String k) => k == 'WARDRIVE 802.15.4' ? 3 : k == 'WARDRIVE BLE' ? 2 : k == 'WARDRIVE WIFI' ? 1 : 0;
     final grouped = {
       for (final k in byKey.keys.toList()..sort((a, b) => rank(a).compareTo(rank(b))))
         k: byKey[k]!,
@@ -681,13 +681,14 @@ class _DetectionList extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
               child: Row(
                 children: [
-                  Icon(entry.value.first.engine.icon,
-                      size: 10, color: entry.value.first.engine.color),
+                  Icon(entry.value.first.isZigbeeDetection ? zigbeeIcon : entry.value.first.engine.icon,
+                      size: 10,
+                      color: entry.value.first.isZigbeeDetection ? zigbeeColor : entry.value.first.engine.color),
                   const SizedBox(width: 4),
                   Text(
                     '${entry.key.toUpperCase()}  ${entry.value.length}',
                     style: TextStyle(
-                      color: entry.value.first.engine.color,
+                      color: entry.value.first.isZigbeeDetection ? zigbeeColor : entry.value.first.engine.color,
                       fontSize: 9, fontWeight: FontWeight.w700,
                       letterSpacing: 1,
                     ),
@@ -766,9 +767,11 @@ class _DetListRow extends ConsumerWidget {
     final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
     final bool isWifiAp = d.isWifiDetection;
     final bool isHidden = isWifiAp && d.ssid.isEmpty && d.deviceName.isEmpty;
-    final vendor = ref.read(ouiLookupProvider).lookup(d.macAddress);
+    final vendor = ref.read(ouiLookupProvider).lookup(zigbeeVendorKey(d));
     final label = d.engine == Engine.detector
         ? detectorTitle(d)
+        : d.isZigbeeDetection
+        ? zigbeeHeadline(d)
         : isHidden
         ? '<hidden>'
         : d.ssid.isNotEmpty
@@ -797,10 +800,10 @@ class _DetListRow extends ConsumerWidget {
         children: [
           Container(width: 2, height: 14,
             decoration: BoxDecoration(
-              color: d.engine.color),
+              color: d.isZigbeeDetection ? zigbeeColor : d.engine.color),
           ),
           const SizedBox(width: 5),
-          Text(maskMac(d.macAddress.toUpperCase(), priv),
+          Text(d.isZigbeeDetection ? '802.15.4 CH ${d.channel}' : maskMac(d.macAddress.toUpperCase(), priv),
             style: TextStyle(
               color: t.textPrimary, fontSize: 9,
               fontFamily: AppTheme.mono, fontWeight: FontWeight.w500,

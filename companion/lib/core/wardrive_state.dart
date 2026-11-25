@@ -27,6 +27,7 @@ import 'package:oui_spy/core/link/wifi_adapter.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/core/models/session.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -336,6 +337,7 @@ class WardriveController extends ChangeNotifier {
         (p.getInt('wd_wifiBand') ?? WifiBand.both.index)
             .clamp(0, WifiBand.values.length - 1)];
     radio = radioFromMask(p.getInt('wd_radio') ?? 0x03);
+    if (!_zigbeeChanged) zigbee = p.getBool('wd_zigbee') ?? false;
     final savedTargets = p.getStringList('wd_targets');
     if (savedTargets != null) {
       selectedTargets
@@ -375,6 +377,7 @@ class WardriveController extends ChangeNotifier {
     p.setInt('wd_wardrive24Mode', _wardrive24Mode);
     p.setInt('wd_wifiBand', _wifiBand.index);
     p.setInt('wd_radio', radioBitmask);
+    p.setBool('wd_zigbee', zigbee);
     p.setStringList('wd_targets', selectedTargets.map((t) => t.name).toList());
   }
 
@@ -445,6 +448,10 @@ class WardriveController extends ChangeNotifier {
       .map((t) => t.label)
       .join(' + ');
   WardriveRadio radio = WardriveRadio.both;
+  bool zigbee = false;
+  bool _zigbeeChanged = false;
+  bool get zigbeeAvailable => boardHas802154(_ble.board);
+  bool get zigbeeActive => zigbee && zigbeeAvailable;
   bool flockFilter = false;
   bool detectorFilter = false;
   double _markerDistanceM = 10.0;
@@ -521,7 +528,7 @@ class WardriveController extends ChangeNotifier {
   int get _sweepSecForBoard => (_wifiSweepEveryMs + 999) ~/ 1000;
 
   Uint8List get _wardriveConfigPayload => Uint8List.fromList([
-        radioBitmask,
+        wardriveWireRadio,
         wifiScanInterval & 0xFF, (wifiScanInterval >> 8) & 0xFF,
         wifiDwellPerCh & 0xFF, (wifiDwellPerCh >> 8) & 0xFF,
         bleScanDuration & 0xFF, (bleScanDuration >> 8) & 0xFF,
@@ -551,6 +558,7 @@ class WardriveController extends ChangeNotifier {
 
   int rawWifiCount = 0;
   int rawBleCount = 0;
+  int rawZigbeeCount = 0;
 
   /// Per-source-node WiFi/BLE detection counts for overlay display.
   final Map<String, int> nodeWifiCounts = {};
@@ -829,6 +837,14 @@ class WardriveController extends ChangeNotifier {
     _savePrefs();
   }
 
+  void setZigbee(bool on) {
+    if (isActive) return;
+    _zigbeeChanged = true;
+    zigbee = on;
+    notifyListeners();
+    _savePrefs();
+  }
+
   Future<void> stopOwnedEngine(Engine e) async {
     if (!isActive) return;
     if (e == Engine.wardrive) {
@@ -946,6 +962,7 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
+    rawZigbeeCount = 0;
     geofenceSuppressed = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
@@ -1250,6 +1267,7 @@ class WardriveController extends ChangeNotifier {
     rawDetectionCount = 0;
     rawWifiCount = 0;
     rawBleCount = 0;
+    rawZigbeeCount = 0;
     geofenceSuppressed = 0;
     nodeWifiCounts.clear();
     nodeBleCount.clear();
@@ -1289,13 +1307,15 @@ class WardriveController extends ChangeNotifier {
     for (final entry in foldSessionRows(rows).entries) {
       final det = entry.value;
       rawDetectionCount += det.count;
-      if (det.isBleDetection) {
+      if (det.isZigbeeDetection) {
+        rawZigbeeCount += det.count;
+      } else if (det.isBleDetection) {
         rawBleCount += det.count;
       } else {
         rawWifiCount += det.count;
       }
       final src = det.sourceNodeId;
-      if (src.isNotEmpty) {
+      if (src.isNotEmpty && !det.isZigbeeDetection) {
         final counts = det.isBleDetection ? nodeBleCount : nodeWifiCounts;
         counts[src] = (counts[src] ?? 0) + det.count;
       }
@@ -1511,6 +1531,8 @@ class WardriveController extends ChangeNotifier {
     WardriveRadio.both => 0x03,
   };
 
+  int get wardriveWireRadio => radioBitmask | (zigbeeActive ? zigbeeRadioBit : 0);
+
   Future<void> _enableEnginesSequentially(List<Engine> engineList) async {
     if (engineList.any((e) => e.isWifi)) {
       await _ble.sendWifiBand(wifiBandMask);
@@ -1523,7 +1545,7 @@ class WardriveController extends ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 100));
       }
       if (state == WardriveState.idle || _inExclusion) return;
-      await _ble.enableEngine(engine, radio: radioBitmask);
+      await _ble.enableEngine(engine, radio: engine == Engine.wardrive ? wardriveWireRadio : radioBitmask);
       if (engine.isWifi) {
         await _awaitEngineUp(engine, const Duration(milliseconds: 500));
       }
@@ -1948,6 +1970,8 @@ class WardriveController extends ChangeNotifier {
       wifiTotal: rawWifiCount,
       bleDetections: _dedupedByMac.values.where((d) => d.isBleDetection).length,
       bleTotal: rawBleCount,
+      zigbeeDetections: _dedupedByMac.values.where((d) => d.isZigbeeDetection).length,
+      zigbeeTotal: rawZigbeeCount,
       flockCount: includesFlock ? _flockMacs.length : 0,
       droneCount: droneCount,
       detectorCount: includesDetector ? detectorCount : 0,
@@ -1983,11 +2007,18 @@ class WardriveController extends ChangeNotifier {
     }
 
     rawDetectionCount++;
-    if (isBle) { rawBleCount++; } else { rawWifiCount++; }
+    final isZigbee = detection.isZigbeeDetection;
+    if (isZigbee) {
+      rawZigbeeCount++;
+    } else if (isBle) {
+      rawBleCount++;
+    } else {
+      rawWifiCount++;
+    }
 
     // Track per-source-node WiFi/BLE counts
     final src = detection.sourceNodeId;
-    if (src.isNotEmpty) {
+    if (src.isNotEmpty && !isZigbee) {
       if (isBle) {
         nodeBleCount[src] = (nodeBleCount[src] ?? 0) + 1;
       } else {

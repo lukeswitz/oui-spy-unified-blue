@@ -18,6 +18,10 @@ extern volatile uint32_t g_flockCorroborated;
 #include "flock_wifi.h"
 #include "flock_ble.h"
 #include "foxhunter.h"
+#ifdef OUISPY_DUAL_BAND
+#include "ieee802154.h"
+#include "ieee802154_frame.h"
+#endif
 #include <esp_attr.h>
 #include <esp_heap_caps.h>
 #include <new>
@@ -31,6 +35,11 @@ extern volatile uint32_t g_flockCorroborated;
 static volatile bool wardriveActive = false;
 static unsigned long lastBleScan = 0;
 static volatile uint8_t wardriveRadio = 0x03;
+#ifdef OUISPY_DUAL_BAND
+#define WD_RADIO_MASK (WARDRIVE_RADIO_WIFI | WARDRIVE_RADIO_BLE | WARDRIVE_RADIO_802154)
+#else
+#define WD_RADIO_MASK (WARDRIVE_RADIO_WIFI | WARDRIVE_RADIO_BLE)
+#endif
 
 static uint8_t channelStart = 1;
 static uint8_t channelEnd   = 14;
@@ -628,6 +637,92 @@ static void wardriveBleOnComplete(NimBLEScanResults results) {
 
 static WardriveAdvCallbacks wardriveBleCallbacks;
 
+#ifdef OUISPY_DUAL_BAND
+static DedupRingISR<256, 5000> zbDedup;
+static const uint16_t kZbDwellMs = 120;
+static const uint16_t kZbSoloDwellMs = 400;
+static const uint32_t kZbPeriodMs = 8000;
+static const uint8_t kZbChannels = ZB154_CH_MAX - ZB154_CH_MIN + 1;
+static bool zbSlotActive = false;
+static bool zbRegistered = false;
+static uint8_t zbIdx = 0;
+static uint32_t zbChanStart = 0;
+static uint32_t zbLastEnd = 0;
+
+static bool zbShared(void) {
+    return (wardriveRadio & (WARDRIVE_RADIO_WIFI | WARDRIVE_RADIO_BLE)) != 0;
+}
+
+static uint16_t zbDwellFor(uint8_t ch) {
+    uint16_t d = zbShared() ? kZbDwellMs : kZbSoloDwellMs;
+    const bool pri = ch == 11 || ch == 15 || ch == 20 || ch == 25;
+    return pri ? (uint16_t)(d * 2) : d;
+}
+
+static void IRAM_ATTR wardriveZbCb(const uint8_t* mac, uint8_t macLen, int8_t rssi, uint8_t lqi, uint8_t channel) {
+    g_engRawSeen++;
+    if (!wardriveActive || !(wardriveRadio & WARDRIVE_RADIO_802154)) return;
+    Zb154Frame f;
+    if (!zb154ParseMac(mac, macLen, &f)) return;
+    uint8_t key[6];
+    if (!zb154SourceKey(&f, key)) return;
+    if (zbDedup.check(key)) return;
+    DetectionEvent evt = {};
+    evt.engine_id = ENGINE_WARDRIVE;
+    memcpy(evt.mac, key, 6);
+    evt.rssi = rssi;
+    evt.channel = channel;
+    evt.timestamp_ms = millis();
+    evt.method = METHOD_802154;
+    if (f.beaconKind == ZB154_BEACON_THREAD) memcpy(evt.ext.wardrive.ssid, f.netName, sizeof(f.netName));
+    evt.ext.wardrive.adv_len = zb154PackAdv(&f, lqi, evt.ext.wardrive.adv);
+    pushDetectionFromISR(&evt);
+}
+
+static void zbSlotBegin(uint32_t now) {
+    zbSlotActive = true;
+    zbIdx = 0;
+    zbChanStart = now;
+    if (zbShared()) {
+        if (pWardriveScan != nullptr && pWardriveScan->isScanning()) pWardriveScan->stop();
+        if (wardriveRadio & WARDRIVE_RADIO_WIFI) wifiCoexPause();
+    }
+    zb154Tune((uint8_t)(ZB154_CH_MIN + zbIdx));
+}
+
+static void zbSlotEnd(uint32_t now) {
+    zb154Idle();
+    zbSlotActive = false;
+    zbLastEnd = now;
+    wifiCoexResume();
+    lastChannelHop = now;
+}
+
+static bool wardriveZbStep(uint32_t now) {
+    if (!zbSlotActive) {
+        if (zbShared() && now - zbLastEnd < kZbPeriodMs) return false;
+        zbSlotBegin(now);
+        return true;
+    }
+    if (now - zbChanStart < zbDwellFor((uint8_t)(ZB154_CH_MIN + zbIdx))) return true;
+    zbIdx++;
+    if (zbIdx >= kZbChannels) {
+        if (zbShared()) {
+            zbSlotEnd(now);
+            return false;
+        }
+        zbIdx = 0;
+    }
+    zbChanStart = now;
+    zb154Tune((uint8_t)(ZB154_CH_MIN + zbIdx));
+    return true;
+}
+
+static void zbSlotAbort(void) {
+    if (zbSlotActive) zbSlotEnd(millis());
+}
+#endif
+
 static void wardriveInit(void) {
     wardriveDedupRef().reset();
     wifiDedup.reset();
@@ -695,6 +790,22 @@ static void wardriveStart(void) {
         pWardriveScan->setWindow(99);
     }
 
+#ifdef OUISPY_DUAL_BAND
+    zbSlotActive = false;
+    zbLastEnd = millis();
+    zbDedup.reset();
+    zbDedup.setCooldownMs(relog);
+    if (wardriveRadio & WARDRIVE_RADIO_802154) {
+        zbRegistered = zb154Register(wardriveZbCb);
+        if (zbRegistered) {
+            if (!zbShared()) zbSlotBegin(millis());
+            Serial.printf("[WARDRIVE] 802.15.4 receive on (%s)\n", zbShared() ? "time-shared" : "solo");
+        } else {
+            Serial.println("[WARDRIVE] 802.15.4 driver unavailable");
+        }
+    }
+#endif
+
     engineSetState(ENGINE_WARDRIVE, ESTATE_SCANNING);
     flockWifiHostSuspend(true);
     flockBleHostSuspend(true);
@@ -709,6 +820,14 @@ static void wardriveStop(void) {
     Serial.println("[WARDRIVE] Stopping...");
     wardriveActive = false;
     vTaskDelay(pdMS_TO_TICKS(50));
+
+#ifdef OUISPY_DUAL_BAND
+    if (zbRegistered) {
+        zbSlotAbort();
+        zb154Unregister(wardriveZbCb);
+        zbRegistered = false;
+    }
+#endif
 
     if (pWardriveScan != nullptr) {
         bleCoexUnregister(&wardriveBleCallbacks);
@@ -780,7 +899,13 @@ static void wardriveLoop(void) {
         }
     }
 #endif
-    if (meshManagerJoined() && (meshInMeshWindow() || meshInRidWindow())) { g_wdMeshSkip++; return; }
+    if (meshManagerJoined() && (meshInMeshWindow() || meshInRidWindow())) {
+        g_wdMeshSkip++;
+#ifdef OUISPY_DUAL_BAND
+        zbSlotAbort();
+#endif
+        return;
+    }
     if (!wardriveActive) return;
     unsigned long now = millis();
 
@@ -788,6 +913,10 @@ static void wardriveLoop(void) {
     wdFlockWifiActive  = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;
     wdFoxhunterActive  = (engineGetState(ENGINE_FOXHUNTER)  != ESTATE_DISABLED) ? 1 : 0;
     wdDetectorActive   = (engineGetState(ENGINE_DETECTOR)   != ESTATE_DISABLED) ? 1 : 0;
+
+#ifdef OUISPY_DUAL_BAND
+    if (zbRegistered && wardriveZbStep(now)) return;
+#endif
 
     if (wardriveRadio & 0x01) {
         uint16_t maxDwell = currentSlotDwellMs();
@@ -865,7 +994,7 @@ static void wardriveConfig(const uint8_t* payload, uint8_t len) {
     uint8_t  prev24Mode = wardrive24Mode;
 #endif
 
-    uint8_t newRadio = payload[0] & 0x03;
+    uint8_t newRadio = payload[0] & WD_RADIO_MASK;
     if (newRadio == 0) newRadio = 0x03;
     wardriveRadio = newRadio;
 
@@ -941,7 +1070,7 @@ void wardriveSetDwell(uint16_t pri, uint16_t norm) {
 }
 
 void wardriveSetRadioMask(uint8_t mask) {
-    uint8_t m = mask & 0x03;
+    uint8_t m = mask & WD_RADIO_MASK;
     if (m == 0) m = 0x03;
     if (m == wardriveRadio) return;
     uint8_t prev = wardriveRadio;
@@ -956,6 +1085,9 @@ static void wardriveApplyPrefs(void) {
     wifiDedup.setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
     isrClientDedup.setCooldownMs(relog);
+#ifdef OUISPY_DUAL_BAND
+    zbDedup.setCooldownMs(relog);
+#endif
 }
 
 const EngineCallbacks wardriveCallbacks = {

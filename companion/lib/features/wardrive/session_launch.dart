@@ -12,6 +12,7 @@ import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,7 @@ class _SessionSourcesChip extends ConsumerWidget {
         const SizedBox(width: 3),
         if (mask & 0x01 != 0) Icon(Icons.wifi, size: 11, color: color),
         if (mask & 0x02 != 0) Icon(Icons.bluetooth, size: 11, color: color),
+        if (mask & zigbeeRadioBit != 0) Icon(zigbeeIcon, size: 11, color: color),
       ];
 
   @override
@@ -53,7 +55,7 @@ class _SessionSourcesChip extends ConsumerWidget {
         Text('$n', style: TextStyle(color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w600)),
       ]);
     } else if (app.isConnected) {
-      parts.add(_source(Icons.memory, wd.radioBitmask, t.textSecondary));
+      parts.add(_source(Icons.memory, wd.wardriveWireRadio, t.textSecondary));
     }
     if (phone.scanning) {
       parts.add(_source(Icons.smartphone, PhoneBleSource.canScanWifi ? phone.radioMask : 0x02, t.textSecondary));
@@ -222,6 +224,44 @@ class SessionTargets extends ConsumerWidget {
                 children: [for (final r in radios) segment(r)],
               ),
             ),
+            if (wd.zigbeeAvailable) ...[
+              const SizedBox(height: 8),
+              Container(
+                key: const ValueKey('zigbee-toggle'),
+                height: 40,
+                padding: const EdgeInsets.only(left: 12, right: 4),
+                decoration: BoxDecoration(
+                  color: t.surfaceLight,
+                  borderRadius: BorderRadius.circular(AppRadius.control),
+                ),
+                child: Row(
+                  children: [
+                    Icon(zigbeeIcon, size: 14, color: wd.zigbee ? zigbeeColor : t.textSecondary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          zigbeeLabel,
+                          style: TextStyle(
+                            color: wd.zigbee ? t.textPrimary : t.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      key: const ValueKey('zigbee-switch'),
+                      value: wd.zigbee,
+                      onChanged: busy ? null : wd.setZigbee,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ],
       ),

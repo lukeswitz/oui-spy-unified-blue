@@ -1175,7 +1175,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     pushDetection(&evt);
     recordLiveSeen(pkt.source_node_id);
 #ifdef OUISPY_NETCOUNT
-    if ((evt.engine_id & 0x7F) == ENGINE_WARDRIVE && evt.channel != 0) ncRecordWifiMac(evt.mac);
+    if ((evt.engine_id & 0x7F) == ENGINE_WARDRIVE && evt.channel != 0 && evt.method != METHOD_802154) ncRecordWifiMac(evt.mac);
 #endif
 #ifdef OUISPY_SPOOL_STRESS
     if (evt.engine_id & DET_FLAG_AWAY) g_spoolStressAwayRx++;
@@ -1232,7 +1232,7 @@ bool meshMgrDrainBatch(void (*emit)(const DetectionEvent*)) {
             c -= c % 3;
             memcpy(evt.ext.wardrive.adv, p + 12 + nl, c);
             evt.ext.wardrive.adv_len = c;
-        } else if (il && evt.channel == 0) {
+        } else if (il && (evt.channel == 0 || evt.method == METHOD_802154)) {
             uint8_t c = il < sizeof(evt.ext.wardrive.adv) ? il : sizeof(evt.ext.wardrive.adv);
             memcpy(evt.ext.wardrive.adv, p + 12 + nl, c);
             evt.ext.wardrive.adv_len = c;
@@ -1240,7 +1240,7 @@ bool meshMgrDrainBatch(void (*emit)(const DetectionEvent*)) {
             memcpy(evt.ext.wardrive.ap_bssid, p + 12 + nl, 6);
         }
 #ifdef OUISPY_NETCOUNT
-        if (evt.channel != 0) ncRecordWifiMac(evt.mac);
+        if (evt.channel != 0 && evt.method != METHOD_802154) ncRecordWifiMac(evt.mac);
         (void)emit;
 #else
         emit(&evt);
@@ -1822,7 +1822,7 @@ void meshEnqueueWardriveRecord(const DetectionEvent* evt) {
         il -= il % 3;
         r.ielen = il;
         memcpy(r.ie, evt->ext.wardrive.adv, il);
-    } else if (evt->engine_id == ENGINE_WARDRIVE && evt->channel == 0) {
+    } else if (evt->engine_id == ENGINE_WARDRIVE && (evt->channel == 0 || evt->method == METHOD_802154)) {
         uint8_t il = evt->ext.wardrive.adv_len;
         if (il > MESH_DET_REC_ADV_MAX) il = MESH_DET_REC_ADV_MAX;
         r.ielen = il;

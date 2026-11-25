@@ -20,7 +20,7 @@ typedef GpsStatus = ({
 class BleProtocol {
   const BleProtocol._();
 
-  static const wardriveMethods = ['wifi_ap', 'ble_adv', 'wifi_client'];
+  static const wardriveMethods = ['wifi_ap', 'ble_adv', 'wifi_client', 'ieee802154'];
   static final wardriveClientMethod = wardriveMethods.indexOf('wifi_client');
 
   // -- Detection event decoding --

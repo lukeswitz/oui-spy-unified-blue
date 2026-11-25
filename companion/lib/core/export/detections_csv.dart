@@ -78,6 +78,8 @@ class DetectionsCsv {
       radio = 'BLE';
     } else if (d.isWifiDetection) {
       radio = 'WIFI';
+    } else if (d.isZigbeeDetection) {
+      radio = '802.15.4';
     } else {
       radio = '';
     }

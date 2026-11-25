@@ -15,6 +15,8 @@ void c5PsramInit(void);
 #endif
 #endif
 bool wifiCoexActive(void);
+void wifiCoexPause(void);
+void wifiCoexResume(void);
 bool wifiCoexReassert(WifiRxParser owner);
 bool wifiCoexCycleRadio(WifiRxParser owner, uint8_t channel);
 bool wifiRadioExternallyOwned(void);

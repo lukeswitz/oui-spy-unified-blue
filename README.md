@@ -246,8 +246,8 @@ Every session is saved. Open one to replay it on the map, or open its report.
 | **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
 | **Foxhunter** | One target device. Beep rate (or the RSSI meter on boards without a buzzer) rises as you get closer |
 | **UniPwn** | Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …) |
-| **Wardrive** | Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS |
-| **PCAP** | Raw 802.11 or BLE advertising frames to a Wireshark `.pcap` |
+| **Wardrive** | Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS and, with the **802.15.4 (Zigbee, Thread)** switch, passive 802.15.4 receive on channels 11–26 (PAN ID, source address, beacon info, channel, LQI; receive only, never transmits) |
+| **PCAP** | Raw 802.11, BLE advertising or (C5 boards) 802.15.4 frames to a Wireshark `.pcap` |
 
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
@@ -365,11 +365,20 @@ These features add their own alerts and set how alerts sound.
 
 ### Packet capture
 
-The app saves Wi-Fi or BLE traffic as PCAP files that Wireshark opens.
+The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 - Start, pause and resume a capture by hand.
+- **802.15.4** mode appears on C5 boards only. Pick a channel range from 11 to 26; the board hops through it. Frames save with link type 195 (IEEE 802.15.4 with FCS, recomputed from the frames the radio accepted) in a `_154_` file. A T-Dongle-C5 also writes `cap_*_154.pcap` to its SD card. The pcap carries no channel or signal level.
 - Auto-PCAP records 3–120 s whenever an engine fires.
 - SETTINGS → DATA → PCAPS lists saved captures.
+
+### 802.15.4 wardrive (C5 boards)
+
+- On a C5 board, a **802.15.4 (Zigbee, Thread)** switch sits under the radio picker. It stays hidden on other boards.
+- The C5 has one RF path shared by Wi-Fi, BLE and 802.15.4, and 802.15.4 receive has the lowest priority. So the board hops 802.15.4 channels 11–26 in its own slot about every 8 s (about 2.4 s long), pausing Wi-Fi sniffing and BLE scanning for that slot. Frames sent outside the slot are missed.
+- Sightings show in the feed and on the map in lime. Each shows the network name (Thread), PAN ID, short or EUI-64 source address, channel and LQI. Zigbee and Thread beacons also show the extended PAN ID and stack info.
+- The radio only listens: promiscuous mode, no ACKs, no beacons, no transmit.
+- Sightings are not in WiGLE exports, the board's away log or the T-Dongle's WiGLE CSV, which have no 802.15.4 type. They are in the detections CSV with radio `802.15.4`.
 
 ### Lock screen and notifications
 

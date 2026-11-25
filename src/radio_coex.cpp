@@ -119,6 +119,7 @@ static WifiRxParser g_parsers[WIFI_COEX_MAX];
 static uint32_t g_filters[WIFI_COEX_MAX];
 static volatile int g_count = 0;
 static portMUX_TYPE g_mux = portMUX_INITIALIZER_UNLOCKED;
+static volatile bool g_sniffPaused = false;
 
 static void IRAM_ATTR wifiCoexDispatch(void* buf, wifi_promiscuous_pkt_type_t type) {
     WifiRxParser local[WIFI_COEX_MAX];
@@ -162,6 +163,7 @@ void wifiCoexRegister(WifiRxParser parser, uint32_t filterMask) {
 #ifdef OUISPY_NIMBLE2
         c5WifiUp();
 #endif
+        g_sniffPaused = false;
         wifiStaReleaseForScan();
         wifiCoexApplyFilter();
         esp_wifi_set_promiscuous(true);
@@ -192,6 +194,7 @@ void wifiCoexUnregister(WifiRxParser parser) {
     portEXIT_CRITICAL(&g_mux);
 
     if (empty) {
+        g_sniffPaused = false;
         esp_wifi_set_promiscuous_rx_cb(NULL);
         esp_wifi_set_promiscuous(false);
     } else {
@@ -204,6 +207,18 @@ bool wifiCoexActive(void) {
     return g_count > 0;
 }
 
+void wifiCoexPause(void) {
+    if (g_count == 0 || g_sniffPaused) return;
+    g_sniffPaused = true;
+    esp_wifi_set_promiscuous(false);
+}
+
+void wifiCoexResume(void) {
+    if (!g_sniffPaused) return;
+    g_sniffPaused = false;
+    if (g_count > 0) esp_wifi_set_promiscuous(true);
+}
+
 static bool wifiCoexSoleParser(WifiRxParser owner) {
     portENTER_CRITICAL(&g_mux);
     bool sole = (g_count == 1 && g_parsers[0] == owner);
@@ -212,7 +227,7 @@ static bool wifiCoexSoleParser(WifiRxParser owner) {
 }
 
 bool wifiCoexReassert(WifiRxParser owner) {
-    if (!wifiCoexSoleParser(owner)) return false;
+    if (g_sniffPaused || !wifiCoexSoleParser(owner)) return false;
     esp_wifi_set_promiscuous(false);
     wifiCoexApplyFilter();
     esp_wifi_set_promiscuous_rx_cb(wifiCoexDispatch);
@@ -222,7 +237,7 @@ bool wifiCoexReassert(WifiRxParser owner) {
 }
 
 bool wifiCoexCycleRadio(WifiRxParser owner, uint8_t channel) {
-    if (wifiRadioExternallyOwned() || !wifiCoexSoleParser(owner)) return false;
+    if (g_sniffPaused || wifiRadioExternallyOwned() || !wifiCoexSoleParser(owner)) return false;
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
     vTaskDelay(pdMS_TO_TICKS(50));

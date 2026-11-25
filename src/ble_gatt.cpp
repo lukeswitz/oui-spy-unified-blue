@@ -275,7 +275,7 @@ static void mgrBroadcastWardriveSliced(const uint8_t* cfg, uint8_t len) {
         memcpy(out + 1, nodes[i].id, MESH_NODE_ID_LEN - 1);
         out[5] = 0x00;
         memcpy(out + CFG_TGT_OVERHEAD, cfg, clen);
-        out[CFG_TGT_OVERHEAD + 0]  = r;
+        out[CFG_TGT_OVERHEAD + 0]  = (uint8_t)(r | (cfg[0] & WARDRIVE_RADIO_802154));
         out[CFG_TGT_OVERHEAD + 9]  = sStart;
         out[CFG_TGT_OVERHEAD + 10] = sEnd;
         meshBroadcastCommand(0x10, ENGINE_WARDRIVE, out, (uint8_t)(CFG_TGT_OVERHEAD + clen));
@@ -1398,7 +1398,7 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                                       ? sizeof(mgrWardriveCfg) : cmd.payload_len;
                 memcpy(mgrWardriveCfg, cmd.payload, mgrWardriveCfgLen);
             } else if (cmd.payload_len >= 1) {
-                mgrWardriveCfg[0] = cmd.payload[0] & 0x03;
+                mgrWardriveCfg[0] = cmd.payload[0] & (WARDRIVE_RADIO_WIFI | WARDRIVE_RADIO_BLE | WARDRIVE_RADIO_802154);
                 if (mgrWardriveCfg[0] == 0) mgrWardriveCfg[0] = 0x03;
             }
         }
@@ -3176,7 +3176,8 @@ static size_t packDetection(const DetectionEvent* evt, uint8_t* buf) {
             buf[52] = evt->ext.wardrive.auth_mode;
             memcpy(buf + 53, evt->ext.wardrive.device_name, 21);
             len = 74;
-            if ((evt->method == METHOD_BLE_ADV || evt->method == METHOD_WIFI_AP) && evt->ext.wardrive.adv_len) {
+            if ((evt->method == METHOD_BLE_ADV || evt->method == METHOD_WIFI_AP || evt->method == METHOD_802154) &&
+                evt->ext.wardrive.adv_len) {
                 uint8_t n = evt->ext.wardrive.adv_len;
                 if (n > sizeof(evt->ext.wardrive.adv)) n = sizeof(evt->ext.wardrive.adv);
                 buf[74] = n;

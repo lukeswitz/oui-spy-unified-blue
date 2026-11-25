@@ -242,7 +242,7 @@ static void wdLogFlushLocked() {
 }
 
 bool wdLogAppend(const DetectionEvent* evt, uint32_t utcEpoch) {
-    if (!s_ready || !evt) return false;
+    if (!s_ready || !evt || evt->method == METHOD_802154) return false;
     if (s_mutex) xSemaphoreTake(s_mutex, portMAX_DELAY);
     if (!s_wdBuf) s_wdBuf = (WdLogRecord*)calloc(WD_LOG_BUF_ROWS, sizeof(WdLogRecord));
     if (!s_wdSeen) s_wdSeen = new (std::nothrow) WdLogSeen();

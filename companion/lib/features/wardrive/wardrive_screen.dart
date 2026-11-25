@@ -26,6 +26,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
@@ -1690,7 +1691,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
       final d = clusterable[i];
       final ci = clusterIdxOf[i];
       final densityTint = _percentileBlend(
-          d.engine.color, counts[ci], p50, p90, p99);
+          d.isZigbeeDetection ? zigbeeColor : d.engine.color, counts[ci], p50, p90, p99);
       heat.add(CircleMarker(
         point: LatLng(d.latitude!, d.longitude!),
         radius: heatRadiusM,
@@ -1713,8 +1714,9 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
 
       final base = 22.0 + 8.0 * (log(n + 1) / ln10);
       final size = (base * zoomScale).clamp(26.0, 60.0);
-      final domColor = dominant.color;
-      final secColor = secondary?.color;
+      final allZigbee = members[i].every((d) => d.isZigbeeDetection);
+      final domColor = allZigbee ? zigbeeColor : dominant.color;
+      final secColor = allZigbee ? null : secondary?.color;
       final heatColor = _percentileBlend(domColor, n, p50, p90, p99);
       clusters.add(Marker(
         point: center,
@@ -1956,12 +1958,15 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                   itemBuilder: (_, i) {
                     final d = list[i];
                     final name = d.deviceName.isNotEmpty ? d.deviceName : d.ssid;
-                    final vendor = oui.lookup(d.macAddress);
+                    final vendor = oui.lookup(zigbeeVendorKey(d));
+                    final zb = d.isZigbeeDetection;
                     return ListTile(
                       dense: true,
-                      leading: Icon(d.engine.icon, color: d.engine.color),
+                      leading: Icon(zb ? zigbeeIcon : d.engine.icon, color: zb ? zigbeeColor : d.engine.color),
                       title: Text(
-                        name.isNotEmpty ? maskName(name, priv) : maskMac(d.macAddress.toUpperCase(), priv),
+                        zb
+                            ? zigbeeHeadline(d)
+                            : name.isNotEmpty ? maskName(name, priv) : maskMac(d.macAddress.toUpperCase(), priv),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),

@@ -148,6 +148,11 @@ enum EngineState : uint8_t {
 #define METHOD_WIFI_AP         0
 #define METHOD_BLE_ADV         1
 #define METHOD_WIFI_CLIENT     2
+#define METHOD_802154          3   // channel = 802.15.4 ch 11-26, mac = source key, ssid = Thread name, adv = see engines/ieee802154_frame.h zb154PackAdv
+
+#define WARDRIVE_RADIO_WIFI    0x01
+#define WARDRIVE_RADIO_BLE     0x02
+#define WARDRIVE_RADIO_802154  0x04
 
 // Detector methods
 #define METHOD_DET_BLE_WATCH   0
@@ -393,10 +398,11 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 
 #define PCAP_MODE_WIFI 0
 #define PCAP_MODE_BLE  1
+#define PCAP_MODE_802154 2  // C5 only. beacon_count=beacons, data_count=data, ctrl_count=acks, mgmt_other_count=MAC commands+other
 
 typedef struct __attribute__((packed)) {
     uint8_t  state;             // 0=idle, 1=capturing, 2=full, 3=error
-    uint8_t  mode;              // PCAP_MODE_WIFI / PCAP_MODE_BLE
+    uint8_t  mode;              // PCAP_MODE_WIFI / PCAP_MODE_BLE / PCAP_MODE_802154
     uint8_t  current_channel;   // wifi: current hop channel  ble: last seen primary adv chan
     uint8_t  _reserved;
     uint32_t beacon_count;

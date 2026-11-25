@@ -43,6 +43,8 @@ class SessionStats {
     required this.detectionsPerKm,
     required this.gpsAccuracy,
     required this.satelliteCount,
+    this.zigbeeDetections = 0,
+    this.zigbeeTotal = 0,
   });
 
   final Duration duration;
@@ -61,4 +63,6 @@ class SessionStats {
   final double detectionsPerKm;
   final double gpsAccuracy;
   final int satelliteCount;
+  final int zigbeeDetections;
+  final int zigbeeTotal;
 }

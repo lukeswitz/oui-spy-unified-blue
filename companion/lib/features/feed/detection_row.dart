@@ -30,6 +30,7 @@ import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
@@ -69,7 +70,8 @@ class DetectionRow extends ConsumerWidget {
     final engine = detection.engine;
     final timeDiff = DateTime.now().difference(detection.appTimestamp);
     final timeStr = _formatTimeDiff(timeDiff);
-    final manufacturer = ref.watch(ouiLookupProvider).lookup(detection.macAddress);
+    final manufacturer = ref.watch(ouiLookupProvider).lookup(zigbeeVendorKey(detection));
+    final zb = zigbeeInfoFor(detection);
     final priv = ref.watch(privacyScreenProvider);
     final macCount = macs.isEmpty ? 1 : macs.length;
     final registry = ref.exists(deviceRegistryProvider) ? ref.read(deviceRegistryProvider) : null;
@@ -108,18 +110,23 @@ class DetectionRow extends ConsumerWidget {
           final sdrCat =
               detection.engine == Engine.sdr ? _sdrCategory(detection) : null;
           final isWifi = detection.isWifiDetection;
+          final isZigbee = detection.isZigbeeDetection;
           final clsColor = clsStr != null
               ? alertKindColor(clsStr)
-              : engine == Engine.wardrive && !isWifi && sdrCat == null
-                  ? AppTheme.themed(AppTheme.flockBle)
-                  : engine.color;
+              : isZigbee
+                  ? zigbeeColor
+                  : engine == Engine.wardrive && !isWifi && sdrCat == null
+                      ? AppTheme.themed(AppTheme.flockBle)
+                      : engine.color;
           final clsLabel =
               (clsStr == null ? engine.label : alertKindLabel(clsStr)).toUpperCase();
           final icon = sig != null
               ? classIcon(sig)
               : sdrCat != null
                   ? sdrCat.icon
-                  : (isWifi ? Icons.wifi : Icons.bluetooth);
+                  : isZigbee
+                      ? zigbeeIcon
+                      : (isWifi ? Icons.wifi : Icons.bluetooth);
           final authMode = detection.wardrive?.authMode ?? 0;
           final dimStyle = TextStyle(color: dim, fontSize: 11.5);
           final monoDim = dimStyle.copyWith(fontFamily: AppTheme.mono);
@@ -135,12 +142,14 @@ class DetectionRow extends ConsumerWidget {
               : rawId;
           final icons = [
             if (engine == Engine.skySpy) Icon(Icons.flight, size: 13, color: clsColor),
-            if (OuiLookupService.isLawEnforcement(detection.macAddress))
+            if (OuiLookupService.isLawEnforcement(zigbeeVendorKey(detection)))
               Icon(Icons.local_police, size: 13, color: AppTheme.warning),
           ];
           final method = detection.method == 'wifi_ap' || detection.method == 'ble_adv' || engine == Engine.sdr
               ? ''
-              : methodLabel(detection.method);
+              : isZigbee
+                  ? (zb?.protocolLabel ?? methodLabel(detection.method))
+                  : methodLabel(detection.method);
           final flock = detection.flock;
           final pwn = detection.unipwn;
           final det = detection.detector;
@@ -166,12 +175,17 @@ class DetectionRow extends ConsumerWidget {
                   text: 'UAS ${detection.odid!.uavId}',
                   style: tagStyle.copyWith(letterSpacing: 0, fontWeight: FontWeight.w700)),
             if (alt != null) TextSpan(text: '${alt}m', style: monoDim),
-            if (isWifi && detection.channel > 0)
+            if ((isWifi || isZigbee) && detection.channel > 0)
               TextSpan(text: 'CH ${detection.channel}', style: monoDim),
+            if (zb != null) ...[
+              TextSpan(text: zb.frameLabel, style: monoDim),
+              if (zb.pan != null) TextSpan(text: 'PAN ${zb.panLabel}', style: monoDim),
+              TextSpan(text: 'LQI ${zb.lqi}', style: monoDim),
+            ],
             if (detection.count > 1) TextSpan(text: '×${detection.count}', style: monoDim),
             if (manufacturer != null && manufacturer.isNotEmpty)
               TextSpan(text: manufacturer, style: dimStyle),
-            if (!headlineIsMac)
+            if (!headlineIsMac && !isZigbee)
               TextSpan(text: macCount > 1 ? '$macCount MACs' : maskMac(shownId, priv), style: monoDim),
             if (match.isNotEmpty) TextSpan(text: match, style: monoDim.copyWith(color: AppTheme.accent)),
             if (det != null) TextSpan(text: det.isFullMac ? 'FULL' : 'OUI', style: monoDim),
@@ -243,7 +257,7 @@ class DetectionRow extends ConsumerWidget {
                         for (final i in [
                           ...deviceFlagIcons(t,
                               hidden: detectionIsHiddenAp(detection),
-                              randomized: MacUtil.isRandomized(detection.macAddress),
+                              randomized: !isZigbee && MacUtil.isRandomized(detection.macAddress),
                               withYou: device != null && registry!.withYou(device),
                               size: 13),
                           ...icons,
@@ -419,6 +433,7 @@ String detectionScanner(Detection d) {
   if (BleManager.isUsbWifiNode(src)) return 'USB Wi-Fi adapter';
   if (BleManager.isUsbBleNode(src)) return 'USB Bluetooth adapter';
   if (!d.engine.isDualRadio) return d.engine.label;
+  if (d.isZigbeeDetection) return '${d.engine.label} · 802.15.4';
   return '${d.engine.label} · ${wifi ? 'Wi-Fi' : 'BLE'}';
 }
 
@@ -439,7 +454,8 @@ void showDetectionDetails(
         ? ''
         : ref.read(appStateProvider).labelForNode(detection.sourceNodeId);
     final t = AppTheme.of(context);
-    final vendor = ref.read(ouiLookupProvider).lookup(detection.macAddress);
+    final vendor = ref.read(ouiLookupProvider).lookup(zigbeeVendorKey(detection));
+    final isZigbee = detection.isZigbeeDetection;
     if (detection.flock != null &&
         detection.latitude != null &&
         detection.longitude != null) {
@@ -465,16 +481,21 @@ void showDetectionDetails(
     final shownMac = macs.length > 1
         ? macs.map((m) => maskMac(m.toUpperCase(), priv)).join('\n')
         : maskMac(detection.macAddress.toUpperCase(), priv);
-    final macLine = vendor != null && vendor.isNotEmpty
-        ? '$shownMac · $vendor'
-        : shownMac;
+    final zbInfo = zigbeeInfoFor(detection);
+    final macLine = isZigbee
+        ? (zbInfo == null ? '802.15.4' : '${zbInfo.protocolLabel} · PAN ${zbInfo.panLabel} · ${zbInfo.addressLabel}')
+        : vendor != null && vendor.isNotEmpty
+            ? '$shownMac · $vendor'
+            : shownMac;
     final host = Navigator.of(context).context;
     final alertCls = detectionAlertClass[detection];
     final Color chipColor = alertCls != null
         ? alertKindColor(alertCls)
-        : detection.engine == Engine.skySpy
-            ? droneColorForMac(detection.macAddress)
-            : detection.engine.color;
+        : isZigbee
+            ? zigbeeColor
+            : detection.engine == Engine.skySpy
+                ? droneColorForMac(detection.macAddress)
+                : detection.engine.color;
     final chipLabel = alertCls != null
         ? alertKindLabel(alertCls).toUpperCase()
         : switch (detection.engine) {
@@ -493,9 +514,11 @@ void showDetectionDetails(
         : Icon(
             alertCls != null
                 ? alertKindIcon(alertCls)
-                : detection.engine == Engine.detector
+                : isZigbee
+                    ? zigbeeIcon
+                    : detection.engine == Engine.detector
                     ? Icons.radar
-                    : OuiLookupService.isLawEnforcement(detection.macAddress)
+                    : OuiLookupService.isLawEnforcement(zigbeeVendorKey(detection))
                         ? Icons.local_police
                         : detection.engine == Engine.flockBle || detection.engine == Engine.flockWifi
                             ? Icons.videocam
@@ -627,18 +650,19 @@ void showDetectionDetails(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      detectionStartFoxhunt(host, ref, detection);
-                    },
-                    child: Row(
-                      children: [
-                        const Expanded(child: Text('Foxhunt this device')),
-                        Icon(Icons.arrow_forward, size: 18, color: t.buttonMark),
-                      ],
+                  if (!isZigbee)
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        detectionStartFoxhunt(host, ref, detection);
+                      },
+                      child: Row(
+                        children: [
+                          const Expanded(child: Text('Foxhunt this device')),
+                          Icon(Icons.arrow_forward, size: 18, color: t.buttonMark),
+                        ],
+                      ),
                     ),
-                  ),
                   if (detection.method == 'evil_twin' ||
                       detection.method == 'karma' ||
                       detection.method == 'wifi_ap') ...[
@@ -951,6 +975,29 @@ class _DetailSummary extends ConsumerWidget {
     if (detection.channel > 0) {
       rows.add(_detailRow(context, 'Channel', '${detection.channel}'));
     }
+    final zb = zigbeeInfoFor(detection);
+    if (detection.isZigbeeDetection) {
+      if (detection.channel >= zigbeeChannelMin && detection.channel <= zigbeeChannelMax) {
+        rows.add(_detailRow(context, 'Frequency', '${zigbeeFrequencyMhz(detection.channel)} MHz'));
+      }
+      if (zb != null) {
+        rows.add(_detailRow(context, 'Protocol', zb.protocolLabel));
+        rows.add(_detailRow(context, 'Frame', zb.frameLabel));
+        rows.add(_detailRow(context, 'PAN ID', zb.panLabel));
+        if (zb.eui64 != null) rows.add(_detailRow(context, 'EUI-64', zb.eui64!));
+        if (zb.shortAddress != null) {
+          rows.add(_detailRow(context, 'Short address', '0x${zb.shortAddress!.toRadixString(16).padLeft(4, '0').toUpperCase()}'));
+        }
+        rows.add(_detailRow(context, 'LQI', '${zb.lqi}'));
+        if (zb.beaconExtPan != null) rows.add(_detailRow(context, 'Extended PAN ID', zb.beaconExtPan!));
+        if (zb.stackProfile != null) {
+          rows.add(_detailRow(context, 'Stack profile', '${zb.stackProfile}  (NWK v${zb.nwkVersion})'));
+          final caps = [if (zb.routerCapacity) 'Router', if (zb.endDeviceCapacity) 'End device'];
+          rows.add(_detailRow(context, 'Capacity', caps.isEmpty ? 'None' : caps.join(', ')));
+        }
+        if (zb.threadVersion != null) rows.add(_detailRow(context, 'Thread version', '${zb.threadVersion}'));
+      }
+    }
     rows.add(_detailRow(context, 'Seen', '\u00d7${detection.count}'));
     if (detection.sourceNodeId.isNotEmpty) {
       final lbl = nodeLabel.isNotEmpty && nodeLabel != detection.sourceNodeId
@@ -999,9 +1046,10 @@ class _DetailSummary extends ConsumerWidget {
         }
       }
     } else if (detection.ssid.isNotEmpty) {
-      rows.add(_detailRow(context, 'SSID', maskName(detection.ssid, ref.watch(privacyScreenProvider))));
+      rows.add(_detailRow(context, detection.isZigbeeDetection ? 'Network name' : 'SSID',
+          maskName(detection.ssid, ref.watch(privacyScreenProvider))));
     }
-    if (detection.wardrive != null) {
+    if (detection.wardrive != null && !detection.isZigbeeDetection) {
       rows.add(_detailRow(context, 'Security', _authLabel(detection.wardrive!.authMode)));
     }
     if (detection.flock?.isRaven == true) {
@@ -1289,6 +1337,7 @@ String detectionHeadline(Detection d) {
   if (DeviceNotesNotifier.nameFor(d.macAddress) case final alias?) return alias;
   if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;
   if (d.deviceName.isNotEmpty) return d.deviceName;
+  if (d.isZigbeeDetection) return zigbeeHeadline(d);
   if (detectionIsHiddenAp(d)) return 'Hidden network';
   if (_isPlatformId(d.macAddress)) return 'Unnamed BLE device';
   return d.macAddress.toUpperCase();
@@ -1359,6 +1408,7 @@ String methodLabel(String method) => switch (method) {
   'wifi_ap' => 'WIFI AP',
   'wifi_client' => 'WIFI CLIENT',
   'ble_adv' => 'BLE ADV',
+  'ieee802154' => '802.15.4',
   'unitree_ble' => 'UNITREE',
   'pcap' => 'PCAP',
   _ => method.toUpperCase(),

@@ -1526,7 +1526,7 @@ void dongleOnDetection(const DetectionEvent* evt) {
         s_detRows++;
     }
 
-    if (s_wigleCsv && evt->engine_id == ENGINE_WARDRIVE && gpsValid && haveUtc) {
+    if (s_wigleCsv && evt->engine_id == ENGINE_WARDRIVE && evt->method != METHOD_802154 && gpsValid && haveUtc) {
         s_wigleCsv.printf("%s,%s,%s,%s,%u,%lu,%d,%.7f,%.7f,%.1f,%.1f,,,%s\n",
                           s_hitMac, nameEsc, wigleAuth(evt, isBle), utcStr,
                           (unsigned)evt->channel,
@@ -1545,12 +1545,13 @@ void donglePcapOpen(uint16_t linktype) {
     sdLock();
     if (s_pcapFile) { s_pcapFile.close(); }
     char path[56];
+    const char* kind = linktype == 256 ? "ble" : (linktype == 195 ? "154" : "wifi");
     if (s_stampStr[0]) {
         snprintf(path, sizeof(path), DONGLE_DIR "/cap_%s_%02u_%s.pcap", s_stampStr,
-                 (unsigned)(++s_pcapIdx), linktype == 256 ? "ble" : "wifi");
+                 (unsigned)(++s_pcapIdx), kind);
     } else {
         snprintf(path, sizeof(path), DONGLE_DIR "/cap_%04u_%02u_%s.pcap", (unsigned)s_seq,
-                 (unsigned)(++s_pcapIdx), linktype == 256 ? "ble" : "wifi");
+                 (unsigned)(++s_pcapIdx), kind);
     }
     s_pcapFile = DONGLE_SD.open(path, FILE_WRITE);
     s_pcapBytes = 0;
