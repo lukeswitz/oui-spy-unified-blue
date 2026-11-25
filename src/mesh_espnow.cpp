@@ -759,6 +759,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
             MeshStatus s;
             memcpy(&s, (void*)&meshCurrentStatus, sizeof(MeshStatus));
             s.rx_errors++;
+            s.key_failures++;
             memcpy((void*)&meshCurrentStatus, &s, sizeof(MeshStatus));
             xSemaphoreGive(meshMutex);
         }
@@ -847,6 +848,11 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
                 engineSetDenyMask(dp[0]);
                 Serial.printf("[MESH-CMD] fan-out deny mask=0x%02x\n", dp[0]);
             }
+            sendAckPacket(&cmd);
+            return;
+        }
+        if (cmd.command >= NODE_CTL_IDENTIFY && cmd.command <= NODE_CTL_REBOOT) {
+            nodeCtlApply(cmd.command, cmd.payload, cmd.payload_len);
             sendAckPacket(&cmd);
             return;
         }

@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart' show showSessionHistory;
 import 'package:oui_spy/features/stops/stops_screen.dart';
+import 'package:oui_spy/features/config/atak_section.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
 import 'package:oui_spy/features/signatures/signature_sets_screen.dart';
@@ -396,7 +397,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Radio Privacy', 'Active Wi-Fi probing, passive Bluetooth', Icons.cell_tower, () => _buildHardwareTab(_HwPart.radio)),
             ('Offline Scan', 'Keep scanning while disconnected', Icons.cloud_off, () => _buildHardwareTab(_HwPart.offline)),
             ('Mesh', 'Mode, status, key, nodes with board and temperature', Icons.hub, _buildMeshTab),
-            ('Firmware', 'Device info, Wi-Fi network, updates', Icons.system_update, _buildFirmwareTab),
+            ('Firmware', 'Device info, Wi-Fi network, Bluetooth PIN, updates', Icons.system_update, _buildFirmwareTab),
             ('JCMK Node Hub', 'Collect from Piglet / JCMK ESP-NOW wardriver nodes', Icons.router, () => ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: const [_EnowHubSection()],
@@ -406,7 +407,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Accounts', 'WiGLE and WDGWars upload accounts', Icons.cloud_upload, () => const _WardriveConfigTab(showAccounts: true)),
             ('Capture Database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
-            ('Export', 'Data and backup, OUI database', Icons.ios_share, _buildExportTab),
+            ('Export', 'Data and backup, ATAK, OUI database', Icons.ios_share, _buildExportTab),
           ],
         _ => null,
       };
@@ -667,6 +668,9 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           onTap: () => context.push('/export'),
           trailing: Icon(Icons.chevron_right, size: 18, color: t.textDim),
         ),
+        const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'ATAK'),
+        const AtakSection(),
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'OUI database'),
         const _OuiDatabaseSection(),
@@ -1187,6 +1191,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           label: 'TX / RX',
           value: '${appState.meshTxCount} / ${appState.meshRxCount}',
         ),
+        if (appState.meshKeyFailures case final failures?)
+          ConfigInfoRow(
+            icon: Icons.key_off,
+            label: 'Failed key checks',
+            value: '$failures',
+          ),
         ConfigInfoRow(
           icon: Icons.group,
           label: 'Peer slots',
@@ -1226,8 +1236,48 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const SizedBox(height: 16),
         ConfigSectionHeader(label: 'Nodes'),
         ..._buildNodeManageRows(appState),
+        if (appState.isConnected && ref.read(bleManagerProvider).isManagerConnected) ...[
+          const SizedBox(height: 16),
+          const ConfigSectionHeader(label: 'Fleet control'),
+          ConfigActionRow(
+            icon: Icons.campaign_outlined,
+            label: 'Identify all',
+            subtitle: 'Every node beeps and blinks for 10 seconds',
+            onTap: () => _fleetControl(BleProtocol.encodeNodeIdentify(null), 'Identify sent to every node'),
+          ),
+          ConfigActionRow(
+            icon: Icons.restart_alt,
+            label: 'Reboot all nodes',
+            subtitle: 'Every node restarts and rejoins. The manager stays up',
+            destructive: true,
+            onTap: _confirmRebootAllNodes,
+          ),
+        ],
       ],
     );
+  }
+
+  Future<void> _fleetControl(Uint8List cmd, String done) async {
+    final ok = await ref.read(bleManagerProvider).sendNodeControl(cmd);
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(ok ? done : 'Not connected to a board')),
+    );
+  }
+
+  Future<void> _confirmRebootAllNodes() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reboot every node?'),
+        content: const Text('Each node leaves the mesh for a few seconds, then rejoins.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('REBOOT')),
+        ],
+      ),
+    );
+    if (ok == true) await _fleetControl(BleProtocol.encodeNodeReboot(null), 'Reboot sent to every node');
   }
 
   List<Widget> _buildNodeManageRows(AppState appState) {
@@ -1275,7 +1325,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         icon: isSelf ? Icons.smartphone : (online ? Icons.memory : Icons.memory_outlined),
         label: board == null || board.isEmpty ? label : '$label  ·  ${boardDisplayName(board)}',
         subtitle: parts.join('  ·  '),
-        onTap: () => _renameNodeDialog(appState, id),
+        onTap: () => _renameNodeDialog(appState, id, online: online, isSelf: isSelf),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1307,8 +1357,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     return widgets;
   }
 
-  Future<void> _renameNodeDialog(AppState appState, String id) =>
-      showNodeRenameDialog(context, appState, id, allowForget: true);
+  Future<void> _renameNodeDialog(AppState appState, String id, {bool online = false, bool isSelf = false}) {
+    final ble = ref.read(bleManagerProvider);
+    final mgr = ble.isManagerConnected;
+    final canControl = appState.isConnected && online && id != 'LOCAL' && (isSelf ? !mgr : mgr);
+    return showNodeRenameDialog(context, appState, id,
+        allowForget: true, control: canControl ? ble.sendNodeControl : null, targeted: !isSelf);
+  }
 
   Widget _buildFirmwareTab() {
     final appState = ref.watch(appStateProvider);
@@ -1412,6 +1467,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ),
 
         const SizedBox(height: 16),
+        const ConfigSectionHeader(label: 'Bluetooth pairing'),
+        ConfigActionRow(
+          icon: Icons.pin,
+          label: 'Bluetooth PIN',
+          subtitle: 'The code a phone enters to pair. A new board uses 123456',
+          onTap: _changeBlePin,
+        ),
+
+        const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'Updates'),
         _OtaSection(currentVersion: _fwVersion),
 
@@ -1454,6 +1518,62 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     );
     if (ok != true) return;
     await ref.read(bleManagerProvider).rebootDevice();
+  }
+
+  Future<void> _changeBlePin() async {
+    final ctrl = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final valid = BleProtocol.blePinValid(ctrl.text);
+          return AlertDialog(
+            title: const Text('Bluetooth PIN'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Six digits, not starting with 0. Phones already paired stay paired. '
+                    'A new phone enters this PIN when it pairs.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(labelText: 'New PIN'),
+                  onChanged: (_) => setLocal(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
+              TextButton(
+                onPressed: valid ? () => Navigator.pop(ctx, ctrl.text) : null,
+                child: const Text('SAVE'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    ctrl.dispose();
+    if (pin == null) return;
+    bool? ok;
+    try {
+      ok = await ref.read(bleManagerProvider).setBlePin(int.parse(pin));
+    } catch (e) {
+      DebugLog.log('CONFIG: setBlePin failed: $e');
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text(switch (ok) {
+        true => 'PIN saved. Use it the next time a phone pairs.',
+        false => 'The board refused the PIN.',
+        null => 'The board did not answer. Update its firmware, then try again.',
+      }),
+    ));
   }
 
   Future<void> _confirmFactoryReset() async {

@@ -124,7 +124,7 @@ class BleManager {
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
-  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes})>.broadcast();
+  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes, int? keyFailures})>.broadcast();
   final _pcapStatsStream = StreamController<PcapStats>.broadcast();
   final _pcapDataStream = StreamController<Uint8List>.broadcast();
   PcapStats _latestPcapStats = PcapStats.empty;
@@ -192,7 +192,7 @@ class BleManager {
   Stream<({int rssi, int intervalMs})> get foxhunterRssi => _foxhunterRssiStream.stream;
   Stream<({int available, int active, List<EngineState> states})> get engineStates =>
       _engineStates.stream;
-  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes})> get meshStatusUpdates =>
+  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes, int? keyFailures})> get meshStatusUpdates =>
       _meshStatusStream.stream;
   Stream<PcapStats> get pcapStats => _pcapStatsStream.stream;
   Stream<Uint8List> get pcapData => _pcapDataStream.stream;
@@ -1317,6 +1317,8 @@ class BleManager {
           } else if (data[0] == 0x12) {
             final frame = BleProtocol.decodeWdLogFrame(data);
             if (frame != null) _wdLogFrames.add(frame);
+          } else if (data[0] == BleProtocol.blePinCmd && data.length >= 2) {
+            _blePinStream.add(data[1] == 0);
           } else if (data[0] == 0x08 && data.length >= 5) {
             _fleetOtaStream.add((
               phase: data[1],
@@ -1427,6 +1429,19 @@ class BleManager {
       Uint8List.fromList([0x02, 0xC0, 0xDE]),
       withoutResponse: false,
     );
+  }
+
+  final _blePinStream = StreamController<bool>.broadcast();
+
+  /// Sets the PIN a phone enters to pair with this board. Null when the board did not answer.
+  Future<bool?> setBlePin(int pin) async {
+    final sys = _systemControl;
+    if (sys == null) return null;
+    final reply = _blePinStream.stream.first
+        .timeout(const Duration(seconds: 5))
+        .then<bool?>((ok) => ok, onError: (Object _) => null);
+    await sys.write(BleProtocol.encodeBlePin(pin), withoutResponse: false);
+    return reply;
   }
 
   final _ringResultStream = StreamController<({String mac, int status, int protocol})>.broadcast();
@@ -1657,6 +1672,14 @@ class BleManager {
       bytes.add(m == 0 ? 0x03 : m);
     }
     await _nodeRadio!.write(bytes, withoutResponse: false);
+  }
+
+  /// Sends an identify, locate or reboot command. A manager relays it over the mesh.
+  Future<bool> sendNodeControl(Uint8List cmd) async {
+    final c = _engineControl;
+    if (c == null) return false;
+    await c.write(cmd, withoutResponse: false);
+    return true;
   }
 
   Future<void> setAutoPcap(bool enabled) async {

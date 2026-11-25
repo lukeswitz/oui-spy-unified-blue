@@ -22,6 +22,8 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/privacy.dart';
+import 'package:oui_spy/core/device_notes.dart';
+import 'package:oui_spy/features/feed/device_notes_sheet.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
 import 'package:latlong2/latlong.dart';
@@ -653,6 +655,18 @@ void showDetectionDetails(
                       },
                     ),
                   ],
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.edit_note, size: 18),
+                    label: const Text('Name, group and notes'),
+                    onPressed: () => showDeviceNotesEditor(ctx, ref, detection.macAddress),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.ios_share, size: 18),
+                    label: const Text('Export this device'),
+                    onPressed: () => showDeviceExport(ctx, ref, detection.macAddress),
+                  ),
                   if (canRing) ...[
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
@@ -1239,6 +1253,7 @@ bool detectionIsHiddenAp(Detection d) =>
     d.method == 'wifi_ap' && d.ssid.trim().isEmpty && (d.wardrive?.ssid.trim().isEmpty ?? true);
 
 String detectionHeadline(Detection d) {
+  if (DeviceNotesNotifier.nameFor(d.macAddress) case final alias?) return alias;
   if (d.wardrive != null && d.wardrive!.ssid.isNotEmpty) return d.wardrive!.ssid;
   if (d.deviceName.isNotEmpty) return d.deviceName;
   if (detectionIsHiddenAp(d)) return 'Hidden network';
@@ -1291,6 +1306,9 @@ String methodLabel(String method) => switch (method) {
   'evil_twin' => 'EVIL TWIN',
   'karma' => 'KARMA AP',
   'mesh' => 'MESH RADIO',
+  'wearable_cam' => 'WEARABLE CAM',
+  'vehicle' => 'VEHICLE',
+  'drone_ble' => 'DRONE BLE',
   'drone_vendor' => 'DRONE OUI',
   'flipper' => 'FLIPPER',
   'deauth_storm' => 'DEAUTH',

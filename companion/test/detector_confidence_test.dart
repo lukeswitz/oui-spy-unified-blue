@@ -122,4 +122,40 @@ void main() {
     expect(sigAll & sigMesh, sigMesh);
     expect(detectorMethodsByBit[sigProbe], containsAll(['probe_ssid', 'evil_twin', 'karma']));
   });
+
+  test('Bluetooth PIN command carries six digits little-endian behind the magic', () {
+    expect(BleProtocol.blePinValid('123456'), isTrue);
+    expect(BleProtocol.blePinValid('012345'), isFalse);
+    expect(BleProtocol.blePinValid('12345'), isFalse);
+    expect(BleProtocol.blePinValid('1234567'), isFalse);
+    expect(BleProtocol.blePinValid('12a456'), isFalse);
+    expect(BleProtocol.encodeBlePin(987654), [0x14, 0xC0, 0xDE, 0x06, 0x12, 0x0F, 0x00]);
+  });
+
+  test('node identify, locate and reboot ride engine control with the target envelope', () {
+    expect(BleProtocol.encodeNodeIdentify('AB12'),
+        [0x20, 0x00, 0xFE, 0x41, 0x42, 0x31, 0x32, 0x00, 10, 0x03]);
+    expect(BleProtocol.encodeNodeIdentify(null, seconds: 5, beep: false), [0x20, 0x00, 5, 0x02]);
+    expect(BleProtocol.encodeNodeLocate('AB12', on: false), [0x21, 0x00, 0xFE, 0x41, 0x42, 0x31, 0x32, 0x00, 0]);
+    expect(BleProtocol.encodeNodeReboot(null), [0x22, 0x00, 0xC0, 0xDE]);
+  });
+
+  test('wearable, vehicle and drone signatures decode from methods 17-19', () {
+    for (final (m, name, bit) in [
+      (17, 'wearable_cam', sigWearable),
+      (18, 'vehicle', sigVehicle),
+      (19, 'drone_ble', sigDrone),
+    ]) {
+      final d = BleProtocol.decodeDetection(
+        _detectorPacket(method: m, desc: 'GoPro camera', confidence: 2),
+        sessionId: 's', nodeId: 'n', appTimestamp: DateTime(2026),
+      );
+      expect(d.method, name);
+      expect(detectorMethodsByBit[bit], [name]);
+      expect(sigAll & bit, bit);
+      expect(NotificationService.detectorMethodName(name), isNotNull);
+    }
+    expect(sigAll, 0x1FFF);
+    expect(detectorSignatures.map((s) => s.bit).toSet().length, detectorSignatures.length);
+  });
 }

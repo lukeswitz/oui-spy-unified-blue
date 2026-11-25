@@ -22,8 +22,8 @@
 #define OUISPY_BLE_SECURE 1
 #endif
 #if OUISPY_BLE_SECURE
-#define SEC_R (NIMBLE_PROPERTY::READ_ENC)
-#define SEC_W (NIMBLE_PROPERTY::WRITE_ENC)
+#define SEC_R (NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::READ_AUTHEN)
+#define SEC_W (NIMBLE_PROPERTY::WRITE_ENC | NIMBLE_PROPERTY::WRITE_AUTHEN)
 extern "C" void ble_gatts_set_clt_cfg_perm_flags(uint8_t flags);
 extern "C" int ble_hs_set_rpa_timeout(uint16_t timeout);
 extern "C" void ble_svc_gatt_changed(uint16_t start_handle, uint16_t end_handle);
@@ -990,6 +990,10 @@ struct BlePeer { uint16_t handle; uint32_t sinceMs; bool authed; };
 static BlePeer s_peers[BLE_MAX_PEERS];
 static uint8_t s_irk[16];
 static bool s_irkReady = false;
+#define BLE_PIN_DEFAULT 123456UL
+static uint32_t s_blePin = BLE_PIN_DEFAULT;
+
+static bool blePinValid(uint32_t pin) { return pin >= 100000UL && pin <= 999999UL; }
 
 static void bleStableBtIdentity(void) {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -1030,6 +1034,8 @@ static void bleSecLoadKeys(void) {
         esp_fill_random(s_irk, sizeof(s_irk));
         p.putBytes("irk", s_irk, sizeof(s_irk));
     }
+    uint32_t pin = p.getUInt("pin", BLE_PIN_DEFAULT);
+    s_blePin = blePinValid(pin) ? pin : BLE_PIN_DEFAULT;
     p.end();
     s_irkReady = true;
 }
@@ -1228,9 +1234,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         struct ble_store_value_sec bond = {};
         key.peer_addr = *info.getIdAddress().getBase();
         int bondRc = ble_store_read_peer_sec(&key, &bond);
-        if (bondRc != 0 || !bond.sc || bond.key_size != 16) {
-            Serial.printf("[BLE] refused bond handle=%u rc=%d sc=%d key=%u\n", (unsigned)h, bondRc,
-                          bondRc == 0 ? (int)bond.sc : -1, bondRc == 0 ? (unsigned)bond.key_size : 0u);
+        if (bondRc != 0 || !bond.sc || !bond.authenticated || bond.key_size != 16) {
+            Serial.printf("[BLE] refused bond handle=%u rc=%d sc=%d pin=%d key=%u\n", (unsigned)h, bondRc,
+                          bondRc == 0 ? (int)bond.sc : -1, bondRc == 0 ? (int)bond.authenticated : -1,
+                          bondRc == 0 ? (unsigned)bond.key_size : 0u);
             NimBLEDevice::deleteBond(info.getIdAddress());
             if (pServer) pServer->disconnect(h);
             return;
@@ -2117,6 +2124,29 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 break;
             }
 
+            case SYS_CMD_SET_BLE_PIN: {
+                const uint8_t* d = (const uint8_t*)val.data();
+                uint32_t pin = val.length() >= 7
+                                   ? (uint32_t)d[3] | ((uint32_t)d[4] << 8) | ((uint32_t)d[5] << 16) | ((uint32_t)d[6] << 24)
+                                   : 0;
+                uint8_t status = 1;
+                if (magicOk && blePinValid(pin)) {
+                    Preferences p;
+                    p.begin("ouispy-ble", false);
+                    bool saved = p.putUInt("pin", pin) == sizeof(uint32_t);
+                    p.end();
+                    if (saved) {
+                        s_blePin = pin;
+                        NimBLEDevice::setSecurityPasskey(pin);
+                        status = 0;
+                    }
+                }
+                Serial.printf("[SYS] Bluetooth PIN change %s\n", status == 0 ? "saved" : "refused");
+                uint8_t ack[2] = { SYS_CMD_SET_BLE_PIN, status };
+                notifyChr(chr, ack, sizeof(ack));
+                break;
+            }
+
             case SYS_CMD_RING_TRACKER: {
                 if (!magicOk || val.length() < 10) {
                     Serial.println("[SYS] Tracker ring rejected");
@@ -2800,8 +2830,9 @@ void bleGattInit(void) {
         NimBLEDevice::init(devName);
         Serial.printf("[BLE] device name: %s\n", devName);
 #if OUISPY_BLE_SECURE
-        NimBLEDevice::setSecurityAuth(true, false, true);
-        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+        NimBLEDevice::setSecurityAuth(true, true, true);
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+        NimBLEDevice::setSecurityPasskey(s_blePin);
         NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
         NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
         bleUseStableAddress();
@@ -2810,8 +2841,9 @@ void bleGattInit(void) {
         bleRpaReschedule(millis());
         s_pairWindowEndMs = millis() + BLE_PAIR_WINDOW_MS;
         ble_gatts_set_clt_cfg_perm_flags(BLE_ATT_F_READ | BLE_ATT_F_WRITE |
-                                         BLE_ATT_F_WRITE_ENC);
-        Serial.printf("[BLE] secure: bonded SC only, rpa=%d bonds=%d\n", (int)rpa, NimBLEDevice::getNumBonds());
+                                         BLE_ATT_F_WRITE_ENC | BLE_ATT_F_WRITE_AUTHEN);
+        Serial.printf("[BLE] secure: bonded SC with PIN only, rpa=%d bonds=%d pin=%s\n", (int)rpa,
+                      NimBLEDevice::getNumBonds(), s_blePin == BLE_PIN_DEFAULT ? "default" : "set");
 #endif
     }
 #ifndef OUISPY_STRESS_NOFIX
@@ -3297,7 +3329,7 @@ void bleGattNotifyMeshStatus(void) {
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t liveCount = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
 
-    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 13];
+    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 13 + 4];
     buf[0] = st.enabled;
     buf[1] = st.peer_count;
     buf[2] = st.connected_peers;
@@ -3314,6 +3346,8 @@ void bleGattNotifyMeshStatus(void) {
     }
     for (size_t i = 0; i < liveCount; i++) buf[off++] = live[i].board;
     for (size_t i = 0; i < liveCount; i++) buf[off++] = (uint8_t)live[i].temp_c;
+    memcpy(buf + off, &st.key_failures, 4);
+    off += 4;
 
     static uint8_t lastBuf[sizeof(buf)] = {};
     static size_t  lastLen = 0;

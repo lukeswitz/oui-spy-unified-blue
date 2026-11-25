@@ -48,6 +48,8 @@ void engineLoopAll(void);
 // Process engine command from BLE queue
 void engineProcessCommand(const EngineCommand* cmd);
 
+void nodeCtlApply(uint8_t command, const uint8_t* payload, uint8_t len);
+
 void engineApplyWifiBand(uint8_t mask);
 
 void engineSetDenyMask(uint8_t mask);

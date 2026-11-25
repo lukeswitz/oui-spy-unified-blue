@@ -299,11 +299,82 @@ static void axonPresenceTick(bool& tracking, uint32_t& nextBeat) {
     }
 }
 
+static volatile uint32_t s_identUntilMs = 0;
+static volatile uint32_t s_locateUntilMs = 0;
+static volatile uint32_t s_rebootAtMs = 0;
+static volatile uint8_t s_identFlags = 0;
+
+void nodeCtlApply(uint8_t command, const uint8_t* payload, uint8_t len) {
+    const uint8_t* p = payload;
+    uint8_t n = len;
+    if (!cfgTgtStrip(&p, &n, meshGetLocalNodeId())) return;
+    uint32_t now = millis();
+    if (command == NODE_CTL_IDENTIFY) {
+        uint8_t secs = (n >= 1 && p[0] != 0) ? p[0] : 10;
+        s_identFlags = n >= 2 ? (p[1] & (NODE_CTL_IDENT_BEEP | NODE_CTL_IDENT_LIGHT))
+                              : (NODE_CTL_IDENT_BEEP | NODE_CTL_IDENT_LIGHT);
+        s_identUntilMs = (now + secs * 1000UL) | 1;
+        Serial.printf("[NODECTL] identify %us flags=0x%02x\n", (unsigned)secs, (unsigned)s_identFlags);
+    } else if (command == NODE_CTL_LOCATE) {
+        bool on = n >= 1 && p[0] != 0;
+        s_locateUntilMs = on ? ((now + NODE_LOCATE_MAX_MS) | 1) : 0;
+        Serial.printf("[NODECTL] locate %s\n", on ? "on" : "off");
+    } else if (command == NODE_CTL_REBOOT) {
+        if (n >= 2 && p[0] == 0xC0 && p[1] == 0xDE) {
+            s_rebootAtMs = (now + 800) | 1;
+            Serial.println("[NODECTL] reboot scheduled");
+        } else {
+            Serial.println("[NODECTL] reboot refused: missing magic");
+        }
+    }
+}
+
+static void nodeCtlBeep(uint8_t count) {
+    uint8_t vol = hwBuzzerVolume ? hwBuzzerVolume : 100;
+    for (uint8_t i = 0; i < count; i++) {
+        ledcSetup(0, 2700, 8);
+        ledcAttachPin(PIN_BUZZER, 0);
+        ledcWrite(0, vol);
+        delay(90);
+        ledcWrite(0, 0);
+        delay(70);
+    }
+    ledcDetachPin(PIN_BUZZER);
+}
+
+static void nodeCtlTick(void) {
+    uint32_t now = millis();
+    if (s_rebootAtMs != 0 && (int32_t)(now - s_rebootAtMs) >= 0) {
+        Serial.println("[NODECTL] rebooting");
+        Serial.flush();
+        esp_restart();
+    }
+    static bool ledOn = false;
+    static uint32_t nextBeepMs = 0;
+    bool ident = s_identUntilMs != 0 && (int32_t)(s_identUntilMs - now) > 0;
+    bool locate = s_locateUntilMs != 0 && (int32_t)(s_locateUntilMs - now) > 0;
+    if (!ident) s_identUntilMs = 0;
+    if (!locate) s_locateUntilMs = 0;
+    if (!ident && !locate) {
+        if (ledOn) { OUISPY_LED_OFF(); ledOn = false; }
+        return;
+    }
+    if (locate || (s_identFlags & NODE_CTL_IDENT_LIGHT)) {
+        ledOn = !ledOn;
+        if (ledOn) OUISPY_LED_ON(); else OUISPY_LED_OFF();
+    }
+    if ((int32_t)(now - nextBeepMs) < 0) return;
+    if (locate) nodeCtlBeep(2);
+    else if (s_identFlags & NODE_CTL_IDENT_BEEP) nodeCtlBeep(1);
+    nextBeepMs = now + (locate ? 2000 : 1000);
+}
+
 static void chimeTaskFn(void* param) {
     ChimeReq req;
     bool axonTracking = false;
     uint32_t axonNextBeat = 0;
     for (;;) {
+        nodeCtlTick();
         if (xQueueReceive(chimeQueue, &req, pdMS_TO_TICKS(250)) == pdTRUE) {
             if (req.engine == CHIME_ENGINE_PREVIEW) {
                 uint8_t n = 0, notes[MELODY_MAX_NOTES][3];

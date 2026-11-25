@@ -555,10 +555,19 @@ void engineSetDenyMask(uint8_t mask) {
     }
 }
 
+__attribute__((weak)) void nodeCtlApply(uint8_t command, const uint8_t* payload, uint8_t len) {
+    (void)command; (void)payload; (void)len;
+}
+
 void engineProcessCommand(const EngineCommand* cmd) {
     if (cmd->engine_id >= ENGINE_COUNT) return;
 
     switch (cmd->command) {
+        case NODE_CTL_IDENTIFY:
+        case NODE_CTL_LOCATE:
+        case NODE_CTL_REBOOT:
+            nodeCtlApply(cmd->command, cmd->payload, cmd->payload_len);
+            break;
         case 0x01: // Enable
             if (g_engineDenyMask & ENGINE_BITMASK(cmd->engine_id)) {
                 Serial.printf("[ENGINE] enable engine %d denied (fan-out)\n", cmd->engine_id);

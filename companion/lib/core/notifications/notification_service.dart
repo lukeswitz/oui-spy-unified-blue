@@ -646,6 +646,9 @@ class NotificationService extends ChangeNotifier {
         'evil_twin' => 'Evil Twin AP',
         'karma' => 'KARMA AP',
         'mesh' => 'Mesh Radio',
+        'wearable_cam' => 'Wearable Camera',
+        'vehicle' => 'Vehicle',
+        'drone_ble' => 'Drone',
         'ble_watchlist' || 'wifi_watchlist' => 'Watchlist Hit',
         _ => null,
       };

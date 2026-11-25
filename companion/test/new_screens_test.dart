@@ -129,6 +129,8 @@ void main() {
       await tester.scrollUntilVisible(target, 200, scrollable: list);
       expect(target, findsOneWidget, reason: label);
     }
+    await tester.drag(find.text('More device types'), const Offset(0, 4000));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byTooltip('About Alert threshold'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('About Alert threshold'));

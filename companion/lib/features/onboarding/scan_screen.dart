@@ -497,7 +497,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             icon: const Icon(Icons.info_outline),
             tooltip: 'About',
             onPressed: () => showInfoSheet(context, t, 'Pairing', const [
-              'Tap a new board under Found, then accept the pairing prompt.',
+              'Tap a new board under Found, then enter its PIN when your phone asks. A new board uses 123456. Change it in the board\'s settings under Bluetooth PIN.',
               'A paired board hides its name and refuses phones it does not know.',
               'To pair another phone, restart the board. It accepts a new phone for 2 minutes.',
               'Hold a board to forget it. Tap the pencil to rename it after its first connection.',

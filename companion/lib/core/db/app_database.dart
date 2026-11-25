@@ -353,6 +353,14 @@ class AppDatabase extends _$AppDatabase {
     return _mapsWithExt(rows, sessionId: sessionId);
   }
 
+  Future<List<Map<String, dynamic>>> getDetectionMapsForMac(String mac) async {
+    final rows = await (select(detections)
+          ..where((d) => d.macAddress.equals(mac.toUpperCase()) | d.macAddress.equals(mac.toLowerCase()))
+          ..orderBy([(d) => OrderingTerm.asc(d.appTimestamp), (d) => OrderingTerm.asc(d.id)]))
+        .get();
+    return _mapsWithExt(rows);
+  }
+
   Future<List<Map<String, dynamic>>> getAllDetectionMaps() async {
     final rows = await (select(detections)
           ..orderBy([(d) => OrderingTerm.desc(d.appTimestamp)]))

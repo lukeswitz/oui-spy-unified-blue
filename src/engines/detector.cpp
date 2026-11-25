@@ -54,6 +54,7 @@ static DedupRing<32, 10000> sigDedup;
 static DedupRingISR<32, 8000> probeDedup;
 static DedupRingISR<16, 8000> axonDedupISR;
 static DedupRingISR<32, 8000> cameraDedupISR;
+static DedupRingISR<16, 8000> wifiSigDedupISR;
 
 static const uint8_t AXON_OUI[3] = {0x00, 0x25, 0xdf};
 
@@ -62,8 +63,10 @@ static const LeVendorOui LE_VENDOR_OUIS[] = {
     {{0x00, 0x00, 0xC3}, "Harris radio"},
     {{0x00, 0x04, 0x7D}, "Motorola Solutions"},
     {{0x00, 0x06, 0xEC}, "Harris radio"},
+    {{0x00, 0x09, 0xBC}, "Utility car router"},
     {{0x00, 0x0D, 0x4F}, "Kenwood radio"},
     {{0x00, 0x0D, 0xCA}, "Tait radio"},
+    {{0x00, 0x16, 0xED}, "Utility car router"},
     {{0x00, 0x17, 0xF3}, "Harris radio"},
     {{0x00, 0x18, 0x85}, "Motorola Solutions"},
     {{0x00, 0x1D, 0x96}, "WatchGuard Video"},
@@ -71,13 +74,79 @@ static const LeVendorOui LE_VENDOR_OUIS[] = {
     {{0x00, 0x23, 0xBD}, "Digital Ally"},
     {{0x10, 0x74, 0x6F}, "Motorola Solutions"},
     {{0x38, 0x1D, 0x14}, "Skydio drone"},
+    {{0x48, 0x2C, 0xEA}, "Motorola radio"},
     {{0x4C, 0xCC, 0x34}, "Motorola Solutions"},
     {{0x64, 0x69, 0xBC}, "Hytera radio"},
     {{0x9C, 0x06, 0x6E}, "Hytera radio"},
     {{0x9C, 0x86, 0x2B}, "Motorola Solutions"},
     {{0xB8, 0xE2, 0x8C}, "Motorola Solutions"},
+    {{0xD4, 0x2D, 0xC5}, "i-PRO body camera"},
     {{0xE0, 0xDA, 0xDC}, "Kenwood radio"},
 };
+
+struct BleSig { uint16_t id; uint8_t isSvc; uint16_t sig; uint8_t method; const char* desc; };
+static const BleSig BLE_SIGS[] = {
+    {0x0E29, 0, SIG_FLIPPER,  METHOD_DET_FLIPPER,  "Flipper Zero"},
+    {0x3080, 1, SIG_FLIPPER,  METHOD_DET_FLIPPER,  "Flipper Zero"},
+    {0x04EC, 0, SIG_AXON,     METHOD_DET_AXON,     "Motorola Solutions"},
+    {0xFD8E, 1, SIG_AXON,     METHOD_DET_AXON,     "Motorola Solutions"},
+    {0xFE04, 1, SIG_AXON,     METHOD_DET_AXON,     "Motorola Solutions"},
+    {0x02F2, 0, SIG_WEARABLE, METHOD_DET_WEARABLE, "GoPro camera"},
+    {0xFEA5, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "GoPro camera"},
+    {0xFEA6, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "GoPro camera"},
+    {0x10D7, 0, SIG_WEARABLE, METHOD_DET_WEARABLE, "Insta360 camera"},
+    {0xFC2D, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "Insta360 camera"},
+    {0xFC2E, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "Insta360 camera"},
+    {0xFC2F, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "Insta360 camera"},
+    {0xFC30, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "Insta360 camera"},
+    {0x03C2, 0, SIG_WEARABLE, METHOD_DET_WEARABLE, "Snap Spectacles"},
+    {0xFE45, 1, SIG_WEARABLE, METHOD_DET_WEARABLE, "Snap Spectacles"},
+    {0x10F9, 0, SIG_WEARABLE, METHOD_DET_WEARABLE, "Even Realities glasses"},
+    {0x060C, 0, SIG_WEARABLE, METHOD_DET_WEARABLE, "Vuzix smart glasses"},
+    {0x0FB2, 0, SIG_WEARABLE, METHOD_DET_WEARABLE, "PLAUD voice recorder"},
+    {0x022B, 0, SIG_VEHICLE,  METHOD_DET_VEHICLE,  "Tesla vehicle"},
+    {0xFE96, 1, SIG_VEHICLE,  METHOD_DET_VEHICLE,  "Tesla vehicle"},
+    {0xFE97, 1, SIG_VEHICLE,  METHOD_DET_VEHICLE,  "Tesla vehicle"},
+    {0xFFFA, 1, SIG_DRONE,    METHOD_DET_DRONE,    "Remote ID drone"},
+    {0x08AA, 0, SIG_DRONE,    METHOD_DET_DRONE,    "DJI drone or controller"},
+};
+
+static const BleSig* bleSigLookup(uint16_t id, bool isSvc, uint16_t mask) {
+    for (const auto& s : BLE_SIGS) {
+        if (s.id == id && s.isSvc == (isSvc ? 1 : 0) && (mask & s.sig)) return &s;
+    }
+    return nullptr;
+}
+
+static const char* const VEHICLE_NAMES[][2] = {
+    {"OBDII", "OBD-II dongle"},
+    {"OBDBLE", "OBD-II dongle"},
+    {"OBDLink", "OBDLink dongle"},
+    {"Vgate", "Vgate OBD dongle"},
+    {"vLinker", "vLinker OBD dongle"},
+    {"VEEPEAK", "Veepeak OBD dongle"},
+};
+
+static bool teslaVehicleName(const char* s, size_t n) {
+    if (n != 18 || s[0] != 'S' || s[17] != 'C') return false;
+    for (size_t i = 1; i < 17; i++) {
+        if (!isxdigit((unsigned char)s[i])) return false;
+    }
+    return true;
+}
+
+struct WifiSigOui { uint8_t b[3]; uint16_t sig; uint8_t method; const char* desc; };
+static const WifiSigOui WIFI_SIG_OUIS[] = {
+    {{0x98, 0xA4, 0x0E}, SIG_WEARABLE, METHOD_DET_WEARABLE, "Snap Spectacles"},
+    {{0xB0, 0x30, 0xC8}, SIG_DRONE,    METHOD_DET_DRONE,    "Teal drone"},
+};
+
+static const WifiSigOui* IRAM_ATTR wifiSigOuiFor(const uint8_t* mac, uint16_t mask) {
+    for (const auto& w : WIFI_SIG_OUIS) {
+        if ((mask & w.sig) && mac[0] == w.b[0] && mac[1] == w.b[1] && mac[2] == w.b[2]) return &w;
+    }
+    return nullptr;
+}
 
 static const char* IRAM_ATTR leVendorForMac(const uint8_t* mac) {
     for (const auto& v : LE_VENDOR_OUIS) {
@@ -172,8 +241,10 @@ static const UuidFilter* matchUuidFilter(NimBLEAdvertisedDevice* dev) {
     return nullptr;
 }
 
-static const char* const TRACKER_FAMILY[] = {"Find My", "SmartTag", "Tile", "Google Find Hub"};
-enum { TRK_APPLE = 0, TRK_SAMSUNG, TRK_TILE, TRK_GOOGLE };
+static const char* const TRACKER_FAMILY[] = {"Find My", "SmartTag", "Tile", "Google Find Hub", "AirTag",
+                                             "Find My item", "AirPods", "Chipolo", "Pebblebee", "DULT tracker"};
+enum { TRK_APPLE = 0, TRK_SAMSUNG, TRK_TILE, TRK_GOOGLE, TRK_AIRTAG, TRK_FM_ITEM, TRK_AIRPODS, TRK_CHIPOLO,
+       TRK_PEBBLEBEE, TRK_DULT, TRK_FAMILY_COUNT };
 
 struct FindMyTrack {
     uint8_t  mac[6];
@@ -275,7 +346,7 @@ static void findMyObserve(const uint8_t* mac, int rssi, uint8_t family) {
     if (tier <= t.alertedTier) return;
     t.alertedTier = tier;
 
-    const char* fam = TRACKER_FAMILY[family < 4 ? family : 0];
+    const char* fam = TRACKER_FAMILY[family < TRK_FAMILY_COUNT ? family : 0];
     DetectionEvent evt = {};
     evt.engine_id = ENGINE_DETECTOR;
     memcpy(evt.mac, mac, 6);
@@ -299,29 +370,74 @@ static void findMyObserve(const uint8_t* mac, int rssi, uint8_t family) {
                   (unsigned long)(span / 1000), (unsigned)t.windows);
 }
 
-static bool appleFindMySeparated(const std::string& md) {
-    if (md.size() < 4 || (uint8_t)md[0] != 0x4C || (uint8_t)md[1] != 0x00) return false;
+static int appleFindMyFamily(const std::string& md) {
+    if (md.size() < 4 || (uint8_t)md[0] != 0x4C || (uint8_t)md[1] != 0x00) return -1;
     size_t i = 2;
     while (i + 2 <= md.size()) {
         uint8_t type = (uint8_t)md[i];
         uint8_t len = (uint8_t)md[i + 1];
-        if (i + 2 + len > md.size()) return false;
-        if (type == 0x12 && len == 0x19) return true;
+        if (i + 2 + len > md.size()) return -1;
+        if (type == 0x12 && len == 0x19) {
+            switch (((uint8_t)md[i + 2] & 0x30) >> 4) {
+                case 1: return TRK_AIRTAG;
+                case 2: return TRK_FM_ITEM;
+                case 3: return TRK_AIRPODS;
+                default: return TRK_APPLE;
+            }
+        }
         i += 2 + len;
     }
-    return false;
+    return -1;
+}
+
+static bool uuid16Of(const NimBLEUUID& u, uint16_t* out) {
+    if (u.bitSize() != BLE_UUID_TYPE_16) return false;
+    memcpy(out, u.getValue(), 2);
+    return true;
+}
+
+static const BleSig* bleSigMatch(NimBLEAdvertisedDevice* dev, uint16_t mask) {
+    if (dev->haveManufacturerData()) {
+        std::string m = dev->getManufacturerData();
+        if (m.size() >= 2) {
+            uint16_t cid = (uint16_t)((uint8_t)m[0] | ((uint8_t)m[1] << 8));
+            if (const BleSig* s = bleSigLookup(cid, false, mask)) return s;
+        }
+    }
+    uint16_t v;
+    for (int i = 0, n = dev->getServiceUUIDCount(); i < n; i++) {
+        if (uuid16Of(dev->getServiceUUID(i), &v)) {
+            if (const BleSig* s = bleSigLookup(v, true, mask)) return s;
+        }
+    }
+    for (int i = 0, n = dev->getServiceDataCount(); i < n; i++) {
+        if (uuid16Of(dev->getServiceDataUUID(i), &v)) {
+            if (const BleSig* s = bleSigLookup(v, true, mask)) return s;
+        }
+    }
+    return nullptr;
+}
+
+static bool hasSvc16(NimBLEAdvertisedDevice* dev, uint16_t uuid) {
+    NimBLEUUID u(uuid);
+    return dev->isAdvertisingService(u) || !dev->getServiceData(u).empty();
 }
 
 static int otherTrackerFamily(NimBLEAdvertisedDevice* dev) {
-    if (!dev->haveServiceData()) return -1;
-    std::string s = dev->getServiceData(NimBLEUUID((uint16_t)0xFD5A));
-    if (s.size() >= 1 && ((uint8_t)s[0] & 0xF8) == 0x10) return TRK_SAMSUNG;
-    s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEED));
-    if (s.size() >= 2 && (uint8_t)s[0] == 0x02 && (uint8_t)s[1] == 0x00) return TRK_TILE;
-    if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFEEC)).empty()) return TRK_TILE;
-    if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFD84)).empty()) return TRK_TILE;
-    s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEAA));
-    if (s.size() >= 1 && ((uint8_t)s[0] == 0x40 || (uint8_t)s[0] == 0x41)) return TRK_GOOGLE;
+    if (dev->haveServiceData()) {
+        std::string s = dev->getServiceData(NimBLEUUID((uint16_t)0xFD5A));
+        if (s.size() >= 1 && ((uint8_t)s[0] & 0xF8) == 0x10) return TRK_SAMSUNG;
+        if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFD59)).empty()) return TRK_SAMSUNG;
+        s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEED));
+        if (s.size() >= 2 && (uint8_t)s[0] == 0x02 && (uint8_t)s[1] == 0x00) return TRK_TILE;
+        if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFEEC)).empty()) return TRK_TILE;
+        if (!dev->getServiceData(NimBLEUUID((uint16_t)0xFD84)).empty()) return TRK_TILE;
+        s = dev->getServiceData(NimBLEUUID((uint16_t)0xFEAA));
+        if (s.size() >= 1 && ((uint8_t)s[0] == 0x40 || (uint8_t)s[0] == 0x41)) return TRK_GOOGLE;
+    }
+    if (hasSvc16(dev, 0xFE33)) return TRK_CHIPOLO;
+    if (hasSvc16(dev, 0xFA25)) return TRK_PEBBLEBEE;
+    if (hasSvc16(dev, 0xFCB2)) return TRK_DULT;
     return -1;
 }
 
@@ -373,8 +489,9 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
                 (uint8_t)md[2], (uint8_t)md[3], (unsigned)md.size(), rssi, sigMask);
         }
 #endif
-        if (appleFindMySeparated(md)) {
-            if (sigMask & SIG_TRACKER) findMyObserve(mac, rssi, TRK_APPLE);
+        int fmFam = appleFindMyFamily(md);
+        if (fmFam >= 0) {
+            if (sigMask & SIG_TRACKER) findMyObserve(mac, rssi, (uint8_t)fmFam);
             return;
         }
     }
@@ -400,17 +517,25 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
         if (kind && !sigDedup.check(mac)) pushSig(mac, rssi, METHOD_DET_MESH, conf, kind);
     }
     if (sigMask & SIG_FLIPPER) {
-        bool flip = dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3081)) ||
-                    dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3082)) ||
-                    dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3083));
-        if (flip && !sigDedup.check(mac)) {
+        bool flipSvc = dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3081)) ||
+                       dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3082)) ||
+                       dev->isAdvertisingService(NimBLEUUID((uint16_t)0x3083)) ||
+                       bleSigMatch(dev, SIG_FLIPPER) != nullptr;
+        static const uint8_t FLIPPER_OUIS[][3] = {
+            {0x0C, 0xFA, 0x22}, {0x80, 0xE1, 0x26}, {0x80, 0xE1, 0x27}};
+        bool flipMac = false;
+        for (const auto& oui : FLIPPER_OUIS) {
+            if (memcmp(mac, oui, 3) == 0) { flipMac = true; break; }
+        }
+        if ((flipSvc || flipMac) && !sigDedup.check(mac)) {
             DetectionEvent evt = {};
             evt.engine_id = ENGINE_DETECTOR;
             memcpy(evt.mac, mac, 6);
             evt.rssi = rssi;
             evt.timestamp_ms = millis();
             evt.method = METHOD_DET_FLIPPER;
-            evt.ext.detector.confidence = DET_CONF_HIGH;
+            evt.ext.detector.confidence = (flipSvc && flipMac) ? DET_CONF_VERIFIED
+                                        : flipSvc ? DET_CONF_HIGH : DET_CONF_SUSPECTED;
             strncpy(evt.ext.detector.filter_desc, "Flipper Zero",
                     sizeof(evt.ext.detector.filter_desc) - 1);
             pushDetection(&evt);
@@ -485,9 +610,41 @@ static void detectorCheckSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* 
             Serial.printf("[DETECTOR] SIG %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [Axon LE]\n",
                           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi);
         } else if (!(axonMac || axonMfg || axonSvc)) {
+            const BleSig* ps = bleSigMatch(dev, SIG_AXON);
             const char* le = leVendorForMac(mac);
-            if (le && !sigDedup.check(mac)) pushSig(mac, rssi, METHOD_DET_AXON, DET_CONF_SUSPECTED, le);
+            if ((ps || le) && !sigDedup.check(mac)) {
+                pushSig(mac, rssi, METHOD_DET_AXON, ps ? DET_CONF_HIGH : DET_CONF_SUSPECTED, ps ? ps->desc : le);
+            }
         }
+    }
+    if (sigMask & (SIG_WEARABLE | SIG_VEHICLE | SIG_DRONE)) {
+        const BleSig* s = bleSigMatch(dev, sigMask & (SIG_WEARABLE | SIG_VEHICLE | SIG_DRONE));
+        uint8_t method = s ? s->method : 0;
+        const char* desc = s ? s->desc : nullptr;
+        uint8_t conf = DET_CONF_HIGH;
+        if (!s && (sigMask & SIG_WEARABLE)) {
+            static const NimBLEUUID BRILLIANT_FRAME_SVC("7a230001-5475-a6a4-654c-8431f6ad49c4");
+            if (dev->isAdvertisingService(BRILLIANT_FRAME_SVC)) {
+                method = METHOD_DET_WEARABLE;
+                desc = "Brilliant Labs Frame glasses";
+            } else if (const WifiSigOui* w = wifiSigOuiFor(mac, SIG_WEARABLE)) {
+                method = w->method;
+                desc = w->desc;
+                conf = DET_CONF_SUSPECTED;
+            }
+        }
+        if (!desc && (sigMask & SIG_VEHICLE) && dev->haveName()) {
+            std::string nm = dev->getName();
+            if (teslaVehicleName(nm.data(), nm.size())) {
+                method = METHOD_DET_VEHICLE;
+                desc = "Tesla vehicle";
+            } else {
+                for (const auto& v : VEHICLE_NAMES) {
+                    if (strcasestr(nm.c_str(), v[0])) { method = METHOD_DET_VEHICLE; desc = v[1]; break; }
+                }
+            }
+        }
+        if (desc && !sigDedup.check(mac)) pushSig(mac, rssi, method, conf, desc);
     }
     if (sigMask & SIG_CAMERA) {
         int brand = cameraBrandForMac(mac);
@@ -879,6 +1036,14 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
         }
     }
 
+    if (sigMask & (SIG_WEARABLE | SIG_DRONE)) {
+        const uint8_t* src = &p[10];
+        if (const WifiSigOui* w = wifiSigOuiFor(src, sigMask)) {
+            if (!wifiSigDedupISR.check(src)) pushApSigISR(src, rssi, channel, w->method, DET_CONF_SUSPECTED, w->desc);
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -1123,7 +1288,8 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
                   detectorFilterCount(), uuidFilterCount, (unsigned)sigMask);
 }
 
-static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA | SIG_BEACONFLOOD;
+static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA | SIG_BEACONFLOOD |
+                                           SIG_WEARABLE | SIG_DRONE;
 
 static uint32_t detectorWifiFilter(void) {
     return (sigMask & SIG_CAMERA) ? (WIFI_PROMIS_FILTER_MASK_MGMT | WIFI_PROMIS_FILTER_MASK_DATA)
@@ -1323,9 +1489,25 @@ int detectorPortSelfTest(void) {
     DetectionEvent e;
 
     std::string md = std::string("\x4c\x00\x10\x02\x01\x02\x12\x19", 8) + std::string(25, '\x01');
-    pstCheck("tlv_second_record", appleFindMySeparated(md));
-    pstCheck("tlv_nearby_only", !appleFindMySeparated(std::string("\x4c\x00\x10\x02\x01\x02", 6)));
-    pstCheck("tlv_truncated", !appleFindMySeparated(std::string("\x4c\x00\x12\x19\x01\x02", 6)));
+    pstCheck("tlv_second_record", appleFindMyFamily(md) == TRK_APPLE);
+    pstCheck("tlv_nearby_only", appleFindMyFamily(std::string("\x4c\x00\x10\x02\x01\x02", 6)) < 0);
+    pstCheck("tlv_truncated", appleFindMyFamily(std::string("\x4c\x00\x12\x19\x01\x02", 6)) < 0);
+    {
+        auto fm = [](uint8_t status) {
+            return appleFindMyFamily(std::string("\x4c\x00\x12\x19", 4) + std::string(1, (char)status) + std::string(24, '\x00'));
+        };
+        pstCheck("fm_airtag", fm(0x10) == TRK_AIRTAG && fm(0x14) == TRK_AIRTAG);
+        pstCheck("fm_item", fm(0x20) == TRK_FM_ITEM);
+        pstCheck("fm_airpods", fm(0x30) == TRK_AIRPODS);
+        pstCheck("fm_apple_device", fm(0x00) == TRK_APPLE && fm(0xC4) == TRK_APPLE);
+    }
+    pstCheck("tesla_name", teslaVehicleName("S0123456789abcdefC", 18));
+    pstCheck("tesla_name_not_hex", !teslaVehicleName("S0123456789abcdeXC", 18));
+    pstCheck("tesla_name_length", !teslaVehicleName("S0123456789abcdeC", 17));
+    pstCheck("ble_sig_cid", bleSigLookup(0x02F2, false, SIG_WEARABLE) != nullptr);
+    pstCheck("ble_sig_mask_gated", bleSigLookup(0x02F2, false, SIG_VEHICLE) == nullptr);
+    pstCheck("ble_sig_kind", bleSigLookup(0x02F2, true, SIG_WEARABLE) == nullptr);
+    pstCheck("ble_sig_rid", bleSigLookup(0xFFFA, true, SIG_DRONE) != nullptr);
 
     if (uint8_t* lbl = (uint8_t*)heap_caps_malloc(DETECTOR_LABELS_MAX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
                            ?: (uint8_t*)malloc(DETECTOR_LABELS_MAX)) {
@@ -1405,6 +1587,22 @@ int detectorPortSelfTest(void) {
     const uint8_t rnd[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55};
     pstCheck("le_vendor_motorola", leVendorForMac(moto) != nullptr);
     pstCheck("le_vendor_none", leVendorForMac(rnd) == nullptr);
+    const uint8_t ipro[6] = {0xD4, 0x2D, 0xC5, 0x11, 0x22, 0x33};
+    pstCheck("le_vendor_ipro", leVendorForMac(ipro) != nullptr);
+    {
+        const uint16_t maskBefore = sigMask;
+        pstDrain();
+        uint8_t f[80];
+        const uint8_t snap[6] = {0x98, 0xA4, 0x0E, 0x01, 0x02, 0x03};
+        sigMask = SIG_DRONE;
+        detectorSigFrameISR(f, pstBeacon(f, snap, "MyNetwork"), -50, 6);
+        pstCheck("wifi_sig_mask_gated", !pstPop(&e));
+        sigMask = SIG_WEARABLE;
+        detectorSigFrameISR(f, pstBeacon(f, snap, "MyNetwork"), -50, 6);
+        pstCheck("wifi_sig_wearable", pstPop(&e) && e.method == METHOD_DET_WEARABLE &&
+                                          e.ext.detector.confidence == DET_CONF_SUSPECTED);
+        sigMask = maskBefore;
+    }
 
     if (!ssidOwners) ssidOwners = (SsidOwner*)calloc(SSID_OWNER_SLOTS, sizeof(SsidOwner));
     if (!bssidSsids) bssidSsids = (BssidSsids*)calloc(BSSID_SSID_SLOTS, sizeof(BssidSsids));
@@ -1548,7 +1746,7 @@ int detectorPortSelfTest(void) {
     sigMask = maskBeforeBeacon;
 
     detectorSetSigMask(SIG_ALL);
-    pstCheck("sigmask_10bit", detectorGetSigMask() == 0x3FF);
+    pstCheck("sigmask_13bit", detectorGetSigMask() == 0x1FFF);
 
     pstDrain();
     detectorSetSigMask(savedMask);

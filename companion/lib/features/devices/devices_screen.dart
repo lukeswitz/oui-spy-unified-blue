@@ -25,6 +25,8 @@ import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/wardrive/session_launch.dart';
+import 'package:oui_spy/features/feed/device_notes_sheet.dart';
+import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_spec_row.dart';
 
@@ -833,7 +835,10 @@ class DeviceRow extends ConsumerWidget {
             guessed: guess,
           );
     final network = o.name.isEmpty && o.isAp ? 'Hidden network' : null;
-    final title = o.name.isNotEmpty
+    final alias = o.mac.isEmpty ? null : ref.watch(deviceNotesProvider)[DeviceNotesNotifier.keyOf(o.mac)]?.name;
+    final title = alias != null && alias.isNotEmpty
+        ? alias
+        : o.name.isNotEmpty
         ? maskName(o.name, priv)
         : network != null
             ? (label == null ? network : '$network · $label')
@@ -1327,6 +1332,28 @@ class DeviceDetailSheet extends ConsumerWidget {
                     ],
                   ),
                 ),
+                if (o.mac.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    onPressed: () => showDeviceNotesEditor(context, ref, o.mac),
+                    child: const Row(
+                      children: [
+                        Expanded(child: Text('Name, group and notes')),
+                        Icon(Icons.edit_note, size: 18),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    onPressed: () => showDeviceExport(context, ref, o.mac),
+                    child: const Row(
+                      children: [
+                        Expanded(child: Text('Export this device')),
+                        Icon(Icons.ios_share, size: 18),
+                      ],
+                    ),
+                  ),
+                ],
                 if (o.isAp && o.name.trim().isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Builder(builder: (_) {

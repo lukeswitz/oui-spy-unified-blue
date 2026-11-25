@@ -13,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/atak/atak_connector.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
@@ -205,6 +206,8 @@ class AppState extends ChangeNotifier {
   int meshConnectedPeers = 0;
   int meshRxCount = 0;
   int meshTxCount = 0;
+  int? meshKeyFailures;
+  Future<int> Function(Detection det)? onAccepted;
   Uint8List? _meshKey;
   Uint8List? get meshKey => _meshKey;
   String get meshKeyFingerprint {
@@ -582,6 +585,7 @@ class AppState extends ChangeNotifier {
       (_recentSeen[det.engine] ??= {})[det.macAddress] = DateTime.now();
       _upsertDetection(det);
       _recordDroneTrack(det);
+      onAccepted?.call(det);
 
       if (isNewMac &&
           !_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
@@ -625,6 +629,7 @@ class AppState extends ChangeNotifier {
       meshConnectedPeers = data.connectedPeers;
       meshRxCount = data.rxCount;
       meshTxCount = data.txCount;
+      meshKeyFailures = data.keyFailures;
       final now = DateTime.now().millisecondsSinceEpoch;
       final live = <String>{};
       final managers = <String>{};
@@ -959,5 +964,6 @@ final appStateProvider = ChangeNotifierProvider<AppState>((ref) {
   final geofence = ref.read(geofenceFilterProvider);
   final notif = ref.read(notificationServiceProvider);
   final liveActivity = ref.watch(liveActivityServiceProvider);
-  return AppState(ble, gps, allowlist, geofence, notif, liveActivity);
+  final atak = ref.read(atakConnectorProvider.notifier);
+  return AppState(ble, gps, allowlist, geofence, notif, liveActivity)..onAccepted = atak.send;
 });

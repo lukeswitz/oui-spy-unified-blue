@@ -171,6 +171,29 @@ class BleProtocol {
     return [0xFE, ...nodeId.codeUnits, 0x00];
   }
 
+  static const nodeCtlIdentify = 0x20;
+  static const nodeCtlLocate = 0x21;
+  static const nodeCtlReboot = 0x22;
+
+  static Uint8List encodeNodeIdentify(String? nodeId, {int seconds = 10, bool beep = true, bool light = true}) =>
+      Uint8List.fromList([
+        nodeCtlIdentify, 0x00,
+        if (nodeId != null) ...targetEnvelope(nodeId),
+        seconds.clamp(1, 255), (beep ? 0x01 : 0) | (light ? 0x02 : 0),
+      ]);
+
+  static Uint8List encodeNodeLocate(String? nodeId, {required bool on}) => Uint8List.fromList([
+        nodeCtlLocate, 0x00,
+        if (nodeId != null) ...targetEnvelope(nodeId),
+        on ? 1 : 0,
+      ]);
+
+  static Uint8List encodeNodeReboot(String? nodeId) => Uint8List.fromList([
+        nodeCtlReboot, 0x00,
+        if (nodeId != null) ...targetEnvelope(nodeId),
+        0xC0, 0xDE,
+      ]);
+
   static Uint8List encodeEngineControl({
     required Engine engine,
     required bool enable,
@@ -246,6 +269,16 @@ class BleProtocol {
   static Uint8List get spoolClearCmd => Uint8List.fromList([0x0C]);
   static Uint8List get wdLogSendCmd => Uint8List.fromList([0x12]);
   static Uint8List get wdLogClearCmd => Uint8List.fromList([0x13]);
+
+  static const blePinCmd = 0x14;
+  static const blePinDefault = 123456;
+
+  static bool blePinValid(String pin) => RegExp(r'^[1-9][0-9]{5}$').hasMatch(pin);
+
+  static Uint8List encodeBlePin(int pin) => Uint8List.fromList([
+        blePinCmd, 0xC0, 0xDE,
+        pin & 0xFF, (pin >> 8) & 0xFF, (pin >> 16) & 0xFF, (pin >> 24) & 0xFF,
+      ]);
 
   static WdLogFrame? decodeWdLogFrame(List<int> data) {
     if (data.length < 2 || data[0] != 0x12) return null;
@@ -385,6 +418,7 @@ class BleProtocol {
     int rxCount,
     int txCount,
     List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes,
+    int? keyFailures,
   }) decodeMeshStatus(List<int> data) {
     if (data.length < 11) {
       return (
@@ -394,8 +428,10 @@ class BleProtocol {
         rxCount: 0,
         txCount: 0,
         liveNodes: const [],
+        keyFailures: null,
       );
     }
+    int? keyFailures;
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
     final live = <({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})>[];
@@ -419,6 +455,8 @@ class BleProtocol {
           tempC: temp == -128 ? null : temp,
         ));
       }
+      final failuresAt = tempsAt + n;
+      if (data.length >= failuresAt + 4) keyFailures = view.getUint32(failuresAt, Endian.little);
     }
     return (
       enabled: data[0] != 0,
@@ -427,6 +465,7 @@ class BleProtocol {
       rxCount: view.getUint32(3, Endian.little),
       txCount: view.getUint32(7, Endian.little),
       liveNodes: live,
+      keyFailures: keyFailures,
     );
   }
 
@@ -516,7 +555,10 @@ class BleProtocol {
           'join_flood',
           'tag_flood',
           'beacon_flood',
-        ][method.clamp(0, 16)],
+          'wearable_cam',
+          'vehicle',
+          'drone_ble',
+        ][method.clamp(0, 19)],
       Engine.foxhunter => const ['ble_proximity', 'wifi_proximity'][method.clamp(0, 1)],
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => wardriveMethods[method.clamp(0, wardriveMethods.length - 1)],

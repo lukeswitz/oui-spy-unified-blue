@@ -23,7 +23,7 @@ const _watchGroups = <(String, List<_WatchItem>)>[
     _WatchItem('Police & public safety', 'Axon body cams and Tasers, police and fleet vehicle routers', Icons.local_police,
         bits: sigAxon, classes: {SignatureClass.lawEnforcement}),
     _WatchItem('Drones', 'Drones and drone controllers, including Remote ID', Icons.flight,
-        classes: {SignatureClass.drone}, drone: true),
+        bits: sigDrone, classes: {SignatureClass.drone}, drone: true),
     _WatchItem('Drone loitering', 'A drone hovering near you, or its pilot moving toward you', Icons.flight_land,
         watch: 'drone_loiter'),
     _WatchItem('Aircraft circling you', 'A plane or helicopter orbiting you. Needs an RTL-SDR on ADS-B',
@@ -38,6 +38,9 @@ const _watchGroups = <(String, List<_WatchItem>)>[
         watch: 'mesh_crossing'),
     _WatchItem('Smart glasses', 'Ray-Ban and Oakley Meta camera glasses', Icons.visibility,
         bits: sigGlasses, classes: {SignatureClass.glasses}),
+    _WatchItem('Wearable cameras', 'GoPro, Insta360, Snap Spectacles, other camera glasses and PLAUD voice recorders',
+        Icons.camera_alt, bits: sigWearable),
+    _WatchItem('Vehicles', 'Teslas and Bluetooth OBD-II dongles', Icons.directions_car_filled, bits: sigVehicle),
   ]),
   ('HACKING & ATTACKS', [
     _WatchItem('Hacking tools', 'Flipper Zero, Pwnagotchi and other pentest gear', Icons.bug_report,
@@ -135,7 +138,10 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
     void setOn(_WatchItem w, bool v) {
       if (w.watch != null) watchAlerts.set(w.watch!, v);
       final sig = ref.read(detectorSigMaskProvider.notifier);
-      for (final b in [sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera, sigMesh, sigBeaconFlood]) {
+      for (final b in [
+        sigTracker, sigFlipper, sigDeauth, sigProbe, sigPwnagotchi, sigGlasses, sigAxon, sigCamera, sigMesh,
+        sigBeaconFlood, sigWearable, sigVehicle, sigDrone,
+      ]) {
         if (w.bits & b != 0) sig.setBit(b, v);
       }
       for (final c in w.classes) {

@@ -24,6 +24,7 @@ import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
+import 'package:oui_spy/core/device_notes.dart';
 
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -146,6 +147,7 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
     final themeMode = ref.watch(themeModeProvider);
     final style = ref.watch(appStyleProvider);
     ref.watch(use24HourTimeProvider); // loads AppTime.use24Hour at startup
+    ref.watch(deviceNotesProvider);
     final fixed = style.brightness;
     final effective = fixed ??
         switch (themeMode) {

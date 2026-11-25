@@ -79,6 +79,13 @@ static const bool kEngineTargetable[ENGINE_COUNT] = {
 #define CFG_TGT_PREFIX   0xFE
 #define CFG_TGT_OVERHEAD 6
 
+#define NODE_CTL_IDENTIFY 0x20
+#define NODE_CTL_LOCATE   0x21
+#define NODE_CTL_REBOOT   0x22
+#define NODE_CTL_IDENT_BEEP  0x01
+#define NODE_CTL_IDENT_LIGHT 0x02
+#define NODE_LOCATE_MAX_MS   1800000UL
+
 static inline bool cfgTgtStrip(const uint8_t** payload, uint8_t* len, const char* self) {
     if (*len < CFG_TGT_OVERHEAD) return true;
     if ((*payload)[0] != CFG_TGT_PREFIX) return true;
@@ -159,6 +166,9 @@ enum EngineState : uint8_t {
 #define METHOD_DET_JOINFLOOD   14
 #define METHOD_DET_TAGFLOOD    15
 #define METHOD_DET_BEACONFLOOD 16
+#define METHOD_DET_WEARABLE    17
+#define METHOD_DET_VEHICLE     18
+#define METHOD_DET_DRONE       19
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
@@ -170,7 +180,10 @@ enum EngineState : uint8_t {
 #define SIG_CAMERA     0x80
 #define SIG_MESH       0x100
 #define SIG_BEACONFLOOD 0x200
-#define SIG_ALL        0x3FF
+#define SIG_WEARABLE   0x400
+#define SIG_VEHICLE    0x800
+#define SIG_DRONE      0x1000
+#define SIG_ALL        0x1FFF
 
 #define OUISPY_BLE_PROTO_VERSION 2
 
@@ -372,6 +385,7 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define SYS_CMD_WD_LOG_SEND       0x12
 #define SYS_OP_WD_LOG             0x12
 #define SYS_CMD_WD_LOG_CLEAR      0x13
+#define SYS_CMD_SET_BLE_PIN       0x14
 #define WD_LOG_FRAME_HEADER       0x00
 #define WD_LOG_FRAME_ROW          0x01
 #define WD_LOG_FRAME_END          0x02
@@ -439,6 +453,7 @@ typedef struct __attribute__((packed)) {
     uint32_t rx_count;
     uint32_t tx_count;
     uint32_t rx_errors;
+    uint32_t key_failures;
 } MeshStatus;
 
 typedef struct __attribute__((packed)) {

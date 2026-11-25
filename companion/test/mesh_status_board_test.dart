@@ -45,4 +45,14 @@ void main() {
     final old = BleProtocol.decodeMeshStatus(_status([_entry('AB12', 0)], boards: [1]));
     expect(old.liveNodes.single.tempC, isNull);
   });
+
+  test('failed key checks trail the temps; older firmware leaves them null', () {
+    final s = BleProtocol.decodeMeshStatus(
+        _status([_entry('AB12', 0)], boards: [1, 30, 0x2C, 0x01, 0x00, 0x00]));
+    expect(s.keyFailures, 300);
+    final old = BleProtocol.decodeMeshStatus(_status([_entry('AB12', 0)], boards: [1, 30]));
+    expect(old.keyFailures, isNull);
+    final none = BleProtocol.decodeMeshStatus(_status([], boards: [0x00, 0x00, 0x00, 0x00]));
+    expect(none.keyFailures, 0);
+  });
 }
