@@ -122,6 +122,17 @@ home-dashboard/tri.py: RSSI to distance by log-distance path loss (signal at
 local meters-per-degree constants. The solver is our own weighted least squares
 on the range residuals. tri.py searches a probability grid instead.
 
+tools/home-dashboard/ starts from the home-dashboard folder of the same project,
+written by Colonel Panic (colonelpanichacks). These files are adapted from it:
+store.py, drones.py, tri.py, tiles.py, lookups.py, the web page in templates/
+and static/ (including the bundled Leaflet, Socket.IO client, QR code library
+and the Zen Dots font with its own license file), and the structure of
+fleet.py, sources.py, ouispymesh.py and board_commands.py. The board link
+(board_link.py, board_decode.py, board_source.py), access.py, connectors.py
+and the tests are our own. The upstream license is kept in
+tools/home-dashboard/LICENSE. Its autostart installers and its fleet key and
+firmware update features are not included.
+
 MIT License
 
 Copyright (c) 2025-2026 colonelpanichacks

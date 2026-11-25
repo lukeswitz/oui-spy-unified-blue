@@ -579,6 +579,15 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - **Signal** (SETTINGS → NODE → MESH → **Signal**) is a grid of who hears whom: each row is a board and each cell is how strongly that board hears the column's board, colored strong (-60 dBm and up), good, weak or poor (below -80). A cell can differ from the one mirrored across the grid. A board reads dBm when it is an ESP32-C5 or is running a Wi-Fi engine; otherwise its row says **heard**. The manager updates the grid about every 6 seconds.
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 
+## Home dashboard
+
+`tools/home-dashboard/` is a web page that runs on your computer and shows the mesh from a board plugged in by USB: the nodes, their signal to each other, a map, drones, and a searchable detection history. It can read a node's status, make a node beep and flash, and reboot a node. Filters, presets and firmware stay in the app.
+
+- Listens on `127.0.0.1` only. `--lan` lets other devices in, and then every one of them needs the access token. Only the token's hash is kept.
+- Nothing starts by itself, and nothing goes online unless you turn on a map layer, a TAK server, Reticulum or an optional download.
+- **TAK server** and **Reticulum** links and **MQTT** are set on the dashboard. The app turns them on and off (SETTINGS → DATA → **Home dashboard**).
+- Run it with `python3 ouispymesh.py` from that folder. See [its README](tools/home-dashboard/README.md).
+
 ## Optional GPS module
 
 A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its fix overrides phone GPS. After 5 s with no module data, the board uses phone GPS.
@@ -650,6 +659,7 @@ Over-the-air updates must be signed with the release key. A board flashed over U
 > **Not affiliated with OUI-SPY.**
 
 - Upstream engines: [Detector](https://github.com/colonelpanichacks/ouispy-detector), [Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter), [Flock You](https://github.com/colonelpanichacks/flock-you), [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy), [UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) by **colonelpanichacks**.
+- **colonelpanichacks** (Colonel Panic, MIT): `tools/home-dashboard/` is adapted from the `home-dashboard` folder of [ouispy-detector](https://github.com/colonelpanichacks/ouispy-detector). Details in [companion/NOTICE](companion/NOTICE).
 - **Will Greenberg** ([flock-you](https://github.com/wgreenberg/flock-you)): XUNTONG `0x09C8` detection.
 - **@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)): promiscuous Flock OUI set and the addr1 receiver technique.
 - **DeFlockJoplin** ([flock-you](https://github.com/DeflockJoplin/flock-you)): wildcard-probe signature.

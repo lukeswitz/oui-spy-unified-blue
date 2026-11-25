@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OUI-APEX Home Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet/leaflet.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <style>[hidden] { display: none !important; }</style>
+</head>
+<body>
+<div id="flashOverlay"></div>
+<div class="toasts" id="toasts"></div>
+
+<header class="topbar">
+    <div class="brand">
+        <h1>OUI-APEX</h1>
+        <span class="brand-sub">MESH</span>
+        <span class="mode-badge" id="modeBadge">LIVE</span>
+    </div>
+    <div class="sources" id="sources"></div>
+    <div class="top-actions">
+        <button class="chip-btn" id="soundBtn" title="Audible alert on detection">
+            <svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+            <span>SOUND</span>
+        </button>
+        <button class="chip-btn" id="flashBtn" title="Screen flash on detection">
+            <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+            <span>FLASH</span>
+        </button>
+        <span class="clock" id="clock">--:--:--</span>
+    </div>
+</header>
+
+<main class="grid">
+    <!-- Fleet + home stats -->
+    <section class="panel fleet-panel">
+        <div class="panel-head">
+            <h3>Mesh Fleet</h3>
+            <span class="count" id="fleetCount">0 / 0</span>
+        </div>
+        <div class="sec" data-sec="homestats">
+            <button class="sec-head" type="button"><span>Home node</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="sec-body"><div class="home-stats" id="homeStats"></div></div>
+        </div>
+        <div class="node-list" id="nodeList"></div>
+    </section>
+
+    <!-- Map -->
+    <section class="panel map-panel">
+        <div class="panel-head">
+            <h3>Map</h3>
+            <span class="help" id="mapHint">Drag markers to move nodes. Select a node, then "Place on map".</span>
+            <select id="mapLayer" class="field map-layer" title="Map layer" aria-label="Map layer"></select>
+            <button class="icon-btn map-links-btn" id="mapLinks" data-mode="home" aria-label="Map lines">
+                <svg viewBox="0 0 24 24"><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><circle cx="12" cy="5" r="2.2"/><path d="M6.6 16.4 10.6 6.8M13.4 6.8l4 9.6M7.3 18h9.4"/></svg>
+                <span>Home</span>
+            </button>
+            <button class="icon-btn map-traffic-btn" id="mapTraffic" aria-label="Show mesh traffic" aria-pressed="false" title="Show traffic: detections, telemetry and commands moving through the mesh">
+                <svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+                <span>Traffic</span>
+            </button>
+            <button class="icon-btn map-traffic-btn map-tgt-btn" id="mapTargets" aria-pressed="true" title="Live targets: where each detected device is, by signal, and its closest node">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+                <span>Targets: on</span>
+            </button>
+            <button class="icon-btn map-traffic-btn map-tri-btn" id="mapTri" aria-pressed="false" title="Triangulate: position from 3+ nodes' signal (inside the nodes' area only)">
+                <svg viewBox="0 0 24 24"><path d="M12 3 3 20h18z"/><circle cx="12" cy="14" r="2"/></svg>
+                <span>Triangulate: off</span>
+            </button>
+            <button class="icon-btn map-traffic-btn map-lock-btn" id="mapLock" aria-label="Lock node positions" aria-pressed="true" title="Node positions are locked. Click to unlock and drag nodes.">
+                <svg class="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                <svg class="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>
+                <span>Locked</span>
+            </button>
+            <button class="icon-btn map-max-btn" id="mapMax" title="Full screen map" aria-label="Full screen map" aria-pressed="false">
+                <svg class="i-max" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+                <svg class="i-min" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+            </button>
+        </div>
+        <div id="map"></div>
+        <div class="tri-legend" id="triLegend" hidden>
+            <span>Expected 1&sigma; error, typical BLE device:</span>
+            <i style="--c:57,255,136"></i>&le;2 m <i style="--c:250,204,21"></i>2-5 m <i style="--c:251,146,60"></i>5-8 m
+            <span class="tri-none">no shade = fewer than 3 nodes hear it, or worse than 8 m</span>
+        </div>
+        <div class="unplaced" id="unplaced"></div>
+    </section>
+
+    <!-- Live feed -->
+    <section class="panel feed-panel">
+        <div class="panel-head">
+            <h3>Live Detections</h3>
+            <span class="count" id="detCount">0</span>
+        </div>
+        <div class="sec sec-near" data-sec="nearest">
+            <button class="sec-head" type="button"><span>Nearest node, live (60 s)</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="sec-body"><div class="nearest" id="nearest"></div></div>
+        </div>
+        <div class="sec" data-sec="detstats">
+            <button class="sec-head" type="button"><span>Stats</span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="sec-body">
+                <div class="kpis" id="kpis"></div>
+                <div class="activity" id="activity" title="Detections per hour, last 24 h"></div>
+            </div>
+        </div>
+        <div class="feed" id="feed">
+            <div class="empty">Waiting for detections...</div>
+        </div>
+    </section>
+
+    <!-- Bottom tabs -->
+    <section class="panel tabs-panel">
+        <div class="tabs">
+            <button class="tab active" data-tab="history">History</button>
+            <button class="tab" data-tab="devices">Devices</button>
+            <button class="tab" data-tab="drones">Drones <span class="tab-badge" id="droneBadge" hidden>0</span></button>
+            <button class="tab" data-tab="fleetctl">Fleet Control</button>
+            <button class="tab" data-tab="metrics">Metrics</button>
+            <button class="tab" data-tab="console">Console</button>
+            <button class="tab" data-tab="settings">Settings</button>
+            <button class="dock-toggle" id="dockToggle" type="button" title="Collapse or expand this panel"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        </div>
+        <div class="dock-grip" id="dockGrip" title="Drag to resize"></div>
+        <div class="dock-body">
+
+        <div class="tab-body active" id="tab-history">
+            <div class="fleet-actions tab-cards">
+                <div class="fa">
+                    <h4>Search</h4>
+                    <input type="text" id="hQ" class="field" placeholder="Search MAC, alias, vendor, type...">
+                </div>
+                <div class="fa">
+                    <h4>Filter</h4>
+                    <div class="sel-row">
+                        <select id="hNode" class="field"><option value="">All nodes</option></select>
+                        <select id="hDom" class="field">
+                            <option value="">BLE + WiFi</option><option value="ble">BLE</option><option value="wifi">WiFi</option>
+                        </select>
+                        <select id="hRange" class="field">
+                            <option value="">All time</option><option value="3600">Last hour</option>
+                            <option value="86400">Last 24 h</option><option value="604800">Last 7 days</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="fa">
+                    <h4>Export</h4>
+                    <div class="ctl-row">
+                        <a class="btn ghost" id="expCsv" href="#">CSV</a>
+                        <a class="btn ghost" id="expJson" href="#">JSON</a>
+                        <a class="btn ghost" href="/api/export/sightings.csv" title="Node online/offline + RSSI samples">Sightings</a>
+                    </div>
+                </div>
+            </div>
+            <div class="fa fa-table">
+                <h4><span>Detections</span><span class="fa-count" id="hTotal"></span></h4>
+                <div class="table-wrap">
+                    <table class="htable">
+                        <thead><tr><th>Time</th><th>Node</th><th>MAC</th><th>Vendor / match</th><th>Type</th><th>RSSI</th><th>Src</th></tr></thead>
+                        <tbody id="hBody"></tbody>
+                    </table>
+                </div>
+                <div class="pager"><button class="btn ghost" id="hMore">Load more</button></div>
+            </div>
+        </div>
+
+        <div class="tab-body" id="tab-devices">
+            <div class="fleet-actions tab-cards two-cards">
+                <div class="fa">
+                    <h4>Search</h4>
+                    <input type="text" id="vQ" class="field" placeholder="Search MAC, alias, vendor...">
+                </div>
+                <div class="fa">
+                    <h4>Filter</h4>
+                    <div class="sel-row two">
+                        <select id="vNode" class="field"><option value="">Seen by any node</option></select>
+                        <select id="vDom" class="field">
+                            <option value="">BLE + WiFi</option><option value="ble">BLE</option><option value="wifi">WiFi</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="fa fa-table">
+                <h4><span>Devices</span><span class="fa-count" id="vTotal"></span></h4>
+                <div class="table-wrap">
+                    <table class="htable">
+                        <thead><tr><th>Device</th><th>MAC</th><th>Type</th><th>Hits</th><th>First seen</th><th>Last seen</th><th>Best</th><th>Seen by</th></tr></thead>
+                        <tbody id="vBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-body" id="tab-drones">
+            <div class="drone-head">
+                <div class="drone-kpis" id="drKpis"></div>
+                <div class="drone-opts">
+                    <label class="chk"><input type="checkbox" id="drShowPilot" checked> Pilots</label>
+                    <label class="chk"><input type="checkbox" id="drShowTrack" checked> Flight tracks</label>
+                    <label class="chk"><input type="checkbox" id="drFollow"> Follow live drone</label>
+                </div>
+            </div>
+            <div class="drone-grid" id="drCards"></div>
+            <div class="fa fa-table">
+                <h4><span>Seen in the last 24 h</span><span class="fa-count" id="drTotal"></span></h4>
+                <div class="table-wrap">
+                    <table class="htable">
+                        <thead><tr><th>Drone</th><th>MAC</th><th>Tag</th><th>Reports</th><th>Max alt</th><th>First seen</th><th>Last seen</th></tr></thead>
+                        <tbody id="drBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-body" id="tab-fleetctl">
+            <div class="nocmd" id="fNoCmd">Connect the home node over USB to manage the fleet. Commands go out over the mesh from the home.</div>
+            <div class="fleet-actions">
+                <div class="fa">
+                    <h4>Read</h4>
+                    <div class="ctl-row">
+                        <button class="btn ghost" id="fStatus">Read all settings</button>
+                        <button class="btn ghost" id="fFilters" hidden>Read all filters</button>
+                        <button class="btn ghost" id="fIdent">Identify all (10 s)</button>
+                    </div>
+                </div>
+                <div class="fa" hidden>
+                    <h4>Buzzer &amp; LED (all remotes)</h4>
+                    <div class="ctl-row">
+                        <label class="switch"><input type="checkbox" id="fBuzzer" checked><span></span>Buzzer</label>
+                        <label class="switch" title="In mesh mode the LED is also the link light: off = dark node"><input type="checkbox" id="fLed" checked><span></span>LED</label>
+                        <button class="btn ghost" id="fAudio">Apply to all</button>
+                    </div>
+                </div>
+                <div class="fa" hidden>
+                    <h4>Live filter (whole fleet incl. home, no reboot)</h4>
+                    <div class="ctl-row qadd">
+                        <select id="fQType" class="field qtype" title="Auto: 6 hex digits = OUI, 12 = full MAC"></select>
+                        <input id="fQId" class="field qid" placeholder="OUI or MAC" title="OUI or MAC in any format (aa:bb:cc, AA-BB-CC...), or pick a type for a CID, UUID or name" spellcheck="false" autocomplete="off">
+                        <input id="fQDesc" class="field qdesc" placeholder="description (optional)" maxlength="48">
+                        <label class="switch" title="An OUI is also added (and removed) as a WiFi probe filter"><input type="checkbox" id="fQWifi"><span></span>WiFi too</label>
+                        <button class="btn" id="fQAdd">Add to all</button>
+                        <button class="btn ghost danger" id="fQDel">Remove</button>
+                    </div>
+                </div>
+                <div class="fa" hidden>
+                    <h4>Signature library (whole fleet incl. home, live)</h4>
+                    <div class="ctl-row">
+                        <button class="btn ghost" id="fPush" title="Copies the home node's filter list to every remote">Push home filters</button>
+                        <select id="fPreset" class="field"></select>
+                        <button class="btn ghost" id="fPresetGo">Install on all</button>
+                    </div>
+                </div>
+                <div class="fa fw-card" hidden>
+                    <h4>Firmware update (over the mesh)</h4>
+                    <div class="ctl-row">
+                        <label class="btn ghost fw-pick">Choose firmware.bin<input type="file" id="fwFile" accept=".bin" hidden></label>
+                        <span class="fw-info" id="fwInfo">No image uploaded</span>
+                    </div>
+                    <div class="fw-nodes" id="fwNodes"></div>
+                    <div class="ctl-row">
+                        <button class="btn" id="fwGo" disabled>Update selected</button>
+                        <span class="help-text fw-note">Nodes update one at a time; the home goes last. Each new image must reach the mesh within 3 min or the node rolls back.</span>
+                    </div>
+                </div>
+                <div class="fa">
+                    <h4>Radio (whole fleet, including home)</h4>
+                    <div class="ctl-row">
+                        <select id="fChan" class="field" hidden></select>
+                        <button class="btn ghost danger" id="fRechan" hidden>Re-channel fleet</button>
+                        <button class="btn ghost danger" id="fReboot">Reboot all remotes</button>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="htable cfgtable">
+                    <thead><tr><th>Node</th><th>Firmware</th><th>Mode</th><th>Locked</th><th>Buzzer</th><th>LED</th><th>Key</th><th>Filters</th><th>Uptime</th><th>Heap</th><th>Delivered</th><th>Update</th><th>Read</th></tr></thead>
+                    <tbody id="fBody"></tbody>
+                </table>
+            </div>
+            <div class="rb-head" style="margin-top:12px">
+                <h4>Command log</h4>
+                <label class="toggle-item" style="margin:0 0 0 auto"><input type="checkbox" id="fAuto"><span class="toggle-label">Show automatic reads</span></label>
+            </div>
+            <div class="jobs" id="fJobs"></div>
+        </div>
+
+        <div class="tab-body" id="tab-metrics">
+            <div class="mx-bar">
+                <div class="mx-seg" id="mxRange">
+                    <button data-r="3600">1 h</button><button data-r="21600">6 h</button><button data-r="86400" class="on">24 h</button>
+                    <button data-r="604800">7 d</button><button data-r="2592000">30 d</button>
+                </div>
+                <select id="mxNode" class="field"><option value="">All nodes</option></select>
+                <select id="mxDom" class="field"><option value="">BLE + WiFi</option><option value="ble">BLE</option><option value="wifi">WiFi</option></select>
+                <span class="mx-upd" id="mxUpd"></span>
+            </div>
+            <div class="mx-kpis" id="mxKpis"></div>
+            <div class="mx-grid">
+                <div class="fa mx-wide"><h4><span>Detections over time</span><span class="fa-count" id="mxBucket"></span></h4><div class="mx-legend" id="mxLegend"></div><div class="mx-chart" id="mxArea"></div></div>
+                <div class="fa"><h4><span>Unique devices over time</span></h4><div class="mx-chart" id="mxUnique"></div></div>
+                <div class="fa"><h4><span>Top vendors</span></h4><div id="mxVendors"></div></div>
+                <div class="fa"><h4><span>By node</span></h4><div id="mxNodes"></div></div>
+                <div class="fa"><h4><span>By signature type</span></h4><div id="mxTypes"></div></div>
+                <div class="fa mx-wide"><h4><span>Activity by weekday and hour</span><span class="fa-count">local time</span></h4><div class="mx-chart" id="mxHeat"></div></div>
+                <div class="fa"><h4><span>Signal strength</span><span class="fa-count">detections per 5 dB</span></h4><div class="mx-chart" id="mxRssi"></div></div>
+            </div>
+            <div class="mx-tip" id="mxTip" hidden></div>
+        </div>
+
+        <div class="tab-body" id="tab-console">
+            <pre class="console" id="console"></pre>
+            <form class="console-in" id="consoleForm" autocomplete="off" hidden>
+                <input type="text" class="field" id="consoleLine" placeholder="Send a console command to the home node over USB (e.g. apcheck)">
+                <button class="btn" type="submit">Send</button>
+            </form>
+        </div>
+
+        <div class="tab-body" id="tab-settings">
+            <div class="settings-grid">
+                <div class="set-block">
+                    <h4>USB Serial</h4>
+                    <label>Port</label>
+                    <select id="sPort" class="field"></select>
+                    <div class="help-text">Auto picks the first Espressif device (USB VID 0x303A). The native-USB port drops on every reboot; the dashboard re-detects it.</div>
+                </div>
+                <div class="set-block">
+                    <h4>MQTT</h4>
+                    <div class="toggle-item"><input type="checkbox" id="mEn"><label for="mEn" class="toggle-label">Subscribe to detections</label></div>
+                    <div class="two">
+                        <div><label>Broker</label><input type="text" id="mHost" class="field" placeholder="192.168.1.100"></div>
+                        <div><label>Port</label><input type="number" id="mPort" class="field" value="1883"></div>
+                    </div>
+                    <div class="two">
+                        <div><label>User</label><input type="text" id="mUser" class="field"></div>
+                        <div><label>Password file</label><input type="text" id="mPass" class="field" placeholder="path, or set OUISPY_MQTT_PASSWORD" autocomplete="off"></div>
+                    </div>
+                    <label>Topic filter</label><input type="text" id="mTopic" class="field" placeholder="+/detection">
+                </div>
+                <div class="set-block">
+                    <h4>TAK server</h4>
+                    <div class="toggle-item"><input type="checkbox" id="tEn"><label for="tEn" class="toggle-label">Send nodes, drones and pilots</label></div>
+                    <div class="two">
+                        <div><label>Server</label><input type="text" id="tHost" class="field" placeholder="192.0.2.10"></div>
+                        <div><label>Port</label><input type="number" id="tPort" class="field" value="8087"></div>
+                    </div>
+                    <div class="two">
+                        <div><label>Protocol</label><select id="tProto" class="field"><option value="tcp">TCP</option><option value="udp">UDP</option><option value="tls">TLS</option></select></div>
+                        <div><label>Callsign prefix</label><input type="text" id="tCall" class="field" placeholder="OUISPY"></div>
+                    </div>
+                    <label>TLS files (PEM paths)</label>
+                    <input type="text" id="tCa" class="field mono" placeholder="CA certificate">
+                    <input type="text" id="tCert" class="field mono" placeholder="Client certificate">
+                    <input type="text" id="tKey" class="field mono" placeholder="Client key (no passphrase)">
+                    <div class="help-text" id="tStatus"></div>
+                </div>
+                <div class="set-block">
+                    <h4>Reticulum</h4>
+                    <div class="toggle-item"><input type="checkbox" id="rEn"><label for="rEn" class="toggle-label">Send alerts as LXMF messages</label></div>
+                    <label>Recipient addresses (one per line, 32 hex digits)</label>
+                    <textarea id="rRecips" class="field mono" rows="3"></textarea>
+                    <div class="toggle-item"><input type="checkbox" id="rNew"><label for="rNew" class="toggle-label">New devices</label></div>
+                    <div class="toggle-item"><input type="checkbox" id="rDrone"><label for="rDrone" class="toggle-label">Drones</label></div>
+                    <div class="toggle-item"><input type="checkbox" id="rLost"><label for="rLost" class="toggle-label">Lost nodes</label></div>
+                    <div class="help-text" id="rStatus">Needs pip install rns lxmf.</div>
+                </div>
+                <div class="set-block">
+                    <h4>Map Tiles</h4>
+                    <select id="sTiles" class="field"></select>
+                    <input type="text" id="sTilesCustom" class="field" placeholder="http://localhost:8080/{z}/{x}/{y}.png">
+                    <div class="help-text">The same list as the picker on the map. All are free with no account. Online tiles tell the tile provider roughly where you are looking; a local tile server or the offline grid keeps that private.</div>
+                </div>
+                <div class="set-block">
+                    <h4>Alerts &amp; Map</h4>
+                    <div class="toggle-item"><input type="checkbox" id="sNotify"><label for="sNotify" class="toggle-label">Desktop notifications</label></div>
+                    <div class="help-text">Shown by your browser while this tab is in the background: new devices and nodes dropping off the mesh.</div>
+                    <div class="toggle-item"><input type="checkbox" id="sLinks"><label for="sLinks" class="toggle-label">Draw map lines (the map's line button picks home links or the full mesh)</label></div>
+                    <div class="help-text">Lines coloured by the link RSSI the home node hears, labelled with distance.</div>
+                    <label>Read node settings every (s, 0 = off)</label>
+                    <input type="number" id="sPoll" class="field" min="0" step="10" value="120">
+                    <div class="help-text">One small status request over the mesh. Nodes are also read when they join and after every change.</div>
+                </div>
+                <div class="set-block">
+                    <h4>Access</h4>
+                    <div class="help-text">This computer only, unless the dashboard was started with --lan: then every other device needs the access token, which is shown once when it is made (--new-token makes another).</div>
+                </div>
+                <div class="set-block" hidden>
+                    <h4>Fleet key</h4>
+                    <div class="help-text" id="fkStatus">Checking...</div>
+                    <div class="ctl-row" style="margin-top:8px">
+                        <button class="btn ghost" id="fkShow">Show key as QR</button>
+                        <button class="btn ghost" id="fkCreate">Create fleet key</button>
+                        <button class="btn ghost" id="fkHome" title="Sends the key from this computer to the home over USB only">Set on home (USB)</button>
+                    </div>
+                    <div class="help-text">Every node needs the same key. Give it to a node over USB or through its setup portal: scan the QR on your phone, then paste it into the portal (Mesh section, Fleet key). It never goes over the radio. Anyone with the key can read and command your fleet, so keep it like a password.</div>
+                </div>
+                <div class="set-block">
+                    <h4>Data</h4>
+                    <div class="help-text">Detections and sightings live in a local SQLite file. Nothing leaves this machine.</div>
+                    <label>Keep history for (days, 0 = forever)</label>
+                    <input type="number" id="sRetention" class="field" min="0" step="1" value="0">
+                    <button class="btn danger" id="clearBtn">Clear detection history</button>
+                </div>
+            </div>
+            <div class="button-row"><button class="btn" id="saveSettings">Save settings</button><span class="saved" id="savedMsg"></span></div>
+        </div>
+        </div>
+    </section>
+</main>
+
+<footer class="disclaimer">For research purposes only. Use at your own risk: you assume all responsibility for how you use it, and the authors accept no liability. Provided as is, with no warranty. Follow your local laws, and don't do anything illegal or stupid.</footer>
+
+<!-- Node detail drawer -->
+<aside class="drawer" id="drawer">
+    <div class="drawer-head">
+        <div>
+            <div class="drawer-title" id="dTitle">NODE</div>
+            <div class="drawer-sub" id="dSub"></div>
+        </div>
+        <button class="icon-btn" id="dClose" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+    <div class="drawer-body">
+        <label>Alias</label>
+        <div class="alias-row">
+            <input type="text" id="dAlias" class="field" maxlength="40" placeholder="Friendly name">
+            <button class="btn" id="dSave">Save</button>
+        </div>
+        <label>Color</label>
+        <div class="color-row">
+            <input type="range" id="dColor" class="hue-slider" min="0" max="359" step="1" value="180" aria-label="Node color">
+            <span class="color-dot" id="dColorDot"></span>
+            <button class="btn ghost mini" id="dColorReset" title="Back to the default colors">Default</button>
+        </div>
+        <label>Map trail <span class="lbl-hint">(where this node has been carried)</span></label>
+        <select id="dTrail" class="field"><option value="0">Off</option><option value="300">5 min</option><option value="900">15 min</option><option value="1800">30 min</option><option value="3600">1 h</option><option value="10800">3 h</option><option value="21600">6 h</option><option value="43200">12 h</option><option value="86400">24 h</option><option value="604800">7 days</option></select>
+        <label>Notes</label>
+        <textarea id="dNotes" class="field" rows="2" placeholder="Mount point, battery, antenna..."></textarea>
+        <div class="dstats" id="dStats"></div>
+
+        <div class="remote-box" id="dRemote">
+            <div class="rb-head">
+                <h4>Remote settings</h4>
+                <span class="cfg-age" id="dCfgAge"></span>
+                <button class="btn ghost mini" id="dRefresh">Refresh</button>
+            </div>
+            <div class="nocmd" id="dNoCmd">Connect the home node over USB to read and change settings.</div>
+            <div class="cfg-grid" id="dCfg"></div>
+            <div class="ctl-row">
+                <label class="switch" hidden><input type="checkbox" id="dBuzzer"><span></span>Buzzer</label>
+                <label class="switch" hidden><input type="checkbox" id="dLed"><span></span>LED</label>
+                <button class="btn ghost" id="dAudio" hidden>Apply</button>
+                <button class="btn ghost" id="dIdent" title="Beep and flash for 15 s, ignoring mute">Identify</button>
+            </div>
+            <div class="ctl-row">
+                <select id="dPreset" class="field" hidden></select>
+                <button class="btn ghost" id="dPresetGo" hidden>Install</button>
+                <button class="btn ghost danger" id="dReboot">Reboot</button>
+            </div>
+            <div class="rb-head" hidden>
+                <h4>Filters</h4>
+                <span class="cfg-age" id="dFiltInfo"></span>
+            </div>
+            <div class="ctl-row" hidden>
+                <button class="btn ghost" id="dFiltRead">Read from node</button>
+                <button class="btn ghost" id="dFiltEdit">Edit</button>
+            </div>
+            <div class="ctl-row qadd" hidden>
+                <select id="dQType" class="field qtype" title="Auto: 6 hex digits = OUI, 12 = full MAC"></select>
+                <input id="dQId" class="field qid" placeholder="OUI or MAC" title="OUI or MAC in any format (aa:bb:cc, AA-BB-CC...), or pick a type for a CID, UUID or name" spellcheck="false" autocomplete="off">
+                <input id="dQDesc" class="field qdesc" placeholder="description (optional)" maxlength="48">
+                <label class="switch" title="An OUI is also added (and removed) as a WiFi probe filter"><input type="checkbox" id="dQWifi"><span></span>WiFi too</label>
+                <button class="btn" id="dQAdd">Add live</button>
+                <button class="btn ghost danger" id="dQDel">Remove</button>
+            </div>
+            <div id="dFilters"></div>
+            <h4>Commands</h4>
+            <div class="jobs" id="dJobs"></div>
+        </div>
+
+        <h4>Link RSSI (24 h)</h4>
+        <div class="spark" id="dSpark"></div>
+        <div class="gpsbox">
+            <button class="btn ghost" id="dGps" title="Use this phone's GPS as the node's position while you carry it">Carry with this phone</button>
+            <span class="cfg-age" id="dGpsInfo"></span>
+        </div>
+        <div class="drawer-actions">
+            <button class="btn ghost" id="dPlace">Place on map</button>
+            <button class="btn ghost" id="dUnplace">Remove from map</button>
+            <button class="btn ghost danger" id="dForget">Forget node</button>
+            <button class="btn ghost danger" id="dClearDets" title="Deletes this node's detections from the history; the node itself is not touched">Clear detections</button>
+        </div>
+        <h4>Recent detections</h4>
+        <div class="dfeed" id="dDets"></div>
+        <h4>Link events</h4>
+        <div class="devents" id="dEvents"></div>
+    </div>
+</aside>
+
+<!-- Device (MAC) detail drawer -->
+<aside class="drawer" id="vDrawer">
+    <div class="drawer-head">
+        <div>
+            <div class="drawer-title" id="vTitle">DEVICE</div>
+            <div class="drawer-sub" id="vSub"></div>
+        </div>
+        <button class="icon-btn" id="vClose" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+    <div class="drawer-body">
+        <label>Alias</label>
+        <div class="alias-row">
+            <input type="text" id="vAlias" class="field" maxlength="40" placeholder="e.g. Neighbor's doorbell">
+            <button class="btn" id="vSave">Save</button>
+        </div>
+        <label>Group <span class="lbl-hint">(one alias over devices that belong together)</span></label>
+        <div class="alias-row">
+            <select id="vGroup" class="field"></select>
+            <button class="btn ghost" id="vGroupNew" type="button">New</button>
+        </div>
+        <div class="dintel" id="vIntel"></div>
+        <h4>Travels with <span class="lbl-hint">(heard by the same node within a minute of it)</span></h4>
+        <div class="dcomp" id="vComp"></div>
+        <label>Triangulation calibration</label>
+        <div class="help-text cal-info" id="vCalInfo"></div>
+        <div class="ctl-row">
+            <button class="btn" id="vCal" type="button">Calibrate at a spot</button>
+            <button class="btn ghost" id="vCalReset" type="button">Reset</button>
+        </div>
+        <label>Map trail <span class="lbl-hint">(its triangulated track)</span></label>
+        <select id="vTrail" class="field"><option value="0">Off</option><option value="60">1 min</option><option value="300">5 min</option><option value="900">15 min</option><option value="1800">30 min</option></select>
+        <label>Notes</label>
+        <textarea id="vNotes" class="field" rows="2" placeholder="Where and when it shows up..."></textarea>
+        <div class="dstats" id="vStats"></div>
+        <h4>Seen by</h4>
+        <div class="seenby" id="vSeenBy"></div>
+        <h4>Sightings</h4>
+        <div class="dfeed" id="vDets"></div>
+        <div class="drawer-actions">
+            <button class="btn ghost" id="vHistory">Show in history</button>
+            <button class="btn ghost danger" id="vClearDets" title="Deletes this device's detections from the history (alias and notes stay)">Clear detections</button>
+        </div>
+    </div>
+</aside>
+
+<aside class="drawer" id="drDrawer">
+    <div class="drawer-head">
+        <div>
+            <div class="drawer-title" id="drTitle">DRONE</div>
+            <div class="drawer-sub" id="drSub"></div>
+        </div>
+        <button class="icon-btn" id="drClose" title="Close">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+    <div class="drawer-body">
+        <label>Alias</label>
+        <div class="alias-row">
+            <input type="text" id="drAlias" class="field" maxlength="40" placeholder="e.g. Neighbor's Mavic">
+            <button class="btn" id="drSave">Save</button>
+        </div>
+        <label>Tag</label>
+        <div class="tag-row" id="drTags"></div>
+        <div class="dstats" id="drStats"></div>
+        <div class="dintel" id="drInfo"></div>
+        <h4>FAA registry <span class="lbl-hint">(online lookup, only when you press it)</span></h4>
+        <div id="drFaa" class="dfaa"></div>
+        <button class="btn ghost" id="drFaaGo" type="button">Look up serial with the FAA</button>
+        <label>Notes</label>
+        <textarea id="drNotes" class="field" rows="2" placeholder="Who, where, why..."></textarea>
+        <h4>Altitude (last 24 h)</h4>
+        <svg class="dr-alt" id="drAlt" viewBox="0 0 320 80" preserveAspectRatio="none"></svg>
+        <div class="drawer-actions">
+            <button class="btn ghost" id="drZoom">Show on map</button>
+        </div>
+    </div>
+</aside>
+
+<!-- Fleet key QR -->
+<div class="modal" id="fkModal" hidden>
+    <div class="modal-card">
+        <div class="drawer-head">
+            <div><div class="drawer-title">Fleet key</div><div class="drawer-sub" id="fkSub">Hides itself in 60 s</div></div>
+            <button class="icon-btn" id="fkClose" title="Hide"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <div class="qr" id="fkQr"></div>
+        <input class="field mono" id="fkText" readonly>
+        <div class="ctl-row" style="margin-top:8px">
+            <button class="btn" id="fkCopy">Copy</button>
+            <span class="help-text" id="fkCopied"></span>
+        </div>
+    </div>
+</div>
+
+<script>window.OUISPY_MODE = "{{ 'demo' if demo else ('replay' if replay else 'live') }}";</script>
+<script src="{{ url_for('static', filename='vendor/leaflet/leaflet.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/qrcode.min.js') }}"></script>
+<script src="{{ asset('js/app.js') }}"></script>
+</body>
+</html>

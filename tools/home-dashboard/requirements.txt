@@ -1,0 +1,6 @@
+flask>=3.0
+flask-socketio>=5.3
+simple-websocket>=1.0
+pyserial>=3.5
+paho-mqtt>=2.0
+Pillow>=10.0
