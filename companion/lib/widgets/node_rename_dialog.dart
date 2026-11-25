@@ -8,6 +8,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/node_positions.dart';
+import 'package:oui_spy/core/mesh_node_info.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -112,6 +113,20 @@ Future<void> showNodeRenameDialog(BuildContext context, AppState appState, Strin
                   ],
                 );
               }),
+            if (control != null && target != null)
+              ListenableBuilder(
+                listenable: appState,
+                builder: (_, _) {
+                  final d = appState.nodeDetail(id);
+                  if (d == null) return const SizedBox.shrink();
+                  final t = AppTheme.of(ctx);
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(nodeDetailLines(d, d.ageS).join('\n'),
+                        style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.4)),
+                  );
+                },
+              ),
             if (control != null) ...[
               const SizedBox(height: 8),
               Row(
@@ -156,6 +171,22 @@ Future<void> showNodeRenameDialog(BuildContext context, AppState appState, Strin
                   ),
                 ],
               ),
+              if (target != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ConfigCompactButton(
+                        icon: Icons.fact_check_outlined,
+                        label: 'Read status',
+                        onTap: () => send(BleProtocol.encodeNodeStatusRequest(target),
+                            'Status requested: build, filters, uptime and peers appear here'),
+                      ),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+              ],
             ],
           ],
         ),

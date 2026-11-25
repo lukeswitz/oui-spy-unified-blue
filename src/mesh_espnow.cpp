@@ -120,6 +120,7 @@ static uint8_t           seqCounter = 0;
 static const uint8_t     kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 static void sendAckPacket(const MeshCommandPacket* cmd);
+static void nodeStatusIfTargeted(const MeshCommandPacket* cmd);
 static void sendOneSweep(const uint8_t* encrypted, size_t encLen);
 static bool sendOnRendezvous(const uint8_t* data, size_t len);
 static void retryTaskFn(void* arg);
@@ -364,6 +365,61 @@ size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms) {
     return n;
 }
 
+static uint8_t livePeerCount(uint32_t ttl_ms) {
+    if (!liveMutex || xSemaphoreTake(liveMutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
+    uint32_t now = millis();
+    uint8_t n = 0;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (liveNodes[i].id[0] == 0) continue;
+        if ((now - liveNodes[i].last_ms) <= ttl_ms) n++;
+    }
+    xSemaphoreGive(liveMutex);
+    return n;
+}
+
+#ifdef OUISPY_ROLE_MANAGER
+static MeshNodeDetail nodeDetails[MESH_LIVE_NODES_MAX] = {};
+static SemaphoreHandle_t detailMutex = NULL;
+
+static void storeNodeDetail(const MeshNodeStatusPacket* p) {
+    if (!detailMutex || xSemaphoreTake(detailMutex, pdMS_TO_TICKS(10)) != pdTRUE) return;
+    int slot = -1, oldest = 0;
+    uint32_t oldestMs = 0xFFFFFFFFu;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+        if (nodeDetails[i].id[0] == 0) { if (slot < 0) slot = i; continue; }
+        if (memcmp(nodeDetails[i].id, p->source_node_id, MESH_NODE_ID_LEN) == 0) { slot = i; break; }
+        if (nodeDetails[i].rx_ms < oldestMs) { oldestMs = nodeDetails[i].rx_ms; oldest = i; }
+    }
+    if (slot < 0) slot = oldest;
+    MeshNodeDetail& d = nodeDetails[slot];
+    memcpy(d.id, p->source_node_id, MESH_NODE_ID_LEN);
+    d.fw_version = p->fw_version;
+    d.uptime_s = p->uptime_s;
+    d.rx_ms = millis();
+    d.board = p->board;
+    d.filter_macs = p->filter_macs;
+    d.filter_uuids = p->filter_uuids;
+    d.peer_count = p->peer_count;
+    xSemaphoreGive(detailMutex);
+}
+
+size_t meshGetNodeDetails(MeshNodeDetail* out, size_t maxOut, uint32_t ttl_ms) {
+    if (!detailMutex || !out || maxOut == 0) return 0;
+    if (xSemaphoreTake(detailMutex, pdMS_TO_TICKS(20)) != pdTRUE) return 0;
+    uint32_t now = millis();
+    size_t n = 0;
+    for (int i = 0; i < MESH_LIVE_NODES_MAX && n < maxOut; i++) {
+        if (nodeDetails[i].id[0] == 0) continue;
+        if ((now - nodeDetails[i].rx_ms) > ttl_ms) {
+            memset(&nodeDetails[i], 0, sizeof(nodeDetails[i]));
+            continue;
+        }
+        out[n++] = nodeDetails[i];
+    }
+    xSemaphoreGive(detailMutex);
+    return n;
+}
+#endif
 
 static void deriveNonce(uint8_t nonce[MESH_NONCE_LEN], uint64_t counter) {
     memcpy(nonce, localNodeId, 4);
@@ -829,6 +885,7 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
             }
         }
         if (dupe) {
+            if (cmd.command == NODE_CTL_STATUS) nodeStatusIfTargeted(&cmd);
             sendAckPacket(&cmd);
             return;
         }
@@ -854,6 +911,11 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         }
         if (cmd.command >= NODE_CTL_IDENTIFY && cmd.command <= NODE_CTL_REBOOT) {
             nodeCtlApply(cmd.command, cmd.payload, cmd.payload_len);
+            sendAckPacket(&cmd);
+            return;
+        }
+        if (cmd.command == NODE_CTL_STATUS) {
+            nodeStatusIfTargeted(&cmd);
             sendAckPacket(&cmd);
             return;
         }
@@ -1064,6 +1126,16 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
 #ifdef OUISPY_ROLE_MANAGER
     if (plainLen == sizeof(MeshOtaAckPacket) && plainBuf[0] == MESH_PKT_OTA_ACK) {
         MeshOtaAckPacket a; memcpy(&a, plainBuf, sizeof(a)); otaInitOnAck(&a); return;
+    }
+    if (plainLen == sizeof(MeshNodeStatusPacket) && plainBuf[0] == MESH_PKT_NODE_STATUS) {
+        MeshNodeStatusPacket ns; memcpy(&ns, plainBuf, sizeof(ns));
+        if (memcmp(ns.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        recordLiveSeen(ns.source_node_id);
+        storeNodeDetail(&ns);
+        Serial.printf("[MESH-NODESTAT] %.4s fw=0x%06X up=%us filt=%u+%u peers=%u\n",
+            ns.source_node_id, (unsigned)ns.fw_version, (unsigned)ns.uptime_s,
+            ns.filter_macs, ns.filter_uuids, ns.peer_count);
+        return;
     }
 #endif
 
@@ -1509,6 +1581,9 @@ void meshInit(void) {
     txMutex = xSemaphoreCreateMutex();
     autoPcapEventMutex = xSemaphoreCreateMutex();
     liveMutex = xSemaphoreCreateMutex();
+#ifdef OUISPY_ROLE_MANAGER
+    detailMutex = xSemaphoreCreateMutex();
+#endif
     memset(liveNodes, 0, sizeof(liveNodes));
     mbedtls_gcm_init(&gcmCtx);
     memset((void*)&meshCurrentConfig, 0, sizeof(MeshConfig));
@@ -2135,6 +2210,31 @@ static void sendAckPacket(const MeshCommandPacket* cmd) {
     sendOnHomeRestore(enc, encLen);
     Serial.printf("[MESH-ACK-TX] seq=%u cmd=0x%02x engine=%u\n",
         ack.ack_seq, ack.ack_cmd, ack.ack_engine_id);
+}
+
+static void nodeStatusIfTargeted(const MeshCommandPacket* cmd) {
+#ifndef OUISPY_ROLE_MANAGER
+    const uint8_t* dp = cmd->payload;
+    uint8_t dl = cmd->payload_len;
+    if (!cfgTgtStrip(&dp, &dl, localNodeId)) return;
+    MeshNodeStatusPacket st = {};
+    st.pkt_type = MESH_PKT_NODE_STATUS;
+    memcpy(st.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    st.fw_version = FW_VERSION_NUM;
+    st.uptime_s = millis() / 1000u;
+    st.board = ouispyBoardCode();
+    st.filter_macs = (uint8_t)detectorFilterCount();
+    st.filter_uuids = (uint8_t)detectorUuidFilterCount();
+    st.peer_count = livePeerCount(MESH_NODE_TIMEOUT_MS);
+    st.reply_seq = cmd->seq;
+    uint8_t enc[96]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&st, sizeof(st), enc, &encLen)) return;
+    sendOnHomeRestore(enc, encLen);
+    Serial.printf("[MESH-NODESTAT-TX] seq=%u filt=%u+%u peers=%u\n",
+        st.reply_seq, st.filter_macs, st.filter_uuids, st.peer_count);
+#else
+    (void)cmd;
+#endif
 }
 
 void meshBroadcastCommand(uint8_t command, uint8_t engine_id, const uint8_t* payload, uint8_t payload_len, uint8_t maxRetries) {

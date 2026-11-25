@@ -16,6 +16,38 @@ typedef GpsStatus = ({
   int satellites,
 });
 
+typedef MeshLiveEntry = ({
+  String id,
+  int role,
+  int activeEngines,
+  int fwVersion,
+  String board,
+  int? tempC,
+});
+
+/// A node's answer to a status request: its build, filter counts, uptime and peer count.
+typedef MeshNodeDetail = ({
+  String id,
+  int fwVersion,
+  String board,
+  int uptimeS,
+  int filterMacs,
+  int filterUuids,
+  int peerCount,
+  int ageS,
+});
+
+typedef MeshStatusData = ({
+  bool enabled,
+  int peerCount,
+  int connectedPeers,
+  int rxCount,
+  int txCount,
+  List<MeshLiveEntry> liveNodes,
+  int? keyFailures,
+  List<MeshNodeDetail> details,
+});
+
 /// Binary encode/decode for GATT characteristic payloads.
 class BleProtocol {
   const BleProtocol._();
@@ -175,6 +207,13 @@ class BleProtocol {
   static const nodeCtlIdentify = 0x20;
   static const nodeCtlLocate = 0x21;
   static const nodeCtlReboot = 0x22;
+  static const nodeCtlStatus = 0x23;
+
+  /// Asks one node (or, with a null id, every node) to report its build, filters, uptime and peers.
+  static Uint8List encodeNodeStatusRequest(String? nodeId) => Uint8List.fromList([
+        nodeCtlStatus, 0x00,
+        if (nodeId != null) ...targetEnvelope(nodeId),
+      ]);
 
   static Uint8List encodeNodeIdentify(String? nodeId, {int seconds = 10, bool beep = true, bool light = true}) =>
       Uint8List.fromList([
@@ -412,15 +451,12 @@ class BleProtocol {
     'stickc', 'stickc_plus', 'stickc_plus2', 'xiao_c3', 'wroom',
   ];
 
-  static ({
-    bool enabled,
-    int peerCount,
-    int connectedPeers,
-    int rxCount,
-    int txCount,
-    List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes,
-    int? keyFailures,
-  }) decodeMeshStatus(List<int> data) {
+  static const meshTlvNodeDetail = 0x01;
+
+  static String _nodeIdFromBytes(Uint8List b, int off) =>
+      (b[off].toRadixString(16).padLeft(2, '0') + b[off + 1].toRadixString(16).padLeft(2, '0')).toUpperCase();
+
+  static MeshStatusData decodeMeshStatus(List<int> data) {
     if (data.length < 11) {
       return (
         enabled: false,
@@ -430,12 +466,14 @@ class BleProtocol {
         txCount: 0,
         liveNodes: const [],
         keyFailures: null,
+        details: const [],
       );
     }
     int? keyFailures;
+    var details = <MeshNodeDetail>[];
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
-    final live = <({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})>[];
+    final live = <MeshLiveEntry>[];
     if (data.length >= 12) {
       final n = data[11];
       const entryLen = 11;
@@ -457,7 +495,18 @@ class BleProtocol {
         ));
       }
       final failuresAt = tempsAt + n;
-      if (data.length >= failuresAt + 4) keyFailures = view.getUint32(failuresAt, Endian.little);
+      if (data.length >= failuresAt + 4) {
+        keyFailures = view.getUint32(failuresAt, Endian.little);
+        var pos = failuresAt + 4;
+        while (pos + 2 <= data.length) {
+          final type = data[pos];
+          final len = data[pos + 1];
+          if (pos + 2 + len > data.length) break;
+          final body = pos + 2;
+          if (type == meshTlvNodeDetail) details = _decodeNodeDetails(bytes, view, body, len);
+          pos = body + len;
+        }
+      }
     }
     return (
       enabled: data[0] != 0,
@@ -467,7 +516,27 @@ class BleProtocol {
       txCount: view.getUint32(7, Endian.little),
       liveNodes: live,
       keyFailures: keyFailures,
+      details: details,
     );
+  }
+
+  static List<MeshNodeDetail> _decodeNodeDetails(Uint8List b, ByteData v, int at, int len) {
+    const entry = 15;
+    final out = <MeshNodeDetail>[];
+    for (var o = at; o + entry <= at + len; o += entry) {
+      final code = b[o + 6];
+      out.add((
+        id: _nodeIdFromBytes(b, o),
+        fwVersion: v.getUint32(o + 2, Endian.little),
+        board: code < meshBoardCodes.length ? meshBoardCodes[code] : '',
+        uptimeS: v.getUint32(o + 7, Endian.little),
+        filterMacs: b[o + 11],
+        filterUuids: b[o + 12],
+        peerCount: b[o + 13],
+        ageS: b[o + 14] * 10,
+      ));
+    }
+    return out;
   }
 
   // -- Private helpers --

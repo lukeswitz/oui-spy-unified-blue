@@ -64,6 +64,20 @@ struct MeshLiveNode {
 size_t meshGetLiveNodes(MeshLiveNode* out, size_t maxOut, uint32_t ttl_ms);
 int8_t meshChipTempC(void);
 
+#ifdef OUISPY_ROLE_MANAGER
+struct MeshNodeDetail {
+    char     id[MESH_NODE_ID_LEN];
+    uint32_t fw_version;
+    uint32_t uptime_s;
+    uint32_t rx_ms;
+    uint8_t  board;
+    uint8_t  filter_macs;
+    uint8_t  filter_uuids;
+    uint8_t  peer_count;
+};
+size_t meshGetNodeDetails(MeshNodeDetail* out, size_t maxOut, uint32_t ttl_ms);
+#endif
+
 bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version);
 bool meshOtaInitiatorRunning(void);
 void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uint8_t* nodesSeen);

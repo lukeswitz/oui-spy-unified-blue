@@ -125,7 +125,7 @@ class BleManager {
   final _detections = StreamController<Detection>.broadcast();
   final _foxhunterRssiStream = StreamController<({int rssi, int intervalMs})>.broadcast();
   final _engineStates = StreamController<({int available, int active, List<EngineState> states})>.broadcast();
-  final _meshStatusStream = StreamController<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes, int? keyFailures})>.broadcast();
+  final _meshStatusStream = StreamController<MeshStatusData>.broadcast();
   final _pcapStatsStream = StreamController<PcapStats>.broadcast();
   final _pcapDataStream = StreamController<Uint8List>.broadcast();
   PcapStats _latestPcapStats = PcapStats.empty;
@@ -193,8 +193,7 @@ class BleManager {
   Stream<({int rssi, int intervalMs})> get foxhunterRssi => _foxhunterRssiStream.stream;
   Stream<({int available, int active, List<EngineState> states})> get engineStates =>
       _engineStates.stream;
-  Stream<({bool enabled, int peerCount, int connectedPeers, int rxCount, int txCount, List<({String id, int role, int activeEngines, int fwVersion, String board, int? tempC})> liveNodes, int? keyFailures})> get meshStatusUpdates =>
-      _meshStatusStream.stream;
+  Stream<MeshStatusData> get meshStatusUpdates => _meshStatusStream.stream;
   Stream<PcapStats> get pcapStats => _pcapStatsStream.stream;
   Stream<Uint8List> get pcapData => _pcapDataStream.stream;
   PcapStats get latestPcapStats => _latestPcapStats;

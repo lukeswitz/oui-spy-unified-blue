@@ -35,6 +35,7 @@ import 'package:oui_spy/core/update/update_controller.dart';
 import 'package:oui_spy/core/update/update_service.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
+import 'package:oui_spy/core/mesh_node_info.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
@@ -1260,6 +1261,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             onTap: () => _fleetControl(BleProtocol.encodeNodeIdentify(null), 'Identify sent to every node'),
           ),
           ConfigActionRow(
+            icon: Icons.fact_check_outlined,
+            label: 'Read all',
+            subtitle: 'Every node reports its build, filters, uptime and peers',
+            onTap: () => _fleetControl(BleProtocol.encodeNodeStatusRequest(null), 'Status requested from every node'),
+          ),
+          ConfigActionRow(
             icon: Icons.restart_alt,
             label: 'Reboot all nodes',
             subtitle: 'Every node restarts and rejoins. The manager stays up',
@@ -1328,11 +1335,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       final isSelf = id == appState.nodeId && id != 'LOCAL';
       final board = appState.nodeBoard(id) ?? (isSelf ? ble.board : null);
       final temp = isSelf ? _selfTempC : appState.nodeTempC(id);
+      final detail = online && !isSelf ? appState.nodeDetail(id) : null;
       final parts = <String>[
         if (hasCustom) id,
         if (isSelf) 'this device',
         online ? 'LIVE' : 'offline',
         '$dets dets',
+        if (detail != null) nodeDetailSummary(detail),
       ];
       final t = AppTheme.of(context);
       return ConfigActionRow(

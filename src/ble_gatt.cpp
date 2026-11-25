@@ -3328,6 +3328,69 @@ bool bleGattIsConnected(void) {
 void bleGattDebugForcePhone(bool on) { phoneConnected = on; }
 #endif
 
+#ifdef OUISPY_ROLE_MANAGER
+#define MESH_TLV_NODE_DETAIL 0x01
+#define MESH_TLV_DETAIL_ENTRY 15
+
+static bool meshIdToBytes(const char* id, uint8_t out[2]) {
+    for (int i = 0; i < 2; i++) {
+        int v = 0;
+        for (int j = 0; j < 2; j++) {
+            char c = id[i * 2 + j];
+            int d = (c >= '0' && c <= '9') ? c - '0'
+                  : (c >= 'A' && c <= 'F') ? c - 'A' + 10
+                  : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : -1;
+            if (d < 0) return false;
+            v = (v << 4) | d;
+        }
+        out[i] = (uint8_t)v;
+    }
+    return true;
+}
+
+static size_t meshStatusLimit(size_t cap) {
+    size_t lim = 500;
+    if (pServer != nullptr) {
+        auto peers = pServer->getPeerDevices();
+        if (!peers.empty()) {
+            uint16_t mtu = pServer->getPeerMTU(peers.front());
+            lim = mtu > 23 ? (size_t)(mtu - 3) : 20;
+        }
+    }
+    return lim < cap ? lim : cap;
+}
+
+static size_t meshAppendNodeDetail(uint8_t* buf, size_t off, size_t limit) {
+    MeshNodeDetail d[MESH_LIVE_NODES_MAX];
+    size_t n = meshGetNodeDetails(d, MESH_LIVE_NODES_MAX, 300000);
+    size_t start = off;
+    if (n == 0 || off + 2 > limit) return off;
+    buf[off] = MESH_TLV_NODE_DETAIL;
+    off += 2;
+    uint32_t now = millis();
+    size_t cnt = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (off + MESH_TLV_DETAIL_ENTRY > limit) break;
+        uint8_t b[2];
+        if (!meshIdToBytes(d[i].id, b)) continue;
+        uint32_t age10 = (now - d[i].rx_ms) / 10000u;
+        buf[off++] = b[0];
+        buf[off++] = b[1];
+        memcpy(buf + off, &d[i].fw_version, 4); off += 4;
+        buf[off++] = d[i].board;
+        memcpy(buf + off, &d[i].uptime_s, 4); off += 4;
+        buf[off++] = d[i].filter_macs;
+        buf[off++] = d[i].filter_uuids;
+        buf[off++] = d[i].peer_count;
+        buf[off++] = age10 > 255 ? 255 : (uint8_t)age10;
+        cnt++;
+    }
+    if (cnt == 0) return start;
+    buf[start + 1] = (uint8_t)(off - start - 2);
+    return off;
+}
+#endif
+
 void bleGattNotifyMeshStatus(void) {
     if (!phoneConnected || chrMeshStatus == nullptr) return;
 
@@ -3335,7 +3398,7 @@ void bleGattNotifyMeshStatus(void) {
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t liveCount = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
 
-    uint8_t buf[12 + MESH_LIVE_NODES_MAX * 13 + 4];
+    static uint8_t buf[512];
     buf[0] = st.enabled;
     buf[1] = st.peer_count;
     buf[2] = st.connected_peers;
@@ -3354,6 +3417,12 @@ void bleGattNotifyMeshStatus(void) {
     for (size_t i = 0; i < liveCount; i++) buf[off++] = (uint8_t)live[i].temp_c;
     memcpy(buf + off, &st.key_failures, 4);
     off += 4;
+#ifdef OUISPY_ROLE_MANAGER
+    {
+        size_t lim = meshStatusLimit(sizeof(buf));
+        if (off < lim) off = meshAppendNodeDetail(buf, off, lim);
+    }
+#endif
 
     static uint8_t lastBuf[sizeof(buf)] = {};
     static size_t  lastLen = 0;

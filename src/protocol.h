@@ -83,6 +83,7 @@ static const bool kEngineTargetable[ENGINE_COUNT] = {
 #define NODE_CTL_IDENTIFY 0x20
 #define NODE_CTL_LOCATE   0x21
 #define NODE_CTL_REBOOT   0x22
+#define NODE_CTL_STATUS   0x23
 #define NODE_CTL_IDENT_BEEP  0x01
 #define NODE_CTL_IDENT_LIGHT 0x02
 #define NODE_LOCATE_MAX_MS   1800000UL
@@ -497,6 +498,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_WIFI_OTA        = 0x12,
     MESH_PKT_NODE_INFO       = 0x13,
     MESH_PKT_DETECTION_BATCH_IE = 0x14,
+    MESH_PKT_NODE_STATUS     = 0x15,
 };
 
 typedef struct __attribute__((packed)) {
@@ -505,6 +507,18 @@ typedef struct __attribute__((packed)) {
     uint8_t  board;
     int8_t   temp_c;
 } MeshNodeInfoPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_NODE_STATUS (node -> manager, answers NODE_CTL_STATUS)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint32_t fw_version;
+    uint32_t uptime_s;
+    uint8_t  board;
+    uint8_t  filter_macs;           // detector MAC/OUI filters held
+    uint8_t  filter_uuids;          // detector service-UUID filters held
+    uint8_t  peer_count;            // mesh peers this node currently hears
+    uint8_t  reply_seq;             // seq of the request this answers
+} MeshNodeStatusPacket;
 
 #define OUISPY_TEMP_UNKNOWN ((int8_t)-128)
 

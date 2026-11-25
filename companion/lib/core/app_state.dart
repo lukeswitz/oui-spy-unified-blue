@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:latlong2/latlong.dart';
@@ -307,6 +308,25 @@ class AppState extends ChangeNotifier {
   String? nodeBoard(String id) => _nodeBoard[canonicalNodeId(id)];
   final Map<String, int> _nodeTempC = {};
   int? nodeTempC(String id) => _nodeTempC[canonicalNodeId(id)];
+  final Map<String, ({MeshNodeDetail detail, int readAtMs})> _nodeDetail = {};
+
+  /// The node's last status answer, with its uptime and age brought up to now; null before a read.
+  MeshNodeDetail? nodeDetail(String id) {
+    final e = _nodeDetail[canonicalNodeId(id)];
+    if (e == null) return null;
+    final age = (DateTime.now().millisecondsSinceEpoch - e.readAtMs) ~/ 1000;
+    final d = e.detail;
+    return (
+      id: d.id,
+      fwVersion: d.fwVersion,
+      board: d.board,
+      uptimeS: d.uptimeS + age,
+      filterMacs: d.filterMacs,
+      filterUuids: d.filterUuids,
+      peerCount: d.peerCount,
+      ageS: age < 0 ? 0 : age,
+    );
+  }
   Set<String> get liveNodeBoards => {
         for (final id in _meshLiveNodeIds)
           if (!_meshManagerNodeIds.contains(id)) _nodeBoard[id] ?? '',
@@ -647,6 +667,16 @@ class AppState extends ChangeNotifier {
         }
         final tempC = entry.tempC;
         if (tempC != null) _nodeTempC[canon] = tempC;
+      }
+      for (final d in data.details) {
+        final canon = canonicalNodeId(d.id);
+        if (canon.isEmpty) continue;
+        final readAt = now - d.ageS * 1000;
+        final prev = _nodeDetail[canon];
+        _nodeDetail[canon] = (
+          detail: d,
+          readAtMs: prev != null && prev.detail.uptimeS == d.uptimeS && prev.readAtMs < readAt ? prev.readAtMs : readAt,
+        );
       }
       _meshLiveNodeIds
         ..clear()

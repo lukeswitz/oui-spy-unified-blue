@@ -544,6 +544,7 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - A node silent for 45 s drops off and rejoins when back in range.
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
+- **Read all** (SETTINGS → NODE → MESH → **Fleet control**) asks every node for its build, filter count, uptime and how many peers it hears. The answers show under each node in **Nodes**. **Read status** in a node's own dialog asks just that node. Nodes on older firmware do not answer.
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 
 ## Optional GPS module

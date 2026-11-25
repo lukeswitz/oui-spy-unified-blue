@@ -1181,6 +1181,7 @@ void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* d
 }
 
 int detectorFilterCount(void) { return filterCount; }
+int detectorUuidFilterCount(void) { return uuidFilterCount; }
 
 const char* detectorLookupDesc(const uint8_t* mac) {
     if (!mac) return "";
