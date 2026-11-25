@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:oui_spy/core/app_time.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/classify/observation.dart';

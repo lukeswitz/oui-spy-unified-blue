@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Register addresses and values transcribed from the osmocom rtl-sdr and rtl-sdr-blog drivers

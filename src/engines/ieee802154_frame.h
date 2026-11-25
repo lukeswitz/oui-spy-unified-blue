@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef IEEE802154_FRAME_H
 #define IEEE802154_FRAME_H
 

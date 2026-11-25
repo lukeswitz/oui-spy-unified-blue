@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 package com.rootdowndigital.ouispy.wifiadapter // Pure DSP for RTL-SDR u8 IQ: FFT, Hann, power spectrum, peak picking.
 
 import kotlin.math.PI

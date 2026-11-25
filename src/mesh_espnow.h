@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef MESH_ESPNOW_H
 #define MESH_ESPNOW_H
 

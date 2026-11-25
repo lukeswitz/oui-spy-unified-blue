@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/features/feed/device_notes_sheet.dart';

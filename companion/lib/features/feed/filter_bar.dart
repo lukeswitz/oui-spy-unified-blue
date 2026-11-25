@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:oui_spy/core/models/engine.dart';
 
 enum RadioFilter { ble, wifi }

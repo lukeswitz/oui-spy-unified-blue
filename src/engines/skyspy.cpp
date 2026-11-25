@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "skyspy.h"
 #include "protocol.h"
 #include "../mesh_espnow.h"

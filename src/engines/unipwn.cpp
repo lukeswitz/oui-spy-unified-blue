@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "unipwn.h"
 #include "protocol.h"
 #include "dedup_ring.h"

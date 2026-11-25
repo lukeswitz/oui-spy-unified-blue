@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef OTA_PUBKEY_H
 #define OTA_PUBKEY_H
 

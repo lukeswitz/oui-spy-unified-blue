@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "tracker_ring.h"
 #include "../ble_coex.h"
 #include <Arduino.h>

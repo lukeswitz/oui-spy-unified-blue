@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "wardrive.h"
 extern bool flockAllowOuiOnly;
 extern volatile uint32_t g_flockOuiSuppressed;

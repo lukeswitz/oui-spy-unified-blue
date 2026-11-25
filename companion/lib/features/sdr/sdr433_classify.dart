@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:flutter/material.dart';
 
 enum Sdr433Category { tpms, meter, security, fob, environmental, weather, unknown }

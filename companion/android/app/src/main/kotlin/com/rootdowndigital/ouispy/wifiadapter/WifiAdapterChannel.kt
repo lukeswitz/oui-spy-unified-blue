@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 package com.rootdowndigital.ouispy.wifiadapter
 
 import android.Manifest

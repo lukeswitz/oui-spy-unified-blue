@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifdef OUISPY_RID_TARGET
 #include <Arduino.h>
 #include <WiFi.h>

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/radio_classifier.dart';

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include <cstdio>
 #include <cstring>
 #include "../../src/engines/skyspy_odid.h"

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef FLOCK_OUI_H
 #define FLOCK_OUI_H
 

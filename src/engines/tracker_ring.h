@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef ENGINE_TRACKER_RING_H
 #define ENGINE_TRACKER_RING_H
 

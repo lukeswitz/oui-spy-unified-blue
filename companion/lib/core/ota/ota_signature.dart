@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';

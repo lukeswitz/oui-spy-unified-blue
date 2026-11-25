@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "ble_gatt.h"
 #include "det_spool.h"
 #include "engine_registry.h"

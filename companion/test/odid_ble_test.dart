@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:io';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';

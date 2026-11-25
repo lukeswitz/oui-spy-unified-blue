@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:oui_spy/core/privacy.dart';
 
 import 'bt_sig_registry.dart';

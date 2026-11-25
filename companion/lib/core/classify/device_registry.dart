@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:async';
 import 'dart:convert' show utf8;
 import 'dart:math' as math;

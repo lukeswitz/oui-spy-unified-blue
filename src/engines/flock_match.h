@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef FLOCK_MATCH_H
 #define FLOCK_MATCH_H
 

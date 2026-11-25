@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef BLE_NIMBLE_COMPAT_H
 #define BLE_NIMBLE_COMPAT_H
 

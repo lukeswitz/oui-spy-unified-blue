@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include <Arduino.h>
 #include <Preferences.h>
 #include "protocol.h"

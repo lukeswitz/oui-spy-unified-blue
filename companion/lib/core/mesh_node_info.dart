@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 
 String formatFwVersion(int v) => '${(v >> 16) & 0xFF}.${(v >> 8) & 0xFF}.${v & 0xFF}';

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef WIFI_OTA_HANDLER_H
 #define WIFI_OTA_HANDLER_H
 

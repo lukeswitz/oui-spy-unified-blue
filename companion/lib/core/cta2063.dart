@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 const _makerPrefixes = <String, String>{
   '1581F': 'DJI',
   '1748C': 'Autel Robotics',

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "mesh_espnow.h"
 #include "opsec_mac.h"
 #include "engine_registry.h"

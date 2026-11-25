@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef DONGLE_ST7789_H
 #define DONGLE_ST7789_H
 

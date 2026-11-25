@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:ffi';
 
 import 'package:sqlite3/sqlite3.dart';

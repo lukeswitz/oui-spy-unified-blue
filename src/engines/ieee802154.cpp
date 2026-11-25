@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "ieee802154.h"
 
 #ifdef OUISPY_DUAL_BAND

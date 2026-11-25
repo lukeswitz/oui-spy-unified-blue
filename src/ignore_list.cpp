@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "ignore_list.h"
 #include <Arduino.h>
 #include <Preferences.h>

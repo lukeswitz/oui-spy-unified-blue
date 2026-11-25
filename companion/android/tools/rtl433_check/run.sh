@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Luke Switzer
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 src="$here/../../app/src/main/kotlin/com/rootdowndigital/ouispy/wifiadapter"

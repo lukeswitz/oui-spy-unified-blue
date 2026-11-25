@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:typed_data';
 
 enum PcapMode { wifi, ble, zigbee }

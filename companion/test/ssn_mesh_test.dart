@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:oui_spy/features/sdr/ssn_mesh.dart';

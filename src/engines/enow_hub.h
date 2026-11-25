@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef ENGINE_ENOW_HUB_H
 #define ENGINE_ENOW_HUB_H
 

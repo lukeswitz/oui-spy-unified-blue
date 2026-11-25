@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Register addresses and bit values from Linux rtw88 reg.h/mac.h, SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause (hardware constants only).

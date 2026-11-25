@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

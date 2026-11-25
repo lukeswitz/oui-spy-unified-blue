@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "det_spool.h"
 #include <LittleFS.h>
 #include <string.h>

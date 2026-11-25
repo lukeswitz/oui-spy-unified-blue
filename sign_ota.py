@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Luke Switzer
+# SPDX-License-Identifier: MIT
+
 import argparse
 import base64
 import hashlib

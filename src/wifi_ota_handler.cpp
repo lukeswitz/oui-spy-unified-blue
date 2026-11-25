@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "wifi_ota_handler.h"
 #include "ota_handler.h"
 #include <Arduino.h>

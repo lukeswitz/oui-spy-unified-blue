@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 //
 //  OuiSpyLiveActivityAttributes.swift
 //  Shared between Runner and OuiSpyLiveActivity targets

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "flock_wifi.h"
 extern volatile uint32_t g_flockOuiSuppressed;
 extern volatile uint32_t g_flockOuiAllowed;

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "ota_handler.h"
 #include <Arduino.h>
 #include <esp_ota_ops.h>

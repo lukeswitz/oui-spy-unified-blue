@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 import 'dart:async';
 
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;

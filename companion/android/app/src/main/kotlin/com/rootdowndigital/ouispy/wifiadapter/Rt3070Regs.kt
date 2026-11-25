@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 package com.rootdowndigital.ouispy.wifiadapter
 
 // Register addresses and values for the Ralink RT3070/RT5370/RT5372 family, the hardware constants used by the

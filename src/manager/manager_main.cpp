@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>

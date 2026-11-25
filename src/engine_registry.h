@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifndef ENGINE_REGISTRY_H
 #define ENGINE_REGISTRY_H
 

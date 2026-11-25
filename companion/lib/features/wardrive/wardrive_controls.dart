@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 part of 'wardrive_screen.dart';
 
 class _IdleControls extends StatelessWidget {

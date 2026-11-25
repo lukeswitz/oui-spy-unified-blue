@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #ifdef OUISPY_TEST_CENTRAL
 #include <Arduino.h>
 #include <NimBLEDevice.h>

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Luke Switzer
+# SPDX-License-Identifier: MIT
+
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 out="$(mktemp -d)"

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 /// Phone GPS position with all relevant fields.
 class GpsPosition {
   const GpsPosition({

@@ -1,4 +1,6 @@
 // Copyright (c) 2026 Luke Switzer
+// SPDX-License-Identifier: MIT
+
 #include "usb_link.h"
 
 #ifdef OUISPY_USB_LINK
