@@ -107,7 +107,7 @@ class MeshSignalGrid extends StatelessWidget {
               (SignalLevel.good, '-61 to -70'),
               (SignalLevel.weak, '-71 to -80'),
               (SignalLevel.poor, 'below -80'),
-              (SignalLevel.heard, 'heard, strength not measured'),
+              (SignalLevel.heard, 'strength not measured'),
             ])
               Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
