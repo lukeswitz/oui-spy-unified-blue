@@ -1339,9 +1339,13 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
 #endif
 
         const char* cmdName = cmd.command == 0x01 ? "ENABLE"
+                             : cmd.command == 0x00 ? "DISABLE"
                              : cmd.command == 0x0F ? "DISABLE_ALL"
                              : cmd.command == 0x10 ? "CONFIG"
-                             : "DISABLE";
+                             : cmd.command == NODE_CTL_IDENTIFY ? "IDENTIFY"
+                             : cmd.command == NODE_CTL_LOCATE ? "LOCATE"
+                             : cmd.command == NODE_CTL_REBOOT ? "REBOOT"
+                             : "OTHER";
         Serial.printf("[BLE] Engine command: %s engine %d\n", cmdName, cmd.engine_id);
 
 #ifdef OUISPY_ROLE_MANAGER

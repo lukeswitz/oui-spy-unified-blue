@@ -15,37 +15,64 @@ import 'package:share_plus/share_plus.dart';
 
 Future<void> showDeviceNotesEditor(BuildContext context, WidgetRef ref, String mac) async {
   final current = ref.read(deviceNotesProvider)[DeviceNotesNotifier.keyOf(mac)] ?? const DeviceNote();
-  final name = TextEditingController(text: current.name);
-  final group = TextEditingController(text: current.group);
-  final notes = TextEditingController(text: current.notes);
   final groups = ref.read(deviceNotesProvider.notifier).groups;
   final saved = await showDialog<DeviceNote>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (_) => _DeviceNotesDialog(mac: mac, current: current, groups: groups),
+  );
+  if (saved != null) await ref.read(deviceNotesProvider.notifier).set(mac, saved);
+}
+
+class _DeviceNotesDialog extends StatefulWidget {
+  const _DeviceNotesDialog({required this.mac, required this.current, required this.groups});
+  final String mac;
+  final DeviceNote current;
+  final List<String> groups;
+
+  @override
+  State<_DeviceNotesDialog> createState() => _DeviceNotesDialogState();
+}
+
+class _DeviceNotesDialogState extends State<_DeviceNotesDialog> {
+  late final _name = TextEditingController(text: widget.current.name);
+  late final _group = TextEditingController(text: widget.current.group);
+  late final _notes = TextEditingController(text: widget.current.notes);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _group.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
       title: const Text('Name & notes'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
-              controller: name,
+              controller: _name,
               maxLength: 40,
-              decoration: InputDecoration(labelText: 'Your name for it', helperText: mac.toUpperCase()),
+              decoration: InputDecoration(labelText: 'Your name for it', helperText: widget.mac.toUpperCase()),
             ),
             TextField(
-              controller: group,
+              controller: _group,
               maxLength: 32,
               decoration: const InputDecoration(labelText: 'Group'),
             ),
-            if (groups.isNotEmpty)
+            if (widget.groups.isNotEmpty)
               Wrap(
                 spacing: 6,
                 children: [
-                  for (final g in groups) ActionChip(label: Text(g), onPressed: () => group.text = g),
+                  for (final g in widget.groups) ActionChip(label: Text(g), onPressed: () => _group.text = g),
                 ],
               ),
             TextField(
-              controller: notes,
+              controller: _notes,
               maxLines: 4,
               maxLength: 500,
               decoration: const InputDecoration(labelText: 'Notes'),
@@ -54,23 +81,19 @@ Future<void> showDeviceNotesEditor(BuildContext context, WidgetRef ref, String m
         ),
       ),
       actions: [
-        if (!current.isEmpty)
-          TextButton(onPressed: () => Navigator.pop(ctx, const DeviceNote()), child: const Text('CLEAR')),
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
+        if (!widget.current.isEmpty)
+          TextButton(onPressed: () => Navigator.pop(context, const DeviceNote()), child: const Text('CLEAR')),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
         TextButton(
           onPressed: () => Navigator.pop(
-            ctx,
-            DeviceNote(name: name.text.trim(), group: group.text.trim(), notes: notes.text.trim()),
+            context,
+            DeviceNote(name: _name.text.trim(), group: _group.text.trim(), notes: _notes.text.trim()),
           ),
           child: const Text('SAVE'),
         ),
       ],
-    ),
-  );
-  name.dispose();
-  group.dispose();
-  notes.dispose();
-  if (saved != null) await ref.read(deviceNotesProvider.notifier).set(mac, saved);
+    );
+  }
 }
 
 String watchMacKey(String mac) {

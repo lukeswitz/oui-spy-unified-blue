@@ -42,6 +42,7 @@ import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
 import 'package:oui_spy/core/map_pins.dart';
+import 'package:oui_spy/widgets/text_prompt_dialog.dart';
 import 'package:oui_spy/core/node_positions.dart';
 import 'package:oui_spy/core/triangulation.dart';
 import 'package:oui_spy/core/triangulation_state.dart';
@@ -547,52 +548,32 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
   }
 
   Future<void> _dropPin(LatLng at) async {
-    final ctrl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Drop a pin'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLength: 32,
-          decoration: const InputDecoration(hintText: 'Name (optional)'),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
-          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('DROP')),
-        ],
+      builder: (_) => const TextPromptDialog(
+        title: 'Drop a pin',
+        confirmLabel: 'DROP',
+        hintText: 'Name (optional)',
+        maxLength: 32,
       ),
     );
-    ctrl.dispose();
     if (name == null) return;
     await ref.read(mapPinsProvider.notifier).add(name.trim(), at);
   }
 
   Future<void> _editPin(MapPin pin) async {
-    final ctrl = TextEditingController(text: pin.name);
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Pin'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLength: 32,
-          decoration: const InputDecoration(hintText: 'Name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, '__remove__'),
-            child: Text('REMOVE', style: TextStyle(color: AppTheme.error)),
-          ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
-          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('SAVE')),
-        ],
+      builder: (_) => TextPromptDialog(
+        title: 'Pin',
+        confirmLabel: 'SAVE',
+        initial: pin.name,
+        hintText: 'Name',
+        maxLength: 32,
+        destructiveLabel: 'REMOVE',
+        destructiveResult: '__remove__',
       ),
     );
-    ctrl.dispose();
     if (result == null) return;
     final pins = ref.read(mapPinsProvider.notifier);
     if (result == '__remove__') {

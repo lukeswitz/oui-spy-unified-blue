@@ -14,6 +14,7 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart' show showSessionHistory;
 import 'package:oui_spy/features/stops/stops_screen.dart';
 import 'package:oui_spy/features/config/atak_section.dart';
+import 'package:oui_spy/widgets/text_prompt_dialog.dart';
 import 'package:oui_spy/features/config/saved_map_areas_section.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
@@ -1534,44 +1535,20 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
   }
 
   Future<void> _changeBlePin() async {
-    final ctrl = TextEditingController();
     final pin = await showDialog<String>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) {
-          final valid = BleProtocol.blePinValid(ctrl.text);
-          return AlertDialog(
-            title: const Text('Bluetooth PIN'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Six digits, not starting with 0. Phones already paired stay paired. '
-                    'A new phone enters this PIN when it pairs.'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: ctrl,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'New PIN'),
-                  onChanged: (_) => setLocal(() {}),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
-              TextButton(
-                onPressed: valid ? () => Navigator.pop(ctx, ctrl.text) : null,
-                child: const Text('SAVE'),
-              ),
-            ],
-          );
-        },
+      builder: (_) => TextPromptDialog(
+        title: 'Bluetooth PIN',
+        confirmLabel: 'SAVE',
+        message: 'Six digits, not starting with 0. Phones already paired stay paired. '
+            'A new phone enters this PIN when it pairs.',
+        labelText: 'New PIN',
+        maxLength: 6,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        isValid: BleProtocol.blePinValid,
       ),
     );
-    ctrl.dispose();
     if (pin == null) return;
     bool? ok;
     try {
