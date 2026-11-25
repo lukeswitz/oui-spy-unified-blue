@@ -73,8 +73,8 @@ static void heartbeatTask(void*) {
             size_t in = ignoreListSerialize(ib, sizeof(ib));
             meshBroadcastIgnoreList(ib, in);
             bleGattRebroadcastConfigs();
-            uint8_t db[256];
-            size_t dn = detectorSerialize(db, sizeof(db));
+            uint8_t db[MESH_IGNORELIST_MAX];
+            size_t dn = detectorSerializeWire(db, sizeof(db));
             meshBroadcastDetectorList(db, dn);
         }
         if ((tick % 7) == 0 && meshIsEnabled()) {
@@ -86,8 +86,8 @@ static void heartbeatTask(void*) {
             bleGattRebroadcastConfigs();
         }
         if ((tick % 7) == 5 && meshIsEnabled()) {
-            uint8_t db[256];
-            size_t dn = detectorSerialize(db, sizeof(db));
+            uint8_t db[MESH_IGNORELIST_MAX];
+            size_t dn = detectorSerializeWire(db, sizeof(db));
             meshBroadcastDetectorList(db, dn);
         }
         if (bleGattIsConnected()) {

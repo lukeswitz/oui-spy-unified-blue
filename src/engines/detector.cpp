@@ -11,6 +11,7 @@
 #include "wifi_auth.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 
@@ -22,14 +23,25 @@ struct TargetFilter {
 
 struct UuidFilter {
     uint16_t uuid;
-    NimBLEUUID nim;
     char desc[32];
+};
+
+struct ExtRule {
+    uint8_t type;
+    uint8_t len;
+    uint8_t b[DET_RULE_PAYLOAD_MAX];
 };
 
 static TargetFilter filters[50];
 static int filterCount = 0;
 static UuidFilter uuidFilters[50];
 static int uuidFilterCount = 0;
+static ExtRule extRules[DET_EXT_MAX];
+static volatile int extCount = 0;
+static volatile bool extEditing = false;
+static bool extDirty = false;
+static uint8_t extNameN = 0, extMfrN = 0, extU128N = 0, extWifiN = 0;
+static uint8_t wifiRuleFirst[32];
 static NimBLEScan* bleScan = nullptr;
 static volatile bool scanning = false;
 static unsigned long lastScanStart = 0;
@@ -238,8 +250,171 @@ static const UuidFilter* matchUuidFilter(NimBLEAdvertisedDevice* dev) {
     for (int i = 0; i < n; i++) {
         NimBLEUUID u = dev->getServiceUUID(i);
         for (int j = 0; j < uuidFilterCount; j++) {
-            if (u.equals(uuidFilters[j].nim)) return &uuidFilters[j];
+            if (u.equals(NimBLEUUID(uuidFilters[j].uuid))) return &uuidFilters[j];
         }
+    }
+    return nullptr;
+}
+
+static inline uint8_t lcAscii(uint8_t c) { return (c >= 'A' && c <= 'Z') ? (uint8_t)(c + 32) : c; }
+
+static bool nameContainsCi(const uint8_t* s, size_t sl, const uint8_t* pat, size_t pl) {
+    if (pl == 0 || pl > sl) return false;
+    for (size_t i = 0; i + pl <= sl; i++) {
+        size_t k = 0;
+        while (k < pl && lcAscii(s[i + k]) == lcAscii(pat[k])) k++;
+        if (k == pl) return true;
+    }
+    return false;
+}
+
+static bool namePrefixCi(const uint8_t* s, size_t sl, const uint8_t* pat, size_t pl) {
+    if (pl == 0 || pl > sl) return false;
+    for (size_t k = 0; k < pl; k++) if (lcAscii(s[k]) != lcAscii(pat[k])) return false;
+    return true;
+}
+
+static bool nameGlobCi(const uint8_t* s, size_t sl, const uint8_t* pat, size_t pl) {
+    size_t pi = 0, si = 0, star = (size_t)-1, mark = 0;
+    while (si < sl) {
+        if (pi < pl && pat[pi] == '*') { star = pi++; mark = si; continue; }
+        if (pi < pl && (pat[pi] == '?' || (pat[pi] == '#' ? isxdigit(s[si]) != 0 : lcAscii(pat[pi]) == lcAscii(s[si])))) {
+            pi++; si++; continue;
+        }
+        if (star != (size_t)-1) { pi = star + 1; si = ++mark; continue; }
+        return false;
+    }
+    while (pi < pl && pat[pi] == '*') pi++;
+    return pi == pl;
+}
+
+static bool extRuleValid(uint8_t type, const uint8_t* p, uint8_t n) {
+    switch (type) {
+        case DET_RULE_NAME_CONTAINS:
+        case DET_RULE_NAME_PREFIX:
+        case DET_RULE_NAME_PATTERN:
+            if (n < 1 || n > DET_RULE_PAYLOAD_MAX) return false;
+            for (uint8_t i = 0; i < n; i++) if (p[i] < 0x20 || p[i] > 0x7E) return false;
+            return true;
+        case DET_RULE_COMPANY_ID: return n == 2;
+        case DET_RULE_COMPANY_DATA: return n >= 4 && ((n - 2) % 2) == 0 && (n - 2) / 2 <= 8;
+        case DET_RULE_UUID128: return n == 16;
+        case DET_RULE_WIFI_PROBE:
+        case DET_RULE_WIFI_BEACON: return n >= 3 && n <= 6;
+        default: return false;
+    }
+}
+
+static void extRebuild(void) {
+    extNameN = extMfrN = extU128N = extWifiN = 0;
+    memset(wifiRuleFirst, 0, sizeof(wifiRuleFirst));
+    for (int i = 0; i < extCount; i++) {
+        const ExtRule& r = extRules[i];
+        switch (r.type) {
+            case DET_RULE_NAME_CONTAINS:
+            case DET_RULE_NAME_PREFIX:
+            case DET_RULE_NAME_PATTERN: extNameN++; break;
+            case DET_RULE_COMPANY_ID:
+            case DET_RULE_COMPANY_DATA: extMfrN++; break;
+            case DET_RULE_UUID128: extU128N++; break;
+            case DET_RULE_WIFI_PROBE:
+            case DET_RULE_WIFI_BEACON:
+                extWifiN++;
+                wifiRuleFirst[r.b[0] >> 3] |= (uint8_t)(1u << (r.b[0] & 7));
+                break;
+        }
+    }
+}
+
+static void extReset(void) {
+    extEditing = true;
+    extCount = 0;
+    extRebuild();
+    extEditing = false;
+    extDirty = true;
+}
+
+static bool extHas(uint8_t type, const uint8_t* p, uint8_t n) {
+    for (int i = 0; i < extCount; i++) {
+        if (extRules[i].type == type && extRules[i].len == n && memcmp(extRules[i].b, p, n) == 0) return true;
+    }
+    return false;
+}
+
+static void extDesc(const ExtRule& r, char* out, size_t n) {
+    switch (r.type) {
+        case DET_RULE_NAME_CONTAINS: snprintf(out, n, "Name has %.*s", (int)r.len, (const char*)r.b); break;
+        case DET_RULE_NAME_PREFIX: snprintf(out, n, "Name starts %.*s", (int)r.len, (const char*)r.b); break;
+        case DET_RULE_NAME_PATTERN: snprintf(out, n, "Name like %.*s", (int)r.len, (const char*)r.b); break;
+        case DET_RULE_COMPANY_ID: snprintf(out, n, "Company 0x%04X", (unsigned)(r.b[0] | (r.b[1] << 8))); break;
+        case DET_RULE_COMPANY_DATA: snprintf(out, n, "Company 0x%04X data", (unsigned)(r.b[0] | (r.b[1] << 8))); break;
+        case DET_RULE_UUID128: snprintf(out, n, "Service UUID128"); break;
+        case DET_RULE_WIFI_PROBE: snprintf(out, n, "Wi-Fi probe %02X:%02X:%02X", r.b[0], r.b[1], r.b[2]); break;
+        case DET_RULE_WIFI_BEACON: snprintf(out, n, "Wi-Fi beacon %02X:%02X:%02X", r.b[0], r.b[1], r.b[2]); break;
+        default: snprintf(out, n, "Rule"); break;
+    }
+}
+
+static bool extNameHit(const ExtRule& r, const uint8_t* s, size_t sl) {
+    switch (r.type) {
+        case DET_RULE_NAME_CONTAINS: return nameContainsCi(s, sl, r.b, r.len);
+        case DET_RULE_NAME_PREFIX: return namePrefixCi(s, sl, r.b, r.len);
+        case DET_RULE_NAME_PATTERN: return nameGlobCi(s, sl, r.b, r.len);
+        default: return false;
+    }
+}
+
+static bool extMfrHit(const ExtRule& r, const uint8_t* d, size_t dl) {
+    if (dl < 2 || d[0] != r.b[0] || d[1] != r.b[1]) return false;
+    if (r.type == DET_RULE_COMPANY_ID) return true;
+    if (r.type != DET_RULE_COMPANY_DATA) return false;
+    size_t k = (size_t)(r.len - 2) / 2;
+    if (dl < 2 + k) return false;
+    for (size_t i = 0; i < k; i++) {
+        if ((d[2 + i] & r.b[2 + k + i]) != (r.b[2 + i] & r.b[2 + k + i])) return false;
+    }
+    return true;
+}
+
+static const ExtRule* extMatchAdv(const uint8_t* ad, size_t n) {
+    int cnt = extCount;
+    if (cnt == 0 || ad == nullptr || (extNameN == 0 && extMfrN == 0 && extU128N == 0)) return nullptr;
+    size_t i = 0;
+    while (i + 1 < n) {
+        size_t l = ad[i];
+        if (l == 0 || i + 1 + l > n) break;
+        uint8_t t = ad[i + 1];
+        const uint8_t* d = ad + i + 2;
+        size_t dl = l - 1;
+        if ((t == 0x08 || t == 0x09) && extNameN) {
+            for (int k = 0; k < cnt; k++) if (extNameHit(extRules[k], d, dl)) return &extRules[k];
+        } else if (t == 0xFF && extMfrN) {
+            for (int k = 0; k < cnt; k++) if (extMfrHit(extRules[k], d, dl)) return &extRules[k];
+        } else if ((t == 0x06 || t == 0x07 || t == 0x21) && extU128N) {
+            size_t chunks = t == 0x21 ? (dl >= 16 ? 1 : 0) : dl / 16;
+            for (size_t c = 0; c < chunks; c++) {
+                for (int k = 0; k < cnt; k++) {
+                    if (extRules[k].type == DET_RULE_UUID128 && memcmp(extRules[k].b, d + c * 16, 16) == 0) return &extRules[k];
+                }
+            }
+        }
+        i += 1 + l;
+    }
+    return nullptr;
+}
+
+static const ExtRule* IRAM_ATTR extMatchWifi(const uint8_t* p, int len) {
+    if (extWifiN == 0 || len < 24 || (p[0] & 0x0C) != 0) return nullptr;
+    uint8_t fc = p[0];
+    uint8_t want = (fc == 0x40 || fc == 0x00 || fc == 0x20) ? DET_RULE_WIFI_PROBE
+                 : (fc == 0x80 || fc == 0x50) ? DET_RULE_WIFI_BEACON : 0;
+    if (want == 0) return nullptr;
+    const uint8_t* src = &p[10];
+    if (!(wifiRuleFirst[src[0] >> 3] & (1u << (src[0] & 7)))) return nullptr;
+    int cnt = extCount;
+    for (int k = 0; k < cnt; k++) {
+        const ExtRule& r = extRules[k];
+        if (r.type == want && memcmp(src, r.b, r.len) == 0) return &r;
     }
     return nullptr;
 }
@@ -921,6 +1096,15 @@ static void detectorJoinFrame(const uint8_t* p, int len, int rssi, uint8_t chann
                  "Join flood at this AP");
 }
 
+static void IRAM_ATTR detectorRulesWifiISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
+    if (extEditing) return;
+    const ExtRule* r = extMatchWifi(p, len);
+    if (!r || wifiSigDedupISR.check(&p[10])) return;
+    char desc[32];
+    extDesc(*r, desc, sizeof(desc));
+    pushApSigISR(&p[10], rssi, channel, METHOD_DET_WIFI_WATCH, DET_CONF_HIGH, desc);
+}
+
 static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, uint8_t channel) {
     uint8_t fctl = p[0];
     if (sigMask & SIG_CAMERA) detectorCameraFrameISR(p, len, rssi, channel);
@@ -1052,7 +1236,9 @@ static bool IRAM_ATTR detectorSigFrameISR(const uint8_t* p, int len, int rssi, u
 
 void IRAM_ATTR detectorCheckWifiSignaturesISR(const uint8_t* payload, int len, int rssi,
                                               uint8_t channel) {
-    if (!scanning || sigMask == 0 || payload == nullptr || len < 24) return;
+    if (!scanning || payload == nullptr || len < 24) return;
+    detectorRulesWifiISR(payload, len, rssi, channel);
+    if (sigMask == 0) return;
     detectorSigFrameISR(payload, len, rssi, channel);
 }
 
@@ -1066,6 +1252,7 @@ static void IRAM_ATTR wifiSnifferCb(void* buf, wifi_promiscuous_pkt_type_t type)
     int len = (int)pkt->rx_ctrl.sig_len - 4;
     if (len < 24) return;
 
+    detectorRulesWifiISR(p, len, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel);
     if (detectorSigFrameISR(p, len, pkt->rx_ctrl.rssi, pkt->rx_ctrl.channel)) return;
 
     const uint8_t* addr2 = &p[10];
@@ -1115,7 +1302,30 @@ void detectorCheckBleSignatures(NimBLEAdvertisedDevice* dev, const uint8_t* mac,
 void detectorCheckBleUuid(NimBLEAdvertisedDevice* dev, const uint8_t* mac, int rssi) {
     if (!scanning) return;
     const UuidFilter* hit = matchUuidFilter(dev);
-    if (!hit) return;
+    if (!hit) {
+        if (extCount == 0 || dev == nullptr) return;
+#ifdef OUISPY_NIMBLE2_API
+        const std::vector<uint8_t>& pl = dev->getPayload();
+        const ExtRule* r = extMatchAdv(pl.data(), pl.size());
+#else
+        const ExtRule* r = extMatchAdv(dev->getPayload(), dev->getPayloadLength());
+#endif
+        if (!r || dedup.check(mac)) return;
+        char desc[32];
+        extDesc(*r, desc, sizeof(desc));
+        DetectionEvent evt = {};
+        evt.engine_id = ENGINE_DETECTOR;
+        memcpy(evt.mac, mac, 6);
+        evt.rssi = rssi;
+        evt.timestamp_ms = millis();
+        evt.method = METHOD_DET_BLE_WATCH;
+        evt.ext.detector.confidence = DET_CONF_HIGH;
+        strncpy(evt.ext.detector.filter_desc, desc, sizeof(evt.ext.detector.filter_desc) - 1);
+        pushDetection(&evt);
+        Serial.printf("[DETECTOR] BLE %02x:%02x:%02x:%02x:%02x:%02x RSSI:%d [RULE] %s\n",
+                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], rssi, desc);
+        return;
+    }
     if (dedup.check(mac)) return;
 
     DetectionEvent evt = {};
@@ -1155,14 +1365,40 @@ void IRAM_ATTR detectorCheckWifiDeviceISR(const uint8_t* mac, int rssi, uint8_t 
 void detectorClearFilters(void) {
     filterCount = 0;
     uuidFilterCount = 0;
+    extReset();
     Serial.println("[DETECTOR] Filters cleared");
 }
+
+bool detectorAddRule(uint8_t type, const uint8_t* payload, uint8_t len) {
+    if (payload == nullptr || !extRuleValid(type, payload, len)) {
+        Serial.printf("[DETECTOR] rule refused: type=%u len=%u\n", (unsigned)type, (unsigned)len);
+        return false;
+    }
+    if (extHas(type, payload, len)) return true;
+    if (extCount >= DET_EXT_MAX) {
+        Serial.printf("[DETECTOR] rule refused: list full (%d)\n", DET_EXT_MAX);
+        return false;
+    }
+    extEditing = true;
+    ExtRule& r = extRules[extCount];
+    r.type = type;
+    r.len = len;
+    memset(r.b, 0, sizeof(r.b));
+    memcpy(r.b, payload, len);
+    extCount = extCount + 1;
+    extRebuild();
+    extEditing = false;
+    extDirty = true;
+    Serial.printf("[DETECTOR] +rule type=%u len=%u (total=%d)\n", (unsigned)type, (unsigned)len, (int)extCount);
+    return true;
+}
+
+int detectorRuleCount(void) { return extCount; }
 
 void detectorAddUuidFilter(uint16_t uuid, const char* desc) {
     if (uuidFilterCount >= 50) return;
     UuidFilter f = {};
     f.uuid = uuid;
-    f.nim = NimBLEUUID(uuid);
     if (desc) strncpy(f.desc, desc, sizeof(f.desc) - 1);
     uuidFilters[uuidFilterCount++] = f;
     Serial.printf("[DETECTOR] +uuid filter 0x%04X desc=%s (total=%d)\n",
@@ -1216,6 +1452,73 @@ size_t detectorSerialize(uint8_t* out, size_t maxLen) {
         out[ucntPos] = ucnt;
     }
     return off;
+}
+
+size_t detectorSerializeWire(uint8_t* out, size_t maxLen) {
+    size_t off = detectorSerialize(out, maxLen);
+    if (off == 0 || extCount == 0 || off + 1 > maxLen) return off;
+    size_t cntAt = off++;
+    uint8_t cnt = 0;
+    for (int i = 0; i < extCount; i++) {
+        const ExtRule& r = extRules[i];
+        if (off + 2 + r.len > maxLen) break;
+        out[off++] = r.type;
+        out[off++] = r.len;
+        memcpy(out + off, r.b, r.len);
+        off += r.len;
+        cnt++;
+    }
+    out[cntAt] = cnt;
+    return cnt ? off : cntAt;
+}
+
+static uint32_t extHash(void) {
+    uint32_t h = 2166136261u ^ (uint32_t)extCount;
+    const uint8_t* p = (const uint8_t*)extRules;
+    for (size_t i = 0; i < (size_t)extCount * sizeof(ExtRule); i++) h = (h ^ p[i]) * 16777619u;
+    return h;
+}
+
+static uint32_t extSavedHash = 0;
+static bool extSavedKnown = false;
+
+void detectorExtPersist(void) {
+    if (!extDirty) return;
+    extDirty = false;
+    uint32_t h = extHash();
+    if (extSavedKnown && h == extSavedHash) return;
+    Preferences po;
+    po.begin("ouispy-off", false);
+    po.putUChar("det_extn", (uint8_t)extCount);
+    if (extCount > 0) po.putBytes("det_ext", extRules, (size_t)extCount * sizeof(ExtRule));
+    po.end();
+    extSavedHash = h;
+    extSavedKnown = true;
+    Serial.printf("[DETCFG] persisted rules=%d (%uB)\n", (int)extCount, (unsigned)((size_t)extCount * sizeof(ExtRule)));
+}
+
+void detectorExtRestore(void) {
+    Preferences po;
+    po.begin("ouispy-off", true);
+    uint8_t n = po.getUChar("det_extn", 0);
+    extEditing = true;
+    size_t got = (n > 0 && n <= DET_EXT_MAX) ? po.getBytes("det_ext", extRules, sizeof(extRules)) : 0;
+    po.end();
+    int kept = 0;
+    if (got == (size_t)n * sizeof(ExtRule)) {
+        for (uint8_t i = 0; i < n; i++) {
+            if (!extRuleValid(extRules[i].type, extRules[i].b, extRules[i].len)) continue;
+            if (kept != i) extRules[kept] = extRules[i];
+            kept++;
+        }
+    }
+    extCount = kept;
+    extRebuild();
+    extEditing = false;
+    extSavedHash = extHash();
+    extSavedKnown = true;
+    extDirty = false;
+    Serial.printf("[DETCFG] restored rules=%d of %u\n", kept, (unsigned)n);
 }
 
 static char* labelAt(int i) {
@@ -1287,9 +1590,19 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
             detectorAddUuidFilter(uuid, "");
             off += 2;
         }
+        if (off < len) {
+            uint8_t ecnt = data[off++];
+            for (uint8_t i = 0; i < ecnt; i++) {
+                if (off + 2 > len) break;
+                uint8_t type = data[off], rl = data[off + 1];
+                if (off + 2 + rl > len) break;
+                detectorAddRule(type, data + off + 2, rl);
+                off += 2 + rl;
+            }
+        }
     }
-    Serial.printf("[CFG] Detector watchlist: %u mac + %u uuid filters sig=0x%03X\n",
-                  detectorFilterCount(), uuidFilterCount, (unsigned)sigMask);
+    Serial.printf("[CFG] Detector watchlist: %u mac + %u uuid + %d rule filters sig=0x%03X\n",
+                  detectorFilterCount(), uuidFilterCount, (int)extCount, (unsigned)sigMask);
 }
 
 bool detectorHoldsAll(const uint8_t* data, size_t len) {
@@ -1297,7 +1610,10 @@ bool detectorHoldsAll(const uint8_t* data, size_t len) {
     size_t off = 1 + (size_t)data[0] * 7;
     if (off > len) return false;
     int wantUuids = (off < len) ? data[off] : 0;
-    return filterCount == (int)data[0] && uuidFilterCount == wantUuids;
+    int wantRules = 0;
+    size_t extAt = off + 1 + (size_t)wantUuids * 2;
+    if (off < len && extAt < len) wantRules = data[extAt];
+    return filterCount == (int)data[0] && uuidFilterCount == wantUuids && extCount == wantRules;
 }
 
 static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA | SIG_BEACONFLOOD |
@@ -1308,11 +1624,14 @@ static uint32_t detectorWifiFilter(void) {
                                   : WIFI_PROMIS_FILTER_MASK_MGMT;
 }
 
+static bool wifiNeeded(void) { return (sigMask & DETECTOR_WIFI_SIGS) != 0 || extWifiN != 0; }
+static bool lastWifiNeed = false;
+
 void detectorSetSigMask(uint16_t mask) {
-    bool prevWifi = (sigMask & DETECTOR_WIFI_SIGS) != 0;
+    bool prevWifi = wifiNeeded();
     uint32_t prevFilter = detectorWifiFilter();
     sigMask = mask;
-    bool newWifi = (sigMask & DETECTOR_WIFI_SIGS) != 0;
+    bool newWifi = wifiNeeded();
     if (scanning && engineGetState(ENGINE_WARDRIVE) == ESTATE_DISABLED) {
         if (prevWifi != newWifi) {
             detectorStop();
@@ -1325,8 +1644,7 @@ void detectorSetSigMask(uint16_t mask) {
 uint16_t detectorGetSigMask(void) { return sigMask; }
 
 bool detectorUsesWifi(void) {
-    return (detectorRadioMask & 0x01) != 0 &&
-           (sigMask & DETECTOR_WIFI_SIGS) != 0;
+    return (detectorRadioMask & 0x01) != 0 && wifiNeeded();
 }
 
 static void detectorInit(void) {
@@ -1346,8 +1664,8 @@ static void detectorStart(void) {
     wifiDedupISR.setCooldownMs(engineGetRediscoverMs());
     bool wardriveOwns = (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED);
     bool wantBle  = (detectorRadioMask & 0x02) != 0;
-    bool wantWifi = (detectorRadioMask & 0x01) != 0 &&
-                    (sigMask & DETECTOR_WIFI_SIGS) != 0;
+    bool wantWifi = (detectorRadioMask & 0x01) != 0 && wifiNeeded();
+    lastWifiNeed = wifiNeeded();
 
     if (!wardriveOwns && wantBle) {
         bleScan = NimBLEDevice::getScan();
@@ -1426,8 +1744,7 @@ void detectorHostSuspend(bool suspend) {
             bleScan = NimBLEDevice::getScan();
             bleCoexRegister(&scanCb, true);
         }
-        if ((detectorRadioMask & 0x01) &&
-            (sigMask & DETECTOR_WIFI_SIGS)) {
+        if ((detectorRadioMask & 0x01) && wifiNeeded()) {
             if (!meshIsEnabled()) WiFi.mode(WIFI_STA);
             wifiSnifferApplyPs();
             wifiCoexRegister(wifiSnifferCb, detectorWifiFilter());
@@ -1440,6 +1757,12 @@ static void detectorLoop(void) {
     if (meshIsEnabled() && (meshInMeshWindow() || meshInRidWindow())) return;
     if (!scanning) return;
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
+
+    if (wifiNeeded() != lastWifiNeed) {
+        detectorStop();
+        detectorStart();
+        return;
+    }
 
     if (wifiActive && wifiCoexShouldHop(ENGINE_DETECTOR) &&
         millis() - lastChannelHop >= DWELL_MS) {
@@ -1756,6 +2079,221 @@ int detectorPortSelfTest(void) {
     }
     pstCheck("beacon_flood_one_ap_many_ssids_quiet", !pstPop(&e));
     sigMask = maskBeforeBeacon;
+
+    {
+        detectorClearFilters();
+        pstDrain();
+        const uint8_t flip[] = {'F', 'l', 'i', 'p'};
+        pstCheck("rule_add_valid", detectorAddRule(DET_RULE_NAME_CONTAINS, flip, sizeof(flip)) && detectorRuleCount() == 1);
+        pstCheck("rule_add_duplicate_kept_once", detectorAddRule(DET_RULE_NAME_CONTAINS, flip, sizeof(flip)) && detectorRuleCount() == 1);
+        const uint8_t odd[3] = {1, 2, 3};
+        pstCheck("rule_refuse_unknown_type", !detectorAddRule(0x7F, odd, 1) && detectorRuleCount() == 1);
+        pstCheck("rule_refuse_empty_name", !detectorAddRule(DET_RULE_NAME_PREFIX, odd, 0));
+        pstCheck("rule_refuse_company_id_length", !detectorAddRule(DET_RULE_COMPANY_ID, odd, 3));
+        pstCheck("rule_refuse_company_data_odd", !detectorAddRule(DET_RULE_COMPANY_DATA, odd, 3));
+        pstCheck("rule_refuse_wifi_short", !detectorAddRule(DET_RULE_WIFI_PROBE, odd, 2));
+        const uint8_t ctl[] = {'a', 0x07};
+        pstCheck("rule_refuse_control_char", !detectorAddRule(DET_RULE_NAME_CONTAINS, ctl, 2));
+
+        uint8_t ad[64];
+        size_t an = 0;
+        auto field = [&](uint8_t type, const uint8_t* d, size_t n) {
+            ad[an++] = (uint8_t)(n + 1);
+            ad[an++] = type;
+            memcpy(ad + an, d, n);
+            an += n;
+        };
+        auto reset = [&]() { an = 0; };
+
+        reset(); field(0x09, (const uint8_t*)"My FLIPPER", 10);
+        pstCheck("name_contains_ignores_case", extMatchAdv(ad, an) != nullptr);
+        reset(); field(0x08, (const uint8_t*)"flip", 4);
+        pstCheck("name_contains_shortened_name", extMatchAdv(ad, an) != nullptr);
+        reset(); field(0x09, (const uint8_t*)"Fli", 3);
+        pstCheck("name_contains_partial_no", extMatchAdv(ad, an) == nullptr);
+        reset(); field(0x0A, flip, 4);
+        pstCheck("name_contains_other_field_no", extMatchAdv(ad, an) == nullptr);
+
+        detectorClearFilters();
+        const uint8_t pre[] = {'F', 'l', 'i', 'p', 'p', 'e', 'r', ' '};
+        detectorAddRule(DET_RULE_NAME_PREFIX, pre, sizeof(pre));
+        reset(); field(0x09, (const uint8_t*)"flipper abc", 11);
+        pstCheck("name_prefix_hit", extMatchAdv(ad, an) != nullptr);
+        reset(); field(0x09, (const uint8_t*)"Flipperabc", 10);
+        pstCheck("name_prefix_space_counts", extMatchAdv(ad, an) == nullptr);
+        reset(); field(0x09, (const uint8_t*)"Flip", 4);
+        pstCheck("name_prefix_shorter_than_rule", extMatchAdv(ad, an) == nullptr);
+        reset(); field(0x09, (const uint8_t*)"My Flipper x", 12);
+        pstCheck("name_prefix_not_mid_name", extMatchAdv(ad, an) == nullptr);
+
+        detectorClearFilters();
+        const char* tesla = "S################C";
+        detectorAddRule(DET_RULE_NAME_PATTERN, (const uint8_t*)tesla, 18);
+        reset(); field(0x09, (const uint8_t*)"S0123456789abcdefC", 18);
+        pstCheck("name_pattern_hex_digits", extMatchAdv(ad, an) != nullptr);
+        reset(); field(0x09, (const uint8_t*)"S0123456789abcdeXC", 18);
+        pstCheck("name_pattern_not_hex", extMatchAdv(ad, an) == nullptr);
+        reset(); field(0x09, (const uint8_t*)"S0123456789abcdeC", 17);
+        pstCheck("name_pattern_length", extMatchAdv(ad, an) == nullptr);
+        detectorClearFilters();
+        detectorAddRule(DET_RULE_NAME_PATTERN, (const uint8_t*)"a*b?c", 5);
+        reset(); field(0x09, (const uint8_t*)"AxxxbYc", 7);
+        pstCheck("name_pattern_star_and_any", extMatchAdv(ad, an) != nullptr);
+        reset(); field(0x09, (const uint8_t*)"AxxxbYcd", 8);
+        pstCheck("name_pattern_whole_name", extMatchAdv(ad, an) == nullptr);
+
+        detectorClearFilters();
+        const uint8_t cid[2] = {0x4C, 0x00};
+        detectorAddRule(DET_RULE_COMPANY_ID, cid, 2);
+        const uint8_t mfrA[] = {0x4C, 0x00, 0x12, 0x19};
+        reset(); field(0xFF, mfrA, sizeof(mfrA));
+        pstCheck("company_id_hit", extMatchAdv(ad, an) != nullptr);
+        const uint8_t mfrB[] = {0x4D, 0x00, 0x12, 0x19};
+        reset(); field(0xFF, mfrB, sizeof(mfrB));
+        pstCheck("company_id_other_no", extMatchAdv(ad, an) == nullptr);
+        reset(); field(0x01, mfrA, 1); field(0xFF, mfrA, sizeof(mfrA));
+        pstCheck("company_id_after_other_field", extMatchAdv(ad, an) != nullptr);
+
+        detectorClearFilters();
+        const uint8_t mfr[] = {0x4C, 0x00, 0x12, 0x19, 0x10, 0xFF, 0xFF, 0x30};
+        pstCheck("company_data_add", detectorAddRule(DET_RULE_COMPANY_DATA, mfr, sizeof(mfr)));
+        const uint8_t dA[] = {0x4C, 0x00, 0x12, 0x19, 0x1A};
+        reset(); field(0xFF, dA, sizeof(dA));
+        pstCheck("company_data_mask_ignores_clear_bits", extMatchAdv(ad, an) != nullptr);
+        const uint8_t dB[] = {0x4C, 0x00, 0x12, 0x19, 0x2A};
+        reset(); field(0xFF, dB, sizeof(dB));
+        pstCheck("company_data_mask_set_bits_must_match", extMatchAdv(ad, an) == nullptr);
+        const uint8_t dC[] = {0x4C, 0x00, 0x12, 0x18, 0x1A};
+        reset(); field(0xFF, dC, sizeof(dC));
+        pstCheck("company_data_full_mask_byte", extMatchAdv(ad, an) == nullptr);
+        const uint8_t dD[] = {0x4C, 0x00, 0x12, 0x19};
+        reset(); field(0xFF, dD, sizeof(dD));
+        pstCheck("company_data_too_short", extMatchAdv(ad, an) == nullptr);
+        const uint8_t dE[] = {0x4D, 0x00, 0x12, 0x19, 0x10};
+        reset(); field(0xFF, dE, sizeof(dE));
+        pstCheck("company_data_other_company", extMatchAdv(ad, an) == nullptr);
+
+        detectorClearFilters();
+        uint8_t u128[16];
+        for (int i = 0; i < 16; i++) u128[i] = (uint8_t)(0xA0 + i);
+        pstCheck("uuid128_add", detectorAddRule(DET_RULE_UUID128, u128, 16));
+        uint8_t two[32];
+        memcpy(two, u128, 16);
+        memcpy(two + 16, u128, 16);
+        two[0] ^= 0xFF;
+        reset(); field(0x07, two, 32);
+        pstCheck("uuid128_second_in_list", extMatchAdv(ad, an) != nullptr);
+        reset(); field(0x06, u128, 16);
+        pstCheck("uuid128_incomplete_list", extMatchAdv(ad, an) != nullptr);
+        uint8_t svcData[18];
+        memcpy(svcData, u128, 16);
+        reset(); field(0x21, svcData, 18);
+        pstCheck("uuid128_service_data", extMatchAdv(ad, an) != nullptr);
+        two[16] ^= 0xFF;
+        reset(); field(0x07, two, 32);
+        pstCheck("uuid128_other_no", extMatchAdv(ad, an) == nullptr);
+        pstCheck("uuid16_equals_base_uuid128",
+                 NimBLEUUID("0000fd5a-0000-1000-8000-00805f9b34fb").equals(NimBLEUUID((uint16_t)0xFD5A)) &&
+                 !NimBLEUUID("0000fd5b-0000-1000-8000-00805f9b34fb").equals(NimBLEUUID((uint16_t)0xFD5A)));
+
+        detectorClearFilters();
+        pstDrain();
+        wifiSigDedupISR.reset();
+        const uint16_t maskBeforeRules = sigMask;
+        sigMask = 0;
+        pstCheck("wifi_rules_need_wifi_no", !wifiNeeded());
+        const uint8_t ouiR[3] = {0xD4, 0x2D, 0xC5};
+        const uint8_t oui4[4] = {0xD4, 0x2D, 0xC6, 0x01};
+        detectorAddRule(DET_RULE_WIFI_PROBE, ouiR, 3);
+        detectorAddRule(DET_RULE_WIFI_BEACON, oui4, 4);
+        pstCheck("wifi_rules_need_wifi_yes", wifiNeeded());
+        uint8_t wf[80];
+        const uint8_t srcP[6] = {0xD4, 0x2D, 0xC5, 0x00, 0x00, 0x01};
+        int wn = pstBeacon(wf, srcP, "MyNetwork");
+        detectorRulesWifiISR(wf, wn, -50, 6);
+        pstCheck("wifi_probe_rule_not_on_beacon", !pstPop(&e));
+        wf[0] = 0x40;
+        detectorRulesWifiISR(wf, wn, -50, 6);
+        bool pr1 = pstPop(&e) && e.method == METHOD_DET_WIFI_WATCH && e.ext.detector.confidence == DET_CONF_HIGH &&
+                   memcmp(e.mac, srcP, 6) == 0 && e.channel == 6;
+        pstCheck("wifi_probe_rule_hits_probe_request", pr1, e.ext.detector.filter_desc);
+        detectorRulesWifiISR(wf, wn, -50, 6);
+        pstCheck("wifi_rule_dedup", !pstPop(&e));
+        wifiSigDedupISR.reset();
+        wf[0] = 0x00;
+        detectorRulesWifiISR(wf, wn, -50, 6);
+        pstCheck("wifi_probe_rule_hits_association_request", pstPop(&e));
+        wifiSigDedupISR.reset();
+        wf[0] = 0x08;
+        detectorRulesWifiISR(wf, wn, -50, 6);
+        pstCheck("wifi_rule_ignores_data_frame", !pstPop(&e));
+        const uint8_t srcB[6] = {0xD4, 0x2D, 0xC6, 0x01, 0x09, 0x09};
+        wn = pstBeacon(wf, srcB, "MyNetwork");
+        detectorRulesWifiISR(wf, wn, -50, 11);
+        bool bc1 = pstPop(&e) && e.method == METHOD_DET_WIFI_WATCH && memcmp(e.mac, srcB, 6) == 0 && e.channel == 11;
+        pstCheck("wifi_beacon_rule_hits_beacon_four_byte_prefix", bc1, e.ext.detector.filter_desc);
+        wifiSigDedupISR.reset();
+        wf[0] = 0x50;
+        detectorRulesWifiISR(wf, wn, -50, 11);
+        pstCheck("wifi_beacon_rule_hits_probe_response", pstPop(&e));
+        wifiSigDedupISR.reset();
+        const uint8_t srcM[6] = {0xD4, 0x2D, 0xC6, 0x02, 0x09, 0x09};
+        wn = pstBeacon(wf, srcM, "MyNetwork");
+        detectorRulesWifiISR(wf, wn, -50, 11);
+        pstCheck("wifi_beacon_rule_fourth_byte_must_match", !pstPop(&e));
+        const uint8_t srcO[6] = {0x02, 0x2D, 0xC5, 0x00, 0x00, 0x01};
+        wn = pstBeacon(wf, srcO, "MyNetwork");
+        wf[0] = 0x40;
+        detectorRulesWifiISR(wf, wn, -50, 6);
+        pstCheck("wifi_rule_other_first_byte_no", !pstPop(&e));
+        sigMask = maskBeforeRules;
+
+        detectorClearFilters();
+        const uint8_t mac3[6] = {0x40, 0x48, 0x6E, 0, 0, 0};
+        detectorAddFilter(mac3, 3, "");
+        detectorAddUuidFilter(0xFD5A, "");
+        detectorAddRule(DET_RULE_NAME_CONTAINS, flip, sizeof(flip));
+        detectorAddRule(DET_RULE_COMPANY_DATA, mfr, sizeof(mfr));
+        detectorAddRule(DET_RULE_WIFI_BEACON, ouiR, 3);
+        uint8_t wire[MESH_IGNORELIST_MAX];
+        size_t wl = detectorSerializeWire(wire, sizeof(wire));
+        pstCheck("wire_size", wl == 1 + 7 + 1 + 2 + 1 + (2 + 4) + (2 + 8) + (2 + 3), "");
+        detectorClearFilters();
+        pstCheck("wire_holds_all_before_apply_no", !detectorHoldsAll(wire, wl));
+        detectorSetFilters(wire, wl);
+        pstCheck("wire_roundtrip_counts", detectorFilterCount() == 1 && detectorUuidFilterCount() == 1 && detectorRuleCount() == 3);
+        pstCheck("wire_roundtrip_rules", extHas(DET_RULE_NAME_CONTAINS, flip, 4) && extHas(DET_RULE_COMPANY_DATA, mfr, 8) &&
+                                             extHas(DET_RULE_WIFI_BEACON, ouiR, 3));
+        pstCheck("wire_holds_all_after_apply", detectorHoldsAll(wire, wl));
+        wire[11] = 4;
+        pstCheck("wire_holds_all_more_rules_than_held_no", !detectorHoldsAll(wire, wl));
+        wire[11] = 3;
+        uint8_t v1only[16];
+        size_t v1n = detectorSerialize(v1only, sizeof(v1only));
+        detectorSetFilters(v1only, v1n);
+        pstCheck("v1_blob_replaces_rules_with_none", detectorRuleCount() == 0 && detectorFilterCount() == 1);
+        pstCheck("v1_blob_holds_all", detectorHoldsAll(v1only, v1n));
+        uint8_t skip[] = {0, 0, 2, 0x7F, 1, 0x55, DET_RULE_COMPANY_ID, 2, 0x4C, 0x00};
+        detectorSetFilters(skip, sizeof(skip));
+        pstCheck("wire_skips_unknown_rule_type", detectorRuleCount() == 1);
+        uint8_t cut[] = {0, 0, 1, DET_RULE_NAME_CONTAINS, 6, 'a'};
+        detectorSetFilters(cut, sizeof(cut));
+        pstCheck("wire_truncated_rule_dropped", detectorRuleCount() == 0);
+
+        detectorClearFilters();
+        for (int i = 0; i < DET_EXT_MAX; i++) {
+            uint8_t c[2] = {(uint8_t)i, 0x01};
+            detectorAddRule(DET_RULE_COMPANY_ID, c, 2);
+        }
+        const uint8_t extra[2] = {0xEE, 0xEE};
+        pstCheck("rule_capacity", detectorRuleCount() == DET_EXT_MAX && !detectorAddRule(DET_RULE_COMPANY_ID, extra, 2));
+        uint8_t small[40];
+        size_t sn = detectorSerializeWire(small, sizeof(small));
+        size_t eo = 2;
+        uint8_t sc = small[eo];
+        pstCheck("wire_stops_at_record_boundary", sn <= sizeof(small) && sc == (sn - 3) / 4 && (sn - 3) % 4 == 0 && sc > 0 && sc < DET_EXT_MAX);
+        detectorClearFilters();
+    }
 
     detectorSetSigMask(SIG_ALL);
     pstCheck("sigmask_13bit", detectorGetSigMask() == 0x1FFF);

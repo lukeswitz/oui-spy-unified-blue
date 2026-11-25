@@ -113,8 +113,8 @@ static volatile uint32_t mgrDetPushDueMs = 0;
 void bleGattMgrDetPushTick(void) {
     if (!mgrDetPushPending || (int32_t)(millis() - mgrDetPushDueMs) < 0) return;
     mgrDetPushPending = false;
-    uint8_t db[256];
-    size_t dn = detectorSerialize(db, sizeof(db));
+    uint8_t db[MESH_IGNORELIST_MAX];
+    size_t dn = detectorSerializeWire(db, sizeof(db));
     meshStartDetectorPush(db, dn);
 }
 
@@ -478,6 +478,7 @@ static void mgrReconcileDropWigle(void) {
 
 void bleGattMgrPersistOfflineTick(void) {
     if (!offlineScanEnabled) return;
+    detectorExtPersist();
     static uint8_t lastMask = 0xFF;
     static uint8_t lastFilt[512];
     static size_t lastFiltLen = 0;
@@ -506,6 +507,7 @@ void bleGattMgrRestoreOffline(void) {
     size_t fn = po.getBytes("mgr_filt", fb, sizeof(fb));
     po.end();
     if (fn > 0) detectorSetFilters(fb, fn);
+    detectorExtRestore();
     savedMask &= (uint8_t)~ENGINE_BITMASK(ENGINE_WARDRIVE);
     if (savedMask != 0) {
         mgrCommandedMask = savedMask;
@@ -524,8 +526,8 @@ void bleGattMgrRestoreOffline(void) {
 void bleGattMgrCommandDetectorTest(void) {
     uint8_t f[8] = {1, 6, 0xC0, 0xFF, 0xEE, 0x00, 0x00, 0x01};
     detectorSetFilters(f, sizeof(f));
-    uint8_t db[256];
-    size_t dn = detectorSerialize(db, sizeof(db));
+    uint8_t db[MESH_IGNORELIST_MAX];
+    size_t dn = detectorSerializeWire(db, sizeof(db));
     meshBroadcastDetectorList(db, dn);
     delay(120);
     mgrCommandedMask |= ENGINE_BITMASK(ENGINE_DETECTOR);
@@ -1852,14 +1854,18 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
                     flockSetAllowOuiOnly(data[1] != 0);
                 }
                 break;
+            case DETCFG_OP_RULE:
+                if (val.length() < 3 || val.length() < 3u + data[2]) return;
+                detectorAddRule(data[1], data + 3, data[2]);
+                break;
             default:
                 Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
                 break;
         }
 #ifdef OUISPY_ROLE_MANAGER
         if (meshIsEnabled()) {
-            uint8_t db[256];
-            size_t dn = detectorSerialize(db, sizeof(db));
+            uint8_t db[MESH_IGNORELIST_MAX];
+            size_t dn = detectorSerializeWire(db, sizeof(db));
             meshBroadcastDetectorList(db, dn);
             mgrDetPushDueMs = millis() + 800;
             mgrDetPushPending = true;

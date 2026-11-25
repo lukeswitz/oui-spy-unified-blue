@@ -179,6 +179,19 @@ enum EngineState : uint8_t {
 #define METHOD_DET_VEHICLE     18
 #define METHOD_DET_DRONE       19
 
+// Detector rule types: the extension section of a detector list and BLE DetectorConfig op 0x05 [type][len][payload]
+#define DET_RULE_NAME_CONTAINS 0x01  // payload: 1-18 printable chars, case-insensitive substring of the BLE name
+#define DET_RULE_NAME_PREFIX   0x02  // payload: 1-18 printable chars, case-insensitive start of the BLE name
+#define DET_RULE_NAME_PATTERN  0x03  // payload: 1-18 chars, whole name; # hex digit, ? any char, * any run
+#define DET_RULE_COMPANY_ID    0x04  // payload: u16 LE company id
+#define DET_RULE_COMPANY_DATA  0x05  // payload: u16 LE company id, k data bytes, k mask bytes (1 <= k <= 8)
+#define DET_RULE_UUID128       0x06  // payload: 16 bytes in advertisement byte order (reverse of the written form)
+#define DET_RULE_WIFI_PROBE    0x07  // payload: 3-6 byte source address prefix of a probe or association request
+#define DET_RULE_WIFI_BEACON   0x08  // payload: 3-6 byte source address prefix of a beacon or probe response
+#define DET_RULE_PAYLOAD_MAX   18
+#define DET_EXT_MAX            32
+#define DETCFG_OP_RULE         0x05
+
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
 #define SIG_DEAUTH     0x04

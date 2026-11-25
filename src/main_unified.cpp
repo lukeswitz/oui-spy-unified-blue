@@ -816,6 +816,7 @@ static void statusHeartbeatTask(void* param) {
                 lastLbl = detectorLabelsHash();
                 detSeeded = true;
             }
+            detectorExtPersist();
             uint8_t fb[512];
             size_t fn = detectorSerialize(fb, sizeof(fb));
             uint16_t sg = detectorGetSigMask();
@@ -1901,6 +1902,7 @@ void setup() {
         size_t ln = lb ? po.getBytes("det_lbl", lb, DETECTOR_LABELS_MAX) : 0;
         po.end();
         if (fn > 0) detectorSetFilters(fb, fn);
+        detectorExtRestore();
         bool lblOk = ln > 0 && detectorSetLabels(lb, ln);
         free(lb);
         if (haveSig) detectorSetSigMask(savedSig);

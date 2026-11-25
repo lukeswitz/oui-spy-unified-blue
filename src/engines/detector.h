@@ -18,10 +18,15 @@ void detectorCheckWifiSignaturesISR(const uint8_t* payload, int len, int rssi, u
 void detectorClearFilters(void);
 void detectorAddFilter(const uint8_t* macBytes, uint8_t prefixLen, const char* desc);
 void detectorAddUuidFilter(uint16_t uuid, const char* desc);
+bool detectorAddRule(uint8_t type, const uint8_t* payload, uint8_t len);
 int detectorFilterCount(void);
 int detectorUuidFilterCount(void);
+int detectorRuleCount(void);
 const char* detectorLookupDesc(const uint8_t* mac);
 size_t detectorSerialize(uint8_t* out, size_t maxLen);
+size_t detectorSerializeWire(uint8_t* out, size_t maxLen);
+void detectorExtPersist(void);
+void detectorExtRestore(void);
 void detectorSetFilters(const uint8_t* data, size_t len);
 bool detectorHoldsAll(const uint8_t* data, size_t len);
 #define DETECTOR_LABELS_MAX (2 + 100 * 32)
