@@ -14,10 +14,13 @@
 <div align="center">
 <b>OUI-APEX detects surveillance hardware, trackers and drones.</b> It also works as a wardriving and recon tool. 
 <p>
-  
+
+<a href="#quick-start"><b>Quick start</b></a> &middot; <a href="#a-tour-of-the-app"><b>Tour</b></a> &middot; <a href="#engines"><b>Engines</b></a> &middot; <a href="#boards"><b>Boards</b></a> &middot; <a href="#mesh"><b>Mesh</b></a> &middot; <a href="#usb-radios-on-android"><b>USB radios</b></a>
+<p>
+
 <table>
   <tr>
-    <td><img width="194" src="docs/screenshots/ui/overview.png" alt="Home: phone, USB Wi-Fi adapter and RTL-SDR scanning together" /></td>
+    <td><img width="200" src="docs/screenshots/tour/00-map.png" alt="Map after a short wardrive: hits along the route, a drone, Flock and detector hits" /></td>
     <td><img width="349" src="docs/screenshots/ui/home-photo.jpg" alt="Phone running OUI-APEX on the Home screen with an RTL-SDR connected" /></td>
   </tr>
 </table>
@@ -56,6 +59,137 @@ _Getting Started:_
 > 2. **Settings → System → Developer options → Networking**: turn off **Wi-Fi scan throttling**.
 >
 > Menu paths vary by phone. USB Wi-Fi adapters are not limited.
+
+## A tour of the app
+
+Every screen below is the app itself on Android, filled with made-up devices along a made-up drive through Greenwich, London. The numbers on each screen match its key.
+
+### First launch
+
+The app asks for each permission on its own screen, then opens Home.
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/01-permissions.png" alt="Permission step: Bluetooth" />
+      <ol>
+        <li><b>Progress</b>: which permission step you are on. Android asks for five.</li>
+        <li><b>Why</b>: what the app uses this permission for.</li>
+        <li><b>Continue</b>: your phone shows its own prompt next.</li>
+      </ol></td>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/02-location-always.png" alt="Permission step: location all the time" />
+      <ol>
+        <li><b>Location all the time</b>: needed to keep wardriving with the screen off.</li>
+        <li><b>Continue</b>: opens Settings. Choose <b>Allow all the time</b>, then go back.</li>
+      </ol></td>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/03-first-launch.png" alt="Home on first launch" />
+      <ol>
+        <li><b>Status</b>: board link and GPS fix.</li>
+        <li><b>Shortcuts</b>: the arrows open the Connect screen. The phone icon starts the phone scan.</li>
+        <li><b>CONNECT</b>: find your board over Bluetooth.</li>
+        <li><b>USE THIS DEVICE</b>: scan with the phone's own radios.</li>
+        <li><b>Engines</b>: what each engine looks for.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Start a scan
+
+Pick what to look for and which radios to use, then tap START.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/04-home-ready.png" alt="Home before a scan" />
+      <ol>
+        <li><b>Counters</b>: unique devices, engines running, and hits per minute.</li>
+        <li><b>Targets</b>: Flock cameras, drones, every Wi-Fi and BLE device (SCAN), and your watchlist (DETECT).</li>
+        <li><b>Radio</b>: Wi-Fi, BLE or both.</li>
+        <li><b>START</b>: starts a session. The app then asks which radio each board uses.</li>
+        <li><b>Engine cards</b>: turn one engine on or off by itself.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/05-home-running.png" alt="Home during a scan" />
+      <ol>
+        <li><b>Status</b>: what is scanning and how good the GPS fix is.</li>
+        <li><b>Counters</b>: update live.</li>
+        <li><b>PAUSE / STOP</b>: pause or end the session. A stopped session is saved.</li>
+        <li><b>Hit counts</b>: hits per engine this session, next to its switch.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Detections
+
+Everything the boards and the phone hear, live. Tap any row for its details.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
+      <ol>
+        <li><b>Tabs</b>: LIVE hits, classified DEVICES, stored HISTORY and ALERTS.</li>
+        <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open HISTORY, and more.</li>
+        <li><b>Top vendors and Flock</b>: tap a vendor to show only its devices.</li>
+        <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
+        <li><b>A detector hit</b>: here a camera, with its channel and hit count.</li>
+        <li><b>A Flock hit</b>: with its confidence.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
+      <ol>
+        <li><b>Type</b>: what kind of device this is.</li>
+        <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
+        <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
+        <li><b>Check this AP on WiGLE</b>: look the network up on WiGLE.</li>
+        <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches-and-alerts">Watches and alerts</a>.</li>
+        <li><b>Map, Copy, Delete</b>: show it on the map, copy its MAC address, or remove it.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Alerts and what to watch for
+
+Choose which device types alert you. Every alert lands in one list.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
+      <ol>
+        <li><b>An alert</b>: what was found, why, and when. Tap it for the map and the device.</li>
+        <li><b>Kind</b>: each kind has its own color.</li>
+        <li><b>Count and clear</b>: how many alerts, and a button to clear them.</li>
+        <li><b>Info</b>: explains each tab and icon.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/11-what-to-watch.png" alt="Settings, What to Watch For" />
+      <ol>
+        <li><b>Alert threshold</b>: how sure a detector hit must be before it notifies you.</li>
+        <li><b>A device type</b>: what it covers.</li>
+        <li><b>Bell</b>: notify, or only log it.</li>
+        <li><b>Switch</b>: watch for this type or not.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Map
+
+Every hit is placed where you heard it. The numbers are how many hits share a spot.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/09-map.png" alt="Map during a wardrive" />
+      <ol>
+        <li><b>Session</b>: time recording, and counts of Wi-Fi, Flock, drone, detector and BLE hits.</li>
+        <li><b>Layers</b>: map style and extra layers.</li>
+        <li><b>Show on map</b>: Flock, drone and detector hits.</li>
+        <li><b>Sources</b>: hits per radio, such as this phone or a board.</li>
+        <li><b>Lists</b>: Flock, drone and detector hits. Tap one to open it.</li>
+        <li><b>A cluster</b>: tap it to list the devices there.</li>
+        <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
+        <li><b>DEVICES</b>: the full list for this session.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Detector hits list on the map" />
+      <ol>
+        <li><b>Detector list</b>: tap the chip to open or close it.</li>
+        <li><b>Each hit</b>: its name, type, address and signal. Tap a row to zoom the map to it.</li>
+      </ol></td>
+  </tr>
+</table>
 
 ## Engines
 
@@ -99,16 +233,6 @@ DETECTIONS → HISTORY can filter by tier.
 - **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the board adds Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes to your wardrive. Tap **Start hub**, power on a Piglet, and tap **Pair** under **Nearby nodes**. The hub board leaves the mesh while it runs. The wardrive radio picker can leave out any paired node.
 
 ## App
-
-<div align="center">
-<table>
-  <tr>
-    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/settings.png" alt="Settings: App, Scanning, Detection and alerts, Node, Data, About" /><br><sub>Settings</sub></td>
-    <td align="center" width="33%"><img width="162" src="docs/screenshots/ui/detection-alerts.png" alt="Detection and alerts: per-type alert, log-only, or off" /><br><sub>Detection &amp; Alerts</sub></td>
-    <td align="center" width="34%"><img width="176" src="docs/screenshots/ui/map.png" alt="Map: a drone and its pilot, a Flock camera, and trackers" /><br><sub>Map</sub></td>
-  </tr>
-</table>
-</div>
 
 The app controls your boards, shows what they find, and can scan with the phone's own radios. It has four main screens.
 
@@ -238,17 +362,18 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 | ADS-B | 1090 MHz | Aircraft broadcasting their position and identity |
 | SCAN | 315, 433.92, or 915 MHz | The device types you pick from what the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire-pressure sensors |
 
-<div align="center">
 <table>
   <tr>
-    <td align="center" colspan="2"><img width="189" src="docs/screenshots/sdr/sdr-scan.png" alt="SCAN decoding weather, meter, security and remote devices" /><br><sub>SCAN decodes</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img width="180" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with photos" /><br><sub>ADS-B</sub></td>
-    <td align="center"><img width="162" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum with frequency labels" /><br><sub>Spectrum</sub></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR SCAN with decoded devices" /></td>
+    <td width="50%" valign="top">
+      <ol>
+        <li><b>Mode</b>: Spectrum, ADS-B or SCAN.</li>
+        <li><b>Bands</b>: pick 315, 433 or 915 MHz, or several to sweep them, then tap START.</li>
+        <li><b>Types</b>: tap a chip to turn that type on or off. Each chip counts what it found.</li>
+        <li><b>Decoded devices</b>: newest first. Tap one for its details and to foxhunt it.</li>
+      </ol></td>
   </tr>
 </table>
-</div>
 
 Tap the chips to pick which types SCAN decodes: **Weather, Meters, Security, Remotes, Home, TPMS**. All are on at first; turn off Meters to scan everything else. Each chip counts what it found.
 
