@@ -545,6 +545,7 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
 - **Read all** (SETTINGS → NODE → MESH → **Fleet control**) asks every node for its build, filter count, uptime and how many peers it hears. The answers show under each node in **Nodes**. **Read status** in a node's own dialog asks just that node. Nodes on older firmware do not answer.
+- **Watchlist results:** after the manager pushes the watchlist, each node answers whether it took it. The message after **Alert when a board hears it** says how many nodes did, such as "On 3 of 4 nodes; NODE2 refused (list too long for it)". Each node in **Nodes** shows its own result. A node refuses when its firmware has no detector, when the manager has turned its detector off, or when the list does not fit. Nodes on older firmware take the list without answering.
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 
 ## Optional GPS module

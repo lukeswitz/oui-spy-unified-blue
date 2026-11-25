@@ -1290,6 +1290,14 @@ void detectorSetFilters(const uint8_t* data, size_t len) {
                   detectorFilterCount(), uuidFilterCount, (unsigned)sigMask);
 }
 
+bool detectorHoldsAll(const uint8_t* data, size_t len) {
+    if (data == nullptr || len < 1) return false;
+    size_t off = 1 + (size_t)data[0] * 7;
+    if (off > len) return false;
+    int wantUuids = (off < len) ? data[off] : 0;
+    return filterCount == (int)data[0] && uuidFilterCount == wantUuids;
+}
+
 static const uint16_t DETECTOR_WIFI_SIGS = SIG_DEAUTH | SIG_PROBE | SIG_PWNAGOTCHI | SIG_AXON | SIG_CAMERA | SIG_BEACONFLOOD |
                                            SIG_WEARABLE | SIG_DRONE;
 

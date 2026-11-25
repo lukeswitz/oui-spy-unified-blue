@@ -121,6 +121,7 @@ static const uint8_t     kBroadcastDst[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
 static void sendAckPacket(const MeshCommandPacket* cmd);
 static void nodeStatusIfTargeted(const MeshCommandPacket* cmd);
+static void nodeSendFilterAck(uint8_t seq, const uint8_t* data, size_t n);
 static void sendOneSweep(const uint8_t* encrypted, size_t encLen);
 static bool sendOnRendezvous(const uint8_t* data, size_t len);
 static void retryTaskFn(void* arg);
@@ -418,6 +419,53 @@ size_t meshGetNodeDetails(MeshNodeDetail* out, size_t maxOut, uint32_t ttl_ms) {
     }
     xSemaphoreGive(detailMutex);
     return n;
+}
+
+#define MESH_PUSH_OPEN_MS 40000
+static uint8_t g_pushSeq = 0;
+static uint8_t g_pushMacs = 0, g_pushUuids = 0, g_pushExpected = 0;
+static uint32_t g_pushMs = 0;
+static bool g_pushOpen = false;
+static MeshFilterAck g_pushAcks[MESH_LIVE_NODES_MAX] = {};
+static uint8_t g_pushAckCount = 0;
+
+static uint8_t pushTrailerSeq(void) {
+    if (!g_pushOpen) return 0;
+    if ((millis() - g_pushMs) > MESH_PUSH_OPEN_MS) { g_pushOpen = false; return 0; }
+    return g_pushSeq;
+}
+
+static void storeFilterAck(const MeshFilterAckPacket* a) {
+    if (!detailMutex || xSemaphoreTake(detailMutex, pdMS_TO_TICKS(10)) != pdTRUE) return;
+    if (a->push_seq == g_pushSeq) {
+        int slot = -1;
+        for (int i = 0; i < g_pushAckCount; i++)
+            if (memcmp(g_pushAcks[i].id, a->source_node_id, MESH_NODE_ID_LEN) == 0) { slot = i; break; }
+        if (slot < 0 && g_pushAckCount < MESH_LIVE_NODES_MAX) slot = g_pushAckCount++;
+        if (slot >= 0) {
+            memcpy(g_pushAcks[slot].id, a->source_node_id, MESH_NODE_ID_LEN);
+            g_pushAcks[slot].status = a->status;
+            g_pushAcks[slot].macs = a->filter_macs;
+            g_pushAcks[slot].uuids = a->filter_uuids;
+        }
+        if (g_pushAckCount >= g_pushExpected) g_pushOpen = false;
+    }
+    xSemaphoreGive(detailMutex);
+}
+
+bool meshGetFilterPush(MeshFilterPush* out) {
+    if (!detailMutex || !out || xSemaphoreTake(detailMutex, pdMS_TO_TICKS(20)) != pdTRUE) return false;
+    bool have = g_pushSeq != 0;
+    if (have) {
+        out->seq = g_pushSeq;
+        out->macs = g_pushMacs;
+        out->uuids = g_pushUuids;
+        out->expected = g_pushExpected;
+        out->count = g_pushAckCount;
+        memcpy(out->acks, g_pushAcks, sizeof(out->acks));
+    }
+    xSemaphoreGive(detailMutex);
+    return have;
 }
 #endif
 
@@ -1023,10 +1071,12 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         if (memcmp(il.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
         uint8_t n = il.len;
         if (n > MESH_IGNORELIST_MAX) n = MESH_IGNORELIST_MAX;
+        const size_t trailAt = offsetof(MeshIgnoreListPacket, data) + n;
         size_t availIl = cp > offsetof(MeshIgnoreListPacket, data)
                            ? cp - offsetof(MeshIgnoreListPacket, data) : 0;
         if (n > availIl) n = (uint8_t)availIl;
         detectorSetFilters(il.data, n);
+        if (plainLen > trailAt) nodeSendFilterAck(plainBuf[trailAt], il.data, n);
         return;
     }
 
@@ -1135,6 +1185,15 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         Serial.printf("[MESH-NODESTAT] %.4s fw=0x%06X up=%us filt=%u+%u peers=%u\n",
             ns.source_node_id, (unsigned)ns.fw_version, (unsigned)ns.uptime_s,
             ns.filter_macs, ns.filter_uuids, ns.peer_count);
+        return;
+    }
+    if (plainLen == sizeof(MeshFilterAckPacket) && plainBuf[0] == MESH_PKT_FILTER_ACK) {
+        MeshFilterAckPacket fa; memcpy(&fa, plainBuf, sizeof(fa));
+        if (memcmp(fa.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        recordLiveSeen(fa.source_node_id);
+        storeFilterAck(&fa);
+        Serial.printf("[MESH-FILTER-ACK] %.4s seq=%u status=%u filt=%u+%u\n",
+            fa.source_node_id, fa.push_seq, fa.status, fa.filter_macs, fa.filter_uuids);
         return;
     }
 #endif
@@ -1824,10 +1883,41 @@ void meshBroadcastDetectorList(const uint8_t* data, size_t len) {
     pkt.len = (uint8_t)len;
     if (len) memcpy(pkt.data, data, len);
     size_t pktSize = offsetof(MeshIgnoreListPacket, data) + len;
+    uint8_t raw[sizeof(MeshIgnoreListPacket) + 1];
+    memcpy(raw, &pkt, pktSize);
+#ifdef OUISPY_ROLE_MANAGER
+    uint8_t seq = pushTrailerSeq();
+    if (seq) raw[pktSize++] = seq;
+#endif
     uint8_t enc[256]; size_t encLen = 0;
-    if (!encryptPacket((const uint8_t*)&pkt, pktSize, enc, &encLen)) return;
+    if (!encryptPacket(raw, pktSize, enc, &encLen)) return;
     enqueueTx(enc, encLen);
 }
+
+#ifdef OUISPY_ROLE_MANAGER
+void meshStartDetectorPush(const uint8_t* data, size_t len) {
+    if (!meshCurrentConfig.enabled || !data || len < 1) return;
+    MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+    size_t lc = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, 30000);
+    uint8_t expected = 0;
+    for (size_t i = 0; i < lc; i++) if (ln[i].role != MESH_ROLE_MANAGER) expected++;
+    size_t off = 1 + (size_t)data[0] * 7;
+    uint8_t uuids = (off < len) ? data[off] : 0;
+    if (detailMutex && xSemaphoreTake(detailMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        if (++g_pushSeq == 0) g_pushSeq = 1;
+        g_pushMacs = data[0];
+        g_pushUuids = uuids;
+        g_pushExpected = expected;
+        g_pushAckCount = 0;
+        g_pushMs = millis();
+        g_pushOpen = expected > 0;
+        xSemaphoreGive(detailMutex);
+    }
+    Serial.printf("[MESH-FILTER-PUSH] seq=%u filt=%u+%u expecting %u node(s)\n",
+        g_pushSeq, data[0], uuids, expected);
+    meshBroadcastDetectorList(data, len);
+}
+#endif
 
 void meshBroadcastIgnoreList(const uint8_t* data, size_t len) {
     if (!meshCurrentConfig.enabled) return;
@@ -2234,6 +2324,30 @@ static void nodeStatusIfTargeted(const MeshCommandPacket* cmd) {
         st.reply_seq, st.filter_macs, st.filter_uuids, st.peer_count);
 #else
     (void)cmd;
+#endif
+}
+
+static void nodeSendFilterAck(uint8_t seq, const uint8_t* data, size_t n) {
+#ifndef OUISPY_ROLE_MANAGER
+    if (seq == 0) return;
+    MeshFilterAckPacket a = {};
+    a.pkt_type = MESH_PKT_FILTER_ACK;
+    memcpy(a.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    a.push_seq = seq;
+    const uint8_t detBit = ENGINE_BITMASK(ENGINE_DETECTOR);
+    if (!(engineGetAvailableMask() & detBit)) a.status = MESH_FILTER_REFUSED_NO_ENGINE;
+    else if (engineGetDenyMask() & detBit) a.status = MESH_FILTER_REFUSED_DENIED;
+    else if (!detectorHoldsAll(data, n)) a.status = MESH_FILTER_REFUSED_FULL;
+    else a.status = MESH_FILTER_ACCEPTED;
+    a.filter_macs = (uint8_t)detectorFilterCount();
+    a.filter_uuids = (uint8_t)detectorUuidFilterCount();
+    uint8_t enc[96]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&a, sizeof(a), enc, &encLen)) return;
+    sendOnHomeRestore(enc, encLen);
+    Serial.printf("[MESH-FILTER-ACK-TX] seq=%u status=%u filt=%u+%u\n",
+        a.push_seq, a.status, a.filter_macs, a.filter_uuids);
+#else
+    (void)seq; (void)data; (void)n;
 #endif
 }
 

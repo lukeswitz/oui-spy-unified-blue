@@ -499,7 +499,22 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_NODE_INFO       = 0x13,
     MESH_PKT_DETECTION_BATCH_IE = 0x14,
     MESH_PKT_NODE_STATUS     = 0x15,
+    MESH_PKT_FILTER_ACK      = 0x16,
 };
+
+#define MESH_FILTER_ACCEPTED           0
+#define MESH_FILTER_REFUSED_NO_ENGINE  1
+#define MESH_FILTER_REFUSED_DENIED     2
+#define MESH_FILTER_REFUSED_FULL       3
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_FILTER_ACK (node -> manager, answers a detector-list push)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  push_seq;              // trailer byte of the DETECTORLIST packet being answered
+    uint8_t  status;                // MESH_FILTER_*
+    uint8_t  filter_macs;           // MAC/OUI filters the node holds after applying
+    uint8_t  filter_uuids;          // service-UUID filters the node holds after applying
+} MeshFilterAckPacket;
 
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;
@@ -545,6 +560,7 @@ typedef struct __attribute__((packed)) {
 } MeshDetectionBatchPacket;
 
 #define MESH_IGNORELIST_MAX 220
+// MESH_PKT_DETECTORLIST may carry one extra byte after data[len]: a nonzero push_seq asks nodes to answer with MeshFilterAckPacket.
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;
     char     source_node_id[MESH_NODE_ID_LEN];

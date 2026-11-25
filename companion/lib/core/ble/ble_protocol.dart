@@ -37,6 +37,12 @@ typedef MeshNodeDetail = ({
   int ageS,
 });
 
+/// One node's answer to a detector-list push: status 0 is accepted, anything else is refused.
+typedef MeshFilterResult = ({String id, int status, int filterMacs, int filterUuids});
+
+/// The manager's latest detector-list push and which nodes have answered it.
+typedef MeshFilterPush = ({int seq, int macs, int uuids, int expected, List<MeshFilterResult> results});
+
 typedef MeshStatusData = ({
   bool enabled,
   int peerCount,
@@ -46,6 +52,7 @@ typedef MeshStatusData = ({
   List<MeshLiveEntry> liveNodes,
   int? keyFailures,
   List<MeshNodeDetail> details,
+  MeshFilterPush? filterPush,
 });
 
 /// Binary encode/decode for GATT characteristic payloads.
@@ -452,6 +459,7 @@ class BleProtocol {
   ];
 
   static const meshTlvNodeDetail = 0x01;
+  static const meshTlvFilterPush = 0x02;
 
   static String _nodeIdFromBytes(Uint8List b, int off) =>
       (b[off].toRadixString(16).padLeft(2, '0') + b[off + 1].toRadixString(16).padLeft(2, '0')).toUpperCase();
@@ -467,10 +475,12 @@ class BleProtocol {
         liveNodes: const [],
         keyFailures: null,
         details: const [],
+        filterPush: null,
       );
     }
     int? keyFailures;
     var details = <MeshNodeDetail>[];
+    MeshFilterPush? filterPush;
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
     final live = <MeshLiveEntry>[];
@@ -504,6 +514,7 @@ class BleProtocol {
           if (pos + 2 + len > data.length) break;
           final body = pos + 2;
           if (type == meshTlvNodeDetail) details = _decodeNodeDetails(bytes, view, body, len);
+          if (type == meshTlvFilterPush) filterPush = _decodeFilterPush(bytes, body, len);
           pos = body + len;
         }
       }
@@ -517,7 +528,22 @@ class BleProtocol {
       liveNodes: live,
       keyFailures: keyFailures,
       details: details,
+      filterPush: filterPush,
     );
+  }
+
+  static MeshFilterPush? _decodeFilterPush(Uint8List b, int at, int len) {
+    const header = 5;
+    const entry = 5;
+    if (len < header) return null;
+    final n = b[at + 4];
+    final results = <MeshFilterResult>[];
+    for (var i = 0; i < n; i++) {
+      final o = at + header + i * entry;
+      if (o + entry > at + len) break;
+      results.add((id: _nodeIdFromBytes(b, o), status: b[o + 2], filterMacs: b[o + 3], filterUuids: b[o + 4]));
+    }
+    return (seq: b[at], macs: b[at + 1], uuids: b[at + 2], expected: b[at + 3], results: results);
   }
 
   static List<MeshNodeDetail> _decodeNodeDetails(Uint8List b, ByteData v, int at, int len) {

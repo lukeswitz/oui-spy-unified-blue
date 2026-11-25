@@ -76,6 +76,23 @@ struct MeshNodeDetail {
     uint8_t  peer_count;
 };
 size_t meshGetNodeDetails(MeshNodeDetail* out, size_t maxOut, uint32_t ttl_ms);
+
+struct MeshFilterAck {
+    char    id[MESH_NODE_ID_LEN];
+    uint8_t status;
+    uint8_t macs;
+    uint8_t uuids;
+};
+struct MeshFilterPush {
+    uint8_t seq;
+    uint8_t macs;
+    uint8_t uuids;
+    uint8_t expected;
+    uint8_t count;
+    MeshFilterAck acks[MESH_LIVE_NODES_MAX];
+};
+void meshStartDetectorPush(const uint8_t* data, size_t len);
+bool meshGetFilterPush(MeshFilterPush* out);
 #endif
 
 bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version);

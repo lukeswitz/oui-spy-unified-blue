@@ -545,6 +545,8 @@ void engineLoopAll(void) {
     if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
 
+uint8_t engineGetDenyMask(void) { return g_engineDenyMask; }
+
 void engineSetDenyMask(uint8_t mask) {
     if (mask == g_engineDenyMask) return;
     g_engineDenyMask = mask;

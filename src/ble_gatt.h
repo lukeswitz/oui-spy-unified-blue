@@ -74,6 +74,9 @@ int bleGattPortSelfTest(void);
 
 // Send mesh status notification
 void bleGattNotifyMeshStatus(void);
+#ifdef OUISPY_ROLE_MANAGER
+void bleGattMgrDetPushTick(void);
+#endif
 
 void bleGattNotifyPcapStats(void);
 void bleGattStreamPcapBytes(const uint8_t* buf, size_t len);

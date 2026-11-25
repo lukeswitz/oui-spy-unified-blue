@@ -1336,12 +1336,14 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       final board = appState.nodeBoard(id) ?? (isSelf ? ble.board : null);
       final temp = isSelf ? _selfTempC : appState.nodeTempC(id);
       final detail = online && !isSelf ? appState.nodeDetail(id) : null;
+      final filterResult = online && !isSelf ? appState.nodeFilterResult(id) : null;
       final parts = <String>[
         if (hasCustom) id,
         if (isSelf) 'this device',
         online ? 'LIVE' : 'offline',
         '$dets dets',
         if (detail != null) nodeDetailSummary(detail),
+        if (filterResult != null) nodeFilterResultText(filterResult),
       ];
       final t = AppTheme.of(context);
       return ConfigActionRow(

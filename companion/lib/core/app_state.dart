@@ -308,6 +308,42 @@ class AppState extends ChangeNotifier {
   String? nodeBoard(String id) => _nodeBoard[canonicalNodeId(id)];
   final Map<String, int> _nodeTempC = {};
   int? nodeTempC(String id) => _nodeTempC[canonicalNodeId(id)];
+  MeshFilterPush? _filterPush;
+  MeshFilterPush? get filterPush => _filterPush;
+  int get filterPushSeq => _filterPush?.seq ?? 0;
+
+  MeshFilterResult? nodeFilterResult(String id) {
+    final canon = canonicalNodeId(id);
+    for (final r in _filterPush?.results ?? const <MeshFilterResult>[]) {
+      if (canonicalNodeId(r.id) == canon) return r;
+    }
+    return null;
+  }
+
+  /// Completes with the first detector-list push newer than [afterSeq] once every expected node has
+  /// answered, or with whatever has answered when [timeout] passes; null if none arrived.
+  Future<MeshFilterPush?> waitForFilterPush(int afterSeq, {Duration timeout = const Duration(seconds: 10)}) {
+    final done = Completer<MeshFilterPush?>();
+    Timer? timer;
+    late void Function() check;
+    void finish(MeshFilterPush? v) {
+      if (done.isCompleted) return;
+      removeListener(check);
+      timer?.cancel();
+      done.complete(v);
+    }
+
+    MeshFilterPush? newer() => _filterPush != null && _filterPush!.seq != afterSeq ? _filterPush : null;
+    check = () {
+      final p = newer();
+      if (p != null && p.results.length >= p.expected) finish(p);
+    };
+    addListener(check);
+    timer = Timer(timeout, () => finish(newer()));
+    check();
+    return done.future;
+  }
+
   final Map<String, ({MeshNodeDetail detail, int readAtMs})> _nodeDetail = {};
 
   /// The node's last status answer, with its uptime and age brought up to now; null before a read.
@@ -573,6 +609,10 @@ class AppState extends ChangeNotifier {
         engineStates = List.filled(Engine.values.length, EngineState.disabled);
         sessionStartTime = null;
       }
+      if (state == NodeConnectionState.disconnected) {
+        _filterPush = null;
+        _nodeDetail.clear();
+      }
       notifyListeners();
     }));
 
@@ -668,6 +708,7 @@ class AppState extends ChangeNotifier {
         final tempC = entry.tempC;
         if (tempC != null) _nodeTempC[canon] = tempC;
       }
+      if (data.filterPush != null) _filterPush = data.filterPush;
       for (final d in data.details) {
         final canon = canonicalNodeId(d.id);
         if (canon.isEmpty) continue;

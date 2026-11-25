@@ -65,6 +65,7 @@ static void heartbeatTask(void*) {
         bleGattSecurityTick();
         detSpoolFlushIfDirty();
         bleGattSpoolFlushPump();
+        bleGattMgrDetPushTick();
         if (meshIsEnabled() && meshConsumeNewNodeJoined()) {
             uint8_t ib[256];
             size_t in = ignoreListSerialize(ib, sizeof(ib));

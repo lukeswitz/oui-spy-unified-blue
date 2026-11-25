@@ -54,6 +54,7 @@ void nodeCtlApply(uint8_t command, const uint8_t* payload, uint8_t len);
 void engineApplyWifiBand(uint8_t mask);
 
 void engineSetDenyMask(uint8_t mask);
+uint8_t engineGetDenyMask(void);
 void engineStateConfigApply(const uint8_t* data, uint8_t len);
 
 void engineSetAutoPcap(bool enabled);

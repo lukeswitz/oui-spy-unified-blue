@@ -4,11 +4,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/db/app_database.dart' show databaseProvider;
 import 'package:oui_spy/core/db/detection_mapper.dart';
 import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/core/export/device_export.dart';
 import 'package:oui_spy/core/export/kmz.dart';
+import 'package:oui_spy/core/mesh_node_info.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -117,15 +119,28 @@ Future<void> flagDeviceAsDetection(BuildContext context, WidgetRef ref, String m
     description: label.length > 31 ? label.substring(0, 31) : label,
   );
   final list = ref.read(watchlistProvider);
+  final app = ref.read(appStateProvider);
+  final prevSeq = app.filterPushSeq;
+  final self = AppState.canonicalNodeId(app.nodeId);
+  final track = app.isManagerConnected && app.liveKnownNodes.any((n) => n != self && !app.isManagerNode(n));
   await list.add(entry);
   if (!context.mounted) return;
   final random = int.parse(key.substring(0, 2), radix: 16) & 0x02 != 0;
-  ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final undo = SnackBarAction(label: 'UNDO', onPressed: () => list.remove(entry));
+  messenger?.showSnackBar(SnackBar(
     content: Text(random
         ? 'Watching $key on the board and its mesh nodes. This address is random, so the device may change it'
         : 'Watching $key on the board and its mesh nodes'),
-    action: SnackBarAction(label: 'UNDO', onPressed: () => list.remove(entry)),
+    action: undo,
   ));
+  if (!track) return;
+  final push = await app.waitForFilterPush(prevSeq);
+  if (!context.mounted) return;
+  final summary = push == null ? 'No node has confirmed the update yet' : filterPushSummary(push, app.labelForNode);
+  if (summary == null) return;
+  messenger?.hideCurrentSnackBar();
+  messenger?.showSnackBar(SnackBar(content: Text('Watchlist update: $summary'), action: undo));
 }
 
 Future<void> showDeviceExport(BuildContext context, WidgetRef ref, String mac) async {

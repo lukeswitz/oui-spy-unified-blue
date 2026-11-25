@@ -105,6 +105,16 @@ static volatile uint8_t  mgrAutoPcapEnabled = 0;
 static volatile uint16_t mgrAutoPcapDurationSec = 10;
 static volatile uint16_t mgrAutoPcapCooldownSec = 0;
 static void mgrAutoPcapSyncToNodes(void);
+static volatile bool     mgrDetPushPending = false;
+static volatile uint32_t mgrDetPushDueMs = 0;
+
+void bleGattMgrDetPushTick(void) {
+    if (!mgrDetPushPending || (int32_t)(millis() - mgrDetPushDueMs) < 0) return;
+    mgrDetPushPending = false;
+    uint8_t db[256];
+    size_t dn = detectorSerialize(db, sizeof(db));
+    meshStartDetectorPush(db, dn);
+}
 
 static void mgrAutoPcapSave(void) {
     Preferences p;
@@ -1849,6 +1859,8 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
             uint8_t db[256];
             size_t dn = detectorSerialize(db, sizeof(db));
             meshBroadcastDetectorList(db, dn);
+            mgrDetPushDueMs = millis() + 800;
+            mgrDetPushPending = true;
         }
 #endif
     }
@@ -3389,6 +3401,39 @@ static size_t meshAppendNodeDetail(uint8_t* buf, size_t off, size_t limit) {
     buf[start + 1] = (uint8_t)(off - start - 2);
     return off;
 }
+
+#define MESH_TLV_FILTER_PUSH 0x02
+#define MESH_TLV_PUSH_HEADER 5
+#define MESH_TLV_PUSH_ENTRY 5
+
+static size_t meshAppendFilterPush(uint8_t* buf, size_t off, size_t limit) {
+    MeshFilterPush p;
+    if (!meshGetFilterPush(&p)) return off;
+    size_t start = off;
+    if (off + 2 + MESH_TLV_PUSH_HEADER > limit) return off;
+    buf[off] = MESH_TLV_FILTER_PUSH;
+    off += 2;
+    buf[off++] = p.seq;
+    buf[off++] = p.macs;
+    buf[off++] = p.uuids;
+    buf[off++] = p.expected;
+    size_t cntAt = off++;
+    uint8_t cnt = 0;
+    for (uint8_t i = 0; i < p.count; i++) {
+        if (off + MESH_TLV_PUSH_ENTRY > limit) break;
+        uint8_t b[2];
+        if (!meshIdToBytes(p.acks[i].id, b)) continue;
+        buf[off++] = b[0];
+        buf[off++] = b[1];
+        buf[off++] = p.acks[i].status;
+        buf[off++] = p.acks[i].macs;
+        buf[off++] = p.acks[i].uuids;
+        cnt++;
+    }
+    buf[cntAt] = cnt;
+    buf[start + 1] = (uint8_t)(off - start - 2);
+    return off;
+}
 #endif
 
 void bleGattNotifyMeshStatus(void) {
@@ -3420,6 +3465,7 @@ void bleGattNotifyMeshStatus(void) {
 #ifdef OUISPY_ROLE_MANAGER
     {
         size_t lim = meshStatusLimit(sizeof(buf));
+        if (off < lim) off = meshAppendFilterPush(buf, off, lim);
         if (off < lim) off = meshAppendNodeDetail(buf, off, lim);
     }
 #endif
