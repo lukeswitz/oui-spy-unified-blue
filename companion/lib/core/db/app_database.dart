@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/db/sqlite_guard.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/db/tables.dart';
+import 'package:oui_spy/core/metrics/fleet_metrics.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -541,6 +542,54 @@ class AppDatabase extends _$AppDatabase {
           seenBefore: r.read<int>('seen') != 0,
         ),
     ];
+  }
+
+  static const int metricRowCap = 200000;
+
+  Future<List<MetricRow>> metricRows(int fromMs, int toMs, {String? node}) async {
+    await _ensureDetectionExtTable();
+    final rows = await customSelect(
+      'SELECT d.mac_address AS mac, d.engine AS engine, d.detection_method AS method, d.rssi AS rssi, '
+      'd.channel AS channel, d.app_timestamp AS at, '
+      "COALESCE(json_extract(e.data, '\$.sourceNodeId'), '') AS node "
+      'FROM detections d LEFT JOIN detection_ext e ON e.detection_id = d.id '
+      'WHERE d.app_timestamp >= ? AND d.app_timestamp <= ? '
+      "${node == null ? '' : "AND COALESCE(json_extract(e.data, '\$.sourceNodeId'), '') = ? "}"
+      'ORDER BY d.app_timestamp DESC LIMIT $metricRowCap',
+      variables: [Variable.withInt(fromMs), Variable.withInt(toMs), if (node != null) Variable.withString(node)],
+    ).get();
+    return [
+      for (final r in rows)
+        MetricRow(
+          mac: r.read<String>('mac'),
+          engine: r.read<String>('engine'),
+          method: r.read<String>('method'),
+          rssi: r.read<int>('rssi'),
+          channel: r.read<int>('channel'),
+          atMs: r.read<int>('at'),
+          node: r.read<String>('node'),
+        ),
+    ];
+  }
+
+  Future<int> metricCount(int fromMs, int toMs, {String? node}) async {
+    await _ensureDetectionExtTable();
+    final r = await customSelect(
+      'SELECT COUNT(*) AS n FROM detections d LEFT JOIN detection_ext e ON e.detection_id = d.id '
+      'WHERE d.app_timestamp >= ? AND d.app_timestamp < ? '
+      "${node == null ? '' : "AND COALESCE(json_extract(e.data, '\$.sourceNodeId'), '') = ?"}",
+      variables: [Variable.withInt(fromMs), Variable.withInt(toMs), if (node != null) Variable.withString(node)],
+    ).getSingle();
+    return r.read<int>('n');
+  }
+
+  Future<List<String>> metricNodes() async {
+    await _ensureDetectionExtTable();
+    final rows = await customSelect(
+      "SELECT DISTINCT json_extract(data, '\$.sourceNodeId') AS node FROM detection_ext "
+      "WHERE json_extract(data, '\$.sourceNodeId') IS NOT NULL",
+    ).get();
+    return [for (final r in rows) if ((r.readNullable<String>('node') ?? '').isNotEmpty) r.read<String>('node')]..sort();
   }
 
   Future<({int aps, int placed, int lastMs})> wardriveSsidSummary(String ssid) async {

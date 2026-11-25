@@ -1319,6 +1319,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               onTap: fleetCap.enabled ? () => context.push('/mesh/firmware') : null,
             ),
             ConfigActionRow(
+              icon: Icons.insights,
+              label: 'Fleet metrics',
+              subtitle: 'Counters, detections over time, by node, vendor and type',
+              onTap: fleetCap.enabled ? () => context.push('/mesh/metrics') : null,
+            ),
+            ConfigActionRow(
               icon: Icons.restart_alt,
               label: 'Reboot all nodes',
               subtitle: 'Every node restarts and rejoins. The manager stays up',
