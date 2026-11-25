@@ -228,11 +228,22 @@ static WardriveDedup& wardriveDedupRef(void) {
     }
     return *wardriveDedupPtr;
 }
+typedef DedupRingISR<WD_DEDUP_SLOTS, 2000> WardriveWifiDedup;
+static WardriveWifiDedup* wifiDedupPtr = nullptr;
+static WardriveWifiDedup& wifiDedupRef(void) {
+    if (!wifiDedupPtr) {
+        void* mem = heap_caps_malloc(sizeof(WardriveWifiDedup), MALLOC_CAP_SPIRAM);
+        if (!mem) mem = heap_caps_malloc(sizeof(WardriveWifiDedup), MALLOC_CAP_8BIT);
+        wifiDedupPtr = new (mem) WardriveWifiDedup();
+    }
+    return *wifiDedupPtr;
+}
 #else
 static DedupRing<WD_DEDUP_SLOTS, 5000> wardriveDedupStatic;
 static inline DedupRing<WD_DEDUP_SLOTS, 5000>& wardriveDedupRef(void) { return wardriveDedupStatic; }
+static DedupRingISR<WD_DEDUP_SLOTS, 2000> wifiDedupStatic;
+static inline DedupRingISR<WD_DEDUP_SLOTS, 2000>& wifiDedupRef(void) { return wifiDedupStatic; }
 #endif
-static DedupRingISR<WD_DEDUP_SLOTS, 2000> wifiDedup;
 static DedupRingISR<64, 5000> isrFlockWifiDedup;
 static DedupRingISR<64, 5000> isrClientDedup;
 
@@ -474,7 +485,7 @@ static void WD_WIFI_CB_ATTR wardriveWifiCb(void* buf, wifi_promiscuous_pkt_type_
 
         const bool named = ssid[0] != '\0';
         if (!(named && hiddenTake(addr3))) {
-            if (wifiDedup.check(addr3)) return;
+            if (wifiDedupRef().check(addr3)) return;
             if (!named) hiddenNote(addr3);
         }
         wifiLastNetMs = millis();
@@ -727,7 +738,7 @@ static void zbSlotAbort(void) {
 
 static void wardriveInit(void) {
     wardriveDedupRef().reset();
-    wifiDedup.reset();
+    wifiDedupRef().reset();
     isrFlockWifiDedup.reset();
     isrClientDedup.reset();
     flockMatchInit();
@@ -741,7 +752,7 @@ static void wardriveStart(void) {
     wdSilentSweeps = 0;
     wdRadioCycled = false;
     wardriveDedupRef().reset();
-    wifiDedup.reset();
+    wifiDedupRef().reset();
     isrFlockWifiDedup.reset();
     isrClientDedup.reset();
     hiddenCount = 0;
@@ -749,7 +760,7 @@ static void wardriveStart(void) {
     meshResetTxDedup();
     uint32_t relog = engineGetRediscoverMs();
     wardriveDedupRef().setCooldownMs(relog);
-    wifiDedup.setCooldownMs(relog);
+    wifiDedupRef().setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
     isrClientDedup.setCooldownMs(relog);
     wdFlockBleActive = (engineGetState(ENGINE_FLOCK_BLE) != ESTATE_DISABLED) ? 1 : 0;
@@ -1084,7 +1095,7 @@ void wardriveSetRadioMask(uint8_t mask) {
 static void wardriveApplyPrefs(void) {
     uint32_t relog = engineGetRediscoverMs();
     wardriveDedupRef().setCooldownMs(relog);
-    wifiDedup.setCooldownMs(relog);
+    wifiDedupRef().setCooldownMs(relog);
     isrFlockWifiDedup.setCooldownMs(relog);
     isrClientDedup.setCooldownMs(relog);
 #ifdef OUISPY_DUAL_BAND
