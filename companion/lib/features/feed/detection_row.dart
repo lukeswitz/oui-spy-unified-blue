@@ -26,6 +26,7 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/device_notes.dart';
+import 'package:oui_spy/features/feed/device_mute_button.dart';
 import 'package:oui_spy/features/feed/device_notes_sheet.dart';
 import 'package:oui_spy/core/wigle/wigle_api.dart';
 import 'package:oui_spy/core/wigle/wigle_provider.dart';
@@ -625,6 +626,7 @@ void showDetectionDetails(
                         t: t,
                         manufacturer: vendor,
                         nodeLabel: nodeLabel),
+                    DeviceMuteButton(mac: detection.macAddress),
                     if (detection.odid?.uavId != null &&
                         detection.odid!.uavId!.isNotEmpty)
                       _FaaLookupTile(

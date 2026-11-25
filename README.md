@@ -233,8 +233,7 @@ Every session is saved. Open one to replay it on the map, or open its report.
 - **Remove an old node:** in the same **Nodes** list, tap a node you no longer use and tap **FORGET**. The board you are connected to cannot be forgotten there.
 - **Forget a paired board:** hold it on the Connect screen.
 - **Too many notifications:** when alerts pile up within a minute, the app offers to turn off notifications for one noisy type. Its detections are still logged.
-- **Filter by maker:** on LIVE, tap a vendor in the strip above the list to show only its devices.
-- **Hide addresses for screenshots:** turn on **Mask identifiers on screen** in SETTINGS → Detection & Alerts → Privacy.
+- **Filter by maker:** on LIVE, tap a vendor in the strip above the list to show only its devices.- **Hide addresses for screenshots:** turn on **Mask identifiers on screen** in SETTINGS → Detection & Alerts → Privacy.
 - **What does this icon mean:** tap the info button on a screen. It explains each tab and icon there.
 
 ## Engines
@@ -349,7 +348,13 @@ These features add their own alerts and set how alerts sound.
 - **Movement alerts** (Detection & Alerts → What to Watch For, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
 - **Watchlist** imports and exports as CSV or JSON in SETTINGS → Detection & Alerts → Your Lists.
 - **Alert when a board hears it** (tap a Bluetooth device in the feed) adds its exact MAC to the watchlist. The connected board, and through a manager every mesh node, then reports it as a detection. **UNDO** in the message takes it back off. A device with a random address may change it.
-- **Alert sounds** plays a built-in melody or one you compose for each alert type. You can preview it on the board.
+- **Alert sounds** plays a built-in melody or one you compose for each alert type. You can preview it on the board. **Sound on this phone** in the same screen turns the phone's sound on or off for filter hits, trackers, watched devices, drones, node down and node back.
+- **Alert again** (SETTINGS → Detection & Alerts → Notifications → **Repeat for a device**): a device alerts the first time, and again once it has gone 60 seconds unheard. The slider changes that time.
+- **Node down and node back:** a mesh node missing for 45 seconds alerts as **Node down**. It alerts as **Node back** when it returns. The same alert is not repeated within 30 seconds.
+- **Silence all** (ALERTS, or **Silence everything** under Notifications) stops every sound, buzz and notification until you switch it off or the app restarts. Alerts are still logged.
+- **Mute alerts for this device** (the device's sheet) stops notifications for one device. It is still logged.
+- **Watched device:** a device on your watchlist by exact MAC alerts with its watchlist label as the notification text and its own sound, even when muted.
+- **Dismiss all** (ALERTS) marks every alert read. Unread alerts are lit, and counted above LIVE.
 
 ### Map layers and geofences
 

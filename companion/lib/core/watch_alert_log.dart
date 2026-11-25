@@ -5,19 +5,38 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/capture_recorder.dart';
+import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 
 class AlertsFeed extends ChangeNotifier {
-  AlertsFeed(this._db) {
+  AlertsFeed(this._db, {SharedPreferences? prefs})
+      : _prefs = prefs,
+        readAtMs = prefs?.getInt(_kReadAt) ?? DateTime.now().millisecondsSinceEpoch {
+    if (prefs != null && !prefs.containsKey(_kReadAt)) prefs.setInt(_kReadAt, readAtMs);
     reload();
   }
 
+  static const _kReadAt = 'alertsReadAtMs';
+
   final AppDatabase _db;
+  final SharedPreferences? _prefs;
+  int readAtMs;
   List<Map<String, dynamic>> rows = const [];
+
+  bool isUnread(Map<String, dynamic> row) => (row['appTimestamp'] as int) > readAtMs;
+
+  int get unread => rows.where(isUnread).length;
+
+  Future<void> markAllRead() async {
+    readAtMs = DateTime.now().millisecondsSinceEpoch;
+    notifyListeners();
+    await _prefs?.setInt(_kReadAt, readAtMs);
+  }
   bool loading = true;
   Timer? _debounce;
   bool _disposed = false;
@@ -43,7 +62,8 @@ class AlertsFeed extends ChangeNotifier {
   }
 }
 
-final alertsFeedProvider = ChangeNotifierProvider<AlertsFeed>((ref) => AlertsFeed(ref.read(databaseProvider)));
+final alertsFeedProvider = ChangeNotifierProvider<AlertsFeed>(
+    (ref) => AlertsFeed(ref.read(databaseProvider), prefs: ref.read(sharedPreferencesProvider)));
 
 typedef WatchAlertLog = void Function({
   required String kind,

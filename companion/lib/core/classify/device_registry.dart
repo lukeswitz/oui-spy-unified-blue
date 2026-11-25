@@ -25,6 +25,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
+import 'package:oui_spy/core/notifications/alert_gate.dart';
 import 'package:oui_spy/core/notifications/class_alerts.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/classify/bt_sig_registry.dart';
@@ -799,7 +800,9 @@ class ClassifiedDevice {
   final String? vendor;
   final String? baseVendor;
   final Guess? kin;
-  ClassifiedDevice(this.obs, this.signatures, this.sources, {this.vendor, this.baseVendor, this.kin});
+  final int? prevSeenMs;
+  ClassifiedDevice(this.obs, this.signatures, this.sources,
+      {this.vendor, this.baseVendor, this.kin, this.prevSeenMs});
 
   List<String> get signatureNames => [for (final s in signatures) s.name];
   late final Guess ownGuess = DeviceExplain.guess(obs, signatureNames, vendor: vendor, baseVendor: baseVendor);
@@ -905,6 +908,7 @@ class DeviceRegistry extends ChangeNotifier {
   final beaconFlood = BeaconFlood();
   final kinIndex = KinIndex();
   final _smartTagKeys = <String, String>{};
+  int Function() rearmGapMs = () => alertRearmSeconds * 1000;
   final _path = <GpsSample>[];
   Timer? _tick;
   bool _dirty = false;
@@ -985,9 +989,11 @@ class DeviceRegistry extends ChangeNotifier {
       {...?prev?.sources, if (source.isNotEmpty) source},
       vendor: prev?.vendor ?? (merged.mac.isEmpty ? null : vendorOf?.call(merged.mac)),
       baseVendor: prev?.baseVendor ?? _baseVendor(merged),
+      prevSeenMs: prev?.obs.lastSeenMs,
     ));
     _devices[o.key] = dev;
     if (prev == null ||
+        now - prev.obs.lastSeenMs > rearmGapMs() ||
         prev.signatures.length != sigs.length ||
         prev.obs.mfgRecords.length != merged.mfgRecords.length ||
         prev.obs.serviceUuids.length != merged.serviceUuids.length ||
@@ -1034,7 +1040,7 @@ class DeviceRegistry extends ChangeNotifier {
     return kin == null
         ? base
         : ClassifiedDevice(o, base.signatures, base.sources,
-            vendor: base.vendor, baseVendor: base.baseVendor, kin: kin);
+            vendor: base.vendor, baseVendor: base.baseVendor, kin: kin, prevSeenMs: base.prevSeenMs);
   }
 
   String? _baseVendor(Observation o) {
@@ -1169,8 +1175,8 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
   final gpsFix = ref.read(gpsProvider);
   final ignore = ref.read(ignoreListProvider);
   final geofence = ref.read(geofenceFilterProvider);
-  final lastLogged = <String, int>{};
   final reg = DeviceRegistry(vendorOf: oui.lookup)
+    ..rearmGapMs = (() => notif.cooldownSeconds * 1000)
     ..onClassified = (d) {
       final trail = d.obs.gpsTrail;
       final pos = gpsFix.lastPosition;
@@ -1181,16 +1187,12 @@ final deviceRegistryProvider = ChangeNotifierProvider<DeviceRegistry>((ref) {
           )) {
         return;
       }
-      notif.onClassified(d);
+      if (!notif.onClassified(d, prevSeenMs: d.prevSeenMs)) return;
       final alert = classAlertOf(d, notif.classAlerts, flock: notif.flockEnabled);
       if (alert == null) return;
       final mac = d.obs.mac.isNotEmpty ? d.obs.mac.toUpperCase() : d.obs.key;
-      final key = '$mac|${alert.kind}';
       final now = DateTime.now().millisecondsSinceEpoch;
-      final prev = lastLogged[key];
-      if (prev != null && now - prev < notif.cooldownSeconds * 1000) return;
-      lastLogged[key] = now;
-      final (title, reason, _) = NotificationService.classNotificationText(d, alert);
+      final (title, reason, _)= NotificationService.classNotificationText(d, alert);
       db.insertClassAlert(
         macAddress: mac,
         deviceName: d.obs.name,

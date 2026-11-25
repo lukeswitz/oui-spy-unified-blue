@@ -28,6 +28,7 @@ import 'package:oui_spy/core/trusted_networks.dart';
 import 'package:oui_spy/features/devices/suggestions_sheet.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/wardrive/session_launch.dart';
+import 'package:oui_spy/features/feed/device_mute_button.dart';
 import 'package:oui_spy/features/feed/device_notes_sheet.dart';
 import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
@@ -1336,6 +1337,7 @@ class DeviceDetailSheet extends ConsumerWidget {
                   ),
                 ),
                 if (o.mac.isNotEmpty) ...[
+                  DeviceMuteButton(mac: o.mac, rowStyle: true),
                   const SizedBox(height: 10),
                   OutlinedButton(
                     onPressed: () => showDeviceNotesEditor(context, ref, o.mac),

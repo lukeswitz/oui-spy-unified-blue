@@ -17,6 +17,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/node_watch.dart';
 import 'package:oui_spy/core/atak/atak_connector.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
@@ -371,6 +372,11 @@ class AppState extends ChangeNotifier {
         for (final id in _meshLiveNodeIds)
           if (!_meshManagerNodeIds.contains(id)) _nodeBoard[id] ?? '',
       };
+  late final NodeWatch _nodeWatch = NodeWatch(
+    onDown: (id) => _notificationService.onNodeDown(labelForNode(id)),
+    onUp: (id) => _notificationService.onNodeUp(labelForNode(id)),
+  );
+  Set<String> get meshLiveNodes => Set.unmodifiable(_meshLiveNodeIds);
   final Set<String> _meshLiveNodeIds = {};
   final Set<String> _meshManagerNodeIds = {};
   bool isManagerNode(String id) =>
@@ -608,6 +614,7 @@ class AppState extends ChangeNotifier {
       }
       if (state == NodeConnectionState.disconnected ||
           state == NodeConnectionState.reconnecting) {
+        _nodeWatch.reset();
         // Reset engine UI to all-disabled — firmware state unknown until next read
         activeEngines = 0;
         engineStates = List.filled(Engine.values.length, EngineState.disabled);
@@ -646,17 +653,14 @@ class AppState extends ChangeNotifier {
       if (_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
         return;
       }
-      final isNewMac = _recordUniqueMac(det.engine, det.macAddress);
+      _recordUniqueMac(det.engine, det.macAddress);
       lastDetectionTime[det.engine] = DateTime.now();
       (_recentSeen[det.engine] ??= {})[det.macAddress] = DateTime.now();
       _upsertDetection(det);
       _recordDroneTrack(det);
       onAccepted?.call(det);
 
-      if (isNewMac &&
-          !_geofenceFilter.isExcludedNullable(det.latitude, det.longitude)) {
-        _notificationService.onDetection(det);
-      }
+      _notificationService.onDetection(det);
 
       _scheduleNotify();
     }));
@@ -728,6 +732,7 @@ class AppState extends ChangeNotifier {
       _meshLiveNodeIds
         ..clear()
         ..addAll(live);
+      _nodeWatch.update(live);
       _meshManagerNodeIds
         ..clear()
         ..addAll(managers);
@@ -1027,6 +1032,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _nodeWatch.reset();
     _notifyTimer?.cancel();
     for (final sub in _subs) {
       sub.cancel();

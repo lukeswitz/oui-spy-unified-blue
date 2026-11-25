@@ -12,10 +12,12 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/classify/device_explain.dart' show Confidence;
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/notifications/alert_gate.dart';
 import 'package:oui_spy/core/notifications/class_alerts.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/features/feed/detection_row.dart' show detectorTitle, methodLabel;
@@ -31,6 +33,8 @@ class NotifChannel {
   static const foxhunt = 'foxhunt_alerts';
   static const wardrive = 'wardrive_status';
   static const liveStatus = 'live_status';
+  static const nodes = 'node_alerts';
+  static const quiet = 'alerts_quiet';
 }
 
 class NotificationService extends ChangeNotifier {
@@ -61,8 +65,9 @@ class NotificationService extends ChangeNotifier {
   final _sent = <(DateTime, String)>[];
   DateTime? _noisyAskedAt;
   ({String key, int count, int total})? noisyPrompt;
-  final _classAlerted = <String, DateTime>{};
-  final _macAlerted = <String, DateTime>{};
+  final gate = AlertGate();
+  String? Function(String mac)? watchLabelOf;
+  final Map<AlertSfx, bool> _sfxOn = {for (final s in AlertSfx.values) s: true};
   final _classPending = <String, ClassifiedDevice>{};
   Timer? _classRetry;
 
@@ -73,12 +78,42 @@ class NotificationService extends ChangeNotifier {
       _classRetry = null;
       final pending = _classPending.values.toList();
       _classPending.clear();
-      pending.forEach(onClassified);
+      for (final d in pending) {
+        final alert = classAlertOf(d, classAlerts, flock: flockEnabled);
+        if (alert != null) _notifyClassified(d, alert, _classKey(d));
+      }
     });
   }
 
-  // Cooldown per MAC to avoid repeat alerts (seconds)
-  int cooldownSeconds = 300; // 5 minutes
+  int get cooldownSeconds => gate.gap.inSeconds;
+  set cooldownSeconds(int v) => gate.gap = Duration(seconds: v);
+
+  bool get silenced => gate.silenced;
+
+  void setSilenced(bool v) {
+    gate.silenced = v;
+    notifyListeners();
+  }
+
+  bool sfxOn(AlertSfx s) => _sfxOn[s] ?? true;
+
+  void setSfxOn(AlertSfx s, bool on) {
+    _sfxOn[s] = on;
+    notifyListeners();
+    _savePrefs();
+  }
+
+  bool isDeviceMuted(String mac) => gate.isDeviceMuted(mac);
+
+  void setDeviceMuted(String mac, bool muted) {
+    final key = AlertGate.keyOf(mac);
+    if (key.isEmpty) return;
+    muted ? gate.mutedDevices.add(key) : gate.mutedDevices.remove(key);
+    notifyListeners();
+    _savePrefs();
+  }
+
+  static String _classKey(ClassifiedDevice d) => d.obs.mac.isNotEmpty ? AlertGate.keyOf(d.obs.mac) : d.obs.key;
 
   // Throttle: max notifications per minute across all engines
   int maxPerMinute = 10;
@@ -91,8 +126,6 @@ class NotificationService extends ChangeNotifier {
   bool milestoneAlertsEnabled = true;
   int _lastMilestone = 0;
 
-  // Cooldown tracking: mac+engine → last notification time
-  final Map<String, DateTime> _cooldownMap = {};
   DateTime? _lastFoxhuntNotif;
 
   // Rate limiter: timestamps of recent notifications
@@ -214,6 +247,19 @@ class NotificationService extends ChangeNotifier {
         importance: Importance.high,
       ),
       AndroidNotificationChannel(
+        NotifChannel.nodes,
+        'Mesh Node Alerts',
+        description: 'A mesh node dropped off or came back',
+        importance: Importance.high,
+      ),
+      AndroidNotificationChannel(
+        NotifChannel.quiet,
+        'Alerts without sound',
+        description: 'Alerts while their sound is off',
+        importance: Importance.defaultImportance,
+        playSound: false,
+      ),
+      AndroidNotificationChannel(
         NotifChannel.foxhunt,
         'Foxhunt Proximity',
         description: 'Proximity alerts during foxhunt tracking',
@@ -249,42 +295,44 @@ class NotificationService extends ChangeNotifier {
     if (!enabled) return;
     if (det.engine == Engine.detector && detectorMethodClass.containsKey(det.method)) return;
     if (det.engine == Engine.detector && belowConfidence(det.detector?.confidence ?? 0)) return;
-    if (mutedAlerts.contains(muteKeyOf(det))) return;
-
+    final key = AlertGate.keyOf(det.macAddress);
+    if (key.isEmpty) return;
+    final label = watchLabelOf?.call(det.macAddress);
+    final verdict = gate.check(key, DateTime.now().millisecondsSinceEpoch,
+        watchLabel: label, kindMuted: mutedAlerts.contains(muteKeyOf(det)));
+    if (verdict != AlertVerdict.fire) return;
     if (_isRateLimited()) return;
-    if (_isCoolingDown(det.macAddress, det.engine)) return;
-    if (_macRecentlyAlerted(det.macAddress)) return;
-
-    _recordCooldown(det.macAddress, det.engine);
-    _markMacAlerted(det.macAddress);
     _recordRateLimit();
 
-    _fireDetectionNotification(det);
+    _fireDetectionNotification(det, watchLabel: label);
   }
 
-  void onClassified(ClassifiedDevice d) {
-    if (!_initialized || !_permissionGranted) return;
+  /// True when this sighting is the first of the device or follows a gap of more than the re-arm time.
+  bool onClassified(ClassifiedDevice d, {int? prevSeenMs}) {
     final alert = classAlertOf(d, classAlerts, flock: flockEnabled);
-    if (alert == null || mutedAlerts.contains(alert.kind)) return;
-    if (d.obs.detectorMethod != null && mutedAlerts.contains('det:${d.obs.detectorMethod}')) return;
+    if (alert == null) return false;
+    final key = _classKey(d);
+    if (!gate.due(key, d.obs.lastSeenMs > 0 ? d.obs.lastSeenMs : DateTime.now().millisecondsSinceEpoch,
+        lastSeenMs: prevSeenMs)) {
+      return false;
+    }
+    _notifyClassified(d, alert, key);
+    return true;
+  }
+
+  void _notifyClassified(ClassifiedDevice d, ClassAlert alert, String key) {
+    if (!_initialized || !_permissionGranted) return;
+    final label = d.obs.mac.isEmpty ? null : watchLabelOf?.call(d.obs.mac);
+    final kindMuted = mutedAlerts.contains(alert.kind) ||
+        (d.obs.detectorMethod != null && mutedAlerts.contains('det:${d.obs.detectorMethod}'));
+    if (gate.block(key, watchLabel: label, kindMuted: kindMuted) != AlertVerdict.fire) return;
     if (d.obs.detectorMethod != null && belowConfidence(d.obs.detectorConfidence)) return;
-    final key = d.obs.mac.isNotEmpty ? d.obs.mac : d.obs.key;
-    final now = DateTime.now();
-    final last = _classAlerted[key];
-    if (last != null && now.difference(last).inSeconds < cooldownSeconds) return;
-    if (d.obs.mac.isNotEmpty && _macRecentlyAlerted(d.obs.mac)) return;
     if (_isRateLimited()) {
       _classPending[key] = d;
       _scheduleClassRetry();
       return;
     }
     _classPending.remove(key);
-    _classAlerted[key] = now;
-    if (d.obs.mac.isNotEmpty) _markMacAlerted(d.obs.mac);
-    if (_classAlerted.length > 5000) {
-      _classAlerted.removeWhere((_, t) => now.difference(t).inSeconds >= cooldownSeconds);
-      if (_classAlerted.length > 5000) _classAlerted.remove(_classAlerted.keys.first);
-    }
     _recordRateLimit();
     if (d.obs.mac.isNotEmpty) {
       classAlertedMacs.add(d.obs.mac.toUpperCase());
@@ -300,13 +348,34 @@ class NotificationService extends ChangeNotifier {
     _fireNotification(
       id: _notifId(channel),
       channel: channel,
-      title: title,
-      subtitle: why,
+      title: label ?? title,
+      subtitle: label != null ? AlertSfx.watch.label : why,
       body: body,
       groupKey: channel,
       alertKind: alert.kind,
-      alertMac: key,
+      alertMac: d.obs.mac.isNotEmpty ? d.obs.mac : d.obs.key,
       muteKey: alert.kind,
+      sfx: alertSfxFor(
+        watchLabel: label,
+        drone: alert.kind == SignatureClass.drone.name,
+        tracker: alert.kind == SignatureClass.finder.name || d.obs.detectorMethod == 'tracker',
+      ),
+    );
+  }
+
+  void onNodeDown(String label) => _nodeAlert(AlertSfx.nodeDown, '$label dropped off the mesh', 'Node down: $label');
+
+  void onNodeUp(String label) => _nodeAlert(AlertSfx.nodeUp, '$label is back on the mesh', 'Node back: $label');
+
+  void _nodeAlert(AlertSfx sfx, String body, String title) {
+    if (!_initialized || !_permissionGranted || gate.silenced) return;
+    _fireNotification(
+      id: _notifId(NotifChannel.nodes),
+      channel: NotifChannel.nodes,
+      title: title,
+      body: body,
+      groupKey: NotifChannel.nodes,
+      sfx: sfx,
     );
   }
 
@@ -449,7 +518,7 @@ class NotificationService extends ChangeNotifier {
   }
 
   void onWatchAlert({required String kind, required String title, required String body, String? subtitle, String? mac}) {
-    if (!_initialized || !_permissionGranted || mutedAlerts.contains(kind) || _isRateLimited()) return;
+    if (!_initialized || !_permissionGranted || gate.silenced || mutedAlerts.contains(kind) || _isRateLimited()) return;
     _recordRateLimit();
     _fireNotification(
       id: _notifId(NotifChannel.detector),
@@ -544,38 +613,6 @@ class NotificationService extends ChangeNotifier {
     };
   }
 
-  bool _macRecentlyAlerted(String mac) {
-    final last = _macAlerted[MacUtil.normalize(mac)];
-    return last != null && DateTime.now().difference(last).inSeconds < cooldownSeconds;
-  }
-
-  void _markMacAlerted(String mac) {
-    final now = DateTime.now();
-    _macAlerted[MacUtil.normalize(mac)] = now;
-    if (_macAlerted.length > 1000) {
-      _macAlerted.removeWhere((_, t) => now.difference(t).inSeconds >= cooldownSeconds);
-    }
-  }
-
-  bool _isCoolingDown(String mac, Engine engine) {
-    final key = '$mac|${engine.name}';
-    final last = _cooldownMap[key];
-    if (last == null) return false;
-    return DateTime.now().difference(last).inSeconds < cooldownSeconds;
-  }
-
-  void _recordCooldown(String mac, Engine engine) {
-    final key = '$mac|${engine.name}';
-    _cooldownMap[key] = DateTime.now();
-
-    // Prune old entries to prevent memory leak
-    if (_cooldownMap.length > 1000) {
-      final cutoff =
-          DateTime.now().subtract(Duration(seconds: cooldownSeconds));
-      _cooldownMap.removeWhere((_, v) => v.isBefore(cutoff));
-    }
-  }
-
   bool _isRateLimited() {
     final cutoff = DateTime.now().subtract(const Duration(minutes: 1));
     _recentNotifications.removeWhere((t) => t.isBefore(cutoff));
@@ -586,16 +623,21 @@ class NotificationService extends ChangeNotifier {
     _recentNotifications.add(DateTime.now());
   }
 
-  void _fireDetectionNotification(Detection det) {
+  void _fireDetectionNotification(Detection det, {String? watchLabel}) {
     final text = detectionNotificationText(det);
     if (text == null) return;
     final (title, subtitle, body, channel) = text;
     _fireNotification(
       id: _notifId(channel),
       channel: channel,
-      title: title,
-      subtitle: subtitle,
+      title: watchLabel ?? title,
+      subtitle: watchLabel != null ? AlertSfx.watch.label : subtitle,
       body: body,
+      sfx: alertSfxFor(
+        watchLabel: watchLabel,
+        drone: det.engine == Engine.skySpy,
+        tracker: det.method == 'tracker',
+      ),
       groupKey: channel,
       alertKind: switch (det.engine) {
         Engine.flockBle || Engine.flockWifi => 'flock',
@@ -695,10 +737,16 @@ class NotificationService extends ChangeNotifier {
     String? alertKind,
     String? alertMac,
     String? muteKey,
+    AlertSfx? sfx,
   }) async {
+    if (gate.silenced) return;
     if (muteKey != null) _noteSent(muteKey);
+    final soundOn = soundEnabled && (sfx == null || sfxOn(sfx));
+    if (!soundOn && channel != NotifChannel.wardrive && channel != NotifChannel.detectorQuiet) {
+      channel = NotifChannel.quiet;
+    }
     final viaActivity = channel != NotifChannel.wardrive &&
-        soundEnabled &&
+        soundOn &&
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed &&
         (activityCanAlert?.call() ?? false);
     if (channel != NotifChannel.wardrive) {
@@ -710,7 +758,7 @@ class NotificationService extends ChangeNotifier {
       groupKey: groupKey,
       subText: subtitle,
       styleInformation: BigTextStyleInformation(body),
-      playSound: soundEnabled && channel != NotifChannel.detectorQuiet,
+      playSound: soundOn && channel != NotifChannel.detectorQuiet,
       enableVibration: vibrationEnabled && channel != NotifChannel.detectorQuiet,
       priority: channel == NotifChannel.detectorQuiet ? Priority.low : Priority.high,
       importance: channel == NotifChannel.detectorQuiet ? Importance.low : Importance.high,
@@ -719,7 +767,7 @@ class NotificationService extends ChangeNotifier {
     final darwinDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
-      presentSound: soundEnabled && !viaActivity && channel != NotifChannel.detectorQuiet,
+      presentSound: soundOn && !viaActivity && channel != NotifChannel.detectorQuiet,
       subtitle: subtitle,
       threadIdentifier: groupKey,
       categoryIdentifier: channel == NotifChannel.wardrive ? null : _detectionCategory,
@@ -785,6 +833,7 @@ class NotificationService extends ChangeNotifier {
       NotifChannel.drone => 3000,
       NotifChannel.foxhunt => 4000,
       NotifChannel.wardrive => 5000,
+      NotifChannel.nodes => 6000,
       _ => 9000,
     };
     final seq = (_channelIds[channel] ?? 0) + 1;
@@ -805,7 +854,15 @@ class NotificationService extends ChangeNotifier {
     wardriveStatusEnabled = p.getBool('notif_wardrive_status') ?? true;
     milestoneAlertsEnabled = p.getBool('notif_milestones') ?? true;
     minDetectorConfidence = p.getInt('notif_min_confidence') ?? 0;
-    cooldownSeconds = p.getInt('notif_cooldown') ?? 300;
+    final legacyCooldown = p.getInt('notif_cooldown');
+    cooldownSeconds =
+        p.getInt('notif_rearm') ?? (legacyCooldown != null && legacyCooldown != 300 ? legacyCooldown : alertRearmSeconds);
+    for (final s in AlertSfx.values) {
+      _sfxOn[s] = p.getBool(s.prefKey) ?? true;
+    }
+    gate.mutedDevices
+      ..clear()
+      ..addAll(p.getStringList('notif_muted_devices') ?? const []);
     maxPerMinute = p.getInt('notif_max_per_min') ?? 10;
     soundEnabled = p.getBool('notif_sound') ?? true;
     vibrationEnabled = p.getBool('notif_vibration') ?? true;
@@ -837,7 +894,11 @@ class NotificationService extends ChangeNotifier {
     p.setBool('notif_wardrive_status', wardriveStatusEnabled);
     p.setBool('notif_milestones', milestoneAlertsEnabled);
     p.setInt('notif_min_confidence', minDetectorConfidence);
-    p.setInt('notif_cooldown', cooldownSeconds);
+    p.setInt('notif_rearm', cooldownSeconds);
+    for (final s in AlertSfx.values) {
+      p.setBool(s.prefKey, sfxOn(s));
+    }
+    p.setStringList('notif_muted_devices', [...gate.mutedDevices]);
     p.setInt('notif_max_per_min', maxPerMinute);
     p.setBool('notif_sound', soundEnabled);
     p.setBool('notif_vibration', vibrationEnabled);
@@ -918,5 +979,7 @@ final notificationServiceProvider =
   final la = ref.read(liveActivityServiceProvider);
   svc.onAlert = la.showAlert;
   svc.activityCanAlert = () => la.canAlert;
+  final watch = ref.read(watchlistProvider);
+  svc.watchLabelOf = watch.labelForMac;
   return svc;
 });

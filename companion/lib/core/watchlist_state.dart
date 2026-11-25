@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:oui_spy/core/classify/observation.dart';
 
 enum WatchlistMatchType {
   oui('OUI'),
@@ -78,6 +79,18 @@ class WatchlistState extends ChangeNotifier {
 
   List<WatchlistEntry> get enabledEntries =>
       entries.where((e) => e.enabled).toList();
+
+  String? labelForMac(String mac) {
+    final key = MacUtil.normalize(mac);
+    if (key.isEmpty) return null;
+    for (final e in entries) {
+      if (e.enabled && e.isFullMac && e.identifier.toUpperCase() == key) {
+        final d = e.description.trim();
+        return d.isEmpty ? e.identifier : d;
+      }
+    }
+    return null;
+  }
 
   Future<void> toggleEnabled(WatchlistEntry entry, {required bool enabled}) async {
     await _loadFuture;

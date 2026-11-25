@@ -107,6 +107,11 @@ class NotificationSettingsBody extends ConsumerWidget {
           value: notif.cooldownSeconds.toDouble(),
           onChanged: (v) => notif.setCooldownSeconds(v.round()),
         ),
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 6),
+          child: Text('A device alerts the first time, and again once it has been unheard this long.',
+              style: TextStyle(color: t.textDim, fontSize: 12)),
+        ),
         ConfigSliderRow(
           icon: Icons.speed,
           label: 'Max per minute',
@@ -135,6 +140,14 @@ class NotificationSettingsBody extends ConsumerWidget {
           color: t.textSecondary,
           value: notif.vibrationEnabled,
           onChanged: notif.setVibrationEnabled,
+        ),
+        ConfigToggleRow(
+          icon: Icons.volume_off,
+          label: 'Silence everything',
+          subtitle: 'No sound, buzz, banner or notification until you switch it off or the app restarts',
+          color: AppTheme.warning,
+          value: notif.silenced,
+          onChanged: notif.setSilenced,
         ),
       ],
     );

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/melody_state.dart';
+import 'package:oui_spy/core/notifications/alert_gate.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -19,6 +21,7 @@ class AlertSoundsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTheme.of(context);
     final mel = ref.watch(melodyProvider);
+    final notif = ref.watch(notificationServiceProvider);
     final supported = ref.read(bleManagerProvider).hasMelodySupport;
     return Scaffold(
       backgroundColor: t.background,
@@ -34,6 +37,23 @@ class AlertSoundsScreen extends ConsumerWidget {
                 style: TextStyle(color: AppTheme.warning, fontSize: 12),
               ),
             ),
+          const ConfigSectionHeader(label: 'Sound on this phone'),
+          for (final s in AlertSfx.values)
+            ConfigToggleRow(
+              icon: switch (s) {
+                AlertSfx.hit => Icons.radar,
+                AlertSfx.tracker => Icons.track_changes,
+                AlertSfx.watch => Icons.notifications_active,
+                AlertSfx.drone => Icons.flight,
+                AlertSfx.nodeDown => Icons.link_off,
+                AlertSfx.nodeUp => Icons.link,
+              },
+              label: s.label,
+              color: AppTheme.detector,
+              value: notif.sfxOn(s),
+              onChanged: (v) => notif.setSfxOn(s, v),
+            ),
+          const SizedBox(height: 16),
           const ConfigSectionHeader(label: 'Assignments'),
           for (final slot in kAlertSlots) _SlotRow(slot: slot, mel: mel),
           const SizedBox(height: 16),

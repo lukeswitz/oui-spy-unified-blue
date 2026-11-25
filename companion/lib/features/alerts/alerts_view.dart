@@ -7,10 +7,12 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/db/detection_mapper.dart';
+import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/watch_alert_log.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
+import 'package:oui_spy/features/feed/device_mute_button.dart';
 import 'package:oui_spy/features/feed/detection_row.dart'
     show detectionHasBoard, detectionScanner, detectionZoomOnMap, showDetectionDetails;
 import 'package:oui_spy/theme/app_theme.dart';
@@ -57,12 +59,24 @@ class AlertsView extends ConsumerWidget {
     final feed = ref.watch(alertsFeedProvider);
     final masked = ref.watch(privacyScreenProvider);
     final rows = feed.rows;
+    final notif = ref.watch(notificationServiceProvider);
     return Column(
       children: [
         CommandHeader(
           title: 'ALERTS',
-          count: '${rows.length}',
+          count: feed.unread > 0 ? '${rows.length} · ${feed.unread} unread' : '${rows.length}',
           actions: [
+            CommandBarAction(
+              icon: Icons.done_all,
+              label: 'Dismiss all',
+              onTap: feed.unread == 0 ? null : feed.markAllRead,
+            ),
+            CommandBarAction(
+              icon: notif.silenced ? Icons.volume_off : Icons.volume_up_outlined,
+              label: notif.silenced ? 'Silenced until you switch it off' : 'Silence all',
+              active: notif.silenced,
+              onTap: () => notif.setSilenced(!notif.silenced),
+            ),
             CommandBarAction(
               icon: Icons.delete_sweep,
               label: 'Clear',
@@ -83,7 +97,8 @@ class AlertsView extends ConsumerWidget {
                   : ListView.separated(
                       itemCount: rows.length,
                       separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, i) => _AlertRow(row: rows[i], masked: masked),
+                      itemBuilder: (context, i) =>
+                          _AlertRow(row: rows[i], masked: masked, unread: feed.isUnread(rows[i])),
                     ),
         ),
       ],
@@ -92,9 +107,10 @@ class AlertsView extends ConsumerWidget {
 }
 
 class _AlertRow extends ConsumerWidget {
-  const _AlertRow({required this.row, required this.masked});
+  const _AlertRow({required this.row, required this.masked, this.unread = false});
   final Map<String, dynamic> row;
   final bool masked;
+  final bool unread;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -104,7 +120,11 @@ class _AlertRow extends ConsumerWidget {
     final reason = row['detectionMethod'] as String? ?? '';
     return ListTile(
       leading: Icon(alertKindIcon(kind), color: alertKindColor(kind)),
-      title: Text(_maskedTitle(row, masked), maxLines: 2, overflow: TextOverflow.ellipsis),
+      tileColor: unread ? alertKindColor(kind).withValues(alpha: 0.08) : null,
+      title: Text(_maskedTitle(row, masked),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: unread ? const TextStyle(fontWeight: FontWeight.w700) : null),
       subtitle: Text(
         [if (reason.isNotEmpty) reason, _ago(row['appTimestamp'] as int), if (count > 1) '$count times'].join(' · '),
         style: TextStyle(color: t.textDim, fontSize: 12),
@@ -218,6 +238,7 @@ Future<void> _showAlert(BuildContext context, WidgetRef ref, Map<String, dynamic
                   showDetectionDetails(context, ref, device ?? detectionFromDbRow(row));
                 },
               ),
+            if (radio) DeviceMuteButton(mac: subject),
             TextButton.icon(
               icon: Icon(Icons.delete_outline, size: 18, color: AppTheme.error),
               label: Text('Delete', style: TextStyle(color: AppTheme.error)),
