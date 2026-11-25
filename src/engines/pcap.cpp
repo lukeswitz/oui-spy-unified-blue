@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "pcap.h"
+#include "blesniff.h"
 #include "../protocol.h"
 #include "../ble_gatt.h"
 #include "../engine_registry.h"
@@ -797,6 +798,7 @@ void pcapGetStats(PcapStats* out) {
     } else {
         memset(out->source_node_id, 0, MESH_NODE_ID_LEN);
     }
+    if (!pcapActive) blesniffFillStats(out);
 }
 
 bool pcapBeginDownload(uint32_t*, uint32_t*) { return false; }

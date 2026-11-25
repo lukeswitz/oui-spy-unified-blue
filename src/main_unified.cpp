@@ -38,6 +38,7 @@
 #include "engines/wardrive.h"
 #include "engines/pcap.h"
 #include "engines/axeoff.h"
+#include "engines/blesniff.h"
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
 #ifdef OUISPY_DONGLE
@@ -1633,6 +1634,7 @@ void setup() {
     engineRegister(ENGINE_WARDRIVE, &wardriveCallbacks);
     engineRegister(ENGINE_PCAP, &pcapCallbacks);
     engineRegister(ENGINE_AXEOFF, &axeoffCallbacks);
+    engineRegister(ENGINE_BLESNIFF, &blesniffCallbacks);
 
     // Force all engines disabled at boot — no stale radio state
     engineDisableAll();
