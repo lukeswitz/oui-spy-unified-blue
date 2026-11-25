@@ -233,7 +233,10 @@ Every session is saved. Open one to replay it on the map, or open its report.
 - **Remove an old node:** in the same **Nodes** list, tap a node you no longer use and tap **FORGET**. The board you are connected to cannot be forgotten there.
 - **Forget a paired board:** hold it on the Connect screen.
 - **Too many notifications:** when alerts pile up within a minute, the app offers to turn off notifications for one noisy type. Its detections are still logged.
-- **Filter by maker:** on LIVE, tap a vendor in the strip above the list to show only its devices.- **Hide addresses for screenshots:** turn on **Mask identifiers on screen** in SETTINGS → Detection & Alerts → Privacy.
+- **Filter by maker:** on LIVE, tap a vendor in the strip above the list to show only its devices.
+- **Search everything:** on LIVE, open search and type. Every word must match a MAC, name, maker, reason or node. Chips show the matches in Devices, Alerts, Drones, Nodes and Wardrive. Tap a chip or **EVERYTHING** for the results sheet, and tap a match to open it.
+- **Live counts:** above LIVE, nodes online, devices heard in the last minute, live drones, devices heard today, unread alerts and MACs kept. Under them, the devices heard in each of the last 24 hours and their total.
+- **Hide addresses for screenshots:** turn on **Mask identifiers on screen** in SETTINGS → Detection & Alerts → Privacy.
 - **What does this icon mean:** tap the info button on a screen. It explains each tab and icon there.
 
 ## Engines

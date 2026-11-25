@@ -23,7 +23,10 @@ import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
+import 'package:oui_spy/features/feed/feed_counts_strip.dart';
 import 'package:oui_spy/features/feed/feed_stats_header.dart';
+import 'package:oui_spy/features/feed/search_sheet.dart';
+import 'package:oui_spy/core/global_search.dart';
 import 'package:oui_spy/features/feed/filter_bar.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
@@ -117,12 +120,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Timer? _searchDebounce;
   List<Detection> _dbHits = const [];
   bool _dbSearching = false;
+  SearchResults _results = SearchResults.empty;
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  SearchResults _searchAll() {
+    final q = _searchQuery.trim();
+    return q.isEmpty ? SearchResults.empty : searchEntries(q, buildSearchEntries(ref, history: _dbHits));
+  }
+
+  Future<void> _openResults(SearchArea? area) {
+    final fresh = _searchAll();
+    setState(() => _results = fresh);
+    return showSearchResults(context, ref, fresh, area: area);
   }
 
   void _onSearchChanged(String q) {
@@ -132,10 +147,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       setState(() {
         _dbHits = const [];
         _dbSearching = false;
+        _results = SearchResults.empty;
       });
       return;
     }
-    setState(() => _dbSearching = true);
+    setState(() {
+      _dbSearching = true;
+      _results = _searchAll();
+    });
     _searchDebounce = Timer(const Duration(milliseconds: 350), () => _runDbSearch(q));
   }
 
@@ -148,6 +167,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       setState(() {
         _dbHits = rows.map(detectionFromDbRow).toList();
         _dbSearching = false;
+        _results = _searchAll();
       });
     } catch (e) {
       DebugLog.log('FEED: history search failed: $e');
@@ -225,6 +245,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         _searchQuery = '';
         _dbHits = const [];
         _dbSearching = false;
+        _results = SearchResults.empty;
       }
     });
   }
@@ -413,11 +434,40 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             if (_searchOpen)
               CommandSearchField(
                 controller: _searchCtrl,
-                hintText: 'MAC, name, SSID, method, node…',
+                hintText: 'Search everything: MAC, name, SSID, maker, node…',
                 onChanged: _onSearchChanged,
                 onClose: _toggleSearch,
               ),
+            if (_searchOpen && hasQuery)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    key: const Key('search-area-chips'),
+                    spacing: 8,
+                    children: [
+                      CommandChip(
+                        label: 'EVERYTHING',
+                        count: _results.total,
+                        selected: false,
+                        color: AppTheme.accent,
+                        onTap: () => _openResults(null),
+                      ),
+                      for (final a in _results.areas)
+                        CommandChip(
+                          label: a.label.toUpperCase(),
+                          count: _results.totals[a],
+                          selected: false,
+                          color: AppTheme.accent,
+                          onTap: () => _openResults(a),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             const Divider(height: 1),
+            const FeedCountsStrip(),
             if (_showStats && filtered.length >= 2)
               FeedStatsHeader(
                 detections: filtered,

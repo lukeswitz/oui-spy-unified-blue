@@ -422,6 +422,34 @@ class AppDatabase extends _$AppDatabase {
     return result.read(detections.macAddress.count(distinct: true)) ?? 0;
   }
 
+  /// Distinct MACs stored, and how many were heard since [sinceMs].
+  Future<({int kept, int since})> macCounts(int sinceMs) async {
+    final r = await customSelect(
+      'SELECT COUNT(DISTINCT lower(mac_address)) AS kept, '
+      'COUNT(DISTINCT CASE WHEN app_timestamp >= ?1 THEN lower(mac_address) END) AS since '
+      'FROM detections',
+      variables: [Variable.withInt(sinceMs)],
+      readsFrom: {detections},
+    ).getSingle();
+    return (kept: r.read<int>('kept'), since: r.read<int>('since'));
+  }
+
+  /// Distinct MACs heard in each of the 24 hours before [nowMs]; index 23 is the latest hour.
+  Future<List<int>> hourlyMacCounts(int nowMs) async {
+    final rows = await customSelect(
+      'SELECT (?1 - app_timestamp) / 3600000 AS h, COUNT(DISTINCT lower(mac_address)) AS n '
+      'FROM detections WHERE app_timestamp > ?1 - 86400000 AND app_timestamp <= ?1 GROUP BY h',
+      variables: [Variable.withInt(nowMs)],
+      readsFrom: {detections},
+    ).get();
+    final out = List<int>.filled(24, 0);
+    for (final r in rows) {
+      final h = r.read<int>('h');
+      if (h >= 0 && h < 24) out[23 - h] = r.read<int>('n');
+    }
+    return out;
+  }
+
   /// Count unique flock MACs in a session.
   Future<int> flockMacCount(String sessionId) async {
     final query = selectOnly(detections)
