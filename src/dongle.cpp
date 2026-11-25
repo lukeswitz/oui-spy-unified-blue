@@ -271,7 +271,7 @@ static void* seenAlloc(size_t n) {
     void* p = heap_caps_calloc(1, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     return p ? p : calloc(1, n);
 }
-static uint32_t s_engCount[ENGINE_COUNT];
+static uint32_t s_engCount[ENGINE_COUNT_V1];
 
 static uint32_t macHash(const uint8_t* mac) {
     uint32_t h = 2166136261u;
@@ -317,6 +317,8 @@ static const DongleLedPattern kEngLed[ENGINE_COUNT] = {
     { 90,  0,  0, 3, 90 },
     {  0,  0,  0, 0, 50 },
     { 90, 80,  0, 1, 90 },
+    { 90, 60,  0, 2, 70 },
+    {  0,  0,  0, 0, 50 },
 };
 
 static uint8_t s_hitMacRaw[6] = {0};
@@ -345,7 +347,7 @@ static uint32_t s_epochBaseMs = 0;
 static bool s_stamped = false;
 static char s_stampStr[16] = "";
 
-static const char kEngLetter[ENGINE_COUNT] = { 'D', 'B', 'F', 'X', 'S', 'U', 'W', 'P' };
+static const char kEngLetter[ENGINE_COUNT] = { 'D', 'B', 'F', 'X', 'S', 'U', 'W', 'P', 'A', 'N' };
 
 static const char* wigleDevice(void) {
     if (DONGLE_WIGLE_DEVICE[0]) return DONGLE_WIGLE_DEVICE;
@@ -362,6 +364,8 @@ static const char* engShortName(uint8_t id) {
         case ENGINE_UNIPWN:     return "UNIPWN";
         case ENGINE_WARDRIVE:   return "WARDRV";
         case ENGINE_PCAP:       return "PCAP";
+        case ENGINE_AXEOFF:     return "AXEOFF";
+        case ENGINE_BLESNIFF:   return "BLESNF";
         default:                return "?";
     }
 }
@@ -788,7 +792,8 @@ static void drawEngineIcon(uint8_t id, int16_t x, int16_t y, uint16_t c) {
 
 static const uint16_t kEngColor[ENGINE_COUNT] = {
     DGX_AMBER, DGX_SKY, DGX_LIME, DGX_MAGENTA,
-    DGX_CYAN, DGX_YELLOW, DGX_WHITE, DGX_SKY
+    DGX_CYAN, DGX_YELLOW, DGX_WHITE, DGX_SKY,
+    DGX_AMBER, DGX_SKY
 };
 
 static const uint8_t kStripEngines[DONGLE_STRIP_MAX] = {
@@ -1330,7 +1335,7 @@ void dongleInit(void) {
     if (!s_sdMutex) s_sdMutex = xSemaphoreCreateMutex();
     if (!s_wifiSeen) s_wifiSeen = (uint8_t*)seenAlloc(DONGLE_SEEN_BYTES);
     if (!s_bleSeen) s_bleSeen = (uint8_t*)seenAlloc(DONGLE_SEEN_BYTES);
-    if (!s_engSeen) s_engSeen = (uint8_t (*)[DONGLE_ENG_SEEN_BYTES])seenAlloc((size_t)ENGINE_COUNT * DONGLE_ENG_SEEN_BYTES);
+    if (!s_engSeen) s_engSeen = (uint8_t (*)[DONGLE_ENG_SEEN_BYTES])seenAlloc((size_t)ENGINE_COUNT_V1 * DONGLE_ENG_SEEN_BYTES);
 
     Serial.println("[DONGLE] init: pwr hold"); Serial.flush();
 #if DONGLE_PWR_HOLD >= 0
@@ -1484,7 +1489,7 @@ void dongleOnDetection(const DetectionEvent* evt) {
     } else {
         if (markSeen(s_wifiSeen, DONGLE_SEEN_BITS, evt->mac)) s_wifiHits++;
     }
-    if (evt->engine_id < ENGINE_COUNT && s_engSeen &&
+    if (evt->engine_id < ENGINE_COUNT_V1 && s_engSeen &&
         markSeen(s_engSeen[evt->engine_id], DONGLE_ENG_SEEN_BITS, evt->mac)) {
         s_engCount[evt->engine_id]++;
     }

@@ -13,3 +13,5 @@ clang++ -std=c++17 -Isrc -Itest/host/stub -o "$out/odidtest" test/host/skyspy_od
 "$out/odidtest"
 clang++ -std=c++17 -Wall -Wextra -Isrc -o "$out/zb154test" test/host/ieee802154_test.cpp
 "$out/zb154test"
+clang++ -std=c++17 -Wall -Wextra -Isrc -o "$out/axeofftest" test/host/axeoff_match_test.cpp
+"$out/axeofftest"

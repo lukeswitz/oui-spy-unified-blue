@@ -182,9 +182,18 @@ static void mgrNodeRadioLoad(void) {
 static const uint8_t kHopperMask = ENGINE_BITMASK(ENGINE_WARDRIVE) | ENGINE_BITMASK(ENGINE_FLOCK_WIFI)
                                  | ENGINE_BITMASK(ENGINE_DETECTOR) | ENGINE_BITMASK(ENGINE_FOXHUNTER);
 
+static const uint8_t kHopperExt = (uint8_t)(ENGINE_BITMASK(ENGINE_AXEOFF) >> 8);
+
+static uint8_t mgrCommandedExt(void) {
+    uint8_t ext = 0;
+    for (int i = ENGINE_COUNT_V1; i < ENGINE_COUNT; i++)
+        if (mgrCommandedStates[i] != (uint8_t)ESTATE_DISABLED) ext |= (uint8_t)(1u << (i - ENGINE_COUNT_V1));
+    return ext;
+}
+
 static bool mgrFanoutSkyspyNode(char* outId) {
     if (!(mgrCommandedMask & ENGINE_BITMASK(ENGINE_SKYSPY))) return false;
-    if (!(mgrCommandedMask & kHopperMask)) return false;
+    if (!(mgrCommandedMask & kHopperMask) && !(mgrCommandedExt() & kHopperExt)) return false;
     MeshLiveNode live[MESH_LIVE_NODES_MAX];
     size_t total = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, MESH_NODE_TIMEOUT_MS);
     char ids[MESH_LIVE_NODES_MAX][MESH_NODE_ID_LEN];
@@ -208,6 +217,12 @@ static uint8_t mgrNodeDenyMask(const char* id) {
              ? kHopperMask : ENGINE_BITMASK(ENGINE_SKYSPY);
 }
 
+static uint8_t mgrNodeDenyExt(const char* id) {
+    char skyId[MESH_NODE_ID_LEN];
+    if (!mgrFanoutSkyspyNode(skyId)) return 0;
+    return (memcmp(id, skyId, MESH_NODE_ID_LEN - 1) == 0) ? kHopperExt : 0;
+}
+
 static uint32_t mgrLastDenyHash = 0xFFFFFFFFu;
 static void mgrPushEngineDeny(void) {
     if (!meshIsEnabled()) return;
@@ -217,8 +232,10 @@ static void mgrPushEngineDeny(void) {
     for (size_t i = 0; i < total; i++) {
         if (live[i].role == MESH_ROLE_MANAGER) continue;
         uint8_t deny = mgrNodeDenyMask(live[i].id);
+        uint8_t denyExt = mgrNodeDenyExt(live[i].id);
         for (int j = 0; j < MESH_NODE_ID_LEN; j++) { h ^= (uint8_t)live[i].id[j]; h *= 16777619u; }
         h ^= deny; h *= 16777619u;
+        h ^= denyExt; h *= 16777619u;
     }
     bool changed = (h != mgrLastDenyHash);
     mgrLastDenyHash = h;
@@ -226,16 +243,19 @@ static void mgrPushEngineDeny(void) {
     for (size_t i = 0; i < total; i++) {
         if (live[i].role == MESH_ROLE_MANAGER) continue;
         uint8_t deny = mgrNodeDenyMask(live[i].id);
-        bool nonCompliant = (live[i].active_engines & deny & ~pcapBit) != 0;
+        uint8_t denyExt = mgrNodeDenyExt(live[i].id);
+        bool nonCompliant = (live[i].active_engines & deny & ~pcapBit) != 0 ||
+                            (live[i].active_ext & denyExt) != 0;
         if (!changed && !nonCompliant) continue;
-        uint8_t out[CFG_TGT_OVERHEAD + 1];
+        uint8_t out[CFG_TGT_OVERHEAD + 2];
         out[0] = CFG_TGT_PREFIX;
         memcpy(out + 1, live[i].id, MESH_NODE_ID_LEN - 1);
         out[5] = 0x00;
         out[CFG_TGT_OVERHEAD] = deny;
-        meshBroadcastCommand(0x12, 0, out, (uint8_t)(CFG_TGT_OVERHEAD + 1), 3);
-        Serial.printf("[MGR-FANOUT] node=%.4s deny=0x%02x%s\n",
-                      live[i].id, deny, nonCompliant ? " (re-push)" : "");
+        out[CFG_TGT_OVERHEAD + 1] = denyExt;
+        meshBroadcastCommand(0x12, 0, out, (uint8_t)(CFG_TGT_OVERHEAD + 2), 3);
+        Serial.printf("[MGR-FANOUT] node=%.4s deny=0x%02x ext=0x%02x%s\n",
+                      live[i].id, deny, denyExt, nonCompliant ? " (re-push)" : "");
     }
 }
 
@@ -425,17 +445,19 @@ static uint16_t g_engStateVer = 0;
 static void mgrPushEngineState(void) {
 #ifdef OUISPY_ROLE_MANAGER
     if (!meshIsEnabled()) return;
-    static uint8_t lastPushedMask = 0xFF;
-    static uint8_t lastSeenMask = 0xFF;
+    static uint16_t lastPushedMask = 0xFFFF;
+    static uint16_t lastSeenMask = 0xFFFF;
     static uint32_t maskChangedMs = 0;
-    uint8_t em = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
+    uint8_t em8 = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
+    uint8_t emExt = (uint8_t)(mgrCommandedExt() & ~(ENGINE_BITMASK(ENGINE_BLESNIFF) >> 8));
+    uint16_t em = (uint16_t)(em8 | ((uint16_t)emExt << 8));
     uint32_t now = millis();
     if (em != lastSeenMask) { lastSeenMask = em; maskChangedMs = now; }
     if (em != lastPushedMask && (uint32_t)(now - maskChangedMs) < MGR_ENG_PUSH_SETTLE_MS) return;
     if (em != lastPushedMask) { g_engStateVer++; lastPushedMask = em; }
-    uint8_t out[3] = { em, (uint8_t)(g_engStateVer & 0xFF), (uint8_t)(g_engStateVer >> 8) };
+    uint8_t out[4] = { em8, (uint8_t)(g_engStateVer & 0xFF), (uint8_t)(g_engStateVer >> 8), emExt };
 #ifdef OUISPY_E2E_SMOKETEST
-    Serial.printf("[ENG-PUSH] em=0x%02X ver=%u cmdMask=0x%02X\n", em, g_engStateVer, mgrCommandedMask);
+    Serial.printf("[ENG-PUSH] em=0x%03X ver=%u cmdMask=0x%02X\n", em, g_engStateVer, mgrCommandedMask);
 #endif
     meshBroadcastConfig(MESH_CFG_KIND_ENGINE, out, sizeof(out));
 #endif
@@ -446,7 +468,8 @@ void bleGattMgrSyncNodeEngineState(uint8_t nodeReportedMask) {
     if (!meshIsEnabled()) return;
     uint8_t em = (uint8_t)(mgrCommandedMask & ~ENGINE_BITMASK(ENGINE_PCAP));
     if ((uint8_t)(nodeReportedMask & ~ENGINE_BITMASK(ENGINE_PCAP)) == em) return;
-    uint8_t out[3] = { em, (uint8_t)(g_engStateVer & 0xFF), (uint8_t)(g_engStateVer >> 8) };
+    uint8_t emExt = (uint8_t)(mgrCommandedExt() & ~(ENGINE_BITMASK(ENGINE_BLESNIFF) >> 8));
+    uint8_t out[4] = { em, (uint8_t)(g_engStateVer & 0xFF), (uint8_t)(g_engStateVer >> 8), emExt };
     meshBroadcastConfig(MESH_CFG_KIND_ENGINE, out, sizeof(out));
 #else
     (void)nodeReportedMask;
@@ -1314,6 +1337,25 @@ class ServerCallbacks : public NimBLEServerCallbacks {
 static void mgrCacheConfig(uint8_t kind, const uint8_t* data, size_t len);
 #endif
 
+// [available lo][active lo][state x ENGINE_COUNT][available ext][active ext]; ext covers engines 8+
+#define ENGINE_STATUS_LEN (2 + ENGINE_COUNT + 2)
+
+static void packEngineStatus(uint8_t* buf) {
+#ifdef OUISPY_ROLE_MANAGER
+    buf[0] = 0xFF;
+    buf[1] = mgrCommandedMask;
+    for (int i = 0; i < ENGINE_COUNT; i++) buf[2 + i] = mgrCommandedStates[i];
+    buf[2 + ENGINE_COUNT] = (uint8_t)((1u << (ENGINE_COUNT - ENGINE_COUNT_V1)) - 1u);
+    buf[3 + ENGINE_COUNT] = mgrCommandedExt();
+#else
+    buf[0] = engineGetAvailableMask();
+    buf[1] = engineGetActiveMask();
+    for (int i = 0; i < ENGINE_COUNT; i++) buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
+    buf[2 + ENGINE_COUNT] = engineGetAvailableMaskExt();
+    buf[3 + ENGINE_COUNT] = engineGetActiveMaskExt();
+#endif
+}
+
 class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override {
         std::string val = chr->getValue();
@@ -1364,23 +1406,23 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
 
 #ifdef OUISPY_ROLE_MANAGER
         if (cmd.command == 0x01 && cmd.engine_id < ENGINE_COUNT) {
-            mgrCommandedMask |= (1u << cmd.engine_id);
+            if (cmd.engine_id < ENGINE_COUNT_V1) mgrCommandedMask |= (1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_SCANNING;
             if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = millis();
-            if (cmd.engine_id != ENGINE_PCAP) meshMarkNodesEngine(cmd.engine_id, true);
+            if (cmd.engine_id != ENGINE_PCAP && cmd.engine_id != ENGINE_BLESNIFF) meshMarkNodesEngine(cmd.engine_id, true);
             if (cmd.engine_id == ENGINE_FLOCK_WIFI || cmd.engine_id == ENGINE_FLOCK_BLE ||
                 cmd.engine_id == ENGINE_WARDRIVE)
                 mgrApplyLocalRadio();
         } else if (cmd.command == 0x00 && cmd.engine_id < ENGINE_COUNT) {
-            mgrCommandedMask &= ~(1u << cmd.engine_id);
+            if (cmd.engine_id < ENGINE_COUNT_V1) mgrCommandedMask &= ~(1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_DISABLED;
             if (cmd.engine_id == ENGINE_PCAP) mgrPcapStartedMs = 0;
-            if (cmd.engine_id != ENGINE_PCAP) meshMarkNodesEngine(cmd.engine_id, false);
+            if (cmd.engine_id != ENGINE_PCAP && cmd.engine_id != ENGINE_BLESNIFF) meshMarkNodesEngine(cmd.engine_id, false);
         } else if (cmd.command == 0x0F) {
             mgrCommandedMask = 0;
             for (int i = 0; i < ENGINE_COUNT; i++) {
                 mgrCommandedStates[i] = (uint8_t)ESTATE_DISABLED;
-                if (i != ENGINE_PCAP) meshMarkNodesEngine((uint8_t)i, false);
+                if (i != ENGINE_PCAP && i != ENGINE_BLESNIFF) meshMarkNodesEngine((uint8_t)i, false);
             }
             mgrPcapStartedMs = 0;
         }
@@ -1446,21 +1488,9 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
     }
 
     void onRead(NimBLECharacteristic* chr) override {
-        uint8_t buf[2 + ENGINE_COUNT];
-#ifdef OUISPY_ROLE_MANAGER
-        buf[0] = (1u << ENGINE_COUNT) - 1u;
-        buf[1] = mgrCommandedMask;
-        for (int i = 0; i < ENGINE_COUNT; i++) {
-            buf[2 + i] = mgrCommandedStates[i];
-        }
-#else
-        buf[0] = engineGetAvailableMask();
-        buf[1] = engineGetActiveMask();
-        for (int i = 0; i < ENGINE_COUNT; i++) {
-            buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
-        }
-#endif
-        chr->setValue(buf, 2 + ENGINE_COUNT);
+        uint8_t buf[ENGINE_STATUS_LEN];
+        packEngineStatus(buf);
+        chr->setValue(buf, ENGINE_STATUS_LEN);
     }
 };
 
@@ -3388,21 +3418,9 @@ void bleGattNotifyFoxhunterRssi(int8_t rssi, uint16_t intervalMs) {
 void bleGattNotifyEngineState(void) {
     if (!phoneConnected || chrEngineControl == nullptr) return;
 
-    uint8_t buf[2 + ENGINE_COUNT];
-#ifdef OUISPY_ROLE_MANAGER
-    buf[0] = (1u << ENGINE_COUNT) - 1u;
-    buf[1] = mgrCommandedMask;
-    for (int i = 0; i < ENGINE_COUNT; i++) {
-        buf[2 + i] = mgrCommandedStates[i];
-    }
-#else
-    buf[0] = engineGetAvailableMask();
-    buf[1] = engineGetActiveMask();
-    for (int i = 0; i < ENGINE_COUNT; i++) {
-        buf[2 + i] = (uint8_t)engineGetState((EngineId)i);
-    }
-#endif
-    notifyChrExact(chrEngineControl, buf, 2 + ENGINE_COUNT);
+    uint8_t buf[ENGINE_STATUS_LEN];
+    packEngineStatus(buf);
+    notifyChrExact(chrEngineControl, buf, ENGINE_STATUS_LEN);
 }
 
 bool bleGattIsConnected(void) {
@@ -3527,6 +3545,29 @@ static size_t meshAppendFilterOp(uint8_t* buf, size_t off, size_t limit) {
     return off;
 }
 
+#define MESH_TLV_ENGINE_EXT 0x05
+
+static size_t meshAppendEngineExt(uint8_t* buf, size_t off, size_t limit) {
+    MeshLiveNode live[MESH_LIVE_NODES_MAX];
+    size_t n = meshGetLiveNodes(live, MESH_LIVE_NODES_MAX, 30000);
+    size_t start = off;
+    if (n == 0 || off + 2 > limit) return off;
+    buf[off] = MESH_TLV_ENGINE_EXT;
+    off += 2;
+    size_t cnt = 0;
+    for (size_t i = 0; i < n; i++) {
+        uint8_t b[2];
+        if (live[i].active_ext == 0 || off + 3 > limit || !meshIdToBytes(live[i].id, b)) continue;
+        buf[off++] = b[0];
+        buf[off++] = b[1];
+        buf[off++] = live[i].active_ext;
+        cnt++;
+    }
+    if (cnt == 0) return start;
+    buf[start + 1] = (uint8_t)(off - start - 2);
+    return off;
+}
+
 void bleGattNotifyNodeFilters(const char* id, uint8_t seq, uint8_t page, uint8_t pages, const uint8_t* data, uint8_t len) {
     if (!phoneConnected || chrSystemControl == nullptr) return;
     uint8_t b[2];
@@ -3606,6 +3647,7 @@ void bleGattNotifyMeshStatus(void) {
         if (off < lim) off = meshAppendFilterOp(buf, off, lim);
         if (off < lim) off = meshAppendNodeDetail(buf, off, lim);
         if (off < lim) off = meshAppendNeighbors(buf, off, lim);
+        if (off < lim) off = meshAppendEngineExt(buf, off, lim);
     }
 #endif
 

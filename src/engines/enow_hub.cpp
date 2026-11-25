@@ -481,7 +481,7 @@ void enowHubTick(void) {
 bool enowHubBlocksEngine(EngineId id) {
     if (!s_active) return false;
     return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY || id == ENGINE_WARDRIVE ||
-           id == ENGINE_PCAP || id == ENGINE_FOXHUNTER ||
+           id == ENGINE_PCAP || id == ENGINE_FOXHUNTER || id == ENGINE_AXEOFF ||
            (id == ENGINE_DETECTOR && detectorUsesWifi());
 }
 

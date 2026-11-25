@@ -59,6 +59,7 @@ struct MeshLiveNode {
     uint32_t last_ms;
     uint8_t  role;
     uint8_t  active_engines;
+    uint8_t  active_ext;
     uint32_t fw_version;
     uint8_t  board;
     int8_t   temp_c;

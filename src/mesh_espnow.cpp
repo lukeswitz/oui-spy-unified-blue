@@ -371,6 +371,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
     liveNodes[slot].last_ms = now;
     liveNodes[slot].role = role;
     liveNodes[slot].active_engines = engines;
+    liveNodes[slot].active_ext = 0;
     liveNodes[slot].fw_version = fw_version;
     liveNodes[slot].board = 0;
     liveNodes[slot].temp_c = OUISPY_TEMP_UNKNOWN;
@@ -387,14 +388,16 @@ bool meshConsumeNewNodeJoined(void) {
 }
 
 void meshMarkNodesEngine(uint8_t engine, bool on) {
-    if (!liveMutex || engine >= 8) return;
-    uint8_t bit = (uint8_t)(1u << engine);
+    if (!liveMutex || engine >= ENGINE_COUNT) return;
+    const bool ext = engine >= ENGINE_COUNT_V1;
+    uint8_t bit = (uint8_t)(1u << (ext ? engine - ENGINE_COUNT_V1 : engine));
     if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
     for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
         if (liveNodes[i].id[0] == 0) continue;
         if (liveNodes[i].role == MESH_ROLE_MANAGER) continue;
-        if (on) liveNodes[i].active_engines |= bit;
-        else    liveNodes[i].active_engines &= (uint8_t)~bit;
+        uint8_t& m = ext ? liveNodes[i].active_ext : liveNodes[i].active_engines;
+        if (on) m |= bit;
+        else    m &= (uint8_t)~bit;
     }
     xSemaphoreGive(liveMutex);
 }
@@ -1317,7 +1320,8 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
             uint8_t dl = cmd.payload_len;
             if (!bleGattIsConnected() && cfgTgtStrip(&dp, &dl, localNodeId) && dl >= 1) {
                 engineSetDenyMask(dp[0]);
-                Serial.printf("[MESH-CMD] fan-out deny mask=0x%02x\n", dp[0]);
+                if (dl >= 2) engineSetDenyMaskExt(dp[1]);
+                Serial.printf("[MESH-CMD] fan-out deny mask=0x%02x ext=0x%02x\n", dp[0], dl >= 2 ? dp[1] : 0);
             }
             sendAckPacket(&cmd);
             return;
@@ -1394,6 +1398,22 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
             s.rx_count++;
             memcpy((void*)&meshCurrentStatus, &s, sizeof(s));
             xSemaphoreGive(meshMutex);
+        }
+        return;
+    }
+
+    if (plainLen == sizeof(MeshEngineExtPacket) && plainBuf[0] == MESH_PKT_ENGINE_EXT) {
+        MeshEngineExtPacket ex;
+        memcpy(&ex, plainBuf, sizeof(ex));
+        if (liveMutex && ex.source_node_id[0] && memcmp(ex.source_node_id, localNodeId, MESH_NODE_ID_LEN) != 0 &&
+            xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            for (int i = 0; i < MESH_LIVE_NODES_MAX; i++) {
+                if (memcmp(liveNodes[i].id, ex.source_node_id, MESH_NODE_ID_LEN) == 0) {
+                    liveNodes[i].active_ext = ex.active_ext;
+                    break;
+                }
+            }
+            xSemaphoreGive(liveMutex);
         }
         return;
     }
@@ -1920,6 +1940,7 @@ static bool meshNodeHopsWifi(void) {
                           | ENGINE_BITMASK(ENGINE_SKYSPY)
                           | ENGINE_BITMASK(ENGINE_PCAP);
     if (m & wifiHop) return true;
+    if (engineGetState(ENGINE_AXEOFF) != ESTATE_DISABLED) return true;
     if ((m & ENGINE_BITMASK(ENGINE_DETECTOR)) && detectorUsesWifi()) return true;
     if ((m & ENGINE_BITMASK(ENGINE_WARDRIVE)) && (wardriveGetRadio() & 0x01)) return true;
     return false;
@@ -1933,7 +1954,7 @@ static bool meshSkyspyOwnsChannel(void) {
                           | ENGINE_BITMASK(ENGINE_FOXHUNTER)
                           | ENGINE_BITMASK(ENGINE_PCAP)
                           | ENGINE_BITMASK(ENGINE_WARDRIVE);
-    return (m & hoppers) == 0;
+    return (m & hoppers) == 0 && engineGetState(ENGINE_AXEOFF) == ESTATE_DISABLED;
 }
 
 static bool meshSkyspyActive(void) {
@@ -3138,6 +3159,16 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     uint8_t enc[128]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
     enqueueTx(enc, encLen);
+
+    static uint8_t s_lastExt = 0;
+    uint8_t ext = engineGetActiveMaskExt();
+    if (ext != 0 || s_lastExt != 0) {
+        MeshEngineExtPacket ex = {};
+        ex.pkt_type = MESH_PKT_ENGINE_EXT;
+        memcpy(ex.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+        ex.active_ext = ext;
+        if (encryptPacket((const uint8_t*)&ex, sizeof(ex), enc, &encLen) && enqueueTx(enc, encLen)) s_lastExt = ext;
+    }
 
     static uint8_t s_infoTick = 0;
     if ((s_infoTick++ & 3) != 0) return;

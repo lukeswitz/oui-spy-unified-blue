@@ -12,30 +12,33 @@
 #include <esp_timer.h>
 
 volatile uint32_t g_engRawSeen = 0;
-static uint8_t g_engineDenyMask = 0;
+static uint16_t g_engineDenyMask = 0;
 
 static const EngineCallbacks* engines[ENGINE_COUNT] = {nullptr};
 static EngineState states[ENGINE_COUNT] = {ESTATE_DISABLED};
-static volatile uint8_t localMask = 0;
+static volatile uint16_t localMask = 0;
 static bool initialized[ENGINE_COUNT] = {false};
 static SemaphoreHandle_t engineMux = nullptr;
 
 // WiFi engines are mutually exclusive
 static bool isWifiEngine(EngineId id) {
     return id == ENGINE_FLOCK_WIFI || id == ENGINE_SKYSPY ||
-           id == ENGINE_WARDRIVE   || id == ENGINE_PCAP;
+           id == ENGINE_WARDRIVE   || id == ENGINE_PCAP ||
+           id == ENGINE_AXEOFF;
 }
 
 static bool isBleScanEngine(EngineId id) {
     return id == ENGINE_FLOCK_BLE || id == ENGINE_UNIPWN ||
            id == ENGINE_FOXHUNTER || id == ENGINE_DETECTOR ||
-           id == ENGINE_PCAP;
+           id == ENGINE_PCAP || id == ENGINE_AXEOFF ||
+           id == ENGINE_BLESNIFF;
 }
 
 static bool wifiCoexCompatible(EngineId a, EngineId b) {
     auto inGroup = [](EngineId e) {
         return e == ENGINE_WARDRIVE || e == ENGINE_FLOCK_WIFI ||
-               e == ENGINE_SKYSPY || e == ENGINE_PCAP;
+               e == ENGINE_SKYSPY || e == ENGINE_PCAP ||
+               e == ENGINE_AXEOFF;
     };
     return inGroup(a) && inGroup(b);
 }
@@ -80,7 +83,7 @@ void engineRegistryInit(void) {
 
 static bool autoPcapPending;
 static bool autoPcapObservedActive;
-static uint8_t autoPcapPausedMask;
+static uint16_t autoPcapPausedMask;
 static uint8_t autoPcapTriggerSrc = 0xFF;
 static uint8_t autoPcapTriggerMac[6] = {0,0,0,0,0,0};
 static bool autoPcapUserCancelled = false;
@@ -173,6 +176,11 @@ static bool engineEnableImpl(EngineId id) {
         }
     }
 
+    if (id == ENGINE_PCAP && states[ENGINE_BLESNIFF] != ESTATE_DISABLED) {
+        Serial.println("[ENGINE] enable PCAP refused - BLE Sniff owns the BLE capture stream");
+        return false;
+    }
+
     if (isWifiEngine(id)) {
         for (int i = 0; i < ENGINE_COUNT; i++) {
             if (i == id) continue;
@@ -243,12 +251,12 @@ bool engineEnableLocal(EngineId id) {
     return r;
 }
 
-uint8_t engineGetLocalMask(void) { return localMask; }
+uint8_t engineGetLocalMask(void) { return ENGINE_MASK_LO(localMask); }
 
 bool engineDisableLocal(EngineId id) {
     if (id >= ENGINE_COUNT) return false;
     if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
-    localMask &= (uint8_t)~ENGINE_BITMASK(id);
+    localMask &= (uint16_t)~ENGINE_BITMASK(id);
     bool r = engineDisableImpl(id);
     if (engineMux) xSemaphoreGiveRecursive(engineMux);
     return r;
@@ -256,7 +264,7 @@ bool engineDisableLocal(EngineId id) {
 
 void engineDisableNonLocal(void) {
     if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
-    uint8_t keep = localMask & engineGetActiveMask();
+    uint16_t keep = localMask & engineGetActiveMask16();
     if (keep == 0) {
         engineDisableAll();
     } else {
@@ -265,7 +273,7 @@ void engineDisableNonLocal(void) {
                 engineDisableImpl((EngineId)i);
             }
         }
-        Serial.printf("[ENGINE] Non-local engines disabled, kept device-started mask=0x%02X\n", keep);
+        Serial.printf("[ENGINE] Non-local engines disabled, kept device-started mask=0x%03X\n", keep);
     }
     if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
@@ -282,8 +290,8 @@ void engineSetState(EngineId id, EngineState state) {
     if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
 
-uint8_t engineGetActiveMask(void) {
-    uint8_t mask = 0;
+uint16_t engineGetActiveMask16(void) {
+    uint16_t mask = 0;
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (states[i] != ESTATE_DISABLED) {
             mask |= ENGINE_BITMASK(i);
@@ -292,8 +300,11 @@ uint8_t engineGetActiveMask(void) {
     return mask;
 }
 
-uint8_t engineGetAvailableMask(void) {
-    uint8_t mask = 0;
+uint8_t engineGetActiveMask(void) { return ENGINE_MASK_LO(engineGetActiveMask16()); }
+uint8_t engineGetActiveMaskExt(void) { return ENGINE_MASK_EXT(engineGetActiveMask16()); }
+
+static uint16_t engineAvailableMask16(void) {
+    uint16_t mask = 0;
     for (int i = 0; i < ENGINE_COUNT; i++) {
         if (engines[i] != nullptr) {
             mask |= ENGINE_BITMASK(i);
@@ -301,6 +312,9 @@ uint8_t engineGetAvailableMask(void) {
     }
     return mask;
 }
+
+uint8_t engineGetAvailableMask(void) { return ENGINE_MASK_LO(engineAvailableMask16()); }
+uint8_t engineGetAvailableMaskExt(void) { return ENGINE_MASK_EXT(engineAvailableMask16()); }
 
 static bool autoPcapEnabled = false;
 static uint16_t autoPcapDurationSec = 10;
@@ -359,7 +373,8 @@ uint32_t engineGetAutoPcapCooldownRemainingMs(void) {
 }
 
 uint32_t engineGetAutoPcapTriggerCount(void) { return autoPcapTriggers; }
-uint8_t engineGetAutoPcapPausedMask(void) { return autoPcapPending ? autoPcapPausedMask : 0; }
+uint8_t engineGetAutoPcapPausedMask(void) { return autoPcapPending ? ENGINE_MASK_LO(autoPcapPausedMask) : 0; }
+uint16_t engineGetAutoPcapPausedMask16(void) { return autoPcapPending ? autoPcapPausedMask : 0; }
 
 uint32_t engineGetAutoPcapRemainingMs(void) {
     if (!autoPcapPending) return 0;
@@ -478,7 +493,7 @@ void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
     autoPcapUserCancelled = false;
     autoPcapDeadline = millis() + (unsigned long)autoPcapDurationSec * 1000UL;
     autoPcapArmDeadlineTimer((uint32_t)autoPcapDurationSec * 1000U);
-    uint8_t maskSnap = autoPcapPausedMask;
+    uint8_t maskSnap = ENGINE_MASK_LO(autoPcapPausedMask);
     meshBroadcastAutoPcapEvent((uint8_t)src, autoPcapTriggerMac, chan,
                                autoPcapDurationSec, maskSnap,
                                (uint8_t)(isBle ? PCAP_MODE_BLE : PCAP_MODE_WIFI));
@@ -506,7 +521,7 @@ static void autoPcapTick(void) {
 
     if (pcapDown && (autoPcapObservedActive || autoPcapUserCancelled)) {
         autoPcapCancelDeadlineTimer();
-        uint8_t mask = autoPcapUserCancelled ? 0 : autoPcapPausedMask;
+        uint16_t mask = autoPcapUserCancelled ? 0 : autoPcapPausedMask;
         bool cancelled = autoPcapUserCancelled;
         autoPcapPending = false;
         autoPcapObservedActive = false;
@@ -547,9 +562,17 @@ void engineLoopAll(void) {
     if (engineMux) xSemaphoreGiveRecursive(engineMux);
 }
 
-uint8_t engineGetDenyMask(void) { return g_engineDenyMask; }
+uint8_t engineGetDenyMask(void) { return ENGINE_MASK_LO(g_engineDenyMask); }
 
 void engineSetDenyMask(uint8_t mask) {
+    engineSetDenyMask16((uint16_t)((g_engineDenyMask & 0xFF00) | mask));
+}
+
+void engineSetDenyMaskExt(uint8_t ext) {
+    engineSetDenyMask16((uint16_t)((g_engineDenyMask & 0x00FF) | ((uint16_t)ext << 8)));
+}
+
+void engineSetDenyMask16(uint16_t mask) {
     if (mask == g_engineDenyMask) return;
     g_engineDenyMask = mask;
     for (int i = 0; i < ENGINE_COUNT; i++) {
@@ -617,7 +640,7 @@ void engineApplyWifiBand(uint8_t mask) {
                   wifiGetBandMask());
     static const EngineId wifiEngines[] = {
         ENGINE_WARDRIVE, ENGINE_SKYSPY, ENGINE_PCAP,
-        ENGINE_DETECTOR, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER
+        ENGINE_DETECTOR, ENGINE_FLOCK_WIFI, ENGINE_FOXHUNTER, ENGINE_AXEOFF
     };
     for (unsigned i = 0; i < sizeof(wifiEngines) / sizeof(wifiEngines[0]); i++) {
         EngineId id = wifiEngines[i];
@@ -632,8 +655,11 @@ void engineStateConfigApply(const uint8_t* data, uint8_t len) {
     if (len < 1) return;
     static uint16_t s_lastVer = 0;
     static bool s_haveVer = false;
-    uint8_t desired = (uint8_t)(data[0] & ~g_engineDenyMask & ~ENGINE_BITMASK(ENGINE_PCAP));
-    uint8_t current = (uint8_t)(engineGetActiveMask() & ~ENGINE_BITMASK(ENGINE_PCAP));
+    const bool haveExt = len >= 4;
+    const uint16_t managed = (uint16_t)((haveExt ? 0x3FF : 0x0FF) & ~ENGINE_BITMASK(ENGINE_PCAP) & ~ENGINE_BITMASK(ENGINE_BLESNIFF));
+    uint16_t wantMask = (uint16_t)(data[0] | (haveExt ? ((uint16_t)data[3] << 8) : 0));
+    uint16_t desired = (uint16_t)(wantMask & ~g_engineDenyMask & managed);
+    uint16_t current = (uint16_t)(engineGetActiveMask16() & managed);
     if (len >= 3) {
         uint16_t ver = (uint16_t)data[1] | ((uint16_t)data[2] << 8);
         if (s_haveVer && ver == s_lastVer && desired == current) return;
@@ -642,12 +668,12 @@ void engineStateConfigApply(const uint8_t* data, uint8_t len) {
     }
     if (desired == current) return;
     for (int i = 0; i < ENGINE_COUNT; i++) {
-        if (i == ENGINE_PCAP) continue;
-        uint8_t bit = ENGINE_BITMASK(i);
+        uint16_t bit = ENGINE_BITMASK(i);
+        if (!(managed & bit)) continue;
         bool want = (desired & bit) != 0;
         bool have = (current & bit) != 0;
         if (want && !have) engineEnable((EngineId)i);
         else if (!want && have) engineDisable((EngineId)i);
     }
-    Serial.printf("[ENGINE-CFG] desired=0x%02X was=0x%02X\n", desired, current);
+    Serial.printf("[ENGINE-CFG] desired=0x%03X was=0x%03X\n", desired, current);
 }

@@ -39,11 +39,14 @@ void engineDisableNonLocal(void);
 EngineState engineGetState(EngineId id);
 void engineSetState(EngineId id, EngineState state);
 
-// Bitmask of active engines
+// Bitmask of active engines: low byte = engines 0-7 (wire v1), ext byte = engines 8+ (bit0 = AXEOFF, bit1 = BLE Sniff)
 uint8_t engineGetActiveMask(void);
+uint8_t engineGetActiveMaskExt(void);
+uint16_t engineGetActiveMask16(void);
 
 // Bitmask of available (registered) engines
 uint8_t engineGetAvailableMask(void);
+uint8_t engineGetAvailableMaskExt(void);
 
 // Call loop() on all active engines — called from main loop
 void engineLoopAll(void);
@@ -56,6 +59,8 @@ void nodeCtlApply(uint8_t command, const uint8_t* payload, uint8_t len);
 void engineApplyWifiBand(uint8_t mask);
 
 void engineSetDenyMask(uint8_t mask);
+void engineSetDenyMaskExt(uint8_t ext);
+void engineSetDenyMask16(uint16_t mask);
 uint8_t engineGetDenyMask(void);
 void engineStateConfigApply(const uint8_t* data, uint8_t len);
 
@@ -69,6 +74,7 @@ uint16_t engineGetAutoPcapCooldown(void);
 uint32_t engineGetAutoPcapCooldownRemainingMs(void);
 uint32_t engineGetAutoPcapTriggerCount(void);
 uint8_t  engineGetAutoPcapPausedMask(void);
+uint16_t engineGetAutoPcapPausedMask16(void);
 uint32_t engineGetAutoPcapRemainingMs(void);
 uint8_t  engineGetAutoPcapTriggerSrc(void);
 const uint8_t* engineGetAutoPcapTriggerMac(void);

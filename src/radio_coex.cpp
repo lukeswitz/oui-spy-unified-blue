@@ -266,10 +266,10 @@ bool wifiRadioExternallyOwned(void) {
 }
 
 bool wifiCoexShouldHop(int engineId) {
-    uint8_t mask = engineGetActiveMask();
+    uint16_t mask = engineGetActiveMask16();
     static const int prio[] = {
         ENGINE_FOXHUNTER, ENGINE_WARDRIVE, ENGINE_PCAP,
-        ENGINE_DETECTOR, ENGINE_FLOCK_WIFI
+        ENGINE_DETECTOR, ENGINE_FLOCK_WIFI, ENGINE_AXEOFF
     };
     for (unsigned i = 0; i < sizeof(prio) / sizeof(prio[0]); i++) {
         if (mask & ENGINE_BITMASK(prio[i])) return prio[i] == engineId;

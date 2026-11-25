@@ -63,14 +63,22 @@ enum EngineId : uint8_t {
     ENGINE_UNIPWN     = 5,  // bitmask 0x20
     ENGINE_WARDRIVE   = 6,  // bitmask 0x40
     ENGINE_PCAP       = 7,  // bitmask 0x80
-    ENGINE_COUNT      = 8
+    ENGINE_AXEOFF     = 8,  // ext mask bit 0x01 (mask16 0x100)
+    ENGINE_BLESNIFF   = 9,  // ext mask bit 0x02 (mask16 0x200)
+    ENGINE_COUNT      = 10
 };
 
+// Engines 0-7 keep their 8-bit wire masks; engines 8+ ride in a second "ext" byte appended after them.
+#define ENGINE_COUNT_V1 8
 #define ENGINE_BITMASK(id) (1 << (id))
+#define ENGINE_MASK_LO(m16) ((uint8_t)((m16) & 0xFF))
+#define ENGINE_MASK_EXT(m16) ((uint8_t)(((m16) >> 8) & 0xFF))
 
 static const bool kEngineTargetable[ENGINE_COUNT] = {
     false,
     false,
+    false,
+    true,
     false,
     true,
     false,
@@ -442,11 +450,14 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define PCAP_MODE_BLE  1
 #define PCAP_MODE_802154 2  // C5 only. beacon_count=beacons, data_count=data, ctrl_count=acks, mgmt_other_count=MAC commands+other
 
+#define PCAP_SRC_PCAP    0  // PcapStats.src: the PCAP engine
+#define PCAP_SRC_BLESNIFF 1 // PcapStats.src: the BLE Sniff engine (live advert feed, app writes the file only when asked)
+
 typedef struct __attribute__((packed)) {
     uint8_t  state;             // 0=idle, 1=capturing, 2=full, 3=error
     uint8_t  mode;              // PCAP_MODE_WIFI / PCAP_MODE_BLE / PCAP_MODE_802154
     uint8_t  current_channel;   // wifi: current hop channel  ble: last seen primary adv chan
-    uint8_t  _reserved;
+    uint8_t  _reserved;         // PCAP_SRC_*
     uint32_t beacon_count;
     uint32_t probe_req_count;
     uint32_t probe_resp_count;
@@ -545,7 +556,14 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_FILTER_OP       = 0x18,
     MESH_PKT_FILTER_RESULT   = 0x19,
     MESH_PKT_FILTER_REPORT   = 0x1A,
+    MESH_PKT_ENGINE_EXT      = 0x1B,
 };
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_ENGINE_EXT (node -> manager, sent after each heartbeat; older firmware ignores it)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  active_ext;            // engines 8+: bit0 = AXEOFF, bit1 = BLE Sniff
+} MeshEngineExtPacket;
 
 #define MESH_FILTER_ACCEPTED           0
 #define MESH_FILTER_REFUSED_NO_ENGINE  1
@@ -686,6 +704,7 @@ typedef struct __attribute__((packed)) {
 #define MESH_CFG_KIND_SIGMASK 6
 #define MESH_CFG_KIND_WIFIBAND 7   // data[0] = WIFI_BAND_* mask (bit0=2.4, bit1=5)
 #define MESH_CFG_KIND_MELODY 8
+// MESH_CFG_KIND_ENGINE data: [mask lo][ver lo][ver hi] and, from this build on, [mask ext] (engines 8+); older nodes ignore the 4th byte.
 #define MESH_CONFIG_MAX     32
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;          // MESH_PKT_CONFIG

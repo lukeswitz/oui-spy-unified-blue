@@ -37,6 +37,7 @@
 #include "engines/unipwn.h"
 #include "engines/wardrive.h"
 #include "engines/pcap.h"
+#include "engines/axeoff.h"
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
 #ifdef OUISPY_DONGLE
@@ -249,7 +250,10 @@ static void playNotes(const BuzzNote* n, size_t count) {
 }
 
 #define AXON_LOST_MS        25000
+#define AXEOFF_LOST_MS      8000
 #define AXON_HEARTBEAT_MS   2000
+static const BuzzNote AXEOFF_BOOT[] = { {392, 70, 40}, {523, 70, 40}, {659, 70, 40}, {784, 85, 60} };
+#define CHIME_ENGINE_AXEOFF_BOOT 0xFC
 
 static uint8_t melPreview[1 + MELODY_MAX_NOTES * 3];
 static portMUX_TYPE melPreviewMux = portMUX_INITIALIZER_UNLOCKED;
@@ -287,7 +291,8 @@ static volatile int8_t axonLastRssi = -90;
 static void axonPresenceTick(bool& tracking, uint32_t& nextBeat) {
     if (!tracking) return;
     uint32_t now = millis();
-    if ((uint32_t)(now - axonLastSeenMs) > AXON_LOST_MS) {
+    const bool axeoffOnly = axeoffRunning() && engineGetState(ENGINE_DETECTOR) == ESTATE_DISABLED;
+    if ((uint32_t)(now - axonLastSeenMs) > (axeoffOnly ? AXEOFF_LOST_MS : AXON_LOST_MS)) {
         tracking = false;
         Serial.println("[AXON] lost");
         if (!hwAlertsSuppressed && !playAssigned(MELODY_ENGINE_AXON, MELODY_AXON_LOST))
@@ -386,6 +391,8 @@ static void chimeTaskFn(void* param) {
                 memcpy(notes, melPreview + 1, (size_t)n * 3);
                 portEXIT_CRITICAL(&melPreviewMux);
                 playMidi(n, notes);
+            } else if (req.engine == CHIME_ENGINE_AXEOFF_BOOT) {
+                playNotes(AXEOFF_BOOT, sizeof(AXEOFF_BOOT) / sizeof(AXEOFF_BOOT[0]));
             } else if (req.engine == ENGINE_DETECTOR && req.method == METHOD_DET_AXON) {
                 if (!axonTracking) {
                     axonTracking = true;
@@ -411,6 +418,12 @@ void melodyPreview(const uint8_t* d, size_t len) {
     memcpy(melPreview + 1, d + 1, (size_t)n * 3);
     portEXIT_CRITICAL(&melPreviewMux);
     ChimeReq req = { CHIME_ENGINE_PREVIEW, 0 };
+    xQueueSend(chimeQueue, &req, 0);
+}
+
+void axeoffBootChime(void) {
+    if (!chimeQueue || hwAlertsSuppressed) return;
+    ChimeReq req = { CHIME_ENGINE_AXEOFF_BOOT, 0 };
     xQueueSend(chimeQueue, &req, 0);
 }
 
@@ -845,15 +858,17 @@ static void statusHeartbeatTask(void* param) {
         }
 
         if (bleGattOfflineScanEnabled() && !meshManagerJoined()) {
-            static uint8_t lastMask = 0xFF;
-            uint8_t m = (uint8_t)((engineGetActiveMask() | engineGetAutoPcapPausedMask()) & ~ENGINE_BITMASK(ENGINE_PCAP));
-            if (m != lastMask) {
+            static uint16_t lastMask = 0xFFFF;
+            uint16_t m16 = (uint16_t)((engineGetActiveMask16() | engineGetAutoPcapPausedMask16()) &
+                                      ~ENGINE_BITMASK(ENGINE_PCAP) & ~ENGINE_BITMASK(ENGINE_BLESNIFF));
+            if (m16 != lastMask) {
                 Preferences po;
                 po.begin("ouispy-off", false);
-                po.putUChar("eng_mask", m);
+                po.putUChar("eng_mask", ENGINE_MASK_LO(m16));
+                po.putUChar("eng_ext", ENGINE_MASK_EXT(m16));
                 po.end();
-                lastMask = m;
-                Serial.printf("[OFFLINE] persisted eng=0x%02X filt=%d\n", m, detectorFilterCount());
+                lastMask = m16;
+                Serial.printf("[OFFLINE] persisted eng=0x%03X filt=%d\n", m16, detectorFilterCount());
             }
         }
 
@@ -919,13 +934,13 @@ static void statusHeartbeatTask(void* param) {
         if (meshIsEnabled()) {
             if (meshManagerJoined()) {
                 if (!wasManaged) {
-                    if (engineGetActiveMask() != 0 && !bleGattIsConnected()) {
+                    if (engineGetActiveMask16() != 0 && !bleGattIsConnected()) {
                         Serial.println("[MESH] manager joined — drop solo offline engines, yield radio to manager");
                         engineDisableAll();
                     }
                     wasManaged = true;
                 }
-            } else if (wasManaged && engineGetActiveMask() != 0) {
+            } else if (wasManaged && engineGetActiveMask16() != 0) {
                 if (!bleGattOfflineScanEnabled() && !bleGattIsConnected()) {
                     Serial.println("[WATCHDOG] manager lost — self-idle all engines");
                     engineDisableAll();
@@ -1617,6 +1632,7 @@ void setup() {
     engineRegister(ENGINE_UNIPWN, &unipwnCallbacks);
     engineRegister(ENGINE_WARDRIVE, &wardriveCallbacks);
     engineRegister(ENGINE_PCAP, &pcapCallbacks);
+    engineRegister(ENGINE_AXEOFF, &axeoffCallbacks);
 
     // Force all engines disabled at boot — no stale radio state
     engineDisableAll();
@@ -1893,7 +1909,7 @@ void setup() {
     {
         Preferences po;
         po.begin("ouispy-off", true);
-        uint8_t savedMask = po.getUChar("eng_mask", 0);
+        uint16_t savedMask = (uint16_t)(po.getUChar("eng_mask", 0) | ((uint16_t)po.getUChar("eng_ext", 0) << 8));
         uint8_t fb[512];
         size_t fn = po.getBytes("det_filt", fb, sizeof(fb));
         bool haveSig = po.isKey("det_sig");
@@ -1914,7 +1930,7 @@ void setup() {
                     engineEnable((EngineId)i);
                 }
             }
-            Serial.printf("[OFFLINE] restored engines=0x%02X filt=%uB — resuming persistent scan\n",
+            Serial.printf("[OFFLINE] restored engines=0x%03X filt=%uB — resuming persistent scan\n",
                           savedMask, (unsigned)fn);
         }
     }
