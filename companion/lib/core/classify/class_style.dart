@@ -62,6 +62,7 @@ const _watchKinds = <String, (String, IconData, Color)>{
   'aircraft_circle': ('AIRCRAFT CIRCLING', Icons.connecting_airports, Color(0xFF5AE6D6)),
   'drone_loiter': ('DRONE NEAR YOU', Icons.flight_land, Color(0xFFE6A85A)),
   'mesh_crossing': ('MESH CROSSING', Icons.route, Color(0xFFA855F7)),
+  'zone_entry': ('IN YOUR ZONE', Icons.fence, Color(0xFFE6A85A)),
   'beacon_flood': ('BEACON FLOOD', Icons.wifi_channel, Color(0xFFE66B9B)),
 };
 

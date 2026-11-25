@@ -27,6 +27,7 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
   final _mapController = MapController();
   _DrawMode _mode = _DrawMode.none;
   String _name = '';
+  bool _alertZone = false;
 
   // Circle state
   LatLng? _circleCenter;
@@ -111,7 +112,7 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
         centerLat: drift.Value(_circleCenter!.latitude),
         centerLon: drift.Value(_circleCenter!.longitude),
         radiusM: drift.Value(_circleRadiusM),
-        excludeFromWardrive: const drift.Value(true),
+        excludeFromWardrive: drift.Value(!_alertZone),
         enabled: const drift.Value(true),
         createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
       ));
@@ -129,7 +130,7 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
         centerLat: drift.Value(cLat),
         centerLon: drift.Value(cLon),
         polygonJson: drift.Value(json),
-        excludeFromWardrive: const drift.Value(true),
+        excludeFromWardrive: drift.Value(!_alertZone),
         enabled: const drift.Value(true),
         createdAt: drift.Value(DateTime.now().millisecondsSinceEpoch),
       ));
@@ -227,7 +228,7 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
                     const SizedBox(width: 12),
                     Icon(Icons.fence, size: 16, color: AppTheme.warning),
                     const SizedBox(width: 6),
-                    Text('GEOFENCE EXCLUSION', style: TextStyle(
+                    Text('GEOFENCE ZONES', style: TextStyle(
                       color: t.textPrimary, fontSize: 13,
                       fontWeight: FontWeight.w700, letterSpacing: 1,
                     )),
@@ -256,6 +257,8 @@ class _GeofenceScreenState extends ConsumerState<GeofenceScreen> {
                   hasCircleCenter: _circleCenter != null,
                   nameController: _name,
                   onNameChanged: (v) => setState(() => _name = v),
+                  alertZone: _alertZone,
+                  onAlertZoneChanged: (v) => setState(() => _alertZone = v),
                   onRadiusChanged: (v) => setState(() => _circleRadiusM = v),
                   onUndo: _undoLastPoint,
                   onCancel: _cancelDraw,
@@ -413,12 +416,16 @@ class _DrawingToolbar extends StatelessWidget {
     required this.hasCircleCenter,
     required this.nameController,
     required this.onNameChanged,
+    required this.alertZone,
+    required this.onAlertZoneChanged,
     required this.onRadiusChanged,
     required this.onUndo,
     required this.onCancel,
     required this.onSave,
   });
 
+  final bool alertZone;
+  final ValueChanged<bool> onAlertZoneChanged;
   final _DrawMode mode;
   final bool canSave;
   final int polyPointCount;
@@ -499,6 +506,29 @@ class _DrawingToolbar extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _SmallBtn(
+                label: 'QUIET',
+                color: alertZone ? t.textDim : AppTheme.accent,
+                onTap: () => onAlertZoneChanged(false),
+              ),
+              const SizedBox(width: 6),
+              _SmallBtn(
+                label: 'ALERT',
+                color: alertZone ? AppTheme.accent : t.textDim,
+                onTap: () => onAlertZoneChanged(true),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  alertZone ? 'Alerts when a drone or device is inside' : 'Hides what is heard inside',
+                  style: TextStyle(color: t.textDim, fontSize: 10),
+                ),
+              ),
+            ],
           ),
           // Circle radius slider
           if (isCircle && hasCircleCenter) ...[
@@ -641,7 +671,7 @@ class _BottomPanel extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'No exclusion zones.\nNetworks inside zones are hidden from wardrive output.',
+                'No zones.\nQuiet zones hide what is heard inside them. Alert zones alert when a drone or device is inside.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: t.textDim, fontSize: 11),
               ),
@@ -719,9 +749,10 @@ class _GeofenceRow extends StatelessWidget {
     final g = geofence;
     final enabled = g.enabled;
     final icon = g.zoneType == 'circle' ? Icons.circle_outlined : Icons.pentagon_outlined;
-    final subtitle = g.zoneType == 'circle'
+    final shape = g.zoneType == 'circle'
         ? '${(g.radiusM ?? 0).round()}m radius'
         : 'polygon';
+    final subtitle = '$shape · ${g.excludeFromWardrive ? 'quiet' : 'alert'}';
 
     return GestureDetector(
       onTap: onZoom,

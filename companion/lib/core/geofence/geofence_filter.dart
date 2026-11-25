@@ -13,16 +13,26 @@ class GeofenceFilter extends ChangeNotifier {
 
   final AppDatabase _db;
   List<_GeofenceZone> _zones = [];
+  List<({String id, String name, _GeofenceZone zone})> _alertZones = [];
 
   /// Number of active exclusion zones.
   int get zoneCount => _zones.length;
+
+  int get alertZoneCount => _alertZones.length;
 
   /// Reload exclusion geofences from DB. Call on start and when user edits zones.
   Future<void> reload() async {
     final rows = await _db.getWardriveExclusionGeofences();
     _zones = rows.map(_GeofenceZone.fromGeofence).toList();
+    final alert = await _db.getAlertGeofences();
+    _alertZones = [for (final g in alert) (id: g.id, name: g.name, zone: _GeofenceZone.fromGeofence(g))];
     notifyListeners();
   }
+
+  List<({String id, String name})> alertZonesAt(double lat, double lon) => [
+        for (final z in _alertZones)
+          if (z.zone.contains(lat, lon)) (id: z.id, name: z.name),
+      ];
 
   bool isExcluded(double lat, double lon) {
     if (_zones.isEmpty) return false;

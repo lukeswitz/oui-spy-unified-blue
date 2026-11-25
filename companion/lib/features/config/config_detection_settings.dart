@@ -37,6 +37,8 @@ const _watchGroups = <(String, List<_WatchItem>)>[
         watch: 'car_follow'),
     _WatchItem('Crossing your mesh', 'A device moving from one of your nodes to another', Icons.route,
         watch: 'mesh_crossing'),
+    _WatchItem('In your zone', 'A drone or device inside one of your alert zones. Draw zones with the fence button on the map',
+        Icons.fence, watch: 'zone_entry'),
     _WatchItem('Smart glasses', 'Ray-Ban and Oakley Meta camera glasses', Icons.visibility,
         bits: sigGlasses, classes: {SignatureClass.glasses}),
     _WatchItem('Wearable cameras', 'GoPro, Insta360, Snap Spectacles, other camera glasses and PLAUD voice recorders',

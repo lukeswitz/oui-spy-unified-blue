@@ -354,7 +354,8 @@ These features add their own alerts and set how alerts sound.
 
 - **MAPPED ALPRs** checks each Flock hit against license plate cameras mapped in OpenStreetMap. It marks a hit `ON MAP` within 75 m and `UNMAPPED` beyond 250 m.
 - **WDG TERRITORY** shows a linked account's WDGWars territory.
-- **Geofences:** inside a zone, detections drop from the feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
+- **Geofences:** draw a zone with the fence button on the map and pick **QUIET** or **ALERT**. Inside a quiet zone, detections drop from the feed, log and notifications, and the board stops beeping and auto-PCAP. A map session turns its radios off until you leave. Engines started from HOME keep scanning, and a T-Dongle still writes to SD.
+- **Alert zones:** with **In your zone** on (Detection & Alerts → What to Watch For), the app alerts once when a Remote ID drone, or a device a board catches, is inside an alert zone. A drone is placed by its own position, and other devices by where the phone was. It alerts again after the device leaves the zone or goes 10 minutes unheard.
 
 ### Packet capture
 

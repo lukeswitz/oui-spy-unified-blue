@@ -1056,6 +1056,12 @@ class AppDatabase extends _$AppDatabase {
             ..where((g) => g.excludeFromWardrive.equals(true)))
           .get();
 
+  Future<List<Geofence>> getAlertGeofences() =>
+      (select(geofences)
+            ..where((g) => g.enabled.equals(true))
+            ..where((g) => g.excludeFromWardrive.equals(false)))
+          .get();
+
   Future<File> createBackup() async {
     final dir = await getTemporaryDirectory();
     final stamp =

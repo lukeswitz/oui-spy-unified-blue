@@ -11,6 +11,9 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/core/stops_report.dart' show StopsReport;
 import 'package:oui_spy/core/watch_alert_log.dart';
+import 'package:oui_spy/core/atak/cot.dart' show cotSends;
+import 'package:oui_spy/core/geofence/geofence_filter.dart';
+import 'package:oui_spy/features/feed/detection_row.dart' show detectionHeadline;
 
 class _Cooldown {
   _Cooldown(this.ms);
@@ -171,8 +174,30 @@ class MeshCrossing {
   }
 }
 
+/// Alerts once when a drone or caught device is first seen inside an alert zone.
+class ZoneEntry {
+  static const forgetMs = 10 * 60 * 1000;
+  final _inside = <String, int>{};
+
+  String? onPosition(String subject, String label, double? lat, double? lon, int now,
+      List<({String id, String name})> Function(double lat, double lon) zonesAt) {
+    if (lat == null || lon == null || (lat == 0 && lon == 0)) return null;
+    _inside.removeWhere((_, t) => now - t > forgetMs);
+    final zones = zonesAt(lat, lon);
+    final here = {for (final z in zones) '${z.id}|$subject'};
+    _inside.removeWhere((k, _) => k.endsWith('|$subject') && !here.contains(k));
+    String? warning;
+    for (final z in zones) {
+      final k = '${z.id}|$subject';
+      if (!_inside.containsKey(k)) warning ??= '$label is inside ${z.name}';
+      _inside[k] = now;
+    }
+    return warning;
+  }
+}
+
 class WatchAlerts extends ChangeNotifier {
-  static const kinds = ['car_follow', 'aircraft_circle', 'drone_loiter', 'mesh_crossing'];
+  static const kinds = ['car_follow', 'aircraft_circle', 'drone_loiter', 'mesh_crossing', 'zone_entry'];
   static const _ownCarsKey = 'watch_own_cars';
 
   WatchAlerts({bool persist = true}) : _persist = persist {
@@ -185,6 +210,7 @@ class WatchAlerts extends ChangeNotifier {
   final aircraft = AircraftCircle();
   final drone = DroneLoiter();
   final mesh = MeshCrossing();
+  final zone = ZoneEntry();
 
   bool isOn(String kind) => _on.contains(kind);
 
@@ -263,6 +289,19 @@ final watchAlertsProvider = ChangeNotifierProvider<WatchAlerts>((ref) {
       if (w.isOn('mesh_crossing') && d.sourceNodeId.isNotEmpty && d.isBleDetection && d.macAddress.isNotEmpty) {
         alert('mesh_crossing', 'Device crossing your mesh', w.mesh.onSighting(d.macAddress.toUpperCase(), d.sourceNodeId, now),
             subject: d.macAddress.toUpperCase(), isBle: true);
+      }
+      final zones = ref.read(geofenceFilterProvider);
+      if (w.isOn('zone_entry') && zones.alertZoneCount > 0 && cotSends(d)) {
+        final drone = d.engine == Engine.skySpy && odid != null && odid.droneLat != null;
+        final subject = drone ? (odid.uavId ?? d.macAddress) : d.macAddress.toUpperCase();
+        alert(
+          'zone_entry',
+          'Inside your zone',
+          w.zone.onPosition(subject, drone ? 'Drone $subject' : detectionHeadline(d),
+              drone ? odid.droneLat : d.latitude, drone ? odid.droneLon : d.longitude, now, zones.alertZonesAt),
+          subject: subject,
+          isBle: d.isBleDetection,
+        );
       }
     }),
   ];
