@@ -2059,6 +2059,45 @@ void bleGattStartFleetProgress(void) {
     meshOtaSetProgressCb(fleetProgressCb);
 }
 
+static void meshFwNodeCb(uint8_t ev, uint8_t idx, uint8_t count, const char* id, uint8_t aux, uint16_t recv, uint16_t total) {
+    if (!chrSystemControl) return;
+    uint8_t b[13] = { SYS_OP_MESH_FW, ev, idx, count, 0, 0, 0, 0, aux,
+                      (uint8_t)recv, (uint8_t)(recv >> 8), (uint8_t)total, (uint8_t)(total >> 8) };
+    memcpy(b + 4, id, 4);
+    notifyChr(chrSystemControl, b, sizeof(b));
+}
+
+static void meshFwStatusNotify(void) {
+    if (!chrSystemControl) return;
+    uint32_t size = 0, crc = 0;
+    bool staged = otaStagedImage(&size, &crc);
+    uint8_t b[13] = { SYS_OP_MESH_FW, MESH_FW_EV_STAGED, (uint8_t)(staged ? 1 : 0),
+                      (uint8_t)(meshOtaInitiatorRunning() ? 1 : 0),
+                      (uint8_t)size, (uint8_t)(size >> 8), (uint8_t)(size >> 16), (uint8_t)(size >> 24), 0,
+                      (uint8_t)crc, (uint8_t)(crc >> 8), (uint8_t)(crc >> 16), (uint8_t)(crc >> 24) };
+    notifyChr(chrSystemControl, b, sizeof(b));
+}
+
+static void meshFwCommand(const uint8_t* d, size_t len) {
+    if (len < 1) return;
+    if (d[0] == MESH_FW_SUB_STOP) { meshOtaStop(); return; }
+    if (d[0] == MESH_FW_SUB_STATUS) { meshFwStatusNotify(); return; }
+    if (d[0] != MESH_FW_SUB_SEND) return;
+    uint8_t reason = MESH_FW_FAIL_ARGS;
+    uint32_t size = 0, crc = 0;
+    if (len >= 6 && d[5] > 0 && d[5] <= MESH_FW_MAX_TARGETS && len >= (size_t)6 + (size_t)d[5] * 4) {
+        uint32_t ver = (uint32_t)d[1] | ((uint32_t)d[2] << 8) | ((uint32_t)d[3] << 16) | ((uint32_t)d[4] << 24);
+        uint8_t n = d[5];
+        if (!otaStagedImage(&size, &crc)) {
+            reason = MESH_FW_FAIL_NO_IMAGE;
+        } else {
+            reason = meshOtaSendTargets(d + 6, n, size, crc, ver);
+            if (reason == 0) return;
+        }
+    }
+    meshFwNodeCb(MESH_FW_EV_RUN_END, 0, 0, "    ", reason, 0, 0);
+}
+
 static uint8_t g_fleetWifiBlob[MESH_WIFIOTA_MAX];
 static size_t  g_fleetWifiBlobLen = 0;
 static void fleetWifiOtaPushTask(void* arg) {
@@ -2259,6 +2298,17 @@ class SystemControlCallbacks : public NimBLECharacteristicCallbacks {
                 xTaskCreatePinnedToCore(fleetWifiOtaPushTask, "fleet_wifi", 3072, NULL, 1, NULL, 1);
                 uint8_t b[6] = { SYS_OP_FLEET_PROGRESS, 2, 100, 0, 0, 0 };
                 notifyChr(chr, b, sizeof(b));
+#endif
+                break;
+            }
+
+            case SYS_CMD_MESH_FW: {
+                if (!magicOk || val.length() < 4) {
+                    Serial.println("[SYS] Mesh firmware command rejected");
+                    return;
+                }
+#ifdef OUISPY_ROLE_MANAGER
+                meshFwCommand((const uint8_t*)val.data() + 3, val.length() - 3);
 #endif
                 break;
             }
@@ -3081,6 +3131,9 @@ void bleGattInit(void) {
     otaInit();
     otaSetNotifyCallback(dfuNotifyTrampoline);
     wifiOtaSetNotifyCallback(wifiOtaNotifyTrampoline);
+#ifdef OUISPY_ROLE_MANAGER
+    meshOtaSetNodeCb(meshFwNodeCb);
+#endif
 
 #ifndef OUISPY_NIMBLE2_API
     svc->start();

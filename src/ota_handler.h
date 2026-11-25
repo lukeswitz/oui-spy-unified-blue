@@ -23,6 +23,9 @@ bool otaOnDataWrite(const uint8_t* data, size_t len);
 // Returns true if OTA transfer in progress.
 bool otaIsActive(void);
 
+// A manager keeps an image staged by a DFU transfer started with OTA_DFU_FLAG_STAGE_MESH until the next transfer.
+bool otaStagedImage(uint32_t* size, uint32_t* crc);
+
 // Set the notify callback used to report progress / status back on dfuControl.
 typedef void (*OtaNotifyFn)(const uint8_t* data, size_t len);
 void otaSetNotifyCallback(OtaNotifyFn fn);

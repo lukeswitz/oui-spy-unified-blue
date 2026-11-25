@@ -403,6 +403,12 @@ class _OtaSectionState extends ConsumerState<_OtaSection> {
             ],
           ),
         ),
+      ConfigActionRow(
+        icon: Icons.system_update_alt,
+        label: 'Firmware over the mesh',
+        subtitle: 'Pick nodes and send each one a build, one at a time',
+        onTap: () => context.push('/mesh/firmware'),
+      ),
       if (nodes.isNotEmpty && _nodeRelease != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),

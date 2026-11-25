@@ -713,6 +713,7 @@ static struct {
     esp_ota_handle_t handle;
     const esp_partition_t* part;
     uint32_t total_size;
+    uint32_t crc32;
     uint16_t total_chunks;
     uint32_t fw_version;
     uint16_t recv_count;
@@ -740,6 +741,11 @@ static void otaRxBegin(const MeshOtaBeginPacket* b) {
     if (b->total_chunks == 0 || b->total_chunks > MESH_OTA_MAX_CHUNKS) {
         otaRxSendAck(MESH_OTA_ST_ERR, 0, 0); return;
     }
+    if (g_otaRx.active && g_otaRx.total_size == b->total_size && g_otaRx.crc32 == b->crc32 &&
+        g_otaRx.total_chunks == b->total_chunks) {
+        otaRxSendAck(g_otaRx.recv_count ? MESH_OTA_ST_RECEIVING : MESH_OTA_ST_READY, otaFirstMissing(), g_otaRx.recv_count);
+        return;
+    }
     engineDisableAll();
     esp_wifi_set_channel(MESH_RENDEZVOUS_CH, WIFI_SECOND_CHAN_NONE);
     if (g_otaRx.active && g_otaRx.handle) esp_ota_abort(g_otaRx.handle);
@@ -753,6 +759,7 @@ static void otaRxBegin(const MeshOtaBeginPacket* b) {
     }
     g_otaRx.active = true;
     g_otaRx.total_size = b->total_size;
+    g_otaRx.crc32 = b->crc32;
     g_otaRx.total_chunks = b->total_chunks;
     g_otaRx.fw_version = b->fw_version_num;
     Serial.printf("[MESH-OTA-RX] BEGIN size=%u chunks=%u part=%s\n",
@@ -806,6 +813,15 @@ static void otaRxEnd(const MeshOtaEndPacket* e) {
     Serial.println("[MESH-OTA-RX] image complete + verified -> reboot into new firmware");
     otaRxSendAck(MESH_OTA_ST_DONE, 0, g_otaRx.recv_count);
     delay(500);
+    esp_restart();
+}
+static void otaRxAbort(const MeshOtaAbortPacket* a) {
+    if (!g_otaRx.active) return;
+    if (memcmp(a->target_node_id, localNodeId, MESH_NODE_ID_LEN - 1) != 0) return;
+    if (g_otaRx.handle) esp_ota_abort(g_otaRx.handle);
+    g_otaRx.active = false;
+    Serial.println("[MESH-OTA-RX] aborted by the manager -> restart");
+    delay(200);
     esp_restart();
 }
 #endif
@@ -943,6 +959,126 @@ bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version) {
         return false;
     }
     return true;
+}
+static char g_otaTargets[MESH_FW_MAX_TARGETS][MESH_NODE_ID_LEN];
+static uint8_t g_otaTargetN = 0;
+static volatile bool g_otaStop = false;
+static MeshOtaNodeCb g_otaNodeCb = nullptr;
+void meshOtaSetNodeCb(MeshOtaNodeCb cb) { g_otaNodeCb = cb; }
+void meshOtaStop(void) { g_otaStop = true; }
+
+static void otaNodeEvent(uint8_t ev, uint8_t idx, const char* id, uint8_t aux, uint16_t recv, uint16_t total) {
+    if (g_otaNodeCb) g_otaNodeCb(ev, idx, g_otaTargetN, id, aux, recv, total);
+}
+static OtaNodeProg* otaFindNode(const char* id) {
+    for (int i = 0; i < MESH_LIVE_NODES_MAX; i++)
+        if (g_otaNodes[i].seen && memcmp(g_otaNodes[i].id, id, MESH_NODE_ID_LEN - 1) == 0) return &g_otaNodes[i];
+    return NULL;
+}
+static void otaSendAbort(const char* id) {
+    MeshOtaAbortPacket a = {};
+    a.pkt_type = MESH_PKT_OTA_ABORT;
+    memcpy(a.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    memcpy(a.target_node_id, id, MESH_NODE_ID_LEN);
+    for (int i = 0; i < 3; i++) { otaSendRawOnHome((const uint8_t*)&a, sizeof(a)); vTaskDelay(pdMS_TO_TICKS(40)); }
+}
+static bool otaWaitStop(uint32_t ms) {
+    for (uint32_t t = 0; t < ms && !g_otaStop; t += 50) vTaskDelay(pdMS_TO_TICKS(50));
+    return g_otaStop;
+}
+static uint8_t otaSendOne(const esp_partition_t* src, uint8_t idx, const char* id, uint8_t* aux) {
+    memset(g_otaNodes, 0, sizeof(g_otaNodes));
+    uint16_t chunks = (uint16_t)((g_otaSize + MESH_OTA_CHUNK_MAX - 1) / MESH_OTA_CHUNK_MAX);
+    g_otaTotalChunks = chunks;
+    MeshOtaTargetBeginPacket b = {};
+    b.begin.pkt_type = MESH_PKT_OTA_BEGIN;
+    memcpy(b.begin.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    b.begin.total_size = g_otaSize; b.begin.crc32 = g_otaCrc; b.begin.fw_version_num = g_otaVer; b.begin.total_chunks = chunks;
+    memcpy(b.target_node_id, id, MESH_NODE_ID_LEN);
+    otaNodeEvent(MESH_FW_EV_NODE_BEGIN, idx, id, 0, 0, chunks);
+
+    OtaNodeProg* s = NULL;
+    for (int i = 0; i < 8 && !s; i++) {
+        otaSendRawOnHome((const uint8_t*)&b, sizeof(b));
+        if (otaWaitStop(1000)) return MESH_FW_FAIL_STOPPED;
+        s = otaFindNode(id);
+    }
+    if (!s) return MESH_FW_FAIL_NO_ANSWER;
+    if (s->status == MESH_OTA_ST_ERR) return MESH_FW_FAIL_REFUSED;
+
+    uint32_t lastEv = 0;
+    uint16_t from = 0;
+    for (int round = 0; round < 10; round++) {
+        for (uint16_t seq = from; seq < chunks; seq++) {
+            if (g_otaStop) return MESH_FW_FAIL_STOPPED;
+            otaSendChunk(src, seq);
+            vTaskDelay(pdMS_TO_TICKS(3));
+            if (millis() - lastEv >= 500) {
+                lastEv = millis();
+                otaNodeEvent(MESH_FW_EV_NODE_PROGRESS, idx, id, s->status, s->recv, chunks);
+            }
+        }
+        MeshOtaEndPacket e = {};
+        e.pkt_type = MESH_PKT_OTA_END;
+        memcpy(e.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+        e.crc32 = g_otaCrc;
+        for (int i = 0; i < 3; i++) { otaSendRawOnHome((const uint8_t*)&e, sizeof(e)); vTaskDelay(pdMS_TO_TICKS(40)); }
+        if (otaWaitStop(1500)) return MESH_FW_FAIL_STOPPED;
+        otaNodeEvent(MESH_FW_EV_NODE_PROGRESS, idx, id, s->status, s->recv, chunks);
+        if (s->status == MESH_OTA_ST_DONE) { *aux = 0; return 0; }
+        if (s->status == MESH_OTA_ST_ERR) return MESH_FW_FAIL_REFUSED;
+        from = s->status == MESH_OTA_ST_RESUME && s->next < chunks ? s->next : chunks;
+    }
+    if (s->recv >= chunks) { *aux = 1; return 0; }
+    return MESH_FW_FAIL_STALLED;
+}
+static void otaTargetTaskFn(void* arg) {
+    (void)arg;
+    const esp_partition_t* src = esp_ota_get_next_update_partition(NULL);
+    uint8_t ok = 0, bad = 0;
+    for (uint8_t i = 0; i < g_otaTargetN; i++) {
+        const char* id = g_otaTargets[i];
+        uint8_t aux = 0;
+        uint8_t r = src ? otaSendOne(src, i, id, &aux) : MESH_FW_FAIL_NO_IMAGE;
+        if (r == 0) {
+            ok++;
+            otaNodeEvent(MESH_FW_EV_NODE_DONE, i, id, aux, g_otaTotalChunks, g_otaTotalChunks);
+            continue;
+        }
+        bad++;
+        if (r == MESH_FW_FAIL_STOPPED || r == MESH_FW_FAIL_STALLED || r == MESH_FW_FAIL_REFUSED) otaSendAbort(id);
+        otaNodeEvent(MESH_FW_EV_NODE_FAIL, i, id, r, 0, g_otaTotalChunks);
+        if (r == MESH_FW_FAIL_STOPPED) {
+            for (uint8_t j = i + 1; j < g_otaTargetN; j++) otaNodeEvent(MESH_FW_EV_NODE_FAIL, j, g_otaTargets[j], r, 0, g_otaTotalChunks);
+            bad += g_otaTargetN - i - 1;
+            break;
+        }
+    }
+    otaNodeEvent(MESH_FW_EV_RUN_END, g_otaTargetN, "    ", ok, bad, g_otaTotalChunks);
+    Serial.printf("[MESH-OTA-MGR] targeted send finished ok=%u bad=%u\n", ok, bad);
+    g_otaTargetN = 0;
+    g_otaInitRunning = false;
+    g_otaInitTask = NULL;
+    vTaskDelete(NULL);
+}
+uint8_t meshOtaSendTargets(const uint8_t* ids4, uint8_t n, uint32_t size, uint32_t crc, uint32_t fw_version) {
+    if (n == 0 || n > MESH_FW_MAX_TARGETS || size == 0) return MESH_FW_FAIL_ARGS;
+    if (g_otaInitRunning) return MESH_FW_FAIL_BUSY;
+    g_otaSize = size; g_otaCrc = crc; g_otaVer = fw_version;
+    for (uint8_t i = 0; i < n; i++) {
+        memcpy(g_otaTargets[i], ids4 + (size_t)i * (MESH_NODE_ID_LEN - 1), MESH_NODE_ID_LEN - 1);
+        g_otaTargets[i][MESH_NODE_ID_LEN - 1] = 0;
+    }
+    g_otaTargetN = n;
+    g_otaStop = false;
+    g_otaInitRunning = true;
+    if (xTaskCreatePinnedToCore(otaTargetTaskFn, "mesh_ota_t", 6144, NULL, 1, &g_otaInitTask, 0) != pdPASS) {
+        g_otaInitRunning = false;
+        g_otaTargetN = 0;
+        Serial.printf("[MESH-OTA-MGR] task create FAILED (free heap=%u)\n", (unsigned)ESP.getFreeHeap());
+        return MESH_FW_FAIL_BUSY;
+    }
+    return 0;
 }
 bool meshOtaInitiatorRunning(void) { return g_otaInitRunning; }
 void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uint8_t* nodesSeen) {
@@ -1322,6 +1458,14 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
     }
     if (plainLen == sizeof(MeshOtaBeginPacket) && plainBuf[0] == MESH_PKT_OTA_BEGIN) {
         MeshOtaBeginPacket b; memcpy(&b, plainBuf, sizeof(b)); otaRxBegin(&b); return;
+    }
+    if (plainLen == sizeof(MeshOtaTargetBeginPacket) && plainBuf[0] == MESH_PKT_OTA_BEGIN) {
+        MeshOtaTargetBeginPacket t; memcpy(&t, plainBuf, sizeof(t));
+        if (memcmp(t.target_node_id, localNodeId, MESH_NODE_ID_LEN - 1) == 0) otaRxBegin(&t.begin);
+        return;
+    }
+    if (plainLen == sizeof(MeshOtaAbortPacket) && plainBuf[0] == MESH_PKT_OTA_ABORT) {
+        MeshOtaAbortPacket a; memcpy(&a, plainBuf, sizeof(a)); otaRxAbort(&a); return;
     }
     if (plainLen >= offsetof(MeshOtaDataPacket, payload) && plainBuf[0] == MESH_PKT_OTA_DATA) {
         MeshOtaDataPacket d;

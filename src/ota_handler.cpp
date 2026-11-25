@@ -17,6 +17,7 @@
 #include <mbedtls/md.h>
 #include <string.h>
 #include "ota_pubkey.h"
+#include "protocol.h"
 
 #define OTA_TRIAL_MS 60000UL
 #define OTA_SIG_LEN 64
@@ -57,6 +58,10 @@ uint32_t                g_bytesReceived = 0;
 uint32_t                g_runningCrc = 0xFFFFFFFF;
 uint16_t                g_expectedSeq = 0;
 uint32_t                g_lastProgressKb = 0;
+bool                    g_stageOnly = false;
+bool                    g_staged = false;
+uint32_t                g_stagedSize = 0;
+uint32_t                g_stagedCrc = 0;
 
 OtaNotifyFn             g_notifyFn = nullptr;
 
@@ -182,6 +187,7 @@ void resetState() {
     g_runningCrc = 0xFFFFFFFF;
     g_expectedSeq = 0;
     g_lastProgressKb = 0;
+    g_stageOnly = false;
 }
 
 bool handleStart(const uint8_t* data, size_t len) {
@@ -191,6 +197,15 @@ bool handleStart(const uint8_t* data, size_t len) {
         if (g_handle) esp_ota_abort(g_handle);
         resetState();
     }
+    const bool stageOnly = len >= 10 && (data[9] & OTA_DFU_FLAG_STAGE_MESH) != 0;
+#ifndef OUISPY_ROLE_MANAGER
+    if (stageOnly) {
+        Serial.println("[OTA] Mesh staging refused: only a manager relays over the mesh");
+        notifyStatus(0, OTA_DFU_ST_STAGE_REFUSED);
+        return false;
+    }
+#endif
+    g_staged = false;
 
     g_expectedLength  = (uint32_t)data[1]
                       | ((uint32_t)data[2] << 8)
@@ -228,6 +243,7 @@ bool handleStart(const uint8_t* data, size_t len) {
     }
 
     g_active = true;
+    g_stageOnly = stageOnly;
     g_runningCrc = 0xFFFFFFFF;
     g_bytesReceived = 0;
     g_expectedSeq = 0;
@@ -313,6 +329,16 @@ bool handleCommit() {
         notifyStatus(0, 0x09);
         resetState();
         return false;
+    }
+
+    if (g_stageOnly) {
+        g_staged = true;
+        g_stagedSize = g_expectedLength;
+        g_stagedCrc = computedCrc;
+        Serial.printf("[OTA] STAGED for mesh relay: %u bytes in %s\n", (unsigned)g_stagedSize, g_partition->label);
+        notifyStatus(0, OTA_DFU_ST_STAGED);
+        resetState();
+        return true;
     }
 
     err = esp_ota_set_boot_partition(g_partition);
@@ -414,6 +440,13 @@ extern "C" bool otaOnDataWrite(const uint8_t* data, size_t len) {
 
 extern "C" bool otaIsActive(void) {
     return g_active;
+}
+
+extern "C" bool otaStagedImage(uint32_t* size, uint32_t* crc) {
+    if (!g_staged) return false;
+    if (size) *size = g_stagedSize;
+    if (crc) *crc = g_stagedCrc;
+    return true;
 }
 
 extern "C" void otaSetNotifyCallback(OtaNotifyFn fn) {

@@ -9,6 +9,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/ota/mesh_fw_protocol.dart';
 import 'package:oui_spy/core/ota/ota_signature.dart';
 
 class OtaRelease {
@@ -35,6 +36,7 @@ enum OtaPhase {
   downloading,
   uploading,
   verifying,
+  staged,
   rebooting,
   upToDate,
   error,
@@ -422,7 +424,19 @@ class OtaService {
     }
   }
 
-  Future<bool> _pushImage(Uint8List image) async {
+  /// Saves [image] on the connected manager without installing it, so it can send it to nodes over the mesh.
+  Future<bool> stageForMesh(Uint8List image) async {
+    if (_running) return false;
+    _running = true;
+    markOtaActive(ttl: const Duration(minutes: 3));
+    try {
+      return await _pushImage(image, stage: true);
+    } finally {
+      _running = false;
+    }
+  }
+
+  Future<bool> _pushImage(Uint8List image, {bool stage = false}) async {
     final dfuData = _ble.dfuData;
     final dfuControl = _ble.dfuControl;
     if (dfuData == null || dfuControl == null) {
@@ -470,6 +484,7 @@ class OtaService {
       return false;
     }
     final statusCompleter = Completer<bool>();
+    var stageRefused = false;
     final statusSub = dfuControl.onValueReceived.listen((data) {
       if (data.length < 4) return;
       final seq = data[1] | (data[2] << 8);
@@ -479,9 +494,12 @@ class OtaService {
         // periodic progress ACK from firmware (seq = KB received)
         return;
       }
-      if (status == 0xFF) {
+      if (status == 0xFF || (stage && status == MeshFwProtocol.dfuStatusStaged)) {
         if (!statusCompleter.isCompleted) statusCompleter.complete(true);
         return;
+      }
+      if (status == MeshFwProtocol.dfuStatusStageRefused) {
+        stageRefused = true;
       }
       // any other code is an error from ota_handler.cpp
       if (!statusCompleter.isCompleted) statusCompleter.complete(false);
@@ -492,10 +510,11 @@ class OtaService {
       final mtu = _ble.mtu;
       final chunkSize = (mtu - 3).clamp(20, 244);
 
-      final start = ByteData(9);
+      final start = ByteData(stage ? 10 : 9);
       start.setUint8(0, 0x01);
       start.setUint32(1, image.length, Endian.little);
       start.setUint32(5, crc, Endian.little);
+      if (stage) start.setUint8(9, MeshFwProtocol.dfuFlagStageMesh);
       _progress.add(OtaProgress(
         phase: OtaPhase.uploading,
         bytesTotal: image.length,
@@ -508,6 +527,7 @@ class OtaService {
       int seq = 0;
       const int syncEvery = 128;
       while (offset < image.length) {
+        if (statusCompleter.isCompleted) break;
         final end =
             (offset + (chunkSize - 3)).clamp(0, image.length);
         final payload = image.sublist(offset, end);
@@ -558,10 +578,22 @@ class OtaService {
         DebugLog.log('OTA: COMMIT ack timed out');
         return false;
       });
-      if (ok) {
+      if (ok && stage) {
+        _progress.add(OtaProgress(
+          phase: OtaPhase.staged,
+          bytesSent: image.length,
+          bytesTotal: image.length,
+          message: 'Saved on the manager',
+        ));
+      } else if (ok) {
         _progress.add(const OtaProgress(
           phase: OtaPhase.rebooting,
           message: 'Update applied — device rebooting',
+        ));
+      } else if (stageRefused) {
+        _progress.add(const OtaProgress(
+          phase: OtaPhase.error,
+          error: 'This board is not a mesh manager, so it cannot send firmware to nodes.',
         ));
       } else {
         _progress.add(const OtaProgress(

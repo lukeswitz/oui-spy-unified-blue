@@ -24,6 +24,7 @@ import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/flock_oui.dart';
+import 'package:oui_spy/core/ota/mesh_fw_protocol.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
@@ -175,6 +176,9 @@ class BleManager {
       StreamController<({int phase, int pct, int done, int seen})>.broadcast();
   Stream<({int phase, int pct, int done, int seen})> get fleetOtaUpdates =>
       _fleetOtaStream.stream;
+
+  final _meshFwStream = StreamController<MeshFwEvent>.broadcast();
+  Stream<MeshFwEvent> get meshFwEvents => _meshFwStream.stream;
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -1334,6 +1338,9 @@ class BleManager {
               done: data[3],
               seen: data[4],
             ));
+          } else if (data[0] == MeshFwProtocol.opcode && data.length >= 13) {
+            final ev = MeshFwEvent.decode(data);
+            if (ev != null) _meshFwStream.add(ev);
           } else if (data[0] == 0x0F && data.length >= 8) {
             enowHubActive = data[1] == 1;
             if (!enowHubActive) {
@@ -1776,6 +1783,17 @@ class BleManager {
     payload.setRange(3, 3 + urlBytes.length, urlBytes);
     await _systemControl!.write(payload, withoutResponse: false);
   }
+
+  Future<void> _writeMeshFw(Uint8List payload) async {
+    final c = _systemControl;
+    if (c == null) throw StateError('System control characteristic not found');
+    await c.write(payload, withoutResponse: false);
+  }
+
+  Future<void> meshFwSend(int version, List<String> nodeIds) =>
+      _writeMeshFw(MeshFwProtocol.encodeSend(version, nodeIds));
+  Future<void> meshFwStop() => _writeMeshFw(MeshFwProtocol.encodeStop());
+  Future<void> meshFwStatus() => _writeMeshFw(MeshFwProtocol.encodeStatus());
 
   // -- Engine control --
 
@@ -2275,6 +2293,7 @@ class BleManager {
     _wifiOtaStream.close();
     _wdLogFrames.close();
     _fleetOtaStream.close();
+    _meshFwStream.close();
     _pcapStatsStream.close();
     _pcapDataStream.close();
     _pcapWifiRecords.close();

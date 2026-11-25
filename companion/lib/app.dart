@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:oui_spy/features/analysis/analysis_screen.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/config/device_config.dart';
+import 'package:oui_spy/features/config/mesh_firmware_screen.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/drones/drones_screen.dart';
 import 'package:oui_spy/features/engines/detector_screen.dart';
@@ -109,6 +110,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/analysis',
         builder: (context, state) => const AnalysisScreen(),
+      ),
+      GoRoute(
+        path: '/mesh/firmware',
+        builder: (context, state) => const MeshFirmwareScreen(),
       ),
     ],
   );

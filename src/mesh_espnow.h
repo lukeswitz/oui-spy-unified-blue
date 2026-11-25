@@ -121,6 +121,11 @@ bool meshOtaInitiatorRunning(void);
 void meshOtaProgress(uint16_t* total, uint16_t* minRecv, uint8_t* nodesDone, uint8_t* nodesSeen);
 void meshOtaSetProgressCb(void (*cb)(uint8_t phase, uint8_t pct, uint8_t done, uint8_t seen));
 
+typedef void (*MeshOtaNodeCb)(uint8_t ev, uint8_t idx, uint8_t count, const char* id, uint8_t aux, uint16_t recv, uint16_t total);
+void meshOtaSetNodeCb(MeshOtaNodeCb cb);
+uint8_t meshOtaSendTargets(const uint8_t* ids4, uint8_t n, uint32_t size, uint32_t crc, uint32_t fw_version);
+void meshOtaStop(void);
+
 #ifdef OUISPY_NETCOUNT
 uint32_t ncUniqueCount(void);
 uint32_t ncRxTotalCount(void);

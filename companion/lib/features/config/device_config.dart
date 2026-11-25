@@ -1313,6 +1313,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                   : null,
             ),
             ConfigActionRow(
+              icon: Icons.system_update_alt,
+              label: 'Firmware over the mesh',
+              subtitle: 'Pick nodes and send each one a build, one at a time',
+              onTap: fleetCap.enabled ? () => context.push('/mesh/firmware') : null,
+            ),
+            ConfigActionRow(
               icon: Icons.restart_alt,
               label: 'Reboot all nodes',
               subtitle: 'Every node restarts and rejoins. The manager stays up',

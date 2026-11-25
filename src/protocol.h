@@ -395,6 +395,28 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define SYS_OP_WD_LOG             0x12
 #define SYS_CMD_WD_LOG_CLEAR      0x13
 #define SYS_CMD_SET_BLE_PIN       0x14
+#define SYS_CMD_MESH_FW           0x15
+#define SYS_OP_MESH_FW            0x15
+#define MESH_FW_SUB_SEND          0x01
+#define MESH_FW_SUB_STOP          0x02
+#define MESH_FW_SUB_STATUS        0x03
+#define MESH_FW_EV_STAGED         0x00
+#define MESH_FW_EV_NODE_BEGIN     0x01
+#define MESH_FW_EV_NODE_PROGRESS  0x02
+#define MESH_FW_EV_NODE_DONE      0x03
+#define MESH_FW_EV_NODE_FAIL      0x04
+#define MESH_FW_EV_RUN_END        0x05
+#define MESH_FW_FAIL_NO_IMAGE     0x01
+#define MESH_FW_FAIL_BUSY         0x02
+#define MESH_FW_FAIL_NO_ANSWER    0x03
+#define MESH_FW_FAIL_REFUSED      0x04
+#define MESH_FW_FAIL_STALLED      0x05
+#define MESH_FW_FAIL_STOPPED      0x06
+#define MESH_FW_FAIL_ARGS         0x07
+#define MESH_FW_MAX_TARGETS       8
+#define OTA_DFU_FLAG_STAGE_MESH   0x01
+#define OTA_DFU_ST_STAGED         0xFE
+#define OTA_DFU_ST_STAGE_REFUSED  0x0A
 #define WD_LOG_FRAME_HEADER       0x00
 #define WD_LOG_FRAME_ROW          0x01
 #define WD_LOG_FRAME_END          0x02
@@ -502,6 +524,7 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_DETECTION_BATCH_IE = 0x14,
     MESH_PKT_NODE_STATUS     = 0x15,
     MESH_PKT_FILTER_ACK      = 0x16,
+    MESH_PKT_OTA_ABORT       = 0x17,
 };
 
 #define MESH_FILTER_ACCEPTED           0
@@ -741,6 +764,17 @@ typedef struct __attribute__((packed)) {
     uint16_t next_needed_seq;      // first missing chunk (resume)
     uint16_t recv_count;           // chunks written so far (progress)
 } MeshOtaAckPacket;
+
+typedef struct __attribute__((packed)) {
+    MeshOtaBeginPacket begin;       // pkt_type MESH_PKT_OTA_BEGIN; only target_node_id accepts it
+    char     target_node_id[MESH_NODE_ID_LEN];
+} MeshOtaTargetBeginPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_OTA_ABORT (manager -> node)
+    char     source_node_id[MESH_NODE_ID_LEN];  // manager id
+    char     target_node_id[MESH_NODE_ID_LEN];  // node that drops its transfer and restarts
+} MeshOtaAbortPacket;
 
 #define CHR_MESH_CONFIG      "00000060-" UUID_BASE
 #define CHR_MESH_STATUS      "00000061-" UUID_BASE

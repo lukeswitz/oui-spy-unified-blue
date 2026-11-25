@@ -61,6 +61,8 @@ class OtaStepperModel {
       case OtaPhase.verifying:
         return const OtaStepperModel(
             activeIndex: 2, detail: 'Verifying image (CRC)…');
+      case OtaPhase.staged:
+        return const OtaStepperModel(activeIndex: 2, complete: true, detail: 'Saved on the manager');
       case OtaPhase.rebooting:
         return OtaStepperModel(
           activeIndex: reconnecting ? 4 : 3,
