@@ -155,6 +155,7 @@ enum EngineState : uint8_t {
 #define METHOD_ODID_NAN        1
 #define METHOD_ODID_BEACON     2
 #define METHOD_ODID_VENDOR     3
+#define METHOD_ODID_FPV        4
 
 // Wardrive methods
 #define METHOD_WIFI_AP         0
@@ -400,6 +401,9 @@ bool   melodyLookup(uint8_t engine, uint8_t method, uint8_t* n, uint8_t notes[][
 #define CHR_PCAP_CONTROL     "00000160-" UUID_BASE
 #define CHR_PCAP_STATS       "00000161-" UUID_BASE
 #define CHR_PCAP_DATA        "00000162-" UUID_BASE
+// FPV receiver (C5 only): control writes, packed state notifies
+#define CHR_FPV_CONTROL      "00000170-" UUID_BASE
+#define CHR_FPV_STATE        "00000171-" UUID_BASE
 #define CHR_DETECTOR_CONFIG  "00000100-" UUID_BASE
 
 #define SYS_CMD_REBOOT            0x01

@@ -82,6 +82,7 @@ void bleGattNotifyNodeFilters(const char* id, uint8_t seq, uint8_t page, uint8_t
 #endif
 
 void bleGattNotifyPcapStats(void);
+void bleGattNotifyFpvState(void);
 void bleGattStreamPcapBytes(const uint8_t* buf, size_t len);
 void bleGattDispatchMeshNotify(uint8_t kind, const char source_node_id[5],
                                uint16_t seq, const uint8_t* payload, uint8_t len);

@@ -39,6 +39,7 @@
 #include "engines/pcap.h"
 #include "engines/axeoff.h"
 #include "engines/blesniff.h"
+#include "engines/fpv.h"
 #include <TinyGPS++.h>
 #include <HardwareSerial.h>
 #ifdef OUISPY_DONGLE
@@ -1638,6 +1639,7 @@ void setup() {
 
     // Force all engines disabled at boot — no stale radio state
     engineDisableAll();
+    fpvInit();
     Serial.printf("[INIT] Active mask after boot disable: 0x%02X\n", engineGetActiveMask());
 
     // Initialize mesh subsystem

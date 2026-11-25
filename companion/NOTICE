@@ -136,6 +136,18 @@ assets/fast_pair/model_ids.csv is model_ids.csv from WhisperPair commit
 266e39fcc421, unchanged. The app uses it to name Google Fast Pair devices.
 
 --------------------------------------------------------------------------------
+C5VRX
+https://github.com/Twotoz/C5VRX
+GPL-3.0
+
+technique from C5VRX (GPL-3.0), reimplemented: src/engines/fpv.cpp and
+src/engines/fpv_logic.h use its published hardware facts. These are the modem
+register addresses, the PHY function names and signatures, the MODEM_DIAG to
+GPIO to PARLIO receive routing, the 5180 to 5885 MHz tuning window and the
+48-channel FPV frequency table. No C5VRX source text, structure, comments or
+BitScrambler program is included. C5VRX is not a dependency.
+
+--------------------------------------------------------------------------------
 ouispy-detector
 https://github.com/colonelpanichacks/ouispy-detector
 Copyright (c) 2025-2026 colonelpanichacks

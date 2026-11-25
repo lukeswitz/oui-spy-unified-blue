@@ -4,6 +4,7 @@
 #include "engine_registry.h"
 #include "engines/pcap.h"
 #include "engines/enow_hub.h"
+#include "engines/fpv.h"
 #include "mesh_espnow.h"
 #include "radio_coex.h"
 #include <Arduino.h>
@@ -117,6 +118,7 @@ static void autoPcapCancelDeadlineTimer(void) {
 }
 
 void engineDisableAll(void) {
+    fpvAbort();
     if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
     autoPcapCancelDeadlineTimer();
     autoPcapPending = false;
@@ -160,6 +162,11 @@ static bool engineEnableImpl(EngineId id) {
 
     if (enowHubBlocksEngine(id)) {
         Serial.printf("[ENGINE] enable %s refused — ESP-NOW hub holds channel 6\n", engines[id]->name);
+        return false;
+    }
+
+    if (fpvBlocksEngine(id)) {
+        Serial.printf("[ENGINE] enable %s refused — FPV owns the radio\n", engines[id]->name);
         return false;
     }
 
@@ -263,6 +270,7 @@ bool engineDisableLocal(EngineId id) {
 }
 
 void engineDisableNonLocal(void) {
+    fpvAbort();
     if (engineMux) xSemaphoreTakeRecursive(engineMux, portMAX_DELAY);
     uint16_t keep = localMask & engineGetActiveMask16();
     if (keep == 0) {
@@ -422,7 +430,7 @@ static bool autoPcapMacRecent(const uint8_t* mac, unsigned long cooldownMs) {
 }
 
 void engineRequestAutoPcap(EngineId src, uint8_t channel, const uint8_t* mac) {
-    if (!autoPcapEnabled || hwAlertsSuppressed) return;
+    if (!autoPcapEnabled || hwAlertsSuppressed || fpvActive()) return;
     switch (src) {
         case ENGINE_DETECTOR:
         case ENGINE_FLOCK_BLE:

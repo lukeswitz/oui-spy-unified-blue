@@ -6,6 +6,7 @@
 #include "engine_registry.h"
 #include "ignore_list.h"
 #include "engines/pcap.h"
+#include "engines/fpv.h"
 #include "engines/detector.h"
 #include "engines/flock_wifi.h"
 #include "engines/flock_ble.h"
@@ -66,6 +67,10 @@ static NimBLECharacteristic* chrWifiConfig = nullptr;
 static NimBLECharacteristic* chrPcapControl = nullptr;
 static NimBLECharacteristic* chrPcapStats = nullptr;
 static NimBLECharacteristic* chrPcapData = nullptr;
+#ifdef OUISPY_FPV
+static NimBLECharacteristic* chrFpvControl = nullptr;
+static NimBLECharacteristic* chrFpvState = nullptr;
+#endif
 
 static bool phoneConnected = false;
 static volatile bool usbPhoneUp = false;
@@ -2846,6 +2851,16 @@ class PcapControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* chr) override { }
 };
 
+#ifdef OUISPY_FPV
+class FpvControlCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* chr) override {
+        std::string val = chr->getValue();
+        fpvCommand((const uint8_t*)val.data(), val.length());
+    }
+};
+static FpvControlCallbacks fpvControlCb;
+#endif
+
 static uint32_t s_bootEpoch = 0;
 static uint32_t s_bootCount = 0;
 
@@ -3156,6 +3171,24 @@ void bleGattInit(void) {
     );
     chrPcapData->setCallbacks(&pcapDataCallbacks);
 
+#ifdef OUISPY_FPV
+    chrFpvControl = svc->createCharacteristic(
+        CHR_FPV_CONTROL,
+        NIMBLE_PROPERTY::WRITE | SEC_W
+    );
+    chrFpvControl->setCallbacks(&fpvControlCb);
+
+    chrFpvState = svc->createCharacteristic(
+        CHR_FPV_STATE,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY | SEC_R
+    );
+    {
+        uint8_t fpvInitial[124];
+        size_t n = fpvPackState(fpvInitial, sizeof(fpvInitial));
+        chrFpvState->setValue(fpvInitial, n);
+    }
+#endif
+
 #ifdef OUISPY_USB_LINK
     usbLinkRegister(chrDeviceInfo, &deviceInfoCb);
     usbLinkRegister(chrEngineControl, &engineControlCb);
@@ -3180,6 +3213,10 @@ void bleGattInit(void) {
     usbLinkRegister(chrPcapControl, &pcapControlCb);
     usbLinkRegister(chrPcapStats, nullptr);
     usbLinkRegister(chrPcapData, nullptr);
+#ifdef OUISPY_FPV
+    usbLinkRegister(chrFpvControl, &fpvControlCb);
+    usbLinkRegister(chrFpvState, nullptr);
+#endif
 #endif
 
     otaInit();
@@ -3811,6 +3848,16 @@ void bleGattNotifyPcapStats(void) {
 
     notifyChr(chrPcapStats, (const uint8_t*)&st, sizeof(st));
 }
+
+#ifdef OUISPY_FPV
+void bleGattNotifyFpvState(void) {
+    if (!phoneConnected || chrFpvState == nullptr) return;
+    uint8_t buf[124];
+    size_t n = fpvPackState(buf, sizeof(buf));
+    if (n == 0) return;
+    notifyChr(chrFpvState, buf, n);
+}
+#endif
 
 #ifdef OUISPY_PORT_SELFTEST
 #include <mbedtls/aes.h>
