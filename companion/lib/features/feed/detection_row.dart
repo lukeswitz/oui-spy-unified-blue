@@ -38,6 +38,7 @@ import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/devices/devices_screen.dart' show deviceFlagIcons, rssiSparkFor;
+import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvDetectionMethod, fpvRssiToLevel;
 import 'package:oui_spy/features/sdr/sdr433_classify.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:oui_spy/features/wardrive/drone_markers.dart' show droneMarkerColor, droneRidPoint, kDroneSvgAsset;
@@ -181,7 +182,7 @@ class DetectionRow extends ConsumerWidget {
                   text: 'UAS ${detection.odid!.uavId}',
                   style: tagStyle.copyWith(letterSpacing: 0, fontWeight: FontWeight.w700)),
             if (alt != null) TextSpan(text: '${alt}m', style: monoDim),
-            if ((isWifi || isZigbee) && detection.channel > 0)
+            if ((isWifi || isZigbee) && detection.channel > 0 && detection.method != fpvDetectionMethod)
               TextSpan(text: 'CH ${detection.channel}', style: monoDim),
             if (zb != null) ...[
               TextSpan(text: zb.frameLabel, style: monoDim),
@@ -990,10 +991,13 @@ class _DetailSummary extends ConsumerWidget {
         why,
       ));
     }
-    if (!(detection.engine == Engine.sdr && detection.rssi == 0)) {
+    final isFpv = detection.method == fpvDetectionMethod;
+    if (isFpv) {
+      rows.add(_detailRow(context, 'Level', '${fpvRssiToLevel(detection.rssi)} (relative, not dBm)'));
+    } else if (!(detection.engine == Engine.sdr && detection.rssi == 0)) {
       rows.add(_detailRow(context, 'RSSI', '${detection.rssi} dBm'));
     }
-    if (detection.channel > 0) {
+    if (detection.channel > 0 && !isFpv) {
       rows.add(_detailRow(context, 'Channel', '${detection.channel}'));
     }
     final zb = zigbeeInfoFor(detection);
@@ -1116,8 +1120,10 @@ class _DetailSummary extends ConsumerWidget {
             '${odid.droneLat!.toStringAsFixed(5)}, ${odid.droneLon!.toStringAsFixed(5)}'));
       } else {
         rows.add(_detailRow(context, 'Drone Pos', 'No GPS fix'));
-        rows.add(_detailRow(context, 'Est. Range',
-            '${rssiRangeLabel(detection.rssi, isBle: detection.isBleDetection)} (RSSI)'));
+        if (!isFpv) {
+          rows.add(_detailRow(context, 'Est. Range',
+              '${rssiRangeLabel(detection.rssi, isBle: detection.isBleDetection)} (RSSI)'));
+        }
       }
       if (odid.altitudeMsl != null) {
         rows.add(_detailRow(context, 'Alt MSL', '${odid.altitudeMsl} m'));
@@ -1413,6 +1419,7 @@ String methodLabel(String method) => switch (method) {
   'vehicle' => 'VEHICLE',
   'drone_ble' => 'DRONE BLE',
   'drone_vendor' => 'DRONE OUI',
+  'odid_fpv' => 'FPV 5.8 GHZ',
   'flipper' => 'FLIPPER',
   'deauth_storm' => 'DEAUTH',
   'join_flood' => 'JOIN FLOOD',
@@ -1703,6 +1710,7 @@ String _odidTransportLabel(String method) => switch (method) {
   'odid_ble' => 'BLE',
   'odid_nan' => 'WiFi NAN',
   'odid_beacon' => 'WiFi Beacon',
+  'odid_fpv' => 'FPV 5.8 GHz',
   _ => method.toUpperCase(),
 };
 

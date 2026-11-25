@@ -27,6 +27,7 @@ import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/flock_oui.dart';
 import 'package:oui_spy/core/ota/mesh_fw_protocol.dart';
 import 'package:oui_spy/core/privacy.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart';
 import 'package:oui_spy/features/pcap/pcap_stats.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/odid/odid_ble.dart';
@@ -106,6 +107,8 @@ class BleManager {
   LinkCharacteristic? _wifiConfig;
   LinkCharacteristic? _pcapStats;
   LinkCharacteristic? _pcapData;
+  LinkCharacteristic? _fpvControl;
+  LinkCharacteristic? _fpvState;
   LinkCharacteristic? _detectorConfig;
   List<WatchlistEntry> Function()? _watchlistGetter;
 
@@ -137,6 +140,8 @@ class BleManager {
   PcapStats _latestPcapStats = PcapStats.empty;
   final _bleSniffStatsStream = StreamController<PcapStats>.broadcast();
   PcapStats _latestBleSniffStats = PcapStats.empty;
+  final _fpvStateStream = StreamController<FpvState>.broadcast();
+  FpvState _latestFpvState = FpvState.empty;
 
   final _importedDetections = StreamController<Detection>.broadcast();
   Stream<Detection> get importedDetections => _importedDetections.stream;
@@ -213,6 +218,9 @@ class BleManager {
   PcapStats get latestPcapStats => _latestPcapStats;
   Stream<PcapStats> get bleSniffStats => _bleSniffStatsStream.stream;
   PcapStats get latestBleSniffStats => _latestBleSniffStats;
+  Stream<FpvState> get fpvState => _fpvStateStream.stream;
+  FpvState get latestFpvState => _latestFpvState;
+  bool get fpvAvailable => _fpvControl != null && _fpvState != null;
 
   File? _pcapFile;
   IOSink? _pcapSink;
@@ -1144,6 +1152,9 @@ class BleManager {
     _wifiConfig = null;
     _pcapStats = null;
     _pcapData = null;
+    _fpvControl = null;
+    _fpvState = null;
+    _latestFpvState = FpvState.empty;
     _detectorConfig = null;
     _deviceInfoChar = null;
   }
@@ -1169,6 +1180,8 @@ class BleManager {
     if (c.uuid == GattUuids.wifiConfig) _wifiConfig = c;
     if (c.uuid == GattUuids.pcapStats) _pcapStats = c;
     if (c.uuid == GattUuids.pcapData) _pcapData = c;
+    if (c.uuid == GattUuids.fpvControl) _fpvControl = c;
+    if (c.uuid == GattUuids.fpvState) _fpvState = c;
     if (c.uuid == GattUuids.detectorConfig) _detectorConfig = c;
     if (c.uuid == GattUuids.deviceInfo) _deviceInfoChar ??= c;
   }
@@ -1288,6 +1301,18 @@ class BleManager {
           }
         }),
       );
+    }
+
+    if (_fpvState != null) {
+      await _fpvState!.setNotifyValue(true);
+      _subscriptions.add(
+        _fpvState!.onValueReceived.listen(_onFpvState),
+      );
+      try {
+        _onFpvState(await _fpvState!.read());
+      } on Exception catch (e) {
+        DebugLog.log('BLE: fpv state read failed: $e');
+      }
     }
 
     if (_pcapData != null) {
@@ -2325,6 +2350,7 @@ class BleManager {
     _meshFwStream.close();
     _pcapStatsStream.close();
     _bleSniffStatsStream.close();
+    _fpvStateStream.close();
     _pcapDataStream.close();
     _pcapWifiRecords.close();
   }
@@ -2372,6 +2398,27 @@ class BleManager {
       ),
     );
   }
+
+  void _onFpvState(List<int> data) {
+    final st = FpvState.decode(data);
+    if (st == null) return;
+    _lastRx = DateTime.now();
+    _latestFpvState = st;
+    _fpvStateStream.add(st);
+  }
+
+  Future<void> _fpvWrite(Uint8List cmd) async {
+    final c = _fpvControl;
+    if (c == null) throw Exception('FPV is not available on this board');
+    await c.write(cmd);
+  }
+
+  Future<void> fpvEnter([FpvMode mode = FpvMode.scan]) => _fpvWrite(fpvEncodeEnter(mode));
+  Future<void> fpvLeave() => _fpvWrite(fpvEncodeLeave());
+  Future<void> fpvSetMode(FpvMode mode) => _fpvWrite(fpvEncodeMode(mode));
+  Future<void> fpvTune(int channel) => _fpvWrite(fpvEncodeTune(channel));
+  Future<void> fpvStep(int dir) => _fpvWrite(fpvEncodeStep(dir));
+  Future<void> fpvSetThreshold(int threshold) => _fpvWrite(fpvEncodeThreshold(threshold));
 
   Future<void> stopPcap({String? targetNodeId}) async {
     if (_engineControl == null) return;

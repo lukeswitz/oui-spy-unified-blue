@@ -19,6 +19,7 @@ import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart';
 import 'package:oui_spy/features/home/engine_card.dart';
 import 'package:oui_spy/features/home/status_bar.dart';
 import 'package:oui_spy/features/wardrive/session_launch.dart';
@@ -778,6 +779,8 @@ class _UsbScanSources extends ConsumerWidget {
     final sdrPresent = ref.watch(sdrPresentProvider).valueOrNull ?? false;
     final off = ref.watch(usbAdapterOffProvider);
     final sessionRunning = ref.watch(wardriveProvider).isRunning;
+    final ble = ref.read(bleManagerProvider);
+    final fpvPresent = ble.board.toLowerCase().contains('c5') && ble.fpvAvailable;
 
     final tiles = <Widget>[
       for (final d in ctl.devices)
@@ -814,6 +817,24 @@ class _UsbScanSources extends ConsumerWidget {
             onPressed: () => context.push('/sdr'),
             child: const Text('OPEN', style: TextStyle(fontSize: 11, letterSpacing: 1)),
           ),
+        ),
+      if (fpvPresent)
+        StreamBuilder<FpvState>(
+          stream: ble.fpvState,
+          initialData: ble.latestFpvState,
+          builder: (context, snap) {
+            final active = snap.data?.active ?? false;
+            return _SourceTile(
+              icon: Icons.videocam_outlined,
+              title: 'FPV receiver',
+              subtitle: active ? 'Receiving · Wi-Fi scan paused' : 'ESP32-C5 · open to scan 5.8 GHz',
+              on: active,
+              trailing: TextButton(
+                onPressed: () => context.push('/fpv'),
+                child: const Text('OPEN', style: TextStyle(fontSize: 11, letterSpacing: 1)),
+              ),
+            );
+          },
         ),
     ];
     if (tiles.isEmpty) return const SizedBox.shrink();

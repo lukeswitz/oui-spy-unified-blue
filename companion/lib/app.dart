@@ -17,6 +17,7 @@ import 'package:oui_spy/features/engines/foxhunter_screen.dart';
 import 'package:oui_spy/features/engines/skyspy_screen.dart';
 import 'package:oui_spy/features/engines/unipwn_screen.dart';
 import 'package:oui_spy/features/export/export_screen.dart';
+import 'package:oui_spy/features/fpv/fpv_screen.dart';
 import 'package:oui_spy/features/home/home_screen.dart';
 import 'package:oui_spy/features/onboarding/scan_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_screen.dart';
@@ -112,6 +113,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sdr',
         builder: (context, state) => const SdrScreen(),
+      ),
+      GoRoute(
+        path: '/fpv',
+        builder: (context, state) => const FpvScreen(),
       ),
       GoRoute(
         path: '/analysis',

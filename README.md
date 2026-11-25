@@ -252,6 +252,7 @@ Every session is saved. Open one to replay it on the map, or open its report.
 | **PCAP** | Raw 802.11, BLE advertising or (C5 boards) 802.15.4 frames to a Wireshark `.pcap` |
 | **AXEOFF** | Axon gear only, headless: BLE adverts with Axon's company ID `0x034D`, service `0xFC81` / `0xFE6B` / `0xFE6C` or `00:25:DF` address prefix, and Wi-Fi probe requests and beacons from `00:25:DF` while it sweeps channels 11 to 1. Passive on both radios. Hits show as Axon detections; the board plays the Axon appeared, still-near (faster as it gets closer) and lost tones, and a four-note start tone. It stops reporting after 8 s of silence. On a mesh node it joins the channel handoff like the other Wi-Fi engines, and a manager's Sky Spy node denies it |
 | **BLE Sniff** | Every Bluetooth LE advert, repeats included, as a live list (type, address kind, signal, name, services, maker) with filters for advert type and address kind, and **RECORD PCAP** to save a Wireshark file on the phone. Passive, never sends a scan request. Stop PCAP capture first, they share the Bluetooth radio. Needs the phone connected to the board: the list is not relayed over the mesh, so on a manager pick the node to sniff on |
+| **FPV receiver** | Analog 5.8 GHz FPV video transmitters on 44 of the 48 standard channels. XIAO ESP32-C5 only. See [FPV receiver](#fpv-receiver) |
 
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
@@ -397,6 +398,20 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 - Sightings show in the feed and on the map in lime. Each shows the network name (Thread), PAN ID, short or EUI-64 source address, channel and LQI. Zigbee and Thread beacons also show the extended PAN ID and stack info.
 - The radio only listens: promiscuous mode, no ACKs, no beacons, no transmit.
 - Sightings are not in WiGLE exports, the board's away log or the T-Dongle's WiGLE CSV, which have no 802.15.4 type. They are in the detections CSV with radio `802.15.4`.
+
+### FPV receiver
+
+On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It receives only and shows no picture. Open it from the **FPV receiver** tile on HOME.
+
+- **Channels:** the six standard bands A, B, E, F, R and L, 48 channels in all. The C5 tunes 5180–5885 MHz, so R8, E6, E7 and E8 show as N/A. L-band is below the C5's Wi-Fi channels and is experimental.
+- **Modes:** **SCAN** measures every channel once, then stops on the strongest transmitter. **SWEEP** repeats the measurement and keeps the heat map live. **HOP** visits each flagged channel for 2 s between sweeps. **STOP** holds one channel. The arrows step to the previous or next channel, and tapping a cell in the heat map tunes it.
+- **Levels:** each cell shows a relative receiver level, not dBm. The noise floor is the lower quartile of the measured channels.
+- **Flags:** a channel is flagged when its level is above the floor by the **Flag threshold** (default 12) and the carrier is steady (coherence at least 40%). **LOCKED** shows after three steady readings on the tuned channel.
+- **Feed:** flagged channels appear in the Sky Spy list and the feed as `FPV A1 5865`, with no position.
+- **Wi-Fi:** Wi-Fi engines pause while FPV is on and restart when you tap **LEAVE FPV**. FPV refuses to start while mesh or the ESP-NOW hub is on.
+- **Pins:** FPV drives GPIO 1, 0, 23, 7, 10, 5, 3 and 4 with receiver data. Keep them unconnected. It is not available on the T-Dongle-C5 or on manager builds.
+- **No video:** the raw receiver data is 40 MB/s and Bluetooth carries well under 0.2 MB/s, so the app shows signal levels only.
+- **Serial log:** every state change prints a line that starts with `[FPV]`.
 
 ### Lock screen and notifications
 
@@ -699,6 +714,7 @@ Over-the-air updates must be signed with the release key. A board flashed over U
 - **@NitekryDPaul / OrdoOuroborous** ([@nitekry](https://github.com/nitekry)): promiscuous Flock OUI set and the addr1 receiver technique.
 - **DeFlockJoplin** ([flock-you](https://github.com/DeflockJoplin/flock-you)): wildcard-probe signature.
 - **OffGridPete** ([Fieldwatch](https://github.com/OffGridPete/Fieldwatch), MIT): the app's signature catalog starts from Fieldwatch catalog 92. The advertisement decoder, device explanations, signature engine, field decoder, pairing-flood and co-travel code are Dart ports of Fieldwatch. Details in [companion/NOTICE](companion/NOTICE).
+- **Twotoz** ([C5VRX](https://github.com/Twotoz/C5VRX), GPL-3.0): the FPV receiver uses its published technique for tuning the C5 and reading the receiver data. We wrote our own code. Details in [companion/NOTICE](companion/NOTICE).
 - Catalog entries from [Home Assistant](https://github.com/home-assistant/core) Bluetooth matchers, the [buttplug.io](https://github.com/buttplugio/buttplug) device config, and [Theengs Decoder](https://github.com/theengs/decoder) device identifiers.
 - Fast Pair model names: the [WhisperPair](https://github.com/KULeuven-COSIC/WhisperPair) model list by KU Leuven COSIC (CC BY 4.0).
 - Company and service IDs: [Bluetooth SIG assigned numbers](https://bitbucket.org/bluetooth-SIG/public).

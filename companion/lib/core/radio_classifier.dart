@@ -33,6 +33,7 @@ const _wifiMethods = {
   'wildcard_probe_ie_sig',
   'odid_nan',
   'odid_beacon',
+  'odid_fpv',
   'wifi_watchlist',
   'wifi_proximity',
 };

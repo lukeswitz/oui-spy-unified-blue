@@ -13,6 +13,7 @@ import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
 import 'package:oui_spy/features/engines/drone_map_view.dart';
 import 'package:oui_spy/features/feed/detection_row.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
 
@@ -107,6 +108,8 @@ class _DroneRow extends StatelessWidget {
         return 'WiFi Beacon';
       case 'odid_ble':
         return 'BLE';
+      case fpvDetectionMethod:
+        return 'FPV 5.8 GHz';
       default:
         return method.toUpperCase();
     }
@@ -142,14 +145,23 @@ class _DroneRow extends StatelessWidget {
                 DroneTagBadge(tag!),
                 const SizedBox(width: 8),
               ],
-              Text('${detection.rssi} dBm',
+              Text(
+                  detection.method == fpvDetectionMethod
+                      ? 'LVL ${fpvRssiToLevel(detection.rssi)}'
+                      : '${detection.rssi} dBm',
                   style: TextStyle(color: t.textDim, fontSize: 11, fontFamily: AppTheme.mono)),
               const SizedBox(width: 8),
               Text('${timeDiff.inSeconds}s ago',
                   style: TextStyle(color: t.textDim, fontSize: 10)),
             ],
           ),
-          if (odid != null) ...[
+          if (odid != null && detection.method == fpvDetectionMethod) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              _Chip('BAND', 'Analog 5.8 GHz video'),
+              if (odid.selfId != null && odid.selfId!.isNotEmpty) _Chip('SIGNAL', odid.selfId!),
+            ]),
+          ] else if (odid != null) ...[
             const SizedBox(height: 8),
             Row(children: [
               _Chip('ALT', '${odid.altitudeMsl ?? 0}m'),

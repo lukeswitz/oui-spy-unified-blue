@@ -813,7 +813,8 @@ class BleProtocol {
           'odid_nan',
           'odid_beacon',
           'drone_vendor',
-        ][method.clamp(0, 3)],
+          'odid_fpv',
+        ][method.clamp(0, 4)],
       Engine.detector => const [
           'ble_watchlist',
           'wifi_watchlist',

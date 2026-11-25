@@ -105,4 +105,12 @@ class GattUuids {
 
   /// NOTIFY: PCAP chunked file download (start/chunk/commit/abort opcodes)
   static final pcapData = Guid('00000162-$_base');
+
+  // -- FPV receiver (ESP32-C5 only) --
+
+  /// WRITE: FPV control (enter, leave, mode, tune, step, threshold)
+  static final fpvControl = Guid('00000170-$_base');
+
+  /// READ, NOTIFY: FPV state (124-byte packed FpvState)
+  static final fpvState = Guid('00000171-$_base');
 }

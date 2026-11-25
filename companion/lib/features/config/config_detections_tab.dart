@@ -1386,6 +1386,7 @@ class _DetectionRow extends ConsumerWidget {
         'odid_ble' => 'BLE',
         'odid_nan' => 'NAN',
         'odid_beacon' => 'BEACON',
+        'odid_fpv' => 'FPV',
         _ => method.toUpperCase(),
       };
 
