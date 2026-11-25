@@ -12,7 +12,7 @@ import 'package:oui_spy/core/triangulation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class TriSettings {
-  const TriSettings({this.enabled = true, this.p0 = kTriDefaultP0, this.n = kTriDefaultN});
+  const TriSettings({this.enabled = false, this.p0 = kTriDefaultP0, this.n = kTriDefaultN});
   final bool enabled;
   final double p0;
   final double n;
@@ -35,7 +35,7 @@ class TriSettingsNotifier extends StateNotifier<TriSettings> {
     final p = await SharedPreferences.getInstance();
     if (_changed) return;
     state = TriSettings(
-      enabled: p.getBool(_kEnabled) ?? true,
+      enabled: p.getBool(_kEnabled) ?? false,
       p0: p.getDouble(_kP0) ?? kTriDefaultP0,
       n: p.getDouble(_kN) ?? kTriDefaultN,
     );

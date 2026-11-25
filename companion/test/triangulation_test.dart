@@ -21,6 +21,14 @@ TriRange _exact(String id, LatLng node, LatLng target) =>
     TriRange(id, node, _dist.as(LengthUnit.Meter, node, target));
 
 void main() {
+  test('triangulation is off until the user turns it on', () async {
+    SharedPreferences.setMockInitialValues({});
+    expect(const TriSettings().enabled, isFalse);
+    final s = TriSettingsNotifier();
+    await Future<void>.delayed(Duration.zero);
+    expect(s.state.enabled, isFalse);
+  });
+
   test('rssi to distance follows the log-distance model', () {
     expect(rssiToDistanceM(-59), closeTo(1.0, 1e-9));
     expect(rssiToDistanceM(-86), closeTo(10.0, 1e-9));
@@ -162,7 +170,7 @@ void main() {
     testWidgets('detections inside the throttle window still give a fix once it ends', (tester) async {
       final c = TriangulationController(
         placed: () => {'AAAA': _a, 'BBBB': _b, 'CCCC': _c},
-        settings: () => const TriSettings(),
+        settings: () => const TriSettings(enabled: true),
         selfNode: () => '',
         minInterval: const Duration(seconds: 1),
       );

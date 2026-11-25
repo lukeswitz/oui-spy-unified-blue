@@ -77,6 +77,7 @@ Future<ProviderContainer> _pump(WidgetTester tester) async {
         )),
   ]);
   addTearDown(container.dispose);
+  await container.read(triSettingsProvider.notifier).setEnabled(true);
   container.read(appStateProvider);
   final pos = container.read(nodePositionsProvider.notifier);
   for (final e in _nodes.entries) {
