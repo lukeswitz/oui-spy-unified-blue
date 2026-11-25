@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Luke Switzer
 import 'dart:convert';
 
 import 'package:oui_spy/core/export/detections_csv.dart';
