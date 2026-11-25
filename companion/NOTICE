@@ -55,6 +55,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
+OUI SPY Unified Blue
+https://github.com/colonelpanichacks/oui-spy-unified-blue
+Copyright (c) 2026 colonelpanichacks
+MIT License (same text as above, with this copyright line)
+
+The AXEOFF and BLE Sniff engines in the firmware (src/engines/axeoff*.{cpp,h},
+src/engines/blesniff*.{cpp,h}) port the Axon signatures, the BLE advert filter
+bits, the LE link-layer frame layout and the manufacturer-name table from Unified
+Blue's raw/axeoff.cpp and raw/blesniff.cpp. The app's lib/core/ble_sniff.dart
+ports the advert summary fields and the manufacturer-name table.
+
+--------------------------------------------------------------------------------
 buttplug.io
 https://github.com/buttplugio/buttplug
 Copyright (c) 2016-2023, Nonpolynomial Labs, LLC

@@ -135,6 +135,8 @@ class BleManager {
   final _pcapWifiRecords = StreamController<Uint8List>.broadcast();
   bool _pcapWifiOpen = false;
   PcapStats _latestPcapStats = PcapStats.empty;
+  final _bleSniffStatsStream = StreamController<PcapStats>.broadcast();
+  PcapStats _latestBleSniffStats = PcapStats.empty;
 
   final _importedDetections = StreamController<Detection>.broadcast();
   Stream<Detection> get importedDetections => _importedDetections.stream;
@@ -209,6 +211,8 @@ class BleManager {
   Stream<Uint8List> get pcapData => _pcapDataStream.stream;
   Stream<Uint8List> get pcapWifiRecords => _pcapWifiRecords.stream;
   PcapStats get latestPcapStats => _latestPcapStats;
+  Stream<PcapStats> get bleSniffStats => _bleSniffStatsStream.stream;
+  PcapStats get latestBleSniffStats => _latestBleSniffStats;
 
   File? _pcapFile;
   IOSink? _pcapSink;
@@ -1274,7 +1278,10 @@ class BleManager {
       _subscriptions.add(
         _pcapStats!.onValueReceived.listen((data) {
           final stats = PcapStats.decode(data);
-          if (stats != null) {
+          if (stats != null && stats.isBleSniff) {
+            _latestBleSniffStats = stats;
+            _bleSniffStatsStream.add(stats);
+          } else if (stats != null) {
             _latestPcapStats = stats;
             _pcapStatsStream.add(stats);
             _handlePcapStatsTransition(stats);
@@ -2317,6 +2324,7 @@ class BleManager {
     _fleetOtaStream.close();
     _meshFwStream.close();
     _pcapStatsStream.close();
+    _bleSniffStatsStream.close();
     _pcapDataStream.close();
     _pcapWifiRecords.close();
   }

@@ -19,8 +19,13 @@ enum Engine {
       'Wardrive', 'WiGLE-style WiFi + BLE capture', Color(0xFFFF8A3D), 0x40),
   pcap(
       'PCAP', 'WiFi/BLE PCAP capture & audit', Color(0xFF13A884), 0x80),
+  axeoff('AXEOFF', 'Headless Axon detector (beep-only)', Color(0xFF3F6FD9), 0x100),
+  bleSniff('BLE Sniff', 'Passive BLE advert capture (Wireshark-ready)', Color(0xFF2EA6C9), 0x200),
   sdr(
-      'SDR', 'RTL-SDR 433/315/915 ISM + ADS-B', Color(0xFF8B5CF6), 0x100);
+      'SDR', 'RTL-SDR 433/315/915 ISM + ADS-B', Color(0xFF8B5CF6), 0x400);
+
+  /// Engines the firmware knows (ids 0-9). Engines past this are app-only.
+  static const int firmwareCount = 10;
 
   const Engine(this.label, this.description, this.baseColor, this.bitmask);
 
@@ -35,20 +40,23 @@ enum Engine {
       this == detector ||
       this == flockBle ||
       this == foxhunter ||
-      this == uniPwn;
+      this == uniPwn ||
+      this == bleSniff;
 
   bool get isWifi =>
       this == flockWifi ||
       this == skySpy ||
       this == wardrive ||
-      this == pcap;
+      this == pcap ||
+      this == axeoff;
 
   /// Engines that scan both WiFi and BLE radios.
   bool get isDualRadio =>
       this == detector ||
       this == foxhunter ||
       this == wardrive ||
-      this == skySpy;
+      this == skySpy ||
+      this == axeoff;
 
   IconData get icon {
     return switch (this) {
@@ -60,6 +68,8 @@ enum Engine {
       Engine.uniPwn => Icons.smart_toy,
       Engine.wardrive => Icons.drive_eta,
       Engine.pcap => Icons.fiber_manual_record,
+      Engine.axeoff => Icons.local_police,
+      Engine.bleSniff => Icons.bluetooth_searching,
       Engine.sdr => Icons.sensors,
     };
   }
@@ -93,7 +103,7 @@ int commandedEngineMask(List<EngineState> states) {
 class EngineCompatibility {
   const EngineCompatibility._();
 
-  static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive, Engine.pcap};
+  static const _wifiEngines = {Engine.flockWifi, Engine.skySpy, Engine.wardrive, Engine.pcap, Engine.axeoff};
 
   static bool _wifiCompatible(Engine a, Engine b) {
     return (a == Engine.wardrive && b == Engine.flockWifi) ||

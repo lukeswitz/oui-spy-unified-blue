@@ -34,7 +34,13 @@ class PcapStats {
     this.autoCooldownSec = 0,
     this.autoCooldownRemainingMs = 0,
     this.sourceNodeId = '',
+    this.source = 0,
   });
+
+  /// 0 = the PCAP engine, 1 = the BLE Sniff engine (its counters ride the same struct).
+  final int source;
+
+  bool get isBleSniff => source == 1;
 
   /// 0=idle, 1=capturing, 2=full, 3=error
   final int state;
@@ -129,7 +135,7 @@ class PcapStats {
       state: bd.getUint8(0),
       mode: bd.getUint8(1),
       currentChannel: bd.getUint8(2),
-      // _reserved at offset 3
+      source: bd.getUint8(3),
       beaconCount: bd.getUint32(4, Endian.little),
       probeReqCount: bd.getUint32(8, Endian.little),
       probeRespCount: bd.getUint32(12, Endian.little),

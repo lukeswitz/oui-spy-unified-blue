@@ -144,7 +144,7 @@ class _EngineCardState extends ConsumerState<EngineCard> {
         return;
       }
     }
-    if ((widget.engine == Engine.uniPwn || widget.engine == Engine.pcap) &&
+    if ((widget.engine == Engine.uniPwn || widget.engine == Engine.pcap || widget.engine == Engine.bleSniff) &&
         value && appState.isManagerConnected) {
       _navigateToEngine();
       return;
@@ -203,6 +203,7 @@ class _EngineCardState extends ConsumerState<EngineCard> {
       Engine.uniPwn => '/engine/unipwn',
       Engine.wardrive => '/wardrive',
       Engine.pcap => '/engine/pcap',
+      Engine.bleSniff => '/engine/blesniff',
       _ => null,
     };
     if (route != null) context.push(route);

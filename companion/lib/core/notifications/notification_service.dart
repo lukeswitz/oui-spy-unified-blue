@@ -609,6 +609,8 @@ class NotificationService extends ChangeNotifier {
       Engine.wardrive => false, // wardrive uses milestone alerts instead
       Engine.uniPwn => false,
       Engine.pcap => false,
+      Engine.axeoff => false,
+      Engine.bleSniff => false,
       Engine.sdr => false,
     };
   }

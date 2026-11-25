@@ -63,7 +63,7 @@ String _macKey(String mac) => mac.replaceAll(RegExp('[^0-9A-Fa-f]'), '').toUpper
 
 /// Engines whose catches go to ATAK. Wardrive and capture rows are every radio in range, not catches.
 bool cotSends(Detection d) => switch (d.engine) {
-      Engine.wardrive || Engine.pcap || Engine.sdr || Engine.foxhunter => false,
+      Engine.wardrive || Engine.pcap || Engine.sdr || Engine.foxhunter || Engine.bleSniff => false,
       _ => true,
     };
 

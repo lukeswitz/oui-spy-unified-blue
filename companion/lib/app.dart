@@ -11,6 +11,7 @@ import 'package:oui_spy/features/config/fleet_metrics_screen.dart';
 import 'package:oui_spy/features/config/mesh_firmware_screen.dart';
 import 'package:oui_spy/features/detections/detections_screen.dart';
 import 'package:oui_spy/features/drones/drones_screen.dart';
+import 'package:oui_spy/features/engines/blesniff_screen.dart';
 import 'package:oui_spy/features/engines/detector_screen.dart';
 import 'package:oui_spy/features/engines/foxhunter_screen.dart';
 import 'package:oui_spy/features/engines/skyspy_screen.dart';
@@ -99,6 +100,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/engine/pcap',
         builder: (context, state) => const PcapScreen(),
+      ),
+      GoRoute(
+        path: '/engine/blesniff',
+        builder: (context, state) => const BleSniffScreen(),
       ),
       GoRoute(
         path: '/pcap/library',

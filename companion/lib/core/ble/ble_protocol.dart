@@ -156,6 +156,8 @@ class BleProtocol {
               : wardrive.ssid;
         case Engine.foxhunter:
         case Engine.pcap:
+        case Engine.axeoff:
+        case Engine.bleSniff:
         case Engine.sdr:
           break;
       }
@@ -302,12 +304,18 @@ class BleProtocol {
 
   static ({int available, int active, List<EngineState> states}) decodeEngineStatus(
       List<int> data) {
-    final available = data[0];
-    final active = data[1];
+    var available = data[0];
+    var active = data[1];
     final states = <EngineState>[];
-    for (int i = 0; i < Engine.values.length && i + 2 < data.length; i++) {
+    for (int i = 0; i < Engine.firmwareCount && i + 2 < data.length; i++) {
       final stateIndex = data[i + 2];
       states.add(EngineState.values[stateIndex.clamp(0, EngineState.values.length - 1)]);
+    }
+    // Firmware with engines 8+ appends [available ext][active ext] after the states.
+    final extAt = 2 + Engine.firmwareCount;
+    if (data.length >= extAt + 2) {
+      available |= data[extAt] << 8;
+      active |= data[extAt + 1] << 8;
     }
     return (available: available, active: active, states: states);
   }
@@ -490,6 +498,7 @@ class BleProtocol {
   static const meshTlvFilterPush = 0x02;
   static const meshTlvNeighbors = 0x03;
   static const meshTlvFilterOp = 0x04;
+  static const meshTlvEngineExt = 0x05;
 
   /// DetectorConfig op that edits one node's filter list: [0x06][op][target:4][data].
   static const detCfgOpNodeFilter = 0x06;
@@ -580,6 +589,24 @@ class BleProtocol {
           if (type == meshTlvFilterPush) filterPush = _decodeFilterPush(bytes, body, len);
           if (type == meshTlvNeighbors) signal = _decodeSignal(bytes, body, len);
           if (type == meshTlvFilterOp) filterOp = _decodeFilterOp(bytes, body, len);
+          if (type == meshTlvEngineExt) {
+            // [id:2][active ext:1] per node running engines 8+; ext bits sit above the 8-bit mask.
+            for (var o = body; o + 3 <= body + len; o += 3) {
+              final id = _nodeIdFromBytes(bytes, o);
+              for (var i = 0; i < live.length; i++) {
+                if (live[i].id == id) {
+                  live[i] = (
+                    id: live[i].id,
+                    role: live[i].role,
+                    activeEngines: live[i].activeEngines | (bytes[o + 2] << 8),
+                    fwVersion: live[i].fwVersion,
+                    board: live[i].board,
+                    tempC: live[i].tempC,
+                  );
+                }
+              }
+            }
+          }
           pos = body + len;
         }
       }
@@ -767,6 +794,8 @@ class BleProtocol {
       Engine.uniPwn => 'unitree_ble',
       Engine.wardrive => wardriveMethods[method.clamp(0, wardriveMethods.length - 1)],
       Engine.pcap => 'pcap',
+      Engine.axeoff => 'axon',
+      Engine.bleSniff => 'ble_sniff',
       Engine.sdr => 'sdr',
     };
   }
