@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -139,23 +140,24 @@ void _inject(ProviderContainer container) {
   var tick = 0;
   final counts = <String, int>{};
   final heardAt = <String, (double, double)>{};
+  (double, double) fixNow() {
+    final fix = container.read(gpsProvider).lastPosition;
+    return (fix?.latitude ?? lat0, fix?.longitude ?? lon0);
+  }
+
+  (double, double) placeOf(String mac) => heardAt.putIfAbsent(mac, fixNow);
   void send(String label, List<int> frame) {
     final mac = frame.sublist(1, 7).map((b) => b.toRadixString(16).padLeft(2, '0')).join(':');
-    final at = heardAt.putIfAbsent(mac, () {
-      final fix = container.read(gpsProvider).lastPosition;
-      final h = frame[5] * 31 + frame[6] * 17;
-      return (
-        (fix?.latitude ?? lat0) + ((h % 41) - 20) * 0.00002,
-        (fix?.longitude ?? lon0) + (((h ~/ 41) % 41) - 20) * 0.00003,
-      );
-    });
+    final at = placeOf(mac);
     ble.updateGps(latitude: at.$1, longitude: at.$2, accuracy: 5);
     ble.injectDetectionFrame(frame);
     counts[label] = (counts[label] ?? 0) + 1;
   }
 
   debugPrint('SMOKE: injecting for ${_seconds}s, devices placed where first heard');
+  var waitedForFix = 0;
   Timer.periodic(const Duration(seconds: 1), (t) {
+    if (tick == 0 && container.read(gpsProvider).lastPosition == null && waitedForFix++ < 20) return;
     final r = tick % 5;
     final block = tick ~/ 6;
     const ssids = [
@@ -190,11 +192,12 @@ void _inject(ProviderContainer container) {
       send('ble_adv', smokeFrame(Engine.wardrive, mac, -65 - r, 37, 1,
           _wardriveExt('', 0, bleNames[(block * 3 + i) % bleNames.length])));
     }
-    if (tick >= 12) {
+    int at(double share) => (_seconds * share).round();
+    if (tick >= at(0.25)) {
       send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -55 - r, 37, 1,
           _flockExt(raven: true, fw: '1.3.2', signals: 0x47, name: 'Penguin-1234567890')));
     }
-    if (tick >= 20) {
+    if (tick >= at(0.55)) {
       send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
           _flockExt(raven: false, fw: '', signals: 0x05, name: 'Flock-A1B2C3')));
     }
@@ -209,62 +212,76 @@ void _inject(ProviderContainer container) {
     var k = 0;
     for (final e in detectors.entries) {
       final (method, ch, desc) = e.value;
-      if (tick >= 4 + k * 5) {
+      if (tick >= at(0.08 + k * 0.13)) {
         send('detector:${e.key}', smokeFrame(Engine.detector, '02:00:00:00:05:0$k', -50 - k - r, ch, method,
             _detectorExt(desc, 1 + k % 3)));
       }
       k++;
     }
-    final step = tick * 0.0001;
+    final orbit = tick * 2 * math.pi / 90;
     send('drone_full', smokeFrame(Engine.skySpy, '02:00:00:00:06:00', -62 - r, 6, 0, smokeOdidExt(
       uavId: 'DEMO1A2B3C4D5E',
       opId: 'GBR-OP-DEMO0001',
-      lat: lat0 + 0.002 + step,
-      lon: lon0 + 0.002,
-      pilotLat: lat0 + 0.0005 + step / 4,
-      pilotLon: lon0 + 0.0045,
-      alt: 1700 + tick,
+      lat: lat0 + 0.0012 + 0.0010 * math.sin(orbit),
+      lon: lon0 - 0.0004 + 0.0016 * math.cos(orbit),
+      pilotLat: lat0 + 0.0004,
+      pilotLon: lon0 + 0.0010,
+      alt: 1700 + (tick % 20),
       agl: 60,
       speed: 5,
-      heading: 0,
+      heading: ((orbit * 180 / math.pi + 90) % 360).round(),
       selfId: 'Survey flight',
     )));
-    send('drone_partial', smokeFrame(Engine.skySpy, '02:00:00:00:06:01', -75 - r, 6, 0, smokeOdidExt(
-      uavId: 'DEMO9Z8Y7X6W5V',
-      opId: '',
-      lat: lat0 - 0.002,
-      lon: lon0 - 0.002 - step,
-      pilotLat: null,
-      pilotLon: null,
-      alt: 1650,
-      agl: 30,
-      speed: 3,
-      heading: 270,
-      selfId: '',
-    )));
-    if (tick >= 30) {
+    if (tick >= at(0.35)) {
+      final hover = placeOf('02:00:00:00:06:01');
+      send('drone_partial', smokeFrame(Engine.skySpy, '02:00:00:00:06:01', -75 - r, 6, 0, smokeOdidExt(
+        uavId: 'DEMO9Z8Y7X6W5V',
+        opId: '',
+        lat: hover.$1,
+        lon: hover.$2,
+        pilotLat: null,
+        pilotLon: null,
+        alt: 1650,
+        agl: 30,
+        speed: 0,
+        heading: 270,
+        selfId: '',
+      )));
+    }
+    if (tick >= at(0.85)) {
       send('uniPwn', smokeFrame(Engine.uniPwn, '02:00:00:00:07:00', -68 - r, 37, 0,
           [..._str('Go2', 8), 0]));
       send('foxhunter', smokeFrame(Engine.foxhunter, '02:00:00:00:08:00', -45 - r, 37, 0, const []));
     }
-    ble.addPhoneOdid('02:00:00:00:06:02', -70 - r,
-        smokePhoneOdidAdv(lat0 - 0.0025 + step, lon0 + 0.0025, tick));
-    counts['phone_odid'] = (counts['phone_odid'] ?? 0) + 1;
+    if (tick >= at(0.65)) {
+      final hover = placeOf('02:00:00:00:06:02');
+      ble.addPhoneOdid('02:00:00:00:06:02', -70 - r, smokePhoneOdidAdv(hover.$1, hover.$2, tick));
+      counts['phone_odid'] = (counts['phone_odid'] ?? 0) + 1;
+    }
 
-    if (tick == 3) {
+    final (hLat, hLon) = fixNow();
+    if (tick == at(0.1)) {
       log(kind: 'drone_loiter', title: 'Drone near you', reason: 'Hovering 180 m away for 6 min',
-          subject: '02:00:00:00:06:00', lat: lat0 + 0.0015, lon: lon0 + 0.0015);
+          subject: '02:00:00:00:06:00', lat: hLat, lon: hLon);
+    }
+    if (tick == at(0.3)) {
       log(kind: 'beacon_flood', title: 'Wi-Fi beacon flood', reason: '24 networks from one radio',
-          subject: '02:00:00:00:09:00', lat: lat0 - 0.0035, lon: lon0 + 0.0035);
+          subject: '02:00:00:00:09:00', lat: hLat, lon: hLon);
       log(kind: 'car_follow', title: 'Car following you', reason: 'Same tire sensors over 3 km and 14 min',
           subject: '02:00:00:00:03:00');
+    }
+    if (tick == at(0.5)) {
       log(kind: 'trusted_network', title: 'Possible evil twin of "Harbor Cafe"', reason: 'Weaker security',
-          subject: '02:00:00:00:01:01', lat: lat0 + 0.0035, lon: lon0 - 0.0035);
+          subject: '02:00:00:00:01:01', lat: hLat, lon: hLon);
+    }
+    if (tick == at(0.7)) {
       log(kind: 'cell_watch', title: 'Cell network warning', reason: 'Dropped to 2G', subject: 'CELL',
-          lat: lat0 - 0.0035, lon: lon0 - 0.0035);
+          lat: hLat, lon: hLon);
       log(kind: 'gps_watch', title: 'GPS warning', reason: 'Position jumped 4 km', subject: 'GPS');
+    }
+    if (tick == at(0.9)) {
       log(kind: 'aircraft_circle', title: 'Aircraft circling you', reason: 'DEM123 (ABC123) circled twice',
-          subject: 'ABC123', lat: lat0 + 0.004, lon: lon0);
+          subject: 'ABC123', lat: hLat, lon: hLon);
       counts['alerts'] = 7;
     }
     final sdr = container.read(sdrControllerProvider);
