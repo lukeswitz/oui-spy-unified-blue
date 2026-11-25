@@ -40,6 +40,7 @@ import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/features/wardrive/session_launch.dart';
 import 'package:oui_spy/features/geofence/geofence_screen.dart';
 import 'package:oui_spy/features/wardrive/flock_panel.dart';
+import 'package:oui_spy/core/map_pins.dart';
 import 'package:oui_spy/features/wardrive/wardrive_report_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/core/app_time.dart';
@@ -68,6 +69,8 @@ class WardriveScreen extends ConsumerStatefulWidget {
 class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBindingObserver {
   final _mapController = MapController();
   bool _followMode = true;
+  bool _measuring = false;
+  final List<LatLng> _measurePts = [];
   int _lastSessionLoadEpoch = 0;
   bool _initialFitDone = false;
   bool _idleCenteredDone = false;
@@ -369,6 +372,142 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     _mapController.move(here, _mapController.camera.zoom, offset: Offset(0, (top - bottom) / 2));
   }
 
+  Widget _measureButton() => _IconBtn(
+        icon: Icons.straighten,
+        active: _measuring,
+        tooltip: _measuring ? 'Measuring: tap the map to add points. Tap here to stop' : 'Measure a distance',
+        onTap: () => setState(() {
+          _measuring = !_measuring;
+          _measurePts.clear();
+        }),
+      );
+
+  List<Widget> _pinAndMeasureLayers() {
+    final t = AppTheme.of(context);
+    final pins = ref.watch(mapPinsProvider);
+    final units = ref.watch(unitSystemProvider);
+    return [
+      if (pins.isNotEmpty)
+        MarkerLayer(markers: [
+          for (final p in pins)
+            Marker(
+              point: p.at,
+              width: 140,
+              height: 46,
+              alignment: Alignment.topCenter,
+              child: GestureDetector(
+                onTap: () => _editPin(p),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (p.name.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: t.surface.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(AppRadius.control),
+                          border: Border.all(color: t.border),
+                        ),
+                        child: Text(p.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: t.textPrimary, fontSize: 11, fontWeight: FontWeight.w600)),
+                      ),
+                    Icon(Icons.push_pin, size: 22, color: AppTheme.accent),
+                  ],
+                ),
+              ),
+            ),
+        ]),
+      if (_measuring && _measurePts.isNotEmpty) ...[
+        PolylineLayer(polylines: [
+          Polyline(points: List.of(_measurePts), color: AppTheme.accent, strokeWidth: 3),
+        ]),
+        CircleLayer(circles: [
+          for (final p in _measurePts)
+            CircleMarker(point: p, radius: 5, color: AppTheme.accent, borderColor: Colors.white, borderStrokeWidth: 1.5),
+        ]),
+        MarkerLayer(markers: [
+          Marker(
+            point: _measurePts.last,
+            width: 120,
+            height: 28,
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: t.surface.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(AppRadius.control),
+                border: Border.all(color: AppTheme.accent),
+              ),
+              child: Text(
+                UnitFormatter.distance(pathLengthM(_measurePts) / 1000, units),
+                style: TextStyle(color: AppTheme.accent, fontSize: 12, fontFamily: AppTheme.mono, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ]),
+      ],
+    ];
+  }
+
+  Future<void> _dropPin(LatLng at) async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Drop a pin'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 32,
+          decoration: const InputDecoration(hintText: 'Name (optional)'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('DROP')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (name == null) return;
+    await ref.read(mapPinsProvider.notifier).add(name.trim(), at);
+  }
+
+  Future<void> _editPin(MapPin pin) async {
+    final ctrl = TextEditingController(text: pin.name);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pin'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 32,
+          decoration: const InputDecoration(hintText: 'Name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, '__remove__'),
+            child: Text('REMOVE', style: TextStyle(color: AppTheme.error)),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
+          TextButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('SAVE')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null) return;
+    final pins = ref.read(mapPinsProvider.notifier);
+    if (result == '__remove__') {
+      await pins.remove(pin.id);
+    } else {
+      await pins.rename(pin.id, result.trim());
+    }
+  }
+
   List<Widget> _exclusionZoneLayers() {
     if (_exclusionZones.isEmpty) return [];
     final circles = <CircleMarker>[];
@@ -635,6 +774,10 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 initialZoom: 15,
                 backgroundColor: mapStyle.isDark ? Colors.black : Colors.white,
                 onMapReady: _onMapReady,
+                onTap: (_, p) {
+                  if (_measuring) setState(() => _measurePts.add(p));
+                },
+                onLongPress: (_, p) => _dropPin(p),
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
                 ),
@@ -689,6 +832,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 if (detectionLayers.heat.isNotEmpty)
                   CircleLayer(circles: detectionLayers.heat),
                 ..._exclusionZoneLayers(),
+                ..._pinAndMeasureLayers(),
                 if (wd.routePoints.length >= 2)
                   PolylineLayer(polylines: [
                     Polyline(
@@ -957,6 +1101,13 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                 ),
               ),
 
+            if (!wd.isActive)
+              Positioned(
+                top: (wd.hasSessionData ? _completedBarHeight : 0) + 12,
+                right: 12,
+                child: _measureButton(),
+              ),
+
             // Idle: mode selector + start
             if (!wd.isActive)
               Positioned(
@@ -987,6 +1138,8 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
                           ? 'Following: map follows you and rotates with heading'
                           : 'Center on me + follow',
                     ),
+                    const SizedBox(height: 6),
+                    _measureButton(),
                     if (_currentRotation.abs() > 0.5) ...[
                       const SizedBox(height: 6),
                       _CompassResetBtn(
