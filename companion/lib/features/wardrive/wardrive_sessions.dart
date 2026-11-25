@@ -973,6 +973,7 @@ class _SessionHistorySheetState extends ConsumerState<_SessionHistorySheet> {
         db,
         File(path),
         watchlist: watchlist,
+        maker: ref.read(ouiLookupProvider).lookup,
       );
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(

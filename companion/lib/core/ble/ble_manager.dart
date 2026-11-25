@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/debug_log.dart';
+import 'package:oui_spy/core/detector_rules.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/link/link_characteristic.dart';
 import 'package:oui_spy/core/link/link_net.dart';
@@ -1866,7 +1867,14 @@ class BleManager {
     await _detectorConfig!.write(Uint8List.fromList([0x00]), withoutResponse: false);
     int pushed = 0;
     for (final e in entries) {
-      if (e.isName) continue;
+      if (!e.matchType.isNodeRule) continue;
+      if (e.isExtWire) {
+        final rule = e.rule;
+        if (rule == null) continue;
+        await _detectorConfig!.write(rule.op, withoutResponse: false);
+        pushed++;
+        continue;
+      }
       if (e.isServiceUuid) {
         final uuid = _parseUuid16(e.identifier);
         if (uuid == null) continue;

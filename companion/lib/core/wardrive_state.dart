@@ -19,6 +19,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/drone_grouping.dart';
 import 'package:oui_spy/core/export/wigle_csv.dart';
 import 'package:oui_spy/core/export/wigle_csv_import.dart';
+import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/watch_alert_log.dart' show alertsFeedProvider;
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
@@ -698,6 +699,11 @@ class WardriveController extends ChangeNotifier {
     _watchlistGetter = g;
   }
 
+  String? Function(String mac)? _makerLookup;
+  void setMakerLookup(String? Function(String mac) g) {
+    _makerLookup = g;
+  }
+
   String? _rescanSessionId;
   int _rescanCur = 0;
   int _rescanTotal = 0;
@@ -1158,6 +1164,7 @@ class WardriveController extends ChangeNotifier {
             _db,
             sid,
             watchlist: wl,
+            maker: _makerLookup,
             onProgress: (cur, total, newDet, newFlock) {
               _rescanCur = cur;
               _rescanTotal = total;
@@ -2204,6 +2211,7 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final liveActivity = ref.watch(liveActivityServiceProvider);
   final controller = WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
   controller.setWatchlistGetter(() => ref.read(watchlistProvider).enabledEntries);
+  controller.setMakerLookup(ref.read(ouiLookupProvider).lookup);
   controller.isImperial = ref.read(unitSystemProvider) == UnitSystem.imperial;
   ref.listen<UnitSystem>(unitSystemProvider, (_, next) {
     controller.isImperial = next == UnitSystem.imperial;

@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' as drift;
 import 'package:intl/intl.dart';
 import 'package:oui_spy/core/db/app_database.dart';
+import 'package:oui_spy/core/detector_rules.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:path/path.dart' as p;
@@ -25,6 +26,7 @@ class WigleCsvImport {
     AppDatabase db,
     File file, {
     List<WatchlistEntry> watchlist = const [],
+    String? Function(String mac)? maker,
   }) async {
     final raw = await file.readAsString();
     return importString(
@@ -32,6 +34,7 @@ class WigleCsvImport {
       raw,
       fileName: p.basename(file.path),
       watchlist: watchlist,
+      maker: maker,
     );
   }
 
@@ -40,8 +43,9 @@ class WigleCsvImport {
     String raw, {
     String? fileName,
     List<WatchlistEntry> watchlist = const [],
+    String? Function(String mac)? maker,
   }) async {
-    final wlIndex = _WatchlistIndex.build(watchlist);
+    final wlIndex = _WatchlistIndex.build(watchlist, maker);
     final lines = const LineSplitter().convert(raw);
     if (lines.isEmpty) {
       throw const FormatException('Empty CSV');
@@ -307,8 +311,9 @@ class WigleCsvRescan {
   static Future<WigleRescanResult> rescanAll(
     AppDatabase db, {
     List<WatchlistEntry> watchlist = const [],
+    String? Function(String mac)? maker,
   }) async {
-    final wlIndex = _WatchlistIndex.build(watchlist);
+    final wlIndex = _WatchlistIndex.build(watchlist, maker);
     final sessions = await db.getWardriveSessions();
     int rowsScanned = 0;
     int rowsUpdated = 0;
@@ -391,10 +396,11 @@ class WigleCsvRescan {
     AppDatabase db,
     String sessionId, {
     List<WatchlistEntry> watchlist = const [],
+    String? Function(String mac)? maker,
     void Function(int current, int total, int newDetector, int newFlock)?
         onProgress,
   }) async {
-    final wlIndex = _WatchlistIndex.build(watchlist);
+    final wlIndex = _WatchlistIndex.build(watchlist, maker);
     final rows = await db.getDetectionsForSession(sessionId);
     final total = rows.length;
     int rowsScanned = 0;
@@ -504,6 +510,9 @@ class _WatchlistIndex {
     this._descByFull,
     this._descByOui,
     this._namePatterns,
+    this._nameRules,
+    this._makerRules,
+    this._maker,
   );
 
   final Set<String> _fullMacs;
@@ -511,13 +520,18 @@ class _WatchlistIndex {
   final Map<String, String> _descByFull;
   final Map<String, String> _descByOui;
   final List<_NamePattern> _namePatterns;
+  final List<WatchlistEntry> _nameRules;
+  final List<WatchlistEntry> _makerRules;
+  final String? Function(String mac)? _maker;
 
-  static _WatchlistIndex build(List<WatchlistEntry> entries) {
+  static _WatchlistIndex build(List<WatchlistEntry> entries, [String? Function(String mac)? maker]) {
     final fulls = <String>{};
     final ouis = <String>{};
     final descFull = <String, String>{};
     final descOui = <String, String>{};
     final names = <_NamePattern>[];
+    final nameRules = <WatchlistEntry>[];
+    final makerRules = <WatchlistEntry>[];
     for (final e in entries) {
       if (e.isServiceUuid) continue;
       if (e.isName) {
@@ -525,6 +539,26 @@ class _WatchlistIndex {
         if (pat.isEmpty) continue;
         names.add(_NamePattern.compile(pat, e.description));
         continue;
+      }
+      switch (e.matchType) {
+        case WatchlistMatchType.nameContains:
+        case WatchlistMatchType.namePrefix:
+        case WatchlistMatchType.namePattern:
+          nameRules.add(e);
+          continue;
+        case WatchlistMatchType.makerName:
+          makerRules.add(e);
+          continue;
+        case WatchlistMatchType.companyId:
+        case WatchlistMatchType.companyData:
+        case WatchlistMatchType.wifiProbe:
+        case WatchlistMatchType.wifiBeacon:
+          continue;
+        case WatchlistMatchType.oui:
+        case WatchlistMatchType.fullMac:
+        case WatchlistMatchType.name:
+        case WatchlistMatchType.serviceUuid:
+          break;
       }
       final norm = _normalizeHex(e.identifier);
       if (norm.isEmpty) continue;
@@ -539,11 +573,15 @@ class _WatchlistIndex {
         if (e.description.isNotEmpty) descOui[oui] = e.description;
       }
     }
-    return _WatchlistIndex._(fulls, ouis, descFull, descOui, names);
+    return _WatchlistIndex._(fulls, ouis, descFull, descOui, names, nameRules, makerRules, maker);
   }
 
   _WatchlistHit? match(String mac, String name) {
-    if (_fullMacs.isEmpty && _ouis.isEmpty && _namePatterns.isEmpty) {
+    if (_fullMacs.isEmpty &&
+        _ouis.isEmpty &&
+        _namePatterns.isEmpty &&
+        _nameRules.isEmpty &&
+        _makerRules.isEmpty) {
       return null;
     }
     final norm = _normalizeHex(mac);
@@ -572,6 +610,29 @@ class _WatchlistIndex {
             byName: true,
             description: p.description.isNotEmpty ? p.description : p.raw,
           );
+        }
+      }
+      for (final r in _nameRules) {
+        if (nameRuleMatches(r.matchType, r.identifier, name)) {
+          return _WatchlistHit(
+            isFullMac: false,
+            byName: true,
+            description: r.description.isNotEmpty ? r.description : r.identifier,
+          );
+        }
+      }
+    }
+    if (_makerRules.isNotEmpty) {
+      final maker = _maker?.call(mac)?.toLowerCase() ?? '';
+      if (maker.isNotEmpty) {
+        for (final r in _makerRules) {
+          if (maker.contains(r.identifier.toLowerCase())) {
+            return _WatchlistHit(
+              isFullMac: false,
+              byName: false,
+              description: r.description.isNotEmpty ? r.description : r.identifier,
+            );
+          }
         }
       }
     }

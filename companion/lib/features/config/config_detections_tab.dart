@@ -109,7 +109,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _rescanning = true);
     try {
-      final res = await WigleCsvRescan.rescanAll(db, watchlist: watchlist);
+      final res = await WigleCsvRescan.rescanAll(db,
+          watchlist: watchlist, maker: ref.read(ouiLookupProvider).lookup);
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(
         backgroundColor: AppTheme.success,

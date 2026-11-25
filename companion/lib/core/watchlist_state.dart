@@ -9,13 +9,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:oui_spy/core/classify/observation.dart';
 
 enum WatchlistMatchType {
-  oui('OUI'),
-  fullMac('MAC'),
-  name('NAME'),
-  serviceUuid('UUID');
+  oui('OUI', 'Maker prefix (OUI)'),
+  fullMac('MAC', 'Exact MAC'),
+  name('NAME', 'Name pattern (phone only)'),
+  serviceUuid('UUID', 'Service UUID'),
+  nameContains('CONTAINS', 'Name contains'),
+  namePrefix('STARTS', 'Name starts with'),
+  namePattern('PATTERN', 'Name pattern'),
+  companyId('COMPANY', 'Company ID'),
+  companyData('DATA', 'Company data'),
+  wifiProbe('PROBE', 'Wi-Fi probe prefix'),
+  wifiBeacon('BEACON', 'Wi-Fi beacon prefix'),
+  makerName('MAKER', 'Maker name (phone only)');
 
-  const WatchlistMatchType(this.label);
+  const WatchlistMatchType(this.label, this.title);
   final String label;
+  final String title;
+
+  /// Rules a node can match; the legacy name pattern and the maker name stay on the phone.
+  bool get isNodeRule => this != name && this != makerName;
+
+  /// Rules that ride the detector list's extension section rather than the MAC and service UUID records.
+  bool get isExtRule => index >= nameContains.index && this != makerName;
 }
 
 class WatchlistEntry {
@@ -209,10 +224,39 @@ String? normalizeWatchlistId(String raw, WatchlistMatchType type) {
       return bytes.map((b) => b.toUpperCase()).join(':');
     case WatchlistMatchType.serviceUuid:
       final h = s.replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
-      return RegExp(r'^[0-9A-Fa-f]{4}$').hasMatch(h) ? h.toUpperCase() : null;
+      if (RegExp(r'^[0-9A-Fa-f]{4}$').hasMatch(h)) return h.toUpperCase();
+      final bare = h.replaceAll('-', '');
+      if (!RegExp(r'^[0-9A-Fa-f]{32}$').hasMatch(bare)) return null;
+      final u = bare.toUpperCase();
+      return '${u.substring(0, 8)}-${u.substring(8, 12)}-${u.substring(12, 16)}-${u.substring(16, 20)}-${u.substring(20)}';
     case WatchlistMatchType.name:
       final n = _cleanText(s, 32);
       return n.isEmpty ? null : n;
+    case WatchlistMatchType.nameContains:
+    case WatchlistMatchType.namePrefix:
+    case WatchlistMatchType.namePattern:
+      return s.isNotEmpty && RegExp(r'^[\x20-\x7E]{1,18}$').hasMatch(raw) ? raw : null;
+    case WatchlistMatchType.companyId:
+      final h = s.replaceFirst(RegExp(r'^0x', caseSensitive: false), '');
+      return RegExp(r'^[0-9A-Fa-f]{4}$').hasMatch(h) ? h.toUpperCase() : null;
+    case WatchlistMatchType.companyData:
+      final m = RegExp(r'^([0-9A-Fa-f]{4}):([0-9A-Fa-f]{2,16})(?:/([0-9A-Fa-f]{2,16}))?$').firstMatch(s);
+      if (m == null) return null;
+      final data = m.group(2)!.toUpperCase();
+      final mask = (m.group(3) ?? 'FF' * (data.length ~/ 2)).toUpperCase();
+      if (data.length.isOdd || mask.length != data.length) return null;
+      return '${m.group(1)!.toUpperCase()}:$data/$mask';
+    case WatchlistMatchType.wifiProbe:
+    case WatchlistMatchType.wifiBeacon:
+      final parts = s.replaceAll('-', ':').split(':');
+      final bytes = parts.length == 1 && s.length >= 6 && s.length <= 12 && s.length.isEven
+          ? [for (var i = 0; i < s.length; i += 2) s.substring(i, i + 2)]
+          : parts;
+      if (bytes.length < 3 || bytes.length > 6 || !bytes.every(_hexByte.hasMatch)) return null;
+      return bytes.map((b) => b.toUpperCase()).join(':');
+    case WatchlistMatchType.makerName:
+      final n = _cleanText(s, 40);
+      return n.length < 2 ? null : n;
   }
 }
 

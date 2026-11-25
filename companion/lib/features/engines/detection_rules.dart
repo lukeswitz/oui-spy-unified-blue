@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:oui_spy/core/detector_rules.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -83,11 +84,11 @@ class _WatchlistPanelState extends ConsumerState<WatchlistPanel> {
       }
       final wl = ref.read(watchlistProvider);
       final r = await wl.importText(await file.readAsString());
-      final total = wl.enabledEntries.where((e) => !e.isName).length;
+      final warn = watchlistBudget(wl.enabledEntries).warning;
       messenger.showSnackBar(SnackBar(
         content: Text(
           'Imported ${r.added}, skipped ${r.skipped} (invalid/duplicate)'
-          '${total > 50 ? ' · device holds 50 MAC/OUI + 50 UUID targets' : ''}',
+          '${warn.isNotEmpty ? ' · $warn' : ''}',
         ),
       ));
     } catch (e) {
@@ -142,20 +143,23 @@ class _TargetDialogState extends ConsumerState<_TargetDialog> {
     final existing = widget.existing;
     return AlertDialog(
       backgroundColor: t.surface,
-      title: Text(existing == null ? 'Add Target' : 'Edit Target', style: TextStyle(color: t.textPrimary)),
+      scrollable: true,
+      title: Text(existing == null ? 'Add a rule' : 'Edit rule', style: TextStyle(color: t.textPrimary)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SegmentedButton<WatchlistMatchType>(
-            segments: [
+          DropdownButtonFormField<WatchlistMatchType>(
+            initialValue: type,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Match'),
+            items: [
               for (final m in WatchlistMatchType.values)
-                if (m != WatchlistMatchType.name)
-                  ButtonSegment(value: m, label: Text(m.label, style: const TextStyle(fontSize: 11))),
+                if (m != WatchlistMatchType.name || existing?.matchType == WatchlistMatchType.name)
+                  DropdownMenuItem(value: m, child: Text(m.title)),
             ],
-            selected: {type},
-            showSelectedIcon: false,
-            onSelectionChanged: (s) => setState(() {
-              type = s.first;
+            onChanged: (m) => setState(() {
+              type = m ?? type;
               error = null;
             }),
           ),
@@ -164,18 +168,10 @@ class _TargetDialogState extends ConsumerState<_TargetDialog> {
             controller: idController,
             style: TextStyle(color: t.textPrimary, fontFamily: AppTheme.mono),
             decoration: InputDecoration(
-              hintText: switch (type) {
-                WatchlistMatchType.oui => 'AA:BB:CC',
-                WatchlistMatchType.fullMac => 'AA:BB:CC:DD:EE:FF',
-                WatchlistMatchType.serviceUuid => 'FD5F',
-                WatchlistMatchType.name => 'Device name',
-              },
-              labelText: switch (type) {
-                WatchlistMatchType.oui => 'OUI prefix (first 3 bytes)',
-                WatchlistMatchType.fullMac => 'Full MAC address',
-                WatchlistMatchType.serviceUuid => '16-bit BLE service UUID',
-                WatchlistMatchType.name => 'Name contains',
-              },
+              hintText: ruleHint(type),
+              labelText: ruleLabel(type),
+              helperText: ruleHelp(type),
+              helperMaxLines: 3,
               errorText: error,
             ),
           ),
@@ -198,24 +194,36 @@ class _TargetDialogState extends ConsumerState<_TargetDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
         ElevatedButton(
           onPressed: () {
-            final parsed = parseWatchlistImport(
-              '${idController.text.trim()},${descController.text.trim()},${type.name}',
-            );
-            if (parsed.entries.isEmpty) {
-              setState(() => error = 'Invalid ${type.label}');
+            final id = normalizeWatchlistId(idController.text, type);
+            if (id == null) {
+              setState(() => error = 'Not a valid ${type.title.toLowerCase()}');
               return;
             }
             final wl = ref.read(watchlistProvider);
-            final e = parsed.entries.first..enabled = enabled;
+            final desc = descController.text.trim();
+            final e = WatchlistEntry(
+              identifier: id,
+              matchType: type,
+              description: desc.length > 31 ? desc.substring(0, 31) : desc,
+              enabled: enabled,
+            );
             if (wl.entries.any((x) => !identical(x, existing) && watchlistKey(x) == watchlistKey(e))) {
               setState(() => error = 'Already on watchlist');
               return;
             }
+            final messenger = ScaffoldMessenger.of(context);
+            final next = [
+              for (final x in wl.enabledEntries)
+                if (!identical(x, existing)) x,
+              if (enabled) e,
+            ];
             if (existing == null) {
               wl.add(e);
             } else {
               wl.update(existing, e);
             }
+            final warn = watchlistBudget(next).warning;
+            if (warn.isNotEmpty) messenger.showSnackBar(SnackBar(content: Text(warn)));
             Navigator.pop(context);
           },
           child: Text(existing == null ? 'ADD' : 'SAVE'),
@@ -296,6 +304,21 @@ class SignaturesPanel extends ConsumerWidget {
   }
 }
 
+const _plainKinds = {WatchlistMatchType.oui, WatchlistMatchType.fullMac, WatchlistMatchType.serviceUuid};
+
+IconData _ruleIcon(WatchlistMatchType t) => switch (t) {
+      WatchlistMatchType.fullMac => Icons.fingerprint,
+      WatchlistMatchType.nameContains ||
+      WatchlistMatchType.namePrefix ||
+      WatchlistMatchType.namePattern ||
+      WatchlistMatchType.name =>
+        Icons.badge_outlined,
+      WatchlistMatchType.companyId || WatchlistMatchType.companyData => Icons.business,
+      WatchlistMatchType.wifiProbe || WatchlistMatchType.wifiBeacon => Icons.wifi,
+      WatchlistMatchType.makerName => Icons.store_outlined,
+      WatchlistMatchType.serviceUuid || WatchlistMatchType.oui => Icons.radar,
+    };
+
 class _WatchlistChip extends StatelessWidget {
   const _WatchlistChip({required this.entry, required this.onTap, required this.onDelete});
   final WatchlistEntry entry;
@@ -319,15 +342,18 @@ class _WatchlistChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(entry.isFullMac ? Icons.fingerprint : Icons.radar, color: AppTheme.detector, size: 12),
+              Icon(_ruleIcon(entry.matchType), color: AppTheme.detector, size: 12),
               const SizedBox(width: 4),
               Text(
-                entry.identifier.toUpperCase(),
+                entry.matchType.isExtRule || entry.matchType == WatchlistMatchType.name || entry.isUuid128
+                    ? entry.identifier
+                    : entry.identifier.toUpperCase(),
                 style: TextStyle(color: AppTheme.detector, fontSize: 11, fontFamily: AppTheme.mono),
               ),
-              if (entry.description.isNotEmpty) ...[
+              if (entry.description.isNotEmpty || !_plainKinds.contains(entry.matchType)) ...[
                 const SizedBox(width: 4),
-                Text(entry.description, style: TextStyle(color: t.textDim, fontSize: 9)),
+                Text(entry.description.isNotEmpty ? entry.description : entry.matchType.title,
+                    style: TextStyle(color: t.textDim, fontSize: 9)),
               ],
               const SizedBox(width: 4),
               GestureDetector(onTap: onDelete, child: Icon(Icons.close, size: 12, color: t.textDim)),

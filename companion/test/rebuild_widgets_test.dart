@@ -97,7 +97,7 @@ void main() {
 
     await tester.tap(find.text('40:48:6E'));
     await tester.pumpAndSettle();
-    expect(find.text('Edit Target'), findsOneWidget);
+    expect(find.text('Edit rule'), findsOneWidget);
     expect(find.text('Enabled'), findsOneWidget);
   });
 
@@ -111,7 +111,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
     await tester.pumpAndSettle();
-    expect(find.text('Add Target'), findsNothing);
+    expect(find.text('Add a rule'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
