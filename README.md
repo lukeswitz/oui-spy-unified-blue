@@ -594,4 +594,9 @@ Over-the-air updates must be signed with the release key. A board flashed over U
 
 ## Disclaimer
 
-Security-research and privacy-auditing tool. Follow local law on wireless scanning. Lawful use only.
+OUI-APEX is for security research, privacy auditing and education only. By using it, you agree to the following.
+
+- **Your risk:** you use it at your own risk, and you alone are responsible for how you use it.
+- **No warranty:** the firmware, the app and the flasher are provided "as is", without warranty of any kind. See [LICENSE](LICENSE).
+- **No liability:** the authors and contributors are not liable for any damage or loss from their use, including a board that no longer boots after a flash.
+- **Follow the law:** laws on radio monitoring, recording and tracking differ by country and state. Check yours before you scan. Don't use it to track people without their consent, or to get into networks or devices you don't own.
