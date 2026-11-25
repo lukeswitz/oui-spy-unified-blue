@@ -9,6 +9,7 @@
 #include "dedup_ring.h"
 #include "camera_oui.h"
 #include "wifi_auth.h"
+#include "detector_presets.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
@@ -40,6 +41,9 @@ static ExtRule extRules[DET_EXT_MAX];
 static volatile int extCount = 0;
 static volatile bool extEditing = false;
 static bool extDirty = false;
+static bool blobKnown = false;
+static bool localEdits = false;
+static bool localDirty = false;
 static uint8_t extNameN = 0, extMfrN = 0, extU128N = 0, extWifiN = 0;
 static uint8_t wifiRuleFirst[32];
 static NimBLEScan* bleScan = nullptr;
@@ -341,7 +345,91 @@ static bool extHas(uint8_t type, const uint8_t* p, uint8_t n) {
     return false;
 }
 
+static int hexNib(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static int hexBytes(const char* s, size_t chars, uint8_t* out) {
+    if (chars == 0 || (chars & 1)) return -1;
+    for (size_t i = 0; i < chars; i += 2) {
+        int h = hexNib(s[i]), l = hexNib(s[i + 1]);
+        if (h < 0 || l < 0) return -1;
+        out[i / 2] = (uint8_t)((h << 4) | l);
+    }
+    return (int)(chars / 2);
+}
+
+static bool presetRecord(const DetPresetRow& r, uint8_t* kind, uint8_t* p, uint8_t* n) {
+    size_t il = strlen(r.id);
+    uint8_t b[16];
+    switch (r.kind) {
+        case PR_OUI:
+            if (il != 6 || hexBytes(r.id, 6, b) != 3) return false;
+            *kind = DET_REC_MAC; p[0] = 3; memcpy(p + 1, b, 3); *n = 4;
+            return true;
+        case PR_PROBE:
+        case PR_BEACON:
+            if (il != 6 || hexBytes(r.id, 6, b) != 3) return false;
+            *kind = r.kind == PR_PROBE ? DET_RULE_WIFI_PROBE : DET_RULE_WIFI_BEACON;
+            memcpy(p, b, 3); *n = 3;
+            return true;
+        case PR_SVC:
+        case PR_CID:
+            if (il != 4 || hexBytes(r.id, 4, b) != 2) return false;
+            *kind = r.kind == PR_SVC ? DET_REC_UUID16 : DET_RULE_COMPANY_ID;
+            p[0] = b[1]; p[1] = b[0]; *n = 2;
+            return true;
+        case PR_NAME:
+        case PR_PFX:
+        case PR_PAT:
+            if (il < 1 || il > DET_RULE_PAYLOAD_MAX) return false;
+            *kind = r.kind == PR_NAME ? DET_RULE_NAME_CONTAINS : r.kind == PR_PFX ? DET_RULE_NAME_PREFIX : DET_RULE_NAME_PATTERN;
+            memcpy(p, r.id, il); *n = (uint8_t)il;
+            return true;
+        case PR_MFR: {
+            const char* colon = strchr(r.id, ':');
+            const char* slash = strchr(r.id, '/');
+            if (!colon || !slash || colon != r.id + 4 || slash < colon + 3 || hexBytes(r.id, 4, b) != 2) return false;
+            size_t dl = (size_t)(slash - colon - 1);
+            if (dl < 2 || dl > 16 || strlen(slash + 1) != dl) return false;
+            uint8_t d[8], m[8];
+            if (hexBytes(colon + 1, dl, d) != (int)(dl / 2) || hexBytes(slash + 1, dl, m) != (int)(dl / 2)) return false;
+            *kind = DET_RULE_COMPANY_DATA;
+            p[0] = b[1]; p[1] = b[0];
+            memcpy(p + 2, d, dl / 2);
+            memcpy(p + 2 + dl / 2, m, dl / 2);
+            *n = (uint8_t)(2 + dl);
+            return true;
+        }
+        case PR_UUID:
+            if (il != 32 || hexBytes(r.id, 32, b) != 16) return false;
+            *kind = DET_RULE_UUID128;
+            for (int i = 0; i < 16; i++) p[i] = b[15 - i];
+            *n = 16;
+            return true;
+    }
+    return false;
+}
+
+static const char* presetDescFor(uint8_t kind, const uint8_t* b, uint8_t n) {
+    uint8_t k, p[DET_RULE_PAYLOAD_MAX + 1], pn;
+    for (size_t i = 0; i < DET_PRESET_COUNT; i++) {
+        for (uint8_t j = 0; j < DET_PRESETS[i].count; j++) {
+            const DetPresetRow& r = DET_PRESETS[i].rows[j];
+            if (presetRecord(r, &k, p, &pn) && k == kind && pn == n && memcmp(p, b, n) == 0) return r.desc;
+        }
+    }
+    return nullptr;
+}
+
 static void extDesc(const ExtRule& r, char* out, size_t n) {
+    if (const char* d = presetDescFor(r.type, r.b, r.len)) {
+        snprintf(out, n, "%s", d);
+        return;
+    }
     switch (r.type) {
         case DET_RULE_NAME_CONTAINS: snprintf(out, n, "Name has %.*s", (int)r.len, (const char*)r.b); break;
         case DET_RULE_NAME_PREFIX: snprintf(out, n, "Name starts %.*s", (int)r.len, (const char*)r.b); break;
@@ -1483,6 +1571,13 @@ static uint32_t extSavedHash = 0;
 static bool extSavedKnown = false;
 
 void detectorExtPersist(void) {
+    if (localDirty) {
+        localDirty = false;
+        Preferences pl;
+        pl.begin("ouispy-off", false);
+        pl.putBool("det_loc", localEdits);
+        pl.end();
+    }
     if (!extDirty) return;
     extDirty = false;
     uint32_t h = extHash();
@@ -1497,10 +1592,203 @@ void detectorExtPersist(void) {
     Serial.printf("[DETCFG] persisted rules=%d (%uB)\n", (int)extCount, (unsigned)((size_t)extCount * sizeof(ExtRule)));
 }
 
+bool detectorLocalEdits(void) { return localEdits; }
+
+void detectorSetLocalEdits(bool on) {
+    if (on == localEdits) return;
+    localEdits = on;
+    localDirty = true;
+    blobKnown = false;
+}
+
+enum { REC_ADDED = 0, REC_PRESENT, REC_FULL, REC_UNMATCHABLE, REC_BAD, REC_REMOVED, REC_ABSENT };
+
+static bool recNeedsWifi(uint8_t kind) { return kind == DET_RULE_WIFI_PROBE || kind == DET_RULE_WIFI_BEACON; }
+
+static bool uuid16Has(uint16_t u) {
+    for (int i = 0; i < uuidFilterCount; i++) if (uuidFilters[i].uuid == u) return true;
+    return false;
+}
+
+static int filterIndex(uint8_t pl, const uint8_t* mac) {
+    for (int i = 0; i < filterCount; i++) {
+        if (filters[i].prefixLen == pl && memcmp(filters[i].macBytes, mac, pl) == 0) return i;
+    }
+    return -1;
+}
+
+static int applyRecord(uint8_t kind, const uint8_t* p, uint8_t n, const char* desc) {
+    if (kind == DET_REC_MAC) {
+        if (n < 2 || p[0] < 1 || p[0] > 6 || n != 1 + p[0]) return REC_BAD;
+        if (filterIndex(p[0], p + 1) >= 0) return REC_PRESENT;
+        if (filterCount >= 50) return REC_FULL;
+        uint8_t mac[6] = {0};
+        memcpy(mac, p + 1, p[0]);
+        detectorAddFilter(mac, p[0], desc);
+        return REC_ADDED;
+    }
+    if (kind == DET_REC_UUID16) {
+        if (n != 2) return REC_BAD;
+        if (!(detectorRadioMask & 0x02)) return REC_UNMATCHABLE;
+        uint16_t u = (uint16_t)(p[0] | (p[1] << 8));
+        if (uuid16Has(u)) return REC_PRESENT;
+        if (uuidFilterCount >= 50) return REC_FULL;
+        detectorAddUuidFilter(u, desc);
+        return REC_ADDED;
+    }
+    if (!extRuleValid(kind, p, n)) return REC_BAD;
+    if (!(detectorRadioMask & (recNeedsWifi(kind) ? 0x01 : 0x02))) return REC_UNMATCHABLE;
+    if (extHas(kind, p, n)) return REC_PRESENT;
+    return detectorAddRule(kind, p, n) ? REC_ADDED : REC_FULL;
+}
+
+static int removeRecord(uint8_t kind, const uint8_t* p, uint8_t n) {
+    if (kind == DET_REC_MAC) {
+        if (n < 2 || p[0] < 1 || p[0] > 6 || n != 1 + p[0]) return REC_BAD;
+        int i = filterIndex(p[0], p + 1);
+        if (i < 0) return REC_ABSENT;
+        memmove(&filters[i], &filters[i + 1], (size_t)(filterCount - i - 1) * sizeof(TargetFilter));
+        filterCount--;
+        return REC_REMOVED;
+    }
+    if (kind == DET_REC_UUID16) {
+        if (n != 2) return REC_BAD;
+        uint16_t u = (uint16_t)(p[0] | (p[1] << 8));
+        for (int i = 0; i < uuidFilterCount; i++) {
+            if (uuidFilters[i].uuid != u) continue;
+            memmove(&uuidFilters[i], &uuidFilters[i + 1], (size_t)(uuidFilterCount - i - 1) * sizeof(UuidFilter));
+            uuidFilterCount--;
+            return REC_REMOVED;
+        }
+        return REC_ABSENT;
+    }
+    if (!extRuleValid(kind, p, n)) return REC_BAD;
+    for (int i = 0; i < extCount; i++) {
+        if (extRules[i].type != kind || extRules[i].len != n || memcmp(extRules[i].b, p, n) != 0) continue;
+        extEditing = true;
+        memmove(&extRules[i], &extRules[i + 1], (size_t)(extCount - i - 1) * sizeof(ExtRule));
+        extCount = extCount - 1;
+        extRebuild();
+        extEditing = false;
+        extDirty = true;
+        return REC_REMOVED;
+    }
+    return REC_ABSENT;
+}
+
+uint8_t detectorFilterEdit(uint8_t op, const uint8_t* data, size_t len, DetEditResult* r) {
+    memset(r, 0, sizeof(*r));
+    int added = 0, present = 0, full = 0, unmatch = 0, bad = 0, removed = 0, seen = 0;
+    switch (op) {
+        case MESH_FOP_CLEAR: {
+            int total = filterCount + uuidFilterCount + extCount;
+            detectorClearFilters();
+            added = total;
+            break;
+        }
+        case MESH_FOP_ADD:
+        case MESH_FOP_DEL: {
+            size_t off = 0;
+            while (data && off + 2 <= len) {
+                uint8_t kind = data[off], rl = data[off + 1];
+                if (off + 2 + rl > len) { bad++; break; }
+                int rc = op == MESH_FOP_ADD ? applyRecord(kind, data + off + 2, rl, "") : removeRecord(kind, data + off + 2, rl);
+                seen++;
+                if (rc == REC_ADDED) added++;
+                else if (rc == REC_PRESENT) present++;
+                else if (rc == REC_FULL) full++;
+                else if (rc == REC_UNMATCHABLE) unmatch++;
+                else if (rc == REC_REMOVED) removed++;
+                else if (rc == REC_BAD) bad++;
+                off += 2 + rl;
+            }
+            if (off < len) bad++;
+            break;
+        }
+        case MESH_FOP_PRESET: {
+            if (!data || len < 1 || data[0] >= DET_PRESET_COUNT) { bad++; break; }
+            const DetPreset& ps = DET_PRESETS[data[0]];
+            for (uint8_t j = 0; j < ps.count; j++) {
+                uint8_t kind, p[DET_RULE_PAYLOAD_MAX + 1], pn;
+                if (!presetRecord(ps.rows[j], &kind, p, &pn)) { bad++; continue; }
+                int rc = applyRecord(kind, p, pn, ps.rows[j].desc);
+                seen++;
+                if (rc == REC_ADDED) added++;
+                else if (rc == REC_PRESENT) present++;
+                else if (rc == REC_FULL) full++;
+                else if (rc == REC_UNMATCHABLE) unmatch++;
+                else bad++;
+            }
+            break;
+        }
+        case MESH_FOP_GET:
+            break;
+        default:
+            bad++;
+            break;
+    }
+    r->macs = (uint8_t)filterCount;
+    r->uuids = (uint8_t)uuidFilterCount;
+    r->rules = (uint8_t)extCount;
+    r->changed = (uint8_t)((added + removed) > 255 ? 255 : (added + removed));
+    r->skipped = (uint8_t)((full + unmatch + bad) > 255 ? 255 : (full + unmatch + bad));
+    if (r->changed > 0 || op == MESH_FOP_CLEAR) {
+        detectorSetLocalEdits(true);
+        blobKnown = false;
+    }
+    if (op == MESH_FOP_GET || op == MESH_FOP_CLEAR) return MESH_FILTER_ACCEPTED;
+    if (op == MESH_FOP_DEL) return (seen == 0 || (bad > 0 && removed == 0)) ? MESH_FILTER_REFUSED_INVALID : MESH_FILTER_ACCEPTED;
+    if (seen == 0) return MESH_FILTER_REFUSED_INVALID;
+    if (added + present > 0) return MESH_FILTER_ACCEPTED;
+    if (full > 0) return MESH_FILTER_REFUSED_FULL;
+    if (unmatch > 0) return MESH_FILTER_REFUSED_UNSUPPORTED;
+    return MESH_FILTER_REFUSED_INVALID;
+}
+
+static size_t reportRecord(int idx, uint8_t* out) {
+    if (idx < filterCount) {
+        uint8_t pl = filters[idx].prefixLen;
+        out[0] = DET_REC_MAC; out[1] = (uint8_t)(1 + pl); out[2] = pl;
+        memcpy(out + 3, filters[idx].macBytes, pl);
+        return 3u + pl;
+    }
+    idx -= filterCount;
+    if (idx < uuidFilterCount) {
+        out[0] = DET_REC_UUID16; out[1] = 2;
+        out[2] = (uint8_t)(uuidFilters[idx].uuid & 0xFF);
+        out[3] = (uint8_t)(uuidFilters[idx].uuid >> 8);
+        return 4;
+    }
+    idx -= uuidFilterCount;
+    if (idx < extCount) {
+        out[0] = extRules[idx].type; out[1] = extRules[idx].len;
+        memcpy(out + 2, extRules[idx].b, extRules[idx].len);
+        return 2u + extRules[idx].len;
+    }
+    return 0;
+}
+
+size_t detectorReportPage(uint8_t page, size_t pageMax, uint8_t* out, uint8_t* pages) {
+    uint8_t rec[2 + DET_RULE_PAYLOAD_MAX];
+    size_t fill = 0, got = 0;
+    uint8_t pg = 0;
+    int total = filterCount + uuidFilterCount + extCount;
+    for (int i = 0; i < total; i++) {
+        size_t n = reportRecord(i, rec);
+        if (n == 0) break;
+        if (fill + n > pageMax) { pg++; fill = 0; }
+        if (pg == page) { memcpy(out + fill, rec, n); got = fill + n; }
+        fill += n;
+    }
+    if (pages) *pages = (uint8_t)(pg + 1);
+    return got;
+}
+
 void detectorExtRestore(void) {
     Preferences po;
     po.begin("ouispy-off", true);
     uint8_t n = po.getUChar("det_extn", 0);
+    localEdits = po.getBool("det_loc", false);
     extEditing = true;
     size_t got = (n > 0 && n <= DET_EXT_MAX) ? po.getBytes("det_ext", extRules, sizeof(extRules)) : 0;
     po.end();
@@ -1570,9 +1858,9 @@ bool detectorSetLabels(const uint8_t* data, size_t len) {
 
 void detectorSetFilters(const uint8_t* data, size_t len) {
     if (data == nullptr || len < 1) return;
-    static uint8_t lastFilters[512]; static size_t lastFilterLen = 0; static bool haveFilters = false;
-    if (haveFilters && len == lastFilterLen && len <= sizeof(lastFilters) && memcmp(lastFilters, data, len) == 0) return;
-    if (len <= sizeof(lastFilters)) { memcpy(lastFilters, data, len); lastFilterLen = len; haveFilters = true; }
+    static uint8_t lastFilters[512]; static size_t lastFilterLen = 0;
+    if (blobKnown && len == lastFilterLen && len <= sizeof(lastFilters) && memcmp(lastFilters, data, len) == 0) return;
+    if (len <= sizeof(lastFilters)) { memcpy(lastFilters, data, len); lastFilterLen = len; blobKnown = true; }
     detectorClearFilters();
     uint8_t cnt = data[0];
     size_t off = 1;
@@ -2293,6 +2581,154 @@ int detectorPortSelfTest(void) {
         uint8_t sc = small[eo];
         pstCheck("wire_stops_at_record_boundary", sn <= sizeof(small) && sc == (sn - 3) / 4 && (sn - 3) % 4 == 0 && sc > 0 && sc < DET_EXT_MAX);
         detectorClearFilters();
+    }
+
+    {
+        const uint8_t radioBefore = detectorRadioMask;
+        detectorRadioMask = 0x03;
+        DetEditResult er;
+        detectorClearFilters();
+        const uint8_t recMac[] = {DET_REC_MAC, 4, 3, 0xAA, 0xBB, 0xCC};
+        const uint8_t recUuid[] = {DET_REC_UUID16, 2, 0x5F, 0xFD};
+        const uint8_t recRule[] = {DET_RULE_COMPANY_ID, 2, 0x4C, 0x00};
+        uint8_t three[sizeof(recMac) + sizeof(recUuid) + sizeof(recRule)];
+        memcpy(three, recMac, sizeof(recMac));
+        memcpy(three + sizeof(recMac), recUuid, sizeof(recUuid));
+        memcpy(three + sizeof(recMac) + sizeof(recUuid), recRule, sizeof(recRule));
+        uint8_t st = detectorFilterEdit(MESH_FOP_ADD, three, sizeof(three), &er);
+        pstCheck("op_add_three_kinds", st == MESH_FILTER_ACCEPTED && er.changed == 3 && er.macs == 1 && er.uuids == 1 && er.rules == 1 && er.skipped == 0);
+        pstCheck("op_add_sets_local_edits", detectorLocalEdits());
+        st = detectorFilterEdit(MESH_FOP_ADD, three, sizeof(three), &er);
+        pstCheck("op_add_again_changes_nothing", st == MESH_FILTER_ACCEPTED && er.changed == 0 && er.macs == 1 && er.rules == 1);
+        const uint8_t mac3[3] = {0xAA, 0xBB, 0xCC};
+        pstCheck("op_add_mac_prefix_stored", filterIndex(3, mac3) == 0);
+        st = detectorFilterEdit(MESH_FOP_DEL, recUuid, sizeof(recUuid), &er);
+        pstCheck("op_del_uuid", st == MESH_FILTER_ACCEPTED && er.changed == 1 && er.uuids == 0 && er.macs == 1);
+        st = detectorFilterEdit(MESH_FOP_DEL, recUuid, sizeof(recUuid), &er);
+        pstCheck("op_del_absent_changes_nothing", st == MESH_FILTER_ACCEPTED && er.changed == 0);
+        st = detectorFilterEdit(MESH_FOP_DEL, recRule, sizeof(recRule), &er);
+        pstCheck("op_del_rule", st == MESH_FILTER_ACCEPTED && er.changed == 1 && er.rules == 0);
+        st = detectorFilterEdit(MESH_FOP_DEL, recMac, sizeof(recMac), &er);
+        pstCheck("op_del_mac", st == MESH_FILTER_ACCEPTED && er.changed == 1 && er.macs == 0);
+        const uint8_t junk[] = {0x7F, 1, 0x55};
+        st = detectorFilterEdit(MESH_FOP_ADD, junk, sizeof(junk), &er);
+        pstCheck("op_add_unknown_kind_invalid", st == MESH_FILTER_REFUSED_INVALID && er.changed == 0 && er.skipped == 1);
+        const uint8_t cutRec[] = {DET_RULE_COMPANY_ID, 9, 0x4C};
+        st = detectorFilterEdit(MESH_FOP_ADD, cutRec, sizeof(cutRec), &er);
+        pstCheck("op_add_truncated_invalid", st == MESH_FILTER_REFUSED_INVALID);
+        st = detectorFilterEdit(MESH_FOP_ADD, nullptr, 0, &er);
+        pstCheck("op_add_empty_invalid", st == MESH_FILTER_REFUSED_INVALID);
+        st = detectorFilterEdit(MESH_FOP_DEL, junk, sizeof(junk), &er);
+        pstCheck("op_del_unknown_kind_invalid", st == MESH_FILTER_REFUSED_INVALID);
+        st = detectorFilterEdit(0x66, nullptr, 0, &er);
+        pstCheck("op_unknown_invalid", st == MESH_FILTER_REFUSED_INVALID);
+
+        detectorFilterEdit(MESH_FOP_ADD, three, sizeof(three), &er);
+        st = detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        pstCheck("op_clear", st == MESH_FILTER_ACCEPTED && er.changed == 3 && er.macs == 0 && er.uuids == 0 && er.rules == 0);
+
+        const uint8_t wifiOnly[] = {DET_RULE_WIFI_PROBE, 3, 0xD4, 0x2D, 0xC5};
+        detectorRadioMask = 0x02;
+        st = detectorFilterEdit(MESH_FOP_ADD, wifiOnly, sizeof(wifiOnly), &er);
+        pstCheck("op_wifi_rule_refused_on_ble_only_radio", st == MESH_FILTER_REFUSED_UNSUPPORTED && er.changed == 0 && er.skipped == 1 && er.rules == 0);
+        uint8_t mixed[sizeof(wifiOnly) + sizeof(recRule)];
+        memcpy(mixed, wifiOnly, sizeof(wifiOnly));
+        memcpy(mixed + sizeof(wifiOnly), recRule, sizeof(recRule));
+        st = detectorFilterEdit(MESH_FOP_ADD, mixed, sizeof(mixed), &er);
+        pstCheck("op_mixed_takes_what_it_can_match", st == MESH_FILTER_ACCEPTED && er.changed == 1 && er.skipped == 1 && er.rules == 1);
+        detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        detectorRadioMask = 0x01;
+        st = detectorFilterEdit(MESH_FOP_ADD, recRule, sizeof(recRule), &er);
+        pstCheck("op_ble_rule_refused_on_wifi_only_radio", st == MESH_FILTER_REFUSED_UNSUPPORTED);
+        st = detectorFilterEdit(MESH_FOP_ADD, recUuid, sizeof(recUuid), &er);
+        pstCheck("op_uuid_refused_on_wifi_only_radio", st == MESH_FILTER_REFUSED_UNSUPPORTED);
+        st = detectorFilterEdit(MESH_FOP_ADD, recMac, sizeof(recMac), &er);
+        pstCheck("op_mac_taken_on_any_radio", st == MESH_FILTER_ACCEPTED && er.changed == 1);
+        detectorRadioMask = 0x03;
+
+        int rowsParsed = 0, rowsTotal = 0;
+        for (size_t i = 0; i < DET_PRESET_COUNT; i++) {
+            for (uint8_t j = 0; j < DET_PRESETS[i].count; j++) {
+                uint8_t k, p[DET_RULE_PAYLOAD_MAX + 1], pn;
+                rowsTotal++;
+                if (presetRecord(DET_PRESETS[i].rows[j], &k, p, &pn)) rowsParsed++;
+            }
+        }
+        pstCheck("preset_every_row_parses", rowsParsed == rowsTotal && rowsTotal == 99, "");
+        detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        st = detectorFilterEdit(MESH_FOP_PRESET, (const uint8_t*)"\x63", 1, &er);
+        pstCheck("preset_unknown_id_invalid", st == MESH_FILTER_REFUSED_INVALID);
+        st = detectorFilterEdit(MESH_FOP_PRESET, nullptr, 0, &er);
+        pstCheck("preset_missing_id_invalid", st == MESH_FILTER_REFUSED_INVALID);
+        const uint8_t police = 9;
+        st = detectorFilterEdit(MESH_FOP_PRESET, &police, 1, &er);
+        pstCheck("preset_police_installs", st == MESH_FILTER_ACCEPTED && er.changed == 23 && er.skipped == 0 && er.macs == 7 && er.uuids == 2 && er.rules == 14);
+        st = detectorFilterEdit(MESH_FOP_PRESET, &police, 1, &er);
+        pstCheck("preset_again_changes_nothing", st == MESH_FILTER_ACCEPTED && er.changed == 0 && er.rules == 14);
+        pstCheck("preset_mac_row_keeps_its_label", strcmp(filters[0].desc, "Motorola Solutions OUI") == 0);
+        pstCheck("preset_uuid_row_keeps_its_label", strcmp(uuidFilters[0].desc, "Motorola Solutions svc UUID") == 0);
+        const uint8_t gen[3] = {0x00, 0x1D, 0x96};
+        char pd[32] = {0};
+        for (int i = 0; i < extCount; i++) {
+            if (extRules[i].type == DET_RULE_WIFI_BEACON && memcmp(extRules[i].b, gen, 3) == 0) extDesc(extRules[i], pd, sizeof(pd));
+        }
+        pstCheck("preset_rule_hit_uses_row_label", strcmp(pd, "WatchGuard Video AP (WiFi)") == 0, pd);
+        uint8_t pg[MESH_FILTERREPORT_MAX], pages = 0;
+        size_t pn0 = detectorReportPage(0, sizeof(pg), pg, &pages);
+        pstCheck("report_police_two_pages", pages == 2 && pn0 > 0 && pn0 <= sizeof(pg));
+        int recs = 0;
+        bool whole = true;
+        for (uint8_t p = 0; p < pages; p++) {
+            size_t pl = detectorReportPage(p, sizeof(pg), pg, nullptr);
+            size_t o = 0;
+            while (o + 2 <= pl) { o += 2 + pg[o + 1]; recs++; }
+            if (o != pl) whole = false;
+        }
+        pstCheck("report_pages_hold_whole_records", whole && recs == 23);
+        detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        pstCheck("report_empty_is_one_empty_page", detectorReportPage(0, sizeof(pg), pg, &pages) == 0 && pages == 1);
+
+        const uint8_t trackers = 4;
+        detectorFilterEdit(MESH_FOP_PRESET, &trackers, 1, &er);
+        const uint8_t airtag[] = {0x4C, 0x00, 0x12, 0x19, 0x10, 0xFF, 0xFF, 0x30};
+        pstCheck("preset_company_data_row_parsed", extHas(DET_RULE_COMPANY_DATA, airtag, sizeof(airtag)) && er.rules == 3 && er.uuids == 7);
+        const uint8_t wearables = 7;
+        detectorFilterEdit(MESH_FOP_PRESET, &wearables, 1, &er);
+        const uint8_t frameRev[16] = {0xC4, 0x49, 0xAD, 0xF6, 0x31, 0x84, 0x4C, 0x65, 0xA4, 0xA6, 0x75, 0x54, 0x01, 0x00, 0x23, 0x7A};
+        pstCheck("preset_uuid128_row_reversed", extHas(DET_RULE_UUID128, frameRev, 16));
+        const uint8_t meta = 1, flip = 8;
+        detectorFilterEdit(MESH_FOP_PRESET, &police, 1, &er);
+        detectorFilterEdit(MESH_FOP_PRESET, &meta, 1, &er);
+        st = detectorFilterEdit(MESH_FOP_PRESET, &flip, 1, &er);
+        pstCheck("preset_over_capacity_skips_rows_it_cannot_hold", st == MESH_FILTER_ACCEPTED && er.rules == DET_EXT_MAX && er.skipped > 0, "");
+
+        detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        detectorRadioMask = 0x02;
+        const uint8_t verkada = 3, axon = 0;
+        st = detectorFilterEdit(MESH_FOP_PRESET, &verkada, 1, &er);
+        pstCheck("preset_wifi_only_refused_on_ble_only_radio", st == MESH_FILTER_REFUSED_UNSUPPORTED && er.changed == 0 && er.skipped == 2);
+        st = detectorFilterEdit(MESH_FOP_PRESET, &axon, 1, &er);
+        pstCheck("preset_skips_wifi_rows_on_ble_only_radio", st == MESH_FILTER_ACCEPTED && er.changed == 1 && er.skipped == 2 && er.macs == 1 && er.rules == 0);
+        detectorRadioMask = 0x01;
+        const uint8_t drones = 5;
+        detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        st = detectorFilterEdit(MESH_FOP_PRESET, &drones, 1, &er);
+        pstCheck("preset_skips_ble_rows_on_wifi_only_radio", st == MESH_FILTER_ACCEPTED && er.macs == 2 && er.rules == 1 && er.uuids == 0 && er.skipped == 2);
+        detectorRadioMask = 0x03;
+
+        detectorClearFilters();
+        detectorSetLocalEdits(false);
+        detectorAddRule(DET_RULE_NAME_CONTAINS, (const uint8_t*)"Flip", 4);
+        uint8_t keep[MESH_IGNORELIST_MAX];
+        size_t kn = detectorSerializeWire(keep, sizeof(keep));
+        detectorSetFilters(keep, kn);
+        detectorFilterEdit(MESH_FOP_CLEAR, nullptr, 0, &er);
+        detectorSetLocalEdits(false);
+        detectorSetFilters(keep, kn);
+        pstCheck("push_after_local_edit_is_not_deduped", detectorRuleCount() == 1 && !detectorLocalEdits());
+        detectorClearFilters();
+        detectorSetLocalEdits(false);
+        detectorRadioMask = radioBefore;
     }
 
     detectorSetSigMask(SIG_ALL);

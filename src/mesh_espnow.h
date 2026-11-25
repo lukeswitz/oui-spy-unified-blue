@@ -114,6 +114,25 @@ struct MeshFilterPush {
 };
 void meshStartDetectorPush(const uint8_t* data, size_t len);
 bool meshGetFilterPush(MeshFilterPush* out);
+
+struct MeshFilterOpResult {
+    char    id[MESH_NODE_ID_LEN];
+    uint8_t status;
+    uint8_t macs;
+    uint8_t uuids;
+    uint8_t rules;
+    uint8_t changed;
+    uint8_t skipped;
+};
+struct MeshFilterOpState {
+    uint8_t seq;
+    uint8_t op;
+    uint8_t expected;
+    uint8_t count;
+    MeshFilterOpResult acks[MESH_LIVE_NODES_MAX];
+};
+bool meshStartNodeFilterOp(const char* target, uint8_t op, const uint8_t* data, size_t len);
+bool meshGetFilterOp(MeshFilterOpState* out);
 #endif
 
 bool meshOtaInitiatorStart(uint32_t size, uint32_t crc, uint32_t fw_version);

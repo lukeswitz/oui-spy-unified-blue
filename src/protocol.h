@@ -191,6 +191,10 @@ enum EngineState : uint8_t {
 #define DET_RULE_PAYLOAD_MAX   18
 #define DET_EXT_MAX            32
 #define DETCFG_OP_RULE         0x05
+#define DETCFG_OP_NODE_FILTER  0x06  // manager only: [0x06][op][target:4, zeros = every node][data]; op is MESH_FOP_*
+#define DET_REC_MAC            0x10  // filter edit and report record: payload [prefixLen][prefixLen address bytes]
+#define DET_REC_UUID16         0x11  // filter edit and report record: payload u16 LE
+// Records in a filter edit and a node's list are [kind][len][payload]; kinds 0x01-0x08 are the DET_RULE_* types.
 
 #define SIG_TRACKER    0x01
 #define SIG_FLIPPER    0x02
@@ -538,12 +542,58 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_NODE_STATUS     = 0x15,
     MESH_PKT_FILTER_ACK      = 0x16,
     MESH_PKT_OTA_ABORT       = 0x17,
+    MESH_PKT_FILTER_OP       = 0x18,
+    MESH_PKT_FILTER_RESULT   = 0x19,
+    MESH_PKT_FILTER_REPORT   = 0x1A,
 };
 
 #define MESH_FILTER_ACCEPTED           0
 #define MESH_FILTER_REFUSED_NO_ENGINE  1
 #define MESH_FILTER_REFUSED_DENIED     2
 #define MESH_FILTER_REFUSED_FULL       3
+#define MESH_FILTER_REFUSED_UNSUPPORTED 4   // every row needs a radio the node has turned off
+#define MESH_FILTER_REFUSED_INVALID    5
+
+#define MESH_FOP_ADD    1   // data: records to add
+#define MESH_FOP_DEL    2   // data: records to remove
+#define MESH_FOP_CLEAR  3   // data: none
+#define MESH_FOP_PRESET 4   // data: preset id (see engines/detector_presets.h)
+#define MESH_FOP_GET    5   // data: none; the node answers with a result and then its list in report pages
+#define MESH_FILTEROP_MAX      100
+#define MESH_FILTERREPORT_MAX  100
+#define SYS_OP_NODE_FILTERS    0x16  // manager -> phone notify: [0x16][id:2][op seq][page][pages][records]
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_FILTER_OP (manager -> nodes)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    char     target_node_id[MESH_NODE_ID_LEN];  // first byte 0 = every node
+    uint8_t  op;                    // MESH_FOP_*
+    uint8_t  seq;                   // nonzero; answers carry it back
+    uint8_t  len;
+    uint8_t  data[MESH_FILTEROP_MAX];
+} MeshFilterOpPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_FILTER_RESULT (node -> manager, answers MESH_PKT_FILTER_OP)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  op_seq;
+    uint8_t  status;                // MESH_FILTER_*
+    uint8_t  filter_macs;
+    uint8_t  filter_uuids;
+    uint8_t  filter_rules;
+    uint8_t  changed;               // rows added, removed or cleared
+    uint8_t  skipped;               // rows it could not match or hold
+} MeshFilterResultPacket;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_FILTER_REPORT (node -> manager, one page of a node's list after MESH_FOP_GET)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  op_seq;
+    uint8_t  page;
+    uint8_t  pages;
+    uint8_t  len;
+    uint8_t  data[MESH_FILTERREPORT_MAX];
+} MeshFilterReportPacket;
 
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;              // MESH_PKT_FILTER_ACK (node -> manager, answers a detector-list push)

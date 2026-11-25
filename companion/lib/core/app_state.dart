@@ -19,6 +19,7 @@ import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
+import 'package:oui_spy/core/node_filters.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/node_watch.dart';
 import 'package:oui_spy/core/atak/atak_connector.dart';
@@ -357,6 +358,86 @@ class AppState extends ChangeNotifier {
   MeshFilterPush? get filterPush => _filterPush;
   int get filterPushSeq => _filterPush?.seq ?? 0;
 
+  MeshFilterOp? _filterOp;
+  MeshFilterOp? get filterOp => _filterOp;
+  int get filterOpSeq => _filterOp?.seq ?? 0;
+  final Map<String, NodeFilterReport> _nodeFilterReports = {};
+
+  /// The newest filter list a node sent; null before a read.
+  NodeFilterReport? nodeFilterReport(String id) => _nodeFilterReports[canonicalNodeId(id)];
+
+  void ingestNodeFilterFrame(NodeFilterFrame f) {
+    final id = canonicalNodeId(f.id);
+    if (id.isEmpty) return;
+    var r = _nodeFilterReports[id];
+    if (r == null || r.seq != f.seq || r.pages != f.pages) {
+      r = NodeFilterReport(id, f.seq, f.pages);
+      _nodeFilterReports[id] = r;
+    }
+    if (r.add(f)) notifyListeners();
+  }
+
+  /// Completes with the first filter edit newer than [afterSeq] once every expected node has answered,
+  /// or with whatever has answered when [timeout] passes; null if none arrived.
+  Future<MeshFilterOp?> waitForFilterOp(int afterSeq, {Duration timeout = const Duration(seconds: 10)}) {
+    final done = Completer<MeshFilterOp?>();
+    Timer? timer;
+    late void Function() check;
+    void finish(MeshFilterOp? v) {
+      if (done.isCompleted) return;
+      removeListener(check);
+      timer?.cancel();
+      done.complete(v);
+    }
+
+    MeshFilterOp? newer() => _filterOp != null && _filterOp!.seq != afterSeq ? _filterOp : null;
+    check = () {
+      final p = newer();
+      if (p != null && p.results.length >= p.expected) finish(p);
+    };
+    addListener(check);
+    timer = Timer(timeout, () => finish(newer()));
+    check();
+    return done.future;
+  }
+
+  /// Completes once [id]'s filter list for edit [seq] has every page, or with what arrived when [timeout] passes.
+  Future<NodeFilterReport?> waitForNodeFilterReport(String id, int seq,
+      {Duration timeout = const Duration(seconds: 8)}) {
+    final done = Completer<NodeFilterReport?>();
+    Timer? timer;
+    late void Function() check;
+    NodeFilterReport? have() {
+      final r = nodeFilterReport(id);
+      return r != null && r.seq == seq ? r : null;
+    }
+
+    void finish(NodeFilterReport? v) {
+      if (done.isCompleted) return;
+      removeListener(check);
+      timer?.cancel();
+      done.complete(v);
+    }
+
+    check = () {
+      final r = have();
+      if (r != null && r.complete) finish(r);
+    };
+    addListener(check);
+    timer = Timer(timeout, () => finish(have()));
+    check();
+    return done.future;
+  }
+
+  /// A node's answer to the latest filter edit; null when it has not answered it.
+  NodeFilterResult? nodeFilterOpResult(String id) {
+    final canon = canonicalNodeId(id);
+    for (final r in _filterOp?.results ?? const <NodeFilterResult>[]) {
+      if (canonicalNodeId(r.id) == canon) return r;
+    }
+    return null;
+  }
+
   MeshFilterResult? nodeFilterResult(String id) {
     final canon = canonicalNodeId(id);
     for (final r in _filterPush?.results ?? const <MeshFilterResult>[]) {
@@ -662,6 +743,8 @@ class AppState extends ChangeNotifier {
       }
       if (state == NodeConnectionState.disconnected) {
         _filterPush = null;
+        _filterOp = null;
+        _nodeFilterReports.clear();
         _meshSignal = const [];
         _nodeDetail.clear();
       }
@@ -735,6 +818,8 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }));
 
+    _subs.add(_ble.nodeFilterFrames.listen(ingestNodeFilterFrame));
+
     _subs.add(_ble.meshStatusUpdates.listen((data) {
       meshEnabled = data.enabled;
       meshPeerCount = data.peerCount;
@@ -760,6 +845,7 @@ class AppState extends ChangeNotifier {
         if (tempC != null) _nodeTempC[canon] = tempC;
       }
       if (data.filterPush != null) _filterPush = data.filterPush;
+      if (data.filterOp != null) _filterOp = data.filterOp;
       _meshSignal = data.signal;
       for (final d in data.details) {
         final canon = canonicalNodeId(d.id);

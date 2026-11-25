@@ -78,6 +78,7 @@ int bleGattPortSelfTest(void);
 void bleGattNotifyMeshStatus(void);
 #ifdef OUISPY_ROLE_MANAGER
 void bleGattMgrDetPushTick(void);
+void bleGattNotifyNodeFilters(const char* id, uint8_t seq, uint8_t page, uint8_t pages, const uint8_t* data, uint8_t len);
 #endif
 
 void bleGattNotifyPcapStats(void);

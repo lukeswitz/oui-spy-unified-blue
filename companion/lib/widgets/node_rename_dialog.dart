@@ -11,8 +11,10 @@ import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/node_positions.dart';
 import 'package:oui_spy/core/mesh_node_info.dart';
+import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/node_filters_dialog.dart';
 
 /// Sends a node-control command; null hides the identify, locate and reboot buttons.
 typedef NodeControlSender = Future<bool> Function(Uint8List cmd);
@@ -21,7 +23,12 @@ const Duration kNodePlaceFixMaxAge = Duration(seconds: 60);
 
 /// Pass [ref] to show the position controls that place the node for triangulation.
 Future<void> showNodeRenameDialog(BuildContext context, AppState appState, String nodeId,
-    {bool allowForget = false, NodeControlSender? control, bool targeted = true, WidgetRef? ref}) async {
+    {bool allowForget = false,
+    NodeControlSender? control,
+    bool targeted = true,
+    WidgetRef? ref,
+    NodeFilterSender? filters,
+    List<WatchlistEntry> Function()? phoneList}) async {
   final id = AppState.canonicalNodeId(nodeId);
   if (id.isEmpty) return;
   final current = appState.nodeLabels[id] ?? '';
@@ -185,7 +192,17 @@ Future<void> showNodeRenameDialog(BuildContext context, AppState appState, Strin
                             'Status requested: build, filters, uptime and peers appear here'),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
+                    if (filters != null && phoneList != null)
+                      Expanded(
+                        child: ConfigCompactButton(
+                          icon: Icons.tune,
+                          label: 'Filters',
+                          onTap: () => showNodeFiltersDialog(ctx, appState, id, send: filters, phoneList: phoneList),
+                        ),
+                      )
+                    else
+                      const Spacer(),
                   ],
                 ),
               ],

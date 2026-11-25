@@ -171,6 +171,8 @@ class BleManager {
   Stream<({int status, int bytesRead})> get wifiOtaUpdates => _wifiOtaStream.stream;
   final _wdLogFrames = StreamController<WdLogFrame>.broadcast();
   Stream<WdLogFrame> get wdLogFrames => _wdLogFrames.stream;
+  final _nodeFilterFrames = StreamController<NodeFilterFrame>.broadcast();
+  Stream<NodeFilterFrame> get nodeFilterFrames => _nodeFilterFrames.stream;
 
   // Fleet (mesh byte-relay) OTA progress: opcode 0x08, phase[1], pct[1], done[1], seen[1]
   final _fleetOtaStream =
@@ -1330,6 +1332,9 @@ class BleManager {
           } else if (data[0] == 0x12) {
             final frame = BleProtocol.decodeWdLogFrame(data);
             if (frame != null) _wdLogFrames.add(frame);
+          } else if (data[0] == BleProtocol.sysOpNodeFilters) {
+            final frame = BleProtocol.decodeNodeFilterFrame(data);
+            if (frame != null) _nodeFilterFrames.add(frame);
           } else if (data[0] == BleProtocol.blePinCmd && data.length >= 2) {
             _blePinStream.add(data[1] == 0);
           } else if (data[0] == 0x08 && data.length >= 5) {
@@ -1695,6 +1700,14 @@ class BleManager {
     final c = _engineControl;
     if (c == null) return false;
     await c.write(cmd, withoutResponse: false);
+    return true;
+  }
+
+  /// Sends a filter edit built by [BleProtocol.encodeNodeFilterOp]. A manager relays it over the mesh.
+  Future<bool> sendNodeFilterOp(Uint8List op) async {
+    final c = _detectorConfig;
+    if (c == null) return false;
+    await c.write(op, withoutResponse: false);
     return true;
   }
 
@@ -2300,6 +2313,7 @@ class BleManager {
     _meshStatusStream.close();
     _wifiOtaStream.close();
     _wdLogFrames.close();
+    _nodeFilterFrames.close();
     _fleetOtaStream.close();
     _meshFwStream.close();
     _pcapStatsStream.close();

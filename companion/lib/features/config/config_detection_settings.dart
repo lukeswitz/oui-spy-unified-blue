@@ -295,7 +295,11 @@ class _DetectionSettingsTabState extends ConsumerState<_DetectionSettingsTab> {
               ? 'Specific devices to alert on · add or import'
               : '$targets device${targets == 1 ? '' : 's'} · add or import',
           color: AppTheme.detector,
-          onTap: () => _pushPage(context, 'Watchlist', const SingleChildScrollView(child: WatchlistPanel())),
+          onTap: () => _pushPage(
+              context,
+              'Watchlist',
+              const SingleChildScrollView(
+                  child: Column(children: [WatchlistPanel(), SizedBox(height: 12), PresetsPanel()]))),
         ),
         ConfigActionRow(
           icon: Icons.fingerprint,

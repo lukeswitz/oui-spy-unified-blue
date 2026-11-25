@@ -27,6 +27,13 @@ size_t detectorSerialize(uint8_t* out, size_t maxLen);
 size_t detectorSerializeWire(uint8_t* out, size_t maxLen);
 void detectorExtPersist(void);
 void detectorExtRestore(void);
+bool detectorLocalEdits(void);
+void detectorSetLocalEdits(bool on);
+struct DetEditResult {
+    uint8_t macs, uuids, rules, changed, skipped;
+};
+uint8_t detectorFilterEdit(uint8_t op, const uint8_t* data, size_t len, DetEditResult* r);
+size_t detectorReportPage(uint8_t page, size_t pageMax, uint8_t* out, uint8_t* pages);
 void detectorSetFilters(const uint8_t* data, size_t len);
 bool detectorHoldsAll(const uint8_t* data, size_t len);
 #define DETECTOR_LABELS_MAX (2 + 100 * 32)

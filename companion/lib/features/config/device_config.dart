@@ -43,6 +43,7 @@ import 'package:oui_spy/core/update/update_service.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/mesh_node_info.dart';
+import 'package:oui_spy/core/node_filters.dart';
 import 'package:oui_spy/features/config/widgets/mesh_signal_grid.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
@@ -68,6 +69,7 @@ import 'package:oui_spy/widgets/command_bar.dart';
 import 'package:oui_spy/features/config/ota_progress_stepper.dart';
 import 'package:oui_spy/features/config/alert_sounds_screen.dart';
 import 'package:oui_spy/features/engines/detection_rules.dart';
+import 'package:oui_spy/features/engines/presets_panel.dart';
 import 'package:oui_spy/features/pcap/pcap_library_screen.dart';
 import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1397,6 +1399,8 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
       final temp = isSelf ? _selfTempC : appState.nodeTempC(id);
       final detail = online && !isSelf ? appState.nodeDetail(id) : null;
       final filterResult = online && !isSelf ? appState.nodeFilterResult(id) : null;
+      final editResult = online && !isSelf ? appState.nodeFilterOpResult(id) : null;
+      final editOp = appState.filterOp?.op ?? 0;
       final parts = <String>[
         if (hasCustom) id,
         if (isSelf) 'this device',
@@ -1404,6 +1408,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         '$dets dets',
         if (detail != null) nodeDetailSummary(detail),
         if (filterResult != null) nodeFilterResultText(filterResult),
+        if (editResult != null) 'filters ${filterOpName(editOp)}: ${nodeFilterOpText(editResult, editOp)}',
       ];
       final t = AppTheme.of(context);
       return ConfigActionRow(
@@ -1447,7 +1452,12 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final mgr = ble.isManagerConnected;
     final canControl = appState.isConnected && online && id != 'LOCAL' && (isSelf ? !mgr : mgr);
     return showNodeRenameDialog(context, appState, id,
-        allowForget: true, control: canControl ? ble.sendNodeControl : null, targeted: !isSelf, ref: ref);
+        allowForget: true,
+        control: canControl ? ble.sendNodeControl : null,
+        targeted: !isSelf,
+        ref: ref,
+        filters: canControl && !isSelf ? ble.sendNodeFilterOp : null,
+        phoneList: () => ref.read(watchlistProvider).enabledEntries);
   }
 
   Widget _buildFirmwareTab() {

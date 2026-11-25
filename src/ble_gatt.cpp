@@ -1858,6 +1858,18 @@ class DetectorConfigCallbacks : public NimBLECharacteristicCallbacks {
                 if (val.length() < 3 || val.length() < 3u + data[2]) return;
                 detectorAddRule(data[1], data + 3, data[2]);
                 break;
+            case DETCFG_OP_NODE_FILTER:
+#ifdef OUISPY_ROLE_MANAGER
+                if (val.length() >= 6 && val.length() - 6 <= MESH_FILTEROP_MAX && meshIsEnabled()) {
+                    char target[MESH_NODE_ID_LEN] = {0};
+                    if (data[2] != 0) memcpy(target, data + 2, MESH_NODE_ID_LEN - 1);
+                    if (!meshStartNodeFilterOp(target, data[1], data + 6, val.length() - 6))
+                        Serial.println("[BLE] node filter op not sent");
+                }
+#else
+                Serial.println("[BLE] node filter op ignored: not a manager");
+#endif
+                return;
             default:
                 Serial.printf("[BLE] DetectorConfig unknown op=0x%02x\n", op);
                 break;
@@ -3480,6 +3492,57 @@ static size_t meshAppendFilterPush(uint8_t* buf, size_t off, size_t limit) {
     return off;
 }
 
+#define MESH_TLV_FILTER_OP 0x04
+#define MESH_TLV_OP_HEADER 4
+#define MESH_TLV_OP_ENTRY 8
+
+static size_t meshAppendFilterOp(uint8_t* buf, size_t off, size_t limit) {
+    MeshFilterOpState s;
+    if (!meshGetFilterOp(&s)) return off;
+    size_t start = off;
+    if (off + 2 + MESH_TLV_OP_HEADER > limit) return off;
+    buf[off] = MESH_TLV_FILTER_OP;
+    off += 2;
+    buf[off++] = s.seq;
+    buf[off++] = s.op;
+    buf[off++] = s.expected;
+    size_t cntAt = off++;
+    uint8_t cnt = 0;
+    for (uint8_t i = 0; i < s.count; i++) {
+        if (off + MESH_TLV_OP_ENTRY > limit) break;
+        uint8_t b[2];
+        if (!meshIdToBytes(s.acks[i].id, b)) continue;
+        buf[off++] = b[0];
+        buf[off++] = b[1];
+        buf[off++] = s.acks[i].status;
+        buf[off++] = s.acks[i].macs;
+        buf[off++] = s.acks[i].uuids;
+        buf[off++] = s.acks[i].rules;
+        buf[off++] = s.acks[i].changed;
+        buf[off++] = s.acks[i].skipped;
+        cnt++;
+    }
+    buf[cntAt] = cnt;
+    buf[start + 1] = (uint8_t)(off - start - 2);
+    return off;
+}
+
+void bleGattNotifyNodeFilters(const char* id, uint8_t seq, uint8_t page, uint8_t pages, const uint8_t* data, uint8_t len) {
+    if (!phoneConnected || chrSystemControl == nullptr) return;
+    uint8_t b[2];
+    if (!meshIdToBytes(id, b)) return;
+    uint8_t frame[6 + MESH_FILTERREPORT_MAX];
+    if (len > MESH_FILTERREPORT_MAX) len = MESH_FILTERREPORT_MAX;
+    frame[0] = SYS_OP_NODE_FILTERS;
+    frame[1] = b[0];
+    frame[2] = b[1];
+    frame[3] = seq;
+    frame[4] = page;
+    frame[5] = pages;
+    if (len) memcpy(frame + 6, data, len);
+    notifyChrExact(chrSystemControl, frame, 6u + len);
+}
+
 #define MESH_TLV_NEIGHBORS 0x03
 
 static size_t meshAppendNeighbors(uint8_t* buf, size_t off, size_t limit) {
@@ -3540,6 +3603,7 @@ void bleGattNotifyMeshStatus(void) {
     {
         size_t lim = meshStatusLimit(sizeof(buf));
         if (off < lim) off = meshAppendFilterPush(buf, off, lim);
+        if (off < lim) off = meshAppendFilterOp(buf, off, lim);
         if (off < lim) off = meshAppendNodeDetail(buf, off, lim);
         if (off < lim) off = meshAppendNeighbors(buf, off, lim);
     }

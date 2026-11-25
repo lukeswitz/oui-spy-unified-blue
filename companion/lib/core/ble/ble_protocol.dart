@@ -45,6 +45,24 @@ typedef MeshFilterResult = ({String id, int status, int filterMacs, int filterUu
 /// The manager's latest detector-list push and which nodes have answered it.
 typedef MeshFilterPush = ({int seq, int macs, int uuids, int expected, List<MeshFilterResult> results});
 
+/// One node's answer to a filter edit: status 0 is accepted, anything else is refused. [changed] counts
+/// rows added or removed, [skipped] rows it could not match or hold.
+typedef NodeFilterResult = ({
+  String id,
+  int status,
+  int filterMacs,
+  int filterUuids,
+  int filterRules,
+  int changed,
+  int skipped,
+});
+
+/// The manager's latest filter edit (read, add, remove, clear or preset) and which nodes have answered it.
+typedef MeshFilterOp = ({int seq, int op, int expected, List<NodeFilterResult> results});
+
+/// One page of a node's filter list as the manager relays it to the phone.
+typedef NodeFilterFrame = ({String id, int seq, int page, int pages, Uint8List data});
+
 /// One peer a node hears; rssi is null when the node hears it but cannot measure the strength.
 typedef MeshHeard = ({String id, int? rssi});
 
@@ -61,6 +79,7 @@ typedef MeshStatusData = ({
   int? keyFailures,
   List<MeshNodeDetail> details,
   MeshFilterPush? filterPush,
+  MeshFilterOp? filterOp,
   List<MeshSignalRow> signal,
 });
 
@@ -470,6 +489,36 @@ class BleProtocol {
   static const meshTlvNodeDetail = 0x01;
   static const meshTlvFilterPush = 0x02;
   static const meshTlvNeighbors = 0x03;
+  static const meshTlvFilterOp = 0x04;
+
+  /// DetectorConfig op that edits one node's filter list: [0x06][op][target:4][data].
+  static const detCfgOpNodeFilter = 0x06;
+  static const filterOpAdd = 1;
+  static const filterOpDel = 2;
+  static const filterOpClear = 3;
+  static const filterOpPreset = 4;
+  static const filterOpGet = 5;
+
+  /// Notify op on the system control characteristic carrying a node's filter list.
+  static const sysOpNodeFilters = 0x16;
+
+  /// Bytes of record data one filter edit carries; larger edits go out as several.
+  static const filterOpDataMax = 100;
+
+  /// A filter edit for one node, or for every node when [nodeId] is null.
+  static Uint8List encodeNodeFilterOp(String? nodeId, int op, [List<int> data = const []]) {
+    if (nodeId != null && nodeId.length != 4) {
+      throw ArgumentError('nodeId must be 4-hex canonical form, got "$nodeId"');
+    }
+    if (data.length > filterOpDataMax) throw ArgumentError('filter edit data over $filterOpDataMax bytes');
+    return Uint8List.fromList([detCfgOpNodeFilter, op, ...(nodeId?.codeUnits ?? const [0, 0, 0, 0]), ...data]);
+  }
+
+  static NodeFilterFrame? decodeNodeFilterFrame(List<int> d) {
+    if (d.length < 6 || d[0] != sysOpNodeFilters) return null;
+    final bytes = Uint8List.fromList(d);
+    return (id: _nodeIdFromBytes(bytes, 1), seq: d[3], page: d[4], pages: d[5], data: Uint8List.fromList(d.sublist(6)));
+  }
 
   static String _nodeIdFromBytes(Uint8List b, int off) =>
       (b[off].toRadixString(16).padLeft(2, '0') + b[off + 1].toRadixString(16).padLeft(2, '0')).toUpperCase();
@@ -486,12 +535,14 @@ class BleProtocol {
         keyFailures: null,
         details: const [],
         filterPush: null,
+        filterOp: null,
         signal: const [],
       );
     }
     int? keyFailures;
     var details = <MeshNodeDetail>[];
     MeshFilterPush? filterPush;
+    MeshFilterOp? filterOp;
     var signal = <MeshSignalRow>[];
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
@@ -528,6 +579,7 @@ class BleProtocol {
           if (type == meshTlvNodeDetail) details = _decodeNodeDetails(bytes, view, body, len);
           if (type == meshTlvFilterPush) filterPush = _decodeFilterPush(bytes, body, len);
           if (type == meshTlvNeighbors) signal = _decodeSignal(bytes, body, len);
+          if (type == meshTlvFilterOp) filterOp = _decodeFilterOp(bytes, body, len);
           pos = body + len;
         }
       }
@@ -542,8 +594,31 @@ class BleProtocol {
       keyFailures: keyFailures,
       details: details,
       filterPush: filterPush,
+      filterOp: filterOp,
       signal: signal,
     );
+  }
+
+  static MeshFilterOp? _decodeFilterOp(Uint8List b, int at, int len) {
+    const header = 4;
+    const entry = 8;
+    if (len < header) return null;
+    final n = b[at + 3];
+    final results = <NodeFilterResult>[];
+    for (var i = 0; i < n; i++) {
+      final o = at + header + i * entry;
+      if (o + entry > at + len) break;
+      results.add((
+        id: _nodeIdFromBytes(b, o),
+        status: b[o + 2],
+        filterMacs: b[o + 3],
+        filterUuids: b[o + 4],
+        filterRules: b[o + 5],
+        changed: b[o + 6],
+        skipped: b[o + 7],
+      ));
+    }
+    return (seq: b[at], op: b[at + 1], expected: b[at + 2], results: results);
   }
 
   static List<MeshSignalRow> _decodeSignal(Uint8List b, int at, int len) {
