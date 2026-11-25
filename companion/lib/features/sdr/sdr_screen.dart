@@ -39,7 +39,6 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
       _mode = m;
       _freq.text = switch (m) {
         SdrMode.adsb => '1090',
-        SdrMode.tpms => '433.92',
         SdrMode.rtl433 => '433.92',
         SdrMode.spectrum => '100.1',
       };
@@ -69,12 +68,11 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
 
   int _rateFor(SdrMode m) => switch (m) {
         SdrMode.adsb => 2000000,
-        SdrMode.tpms => 1024000,
         SdrMode.rtl433 => 1024000,
         SdrMode.spectrum => 2048000,
       };
 
-  bool get _isIsm => _mode == SdrMode.tpms || _mode == SdrMode.rtl433;
+  bool get _isIsm => _mode == SdrMode.rtl433;
 
   List<int> _bandsHz() =>
       [for (final b in const [315, 433, 915]) if (_bands.contains(b)) ..._bandHz[b]!];
@@ -101,7 +99,8 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
     setState(() => _busy = true);
     await _c.start(_deviceId!, _mode, _freqHz(), _rateFor(_mode),
         freqsHz: _isIsm ? _bandsHz() : const [],
-        raw: _showRaw);
+        raw: _showRaw,
+        categories: _isIsm ? _c.categories.toList() : const []);
     if (mounted) setState(() => _busy = false);
   }
 
@@ -153,7 +152,6 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
       _mode = m;
       _freq.text = switch (m) {
         SdrMode.adsb => '1090',
-        SdrMode.tpms => '433.92',
         SdrMode.rtl433 => '433.92',
         SdrMode.spectrum => '100.1',
       };
@@ -212,7 +210,6 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
               segments: const [
                 ButtonSegment(value: SdrMode.spectrum, label: Text('Spectrum')),
                 ButtonSegment(value: SdrMode.adsb, label: Text('ADS-B')),
-                ButtonSegment(value: SdrMode.tpms, label: Text('TPMS')),
                 ButtonSegment(value: SdrMode.rtl433, label: Text('SCAN')),
               ],
               selected: {_mode},
@@ -318,7 +315,21 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _CategoryBar(detections: _c.detections, t: t),
+                      _CategoryBar(
+                        detections: _c.detections,
+                        selected: _c.categories,
+                        t: t,
+                        onToggle: (c) {
+                          setState(() {
+                            if (_c.categories.contains(c)) {
+                              if (_c.categories.length > 1) _c.categories.remove(c);
+                            } else {
+                              _c.categories.add(c);
+                            }
+                          });
+                          if (_c.state == SdrState.running) _start();
+                        },
+                      ),
                       if (mesh != null) ...[
                         const SizedBox(height: 6),
                         Text(mesh.text, style: TextStyle(color: t.textSecondary, fontSize: 12)),
@@ -345,7 +356,6 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                       t: t,
                       showRaw: _showRaw,
                       catFilter: null,
-                      mode: _mode,
                     ),
                 },
               ),
@@ -357,7 +367,7 @@ class _SdrScreenState extends ConsumerState<SdrScreen> {
                 child: StreamBuilder<SdrFrame>(
                   stream: _c.frameStream,
                   builder: (context, _) => _DetectionList(
-                      detections: _c.detections, t: t, showRaw: _showRaw, catFilter: null, mode: _mode),
+                      detections: _c.detections, t: t, showRaw: _showRaw, catFilter: null),
                 ),
               ),
             ],
@@ -465,10 +475,12 @@ class _BandSelector extends StatelessWidget {
 }
 
 class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({required this.detections, required this.t});
+  const _CategoryBar({required this.detections, required this.selected, required this.t, required this.onToggle});
 
   final List<SdrDetection> detections;
+  final Set<String> selected;
   final ResolvedTheme t;
+  final void Function(String) onToggle;
 
   static const _scanCats = [
     Sdr433Category.weather,
@@ -491,7 +503,8 @@ class _CategoryBar extends StatelessWidget {
           label: c.label,
           count: counts[c] ?? 0,
           color: _catColor(c),
-          active: (counts[c] ?? 0) > 0,
+          active: selected.contains(c.name),
+          onTap: () => onToggle(c.name),
         );
     Widget rowOf(List<Sdr433Category> cs) => Row(
           children: [
@@ -516,8 +529,12 @@ class _CategoryBar extends StatelessWidget {
     required int count,
     required Color color,
     required bool active,
+    required VoidCallback onTap,
   }) {
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
         alignment: Alignment.center,
         decoration: BoxDecoration(
@@ -549,7 +566,8 @@ class _CategoryBar extends StatelessWidget {
                 )),
           ],
         ),
-      );
+      ),
+    );
   }
 }
 
@@ -646,21 +664,18 @@ class _SpectrumPainter extends CustomPainter {
 }
 
 class _DetectionList extends StatelessWidget {
-  const _DetectionList({required this.detections, required this.t, required this.showRaw, required this.catFilter, required this.mode});
+  const _DetectionList({required this.detections, required this.t, required this.showRaw, required this.catFilter});
 
   final List<SdrDetection> detections;
   final ResolvedTheme t;
   final bool showRaw;
   final Object? catFilter;
-  final SdrMode mode;
 
   @override
   Widget build(BuildContext context) {
     final items = detections.where((d) {
       if (d.kind == 'ism' || d.kind == 'rf') return showRaw;
       if (d.kind == 'adsb' && !_fullAdsb(d)) return showRaw;
-      if (mode == SdrMode.tpms) return d.kind == 'tpms';
-      if (mode == SdrMode.rtl433 && d.kind == 'tpms') return false;
       if (catFilter is Sdr433Category) return _categoryOf(d) == catFilter;
       return true;
     }).toList();
@@ -695,8 +710,8 @@ void _showSdrInfo(BuildContext context, ResolvedTheme t, SdrMode mode) {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         child: switch (mode) {
           SdrMode.rtl433 => _infoBody(t, 'Scan', const [
-              'Decodes every device type it knows on 315, 433 and 915 MHz.',
-              'The chips count what it found: weather, meters, security, remotes, home and tires.',
+              'Decodes the device types you pick on 315, 433 and 915 MHz.',
+              'Tap a chip to turn that type on or off. Each chip counts what it found.',
               'Tap a row to see what the device is and what it sent.',
               'Raw shows bursts it could not decode.',
             ]),
@@ -705,11 +720,6 @@ void _showSdrInfo(BuildContext context, ResolvedTheme t, SdrMode mode) {
               'List: each aircraft with its operator, type, registration and photo.',
               'Map: aircraft with a position, and their flight path.',
               'Upload heard aircraft to WDGWars. ICAO-only replies stay in the raw feed.',
-            ]),
-          SdrMode.tpms => _infoBody(t, 'TPMS — tire sensors', const [
-              'Tire-pressure sensors in passing vehicles on 315, 433.92, or 915 MHz.',
-              'Pick the bands to sweep.',
-              'Each reading is checksum-checked, with pressure and temperature when the sensor sends them.',
             ]),
           SdrMode.spectrum => _infoBody(t, 'Spectrum', const [
               'A live waterfall of signal strength across the band.',

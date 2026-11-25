@@ -236,8 +236,7 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 |---|---|---|
 | Spectrum | You set it, 100.1 MHz by default | A live waterfall of signal strength across the band |
 | ADS-B | 1090 MHz | Aircraft broadcasting their position and identity |
-| TPMS | 315, 433.92, or 915 MHz | Tire-pressure sensors in passing vehicles |
-| SCAN | 315, 433.92, or 915 MHz | Every device the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire sensors |
+| SCAN | 315, 433.92, or 915 MHz | The device types you pick from what the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire-pressure sensors |
 
 <div align="center">
 <table>
@@ -251,12 +250,12 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 </table>
 </div>
 
-SCAN decodes every type at once. The chips count what it found: **Weather, Meters, Security, Remotes, Home, TPMS**.
+Tap the chips to pick which types SCAN decodes: **Weather, Meters, Security, Remotes, Home, TPMS**. All are on at first; turn off Meters to scan everything else. Each chip counts what it found.
 
 - Smart-meter mesh hits read as plain sentences: which meter talks to which, the gateway each one routes through, and how many hops. The meter readings themselves are encrypted.
 
 - Decoded devices save to History under an SDR filter, and you can foxhunt them by signal strength.
-- The **TPMS** tab reads tire sensors more reliably than SCAN.
+- With **TPMS** on, SCAN also runs a dedicated tire-sensor decoder next to rtl_433.
 - **ADS-B** shows each aircraft's callsign, altitude, speed, heading and photo, and maps its flight path. One button uploads heard aircraft to WDGWars.
 
 ## Boards

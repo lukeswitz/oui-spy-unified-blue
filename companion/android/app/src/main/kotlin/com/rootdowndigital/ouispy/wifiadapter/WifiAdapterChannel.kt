@@ -607,7 +607,6 @@ class WifiAdapterChannel(private val context: Context, messenger: BinaryMessenge
         val log: (String) -> Unit = { msg -> main.post { sdrSink?.success(mapOf("status" to msg)) } }
         val m = when (mode) {
             "adsb" -> SdrEngine.Mode.ADSB
-            "tpms" -> SdrEngine.Mode.TPMS
             "rtl433" -> SdrEngine.Mode.RTL433
             else -> SdrEngine.Mode.SPECTRUM
         }

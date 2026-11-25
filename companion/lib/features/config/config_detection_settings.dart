@@ -32,7 +32,7 @@ const _watchGroups = <(String, List<_WatchItem>)>[
   ('TRACKERS & WEARABLES', [
     _WatchItem('Trackers', 'AirTags and other tags that could be following you', Icons.track_changes,
         bits: sigTracker, classes: {SignatureClass.finder}),
-    _WatchItem('Car following you', 'Tire sensors that travel with you. Needs an RTL-SDR on TPMS', Icons.directions_car,
+    _WatchItem('Car following you', 'Tire sensors that travel with you. Needs an RTL-SDR on SCAN with TPMS on', Icons.directions_car,
         watch: 'car_follow'),
     _WatchItem('Crossing your mesh', 'A device moving from one of your nodes to another', Icons.route,
         watch: 'mesh_crossing'),

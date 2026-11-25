@@ -10,7 +10,7 @@ internal class SdrEngine(
     private val onSpectrum: (FloatArray, Long, Int) -> Unit,
     private val onDetection: (Map<String, Any?>) -> Unit,
 ) {
-    enum class Mode { SPECTRUM, ADSB, TPMS, RTL433 }
+    enum class Mode { SPECTRUM, ADSB, RTL433 }
 
     private val dev = RtlSdrDevice(conn, intf, log)
     @Volatile private var stop = false
@@ -34,7 +34,6 @@ internal class SdrEngine(
         when (mode) {
             Mode.SPECTRUM -> runSpectrum(centerHz, rate)
             Mode.ADSB -> runAdsb(rate)
-            Mode.TPMS -> runTpms(bands, rate)
             Mode.RTL433 -> runRtl433(bands, rate, raw, categories)
         }
     }
@@ -44,18 +43,37 @@ internal class SdrEngine(
     private fun runRtl433(bands: List<Long>, rate: Int, raw: Boolean, categories: List<String>) {
         Rtl433Devices.registerAll(categories.toSet())
         Rtl433Registry.reset()
-        val isms = if (raw) bands.associateWith { c ->
+        val tpms = "tpms" in categories
+        val isms = if (raw || tpms) bands.associateWith { c ->
             IsmDecoder(rate, c) { b ->
-                onDetection(
-                    mapOf(
-                        "kind" to "ism",
-                        "modulation" to b.modulation,
-                        "bits" to b.bitHex,
-                        "bitCount" to b.bitCount,
-                        "frequency" to b.centerHz,
-                        "rssi" to b.rssiDb.toInt(),
-                    ),
-                )
+                if (raw) {
+                    onDetection(
+                        mapOf(
+                            "kind" to "ism",
+                            "modulation" to b.modulation,
+                            "bits" to b.bitHex,
+                            "bitCount" to b.bitCount,
+                            "frequency" to b.centerHz,
+                            "rssi" to b.rssiDb.toInt(),
+                        ),
+                    )
+                }
+                if (tpms) {
+                    val r = try { TpmsProtocols.decode(hexToBytes(b.bitHex), b.bitCount) } catch (e: Exception) { null }
+                    if (r != null && plausibleTpms(r)) {
+                        onDetection(
+                            mapOf(
+                                "kind" to "tpms",
+                                "model" to r.model,
+                                "id" to r.id,
+                                "pressureKpa" to r.pressureKpa,
+                                "tempC" to r.tempC,
+                                "flags" to r.flags,
+                                "frequency" to b.centerHz,
+                            ),
+                        )
+                    }
+                }
             }
         } else emptyMap()
         var idx = 0
@@ -106,7 +124,7 @@ internal class SdrEngine(
             } catch (e: Exception) {
                 if (!rtl433ErrLogged) { rtl433ErrLogged = true; log("RTL433 decoder threw (continuing): ${e.message}") }
             }
-            if (raw) isms[c]?.feed(buf, n)
+            isms[c]?.feed(buf, n)
             busyNs += System.nanoTime() - t0
             rxSamples += n / 2
             if (now - statAt >= 2000) {
@@ -167,53 +185,6 @@ internal class SdrEngine(
                     ),
                 )
             }
-        }
-    }
-
-    private fun runTpms(bands: List<Long>, rate: Int) {
-        val decs = bands.associateWith { c ->
-            IsmDecoder(rate, c) { b ->
-                onDetection(
-                    mapOf(
-                        "kind" to "ism",
-                        "modulation" to b.modulation,
-                        "bits" to b.bitHex,
-                        "bitCount" to b.bitCount,
-                        "frequency" to b.centerHz,
-                        "rssi" to b.rssiDb.toInt(),
-                    ),
-                )
-                val r = try { TpmsProtocols.decode(hexToBytes(b.bitHex), b.bitCount) } catch (e: Exception) { null }
-                if (r != null && plausibleTpms(r)) {
-                    onDetection(
-                        mapOf(
-                            "kind" to "tpms",
-                            "model" to r.model,
-                            "id" to r.id,
-                            "pressureKpa" to r.pressureKpa,
-                            "tempC" to r.tempC,
-                            "flags" to r.flags,
-                            "frequency" to b.centerHz,
-                        ),
-                    )
-                }
-            }
-        }
-        var idx = 0
-        var hopAt = System.currentTimeMillis()
-        var settleUntil = 0L
-        dev.readIq { buf, n ->
-            if (stop) return@readIq
-            val now = System.currentTimeMillis()
-            if (bands.size > 1 && now - hopAt >= DWELL_MS) {
-                idx = (idx + 1) % bands.size
-                dev.setCenterFreq(bands[idx])
-                hopAt = now
-                settleUntil = now + SETTLE_MS
-                return@readIq
-            }
-            if (now < settleUntil) return@readIq
-            decs[bands[idx]]!!.feed(buf, n)
         }
     }
 

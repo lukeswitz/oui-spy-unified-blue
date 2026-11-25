@@ -220,7 +220,7 @@ final watchAlertsProvider = ChangeNotifierProvider<WatchAlerts>((ref) {
 
   final subs = <StreamSubscription<dynamic>>[
     sdr.stateStream.listen((s) {
-      if (s == SdrState.running && sdr.mode == SdrMode.tpms) w.car.scanStarted(DateTime.now().millisecondsSinceEpoch);
+      if (s == SdrState.running && sdr.mode == SdrMode.rtl433 && sdr.categories.contains('tpms')) w.car.scanStarted(DateTime.now().millisecondsSinceEpoch);
     }),
     sdr.frameStream.listen((f) {
       final d = f.detection;
