@@ -408,8 +408,14 @@ The app sends catches and Remote ID drones to ATAK as Cursor-on-Target markers o
 
 ### Assistant
 
-A language model can read what the app has seen and, when you allow it, change things. It is off by default. Turn it on in SETTINGS → DATA → **Assistant**.
+A language model can read what the app has seen and, when you allow it, change things. It is off by default. Turn it on in SETTINGS → DATA → **Assistant**, pick a model provider, then tap **Open the assistant**.
 
+- **Providers:** Ollama (a computer on your network, default port 11434), Claude, OpenAI or Gemini. A cloud provider asks for your OK once, then receives your questions and everything the model reads within the grants. Ollama keeps it all on your network, over plain http unless you give an https address. On Android, plain http to a LAN address may be blocked by the system; use https or a tunnel if the **Check** button fails.
+- **API keys** are kept in the phone's secure storage and sent only to their provider. They never go in settings, logs or exports. **Remove key** deletes one.
+- **ASK** is a chat. Every tool the model runs shows in the conversation with its arguments and what it returned. It stops after 12 rounds, and **Stop** cancels a run. The conversation is kept in memory only; **Clear the conversation** ends it.
+- **INTEL** (needs DEVICES) tells you what the model makes of one device: maker, likely kind, why it may matter. It sees the device's name, MAC, maker and how it was heard, never where.
+- **REPORTS** sums up the last 6, 12, 24 or 48 hours when you tap **Write one now**: new devices, alerts, drones, the wardriver and the mesh, within the grants. Positions are never included. Nothing is written on a schedule.
+- **Text from the air is untrusted.** Names and network names are sent to the model as data, and it is told never to follow instructions found in them. Every change to the board still waits for your OK, whatever the model asks.
 - **Grants:** each of DEVICES, DRONES, WARDRIVE, MESH, CAPTURES, LOCATION, CONTROL and IRREVERSIBLE is off until you switch it on. Device health is always readable while the assistant is on. A tool outside the grants is refused.
 - **LOCATION off** removes every position from what the model reads: sightings, drones and pilots, mesh nodes. Positions are also scrubbed from the text of every reply.
 - **Reads:** device health, devices seen, alerts, names and the watchlist, Remote ID drones, wardriver counts, mesh nodes, capture file names and sizes, and what was near a place. Capture file contents are never sent.
@@ -614,6 +620,7 @@ These settings limit what the boards and the phone send over the air and what th
 | [GitHub](https://github.com/lukeswitz/oui-spy-unified-blue/releases) releases | You tap **Check for update** or turn on **Check at launch** (Settings → About) | Nothing about you or your phone | UA `oui-spy-companion/1.0`. Downloads `release.json` and its signature, and the app file only when you tap **Install** or **Save to Downloads**. Off by default; no background checks. |
 | Signature sets: [Fieldwatch](https://github.com/OffGridPete/Fieldwatch), [Home Assistant](https://github.com/home-assistant/core), or a link you add | You turn a set on or tap **Update** (Settings → Detection & Alerts → Your Lists → Signature sets) | Nothing | UA `oui-spy-companion/1.0`. https only, 8 MB limit. No background checks. |
 | [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** (Settings → Data → Export → OUI DATABASE) | Nothing | Fetches the MAC vendor list at most every 7 days. UA `oui-spy-companion/1.0`. |
+| Assistant providers: [Anthropic](https://api.anthropic.com), [OpenAI](https://api.openai.com), [Google](https://generativelanguage.googleapis.com), or your own Ollama server | **Assistant** is on, you picked that provider and OK'd it, and you ask, look into a device, write a report or tap **Check** | Your question and what the model reads within the grants (device names and MACs, alerts and so on; positions only with LOCATION); the API key in a header | No background requests. Keys stay in secure storage. Ollama requests go only to the address you set. |
 | [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** or **FAA lookup** on a drone | The drone's Remote ID serial | UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×. |
 
 ## Build

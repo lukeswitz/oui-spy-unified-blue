@@ -3,8 +3,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/assistant/assistant_chat.dart';
 import 'package:oui_spy/core/assistant/assistant_grants.dart';
+import 'package:oui_spy/core/assistant/assistant_llm.dart';
+import 'package:oui_spy/core/assistant/assistant_settings.dart';
 import 'package:oui_spy/core/assistant/assistant_tools.dart';
+import 'package:oui_spy/features/assistant/assistant_screen.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -169,6 +173,237 @@ class AssistantToolsSection extends ConsumerWidget {
   }
 }
 
+class AssistantProviderSection extends ConsumerStatefulWidget {
+  const AssistantProviderSection({super.key});
+
+  @override
+  ConsumerState<AssistantProviderSection> createState() => _AssistantProviderSectionState();
+}
+
+class _AssistantProviderSectionState extends ConsumerState<AssistantProviderSection> {
+  final _url = TextEditingController();
+  final _key = TextEditingController();
+  final _model = TextEditingController();
+  bool _busy = false;
+  bool _replacing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = ref.read(assistantSettingsProvider);
+    _url.text = s.ollamaUrl;
+    if (s.provider != null) _model.text = s.modelOf(s.provider!);
+  }
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _key.dispose();
+    _model.dispose();
+    super.dispose();
+  }
+
+  void _toast(String text) => ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _pick(LlmKind k) async {
+    final s = ref.read(assistantSettingsProvider);
+    final n = ref.read(assistantSettingsProvider.notifier);
+    if (k.isCloud && !s.acked.contains(k)) {
+      final ok = await confirmDialog(
+        context,
+        title: 'Use ${k.label}?',
+        message: '${k.vendor}\'s cloud receives your questions and everything the model reads within the grants: '
+            'device names and MACs, alerts, drone IDs and the rest you granted, and positions only with LOCATION. '
+            'Ollama keeps all of it on your own network.',
+        action: 'USE ${k.label.toUpperCase()}',
+      );
+      if (!ok) return;
+      await n.acknowledge(k);
+    }
+    await n.setProvider(k);
+    _model.text = ref.read(assistantSettingsProvider).modelOf(k);
+    setState(() => _replacing = false);
+    _key.clear();
+  }
+
+  Future<LlmProvider?> _checker(LlmKind k) {
+    final s = ref.read(assistantSettingsProvider);
+    return buildProviderForChecks(k, s.ollamaUrl, ref.read(assistantKeyStoreProvider), dio: ref.read(assistantDioProvider), model: s.modelOf(k));
+  }
+
+  Future<void> _check(LlmKind k) async {
+    setState(() => _busy = true);
+    try {
+      final p = await _checker(k);
+      if (p == null) {
+        _toast(k == LlmKind.ollama ? 'Save the server address first.' : 'Save the API key first.');
+        return;
+      }
+      _toast(await p.check());
+    } on LlmError catch (e) {
+      _toast(e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pickModel(LlmKind k) async {
+    setState(() => _busy = true);
+    List<String> names;
+    try {
+      final p = await _checker(k);
+      if (p == null) {
+        _toast(k == LlmKind.ollama ? 'Save the server address first.' : 'Save the API key first.');
+        return;
+      }
+      names = await p.models();
+    } on LlmError catch (e) {
+      _toast(e.message);
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    if (names.isEmpty) {
+      _toast('No models came back.');
+      return;
+    }
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('${k.label} models'),
+        children: [for (final m in names) SimpleDialogOption(onPressed: () => Navigator.pop(ctx, m), child: Text(m))],
+      ),
+    );
+    if (picked == null) return;
+    _model.text = picked;
+    await ref.read(assistantSettingsProvider.notifier).setModel(k, picked);
+  }
+
+  Future<void> _saveKey(LlmKind k) async {
+    await ref.read(assistantSettingsProvider.notifier).setKey(k, _key.text);
+    _key.clear();
+    if (mounted) setState(() => _replacing = false);
+  }
+
+  Future<void> _removeKey(LlmKind k) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Remove the ${k.label} key?',
+      message: 'It is deleted from this phone. The assistant stops working until a key is set again.',
+      action: 'REMOVE',
+      destructive: true,
+    );
+    if (ok) await ref.read(assistantSettingsProvider.notifier).removeKey(k);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final s = ref.watch(assistantSettingsProvider);
+    final k = s.provider;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ConfigSectionHeader(label: 'Model provider'),
+        for (final p in LlmKind.values)
+          ConfigActionRow(
+            icon: p.isCloud ? Icons.cloud_outlined : Icons.dns_outlined,
+            label: p.label,
+            subtitle: p.isCloud ? '${p.vendor}\'s cloud receives what the model reads' : 'On your network: nothing leaves it',
+            color: p == k ? AppTheme.accent : t.textDim,
+            onTap: () => _pick(p),
+            trailing: Icon(p == k ? Icons.check_circle : Icons.circle_outlined, size: 22, color: p == k ? AppTheme.accent : t.textDim),
+          ),
+        if (k == LlmKind.ollama) ...[
+          const SizedBox(height: 8),
+          ConfigTextField(icon: Icons.dns_outlined, label: 'Ollama server, e.g. 192.0.2.10', controller: _url, keyboardType: TextInputType.url),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            child: Text(
+              'A computer on your network running Ollama. A bare address gets port 11434. The link is plain http unless you give https, '
+              'so anything on that network can read it.',
+              style: TextStyle(color: t.textDim, fontSize: 12),
+            ),
+          ),
+          ConfigActionRow(
+            icon: Icons.save_outlined,
+            label: 'Save server',
+            onTap: () async {
+              await ref.read(assistantSettingsProvider.notifier).setOllamaUrl(_url.text);
+              final saved = ref.read(assistantSettingsProvider).ollamaUrl;
+              _url.text = saved;
+              if (saved.isEmpty) _toast('That is not a usable address.');
+            },
+          ),
+        ],
+        if (k != null && k.isCloud) ...[
+          const SizedBox(height: 8),
+          if (s.hasKey.contains(k) && !_replacing) ...[
+            ConfigInfoRow(icon: Icons.key, label: 'API key', value: 'in secure storage', monospace: false),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Text('Kept in secure storage on this phone and sent only to ${k.vendor}.', style: TextStyle(color: t.textDim, fontSize: 12)),
+            ),
+            ConfigActionRow(icon: Icons.swap_horiz, label: 'Replace key', onTap: () => setState(() => _replacing = true)),
+            ConfigActionRow(icon: Icons.delete_outline, label: 'Remove key', destructive: true, onTap: () => _removeKey(k)),
+          ] else ...[
+            ConfigTextField(icon: Icons.key, label: '${k.label} API key', controller: _key, obscure: true),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Text(
+                'Kept in secure storage on this phone, never in settings, logs or exports. Sent only to ${k.vendor}.',
+                style: TextStyle(color: t.textDim, fontSize: 12),
+              ),
+            ),
+            ConfigActionRow(icon: Icons.save_outlined, label: 'Save key', onTap: () => _saveKey(k)),
+          ],
+        ],
+        if (k != null) ...[
+          const SizedBox(height: 8),
+          ConfigTextField(icon: Icons.memory, label: 'Model name', controller: _model),
+          ConfigActionRow(
+            icon: Icons.save_outlined,
+            label: 'Save model',
+            onTap: () => ref.read(assistantSettingsProvider.notifier).setModel(k, _model.text),
+          ),
+          ConfigActionRow(
+            icon: Icons.list_alt,
+            label: 'Pick from the provider\'s list',
+            subtitle: 'Needs the ${k == LlmKind.ollama ? 'server address' : 'API key'} saved first',
+            onTap: _busy ? null : () => _pickModel(k),
+          ),
+          ConfigActionRow(
+            icon: Icons.network_check,
+            label: _busy ? 'Checking...' : 'Check',
+            subtitle: k == LlmKind.ollama ? 'That the server answers' : 'That the key works (no tokens spent)',
+            onTap: _busy ? null : () => _check(k),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class AssistantOpenRow extends ConsumerWidget {
+  const AssistantOpenRow({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final on = ref.watch(assistantAccessProvider).on;
+    final ready = ref.watch(assistantSettingsProvider).ready;
+    return ConfigActionRow(
+      icon: Icons.chat_bubble_outline,
+      label: 'Open the assistant',
+      subtitle: !on
+          ? 'Switch the assistant on first'
+          : (ready ? 'Ask, intel and reports' : 'Set up a model provider first'),
+      prominent: true,
+      onTap: on && ready ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AssistantScreen())) : null,
+    );
+  }
+}
+
 class AssistantSettingsBody extends StatelessWidget {
   const AssistantSettingsBody({super.key});
 
@@ -176,7 +411,11 @@ class AssistantSettingsBody extends StatelessWidget {
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: const [
+          AssistantOpenRow(),
+          SizedBox(height: 16),
           AssistantGrantsSection(),
+          SizedBox(height: 16),
+          AssistantProviderSection(),
           SizedBox(height: 16),
           AssistantToolsSection(),
         ],

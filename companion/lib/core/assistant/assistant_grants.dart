@@ -67,7 +67,7 @@ class AssistantAccessNotifier extends StateNotifier<AssistantAccess> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
-    if (_changed) return;
+    if (_changed || !mounted) return;
     state = AssistantAccess(
       on: p.getBool(keyOn) ?? false,
       granted: {for (final g in AssistantGrant.values) if (p.getBool(keyGrant(g)) ?? false) g},
