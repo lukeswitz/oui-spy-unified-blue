@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:drift/native.dart';
+import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/drone_log.dart';
 import 'package:oui_spy/core/drone_tags.dart';
@@ -159,6 +160,35 @@ void main() {
     expect(find.text('LVL'), findsOneWidget);
     expect(find.text('120'), findsOneWidget);
     expect(find.text('Channel'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the drone page saves a name, group and notes by MAC and shows the name as its title', (tester) async {
+    final t = DateTime.now().subtract(const Duration(minutes: 1));
+    final (container, log) = await _setup(tester, [_r(t, 'SERIALNOTE', height: 5)]);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: AppTheme.darkTheme, home: const DronePage(id: 'SERIALNOTE')),
+    ));
+    await _settle(tester);
+    expect(find.text('SERIALNOTE'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('drone-notes')));
+    await tester.tap(find.byKey(const Key('drone-notes')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Name & notes'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).at(0), 'Yard drone');
+    await tester.enterText(find.byType(TextField).at(2), 'seen twice');
+    await tester.tap(find.text('SAVE'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final note = container.read(deviceNotesProvider)['02:00:00:00:00:01'];
+    expect(note?.name, 'Yard drone');
+    expect(note?.notes, 'seen twice');
+    expect(find.text('Yard drone'), findsOneWidget);
+    expect(find.textContaining('SERIALNOTE'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

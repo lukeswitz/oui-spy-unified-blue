@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/drone_log.dart';
+import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/core/drone_tags.dart';
 import 'package:oui_spy/core/models/detection.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -18,6 +19,7 @@ import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/drones/drone_data.dart';
 import 'package:oui_spy/features/drones/drone_kit_section.dart';
+import 'package:oui_spy/features/feed/device_notes_sheet.dart' show showDeviceNotesEditor;
 import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvRssiToLevel;
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/theme/app_theme.dart';
@@ -117,6 +119,8 @@ class _DronePageState extends ConsumerState<DronePage> {
     final reg = _faa ?? cachedFaa;
     final maker = summary == null || fpv ? null : droneMakerOf(summary, reg);
     final live = _liveDetection();
+    final mac = summary?.last.mac ?? '';
+    final alias = ref.watch(deviceNotesProvider)[DeviceNotesNotifier.keyOf(mac)]?.name.trim() ?? '';
     final color = tag?.color ??
         (summary == null ? AppTheme.skySpy : droneColorForMac(summary.last.mac));
 
@@ -138,10 +142,11 @@ class _DronePageState extends ConsumerState<DronePage> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                DPageTitle(widget.id),
+                DPageTitle(alias.isEmpty ? widget.id : alias),
                 const SizedBox(height: 4),
                 Text(
                   [
+                    if (alias.isNotEmpty) widget.id,
                     if (summary != null)
                       summary.airborne
                           ? 'In the air now'
@@ -162,6 +167,13 @@ class _DronePageState extends ConsumerState<DronePage> {
                           ref.read(droneTagsProvider.notifier).set(widget.id, on ? v : null),
                     ),
                 ]),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const Key('drone-notes'),
+                  icon: const Icon(Icons.edit_note, size: 18),
+                  label: const Text('Name, group and notes'),
+                  onPressed: mac.isEmpty ? null : () => showDeviceNotesEditor(context, ref, mac),
+                ),
                 const SizedBox(height: 12),
                 _MapActions(live: live),
                 const SizedBox(height: 12),
