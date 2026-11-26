@@ -57,6 +57,52 @@ String? filterPushSummary(MeshFilterPush p, String Function(String id) label) {
   return parts.join('; ');
 }
 
+MeshChannelState channelState(MeshChannelStatus s) => MeshChannelState.values[s.state];
+
+bool channelChangeRunning(MeshChannelStatus? s) =>
+    s != null && (channelState(s) == MeshChannelState.confirming || channelState(s) == MeshChannelState.switching);
+
+/// The status line for the latest channel change; null when there has been none.
+String? channelChangeSummary(MeshChannelStatus s, String Function(String id) label) {
+  final total = s.rows.length;
+  final confirmed = s.rows.where((r) => r.confirmed).length;
+  final followed = s.rows.where((r) => r.followed).length;
+  return switch (channelState(s)) {
+    MeshChannelState.idle => null,
+    MeshChannelState.confirming => 'Asking the nodes to move to channel ${s.target}: $confirmed of $total confirmed',
+    MeshChannelState.switching => 'Moving to channel ${s.target}: $confirmed of $total nodes confirmed',
+    MeshChannelState.done => total == 0
+        ? 'Moved to channel ${s.target}'
+        : followed == total
+            ? 'Moved to channel ${s.target}: all $total ${total == 1 ? 'node follows' : 'nodes follow'}'
+            : 'Moved to channel ${s.target}: $followed of $total nodes follow; '
+                '${s.rows.where((r) => !r.followed).map((r) => label(r.id)).join(', ')} will find the fleet again on its own',
+    MeshChannelState.failed => 'Stayed on channel ${s.current}: '
+        '${s.rows.where((r) => !r.confirmed).map((r) => label(r.id)).join(', ')} did not answer',
+  };
+}
+
+/// The ids of the nodes that did not confirm a failed change; empty otherwise.
+List<String> channelChangeUnanswered(MeshChannelStatus s) =>
+    channelState(s) == MeshChannelState.failed ? [for (final r in s.rows) if (!r.confirmed) r.id] : const [];
+
+/// A node's own result line for the latest change, or null when it was not part of one.
+String? nodeChannelText(MeshChannelStatus? s, String id) {
+  if (s == null) return null;
+  MeshChannelRow? row;
+  for (final r in s.rows) {
+    if (r.id == id) row = r;
+  }
+  if (row == null) return null;
+  return switch (channelState(s)) {
+    MeshChannelState.idle => null,
+    MeshChannelState.confirming || MeshChannelState.switching =>
+      row.confirmed ? 'channel ${s.target}: confirmed' : 'channel ${s.target}: waiting',
+    MeshChannelState.done => row.followed ? 'on channel ${s.target}' : 'not on channel ${s.target} yet',
+    MeshChannelState.failed => row.confirmed ? 'channel move canceled' : 'did not answer the channel move',
+  };
+}
+
 enum SignalLevel { strong, good, weak, poor, heard }
 
 /// Strong from -60 dBm up, good from -70, weak from -80, poor below; heard when a node hears a peer but cannot measure it.

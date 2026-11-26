@@ -1703,7 +1703,7 @@ void setup() {
 #endif
 #endif
 
-    Serial.println("[INIT] WiFi STA reserved for OTA mode only — mesh stays on ch1");
+    Serial.printf("[INIT] WiFi STA reserved for OTA mode only — mesh stays on ch%u\n", (unsigned)meshChannel());
 
     // Create FreeRTOS tasks
 #if defined(OUISPY_TDONGLE_C5)
@@ -1846,6 +1846,7 @@ void setup() {
 #endif
         detectionQueue = liveQ;
         fail += bleGattPortSelfTest();
+        fail += meshChanSelfTest();
         Serial.printf("[PST] === port self-test %s (%d failures) ===\n", fail == 0 ? "ALL PASS" : "FAILURES", fail);
         vTaskDelete(NULL);
     }), "pst", 12288, NULL, 1, NULL, 1);

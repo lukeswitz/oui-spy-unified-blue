@@ -94,6 +94,7 @@ static const bool kEngineTargetable[ENGINE_COUNT] = {
 #define NODE_CTL_LOCATE   0x21
 #define NODE_CTL_REBOOT   0x22
 #define NODE_CTL_STATUS   0x23
+#define NODE_CTL_SETCHAN  0x24
 #define NODE_CTL_IDENT_BEEP  0x01
 #define NODE_CTL_IDENT_LIGHT 0x02
 #define NODE_LOCATE_MAX_MS   1800000UL
@@ -557,6 +558,8 @@ enum MeshPacketType : uint8_t {
     MESH_PKT_FILTER_RESULT   = 0x19,
     MESH_PKT_FILTER_REPORT   = 0x1A,
     MESH_PKT_ENGINE_EXT      = 0x1B,
+    MESH_PKT_CHAN_SET        = 0x1C,
+    MESH_PKT_CHAN_ACK        = 0x1D,
 };
 
 typedef struct __attribute__((packed)) {
@@ -564,6 +567,30 @@ typedef struct __attribute__((packed)) {
     char     source_node_id[MESH_NODE_ID_LEN];
     uint8_t  active_ext;            // engines 8+: bit0 = AXEOFF, bit1 = BLE Sniff
 } MeshEngineExtPacket;
+
+#define MESH_CHAN_PREPARE 1
+#define MESH_CHAN_COMMIT  2
+#define MESH_CHAN_CANCEL  3
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_CHAN_SET (manager -> nodes)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  epoch;                 // nonzero, same for every frame of one change
+    uint8_t  phase;                 // MESH_CHAN_*
+    uint8_t  channel;               // new mesh channel, 1-11
+    uint16_t countdown_ms;          // COMMIT: ms from this frame until the switch
+} MeshChanSetPacket;
+
+#define MESH_CHAN_ACK_PREPARED 0
+#define MESH_CHAN_ACK_ALREADY  1
+
+typedef struct __attribute__((packed)) {
+    uint8_t  pkt_type;              // MESH_PKT_CHAN_ACK (node -> manager, answers PREPARE)
+    char     source_node_id[MESH_NODE_ID_LEN];
+    uint8_t  epoch;
+    uint8_t  channel;
+    uint8_t  status;                // MESH_CHAN_ACK_*
+} MeshChanAckPacket;
 
 #define MESH_FILTER_ACCEPTED           0
 #define MESH_FILTER_REFUSED_NO_ENGINE  1

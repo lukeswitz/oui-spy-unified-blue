@@ -354,6 +354,13 @@ class AppState extends ChangeNotifier {
   int? nodeTempC(String id) => _nodeTempC[canonicalNodeId(id)];
   List<MeshSignalRow> _meshSignal = const [];
   List<MeshSignalRow> get meshSignal => _meshSignal;
+  MeshChannelStatus? _meshChannel;
+
+  /// The manager's channel and latest channel change; null until a manager that reports it is connected.
+  MeshChannelStatus? get meshChannelStatus => _meshChannel;
+
+  /// The channel the mesh is on, 1 until the manager reports it.
+  int get meshChannel => _meshChannel?.current ?? 1;
   MeshFilterPush? _filterPush;
   MeshFilterPush? get filterPush => _filterPush;
   int get filterPushSeq => _filterPush?.seq ?? 0;
@@ -746,6 +753,7 @@ class AppState extends ChangeNotifier {
         _filterOp = null;
         _nodeFilterReports.clear();
         _meshSignal = const [];
+        _meshChannel = null;
         _nodeDetail.clear();
       }
       notifyListeners();
@@ -847,6 +855,7 @@ class AppState extends ChangeNotifier {
       if (data.filterPush != null) _filterPush = data.filterPush;
       if (data.filterOp != null) _filterOp = data.filterOp;
       _meshSignal = data.signal;
+      if (data.channel != null) _meshChannel = data.channel;
       for (final d in data.details) {
         final canon = canonicalNodeId(d.id);
         if (canon.isEmpty) continue;

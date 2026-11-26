@@ -323,7 +323,7 @@ static void skyspyStop(void) {
     if (bleScan && bleScan->isScanning()) bleScan->stop();
     wifiCoexUnregister(wifiCallback);
     if (meshIsEnabled()) {
-        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
     }
     scanning = false;
     Serial.println("[SKYSPY] Stopped");

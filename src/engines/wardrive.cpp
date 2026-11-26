@@ -11,7 +11,7 @@ extern volatile uint32_t g_flockCorroborated;
 #include "../radio_coex.h"
 #include "../ble_coex.h"
 
-#define MESH_RENDEZVOUS_CH 1
+#define MESH_RENDEZVOUS_CH meshChannel()
 #include "flock_match.h"
 #include "flock_auth_cache.h"
 #include "wifi_auth.h"
@@ -71,6 +71,7 @@ static uint16_t hopDwellMs[WD_MAX_HOPS];
 static uint8_t  hopScheduleLen = 1;
 static uint8_t  hopIdx = 0;
 static uint8_t  currentChannel = 1;
+static uint8_t  scheduledMeshCh = 0;
 
 static uint16_t sweepEverySec = 0;
 static volatile uint64_t slotBusyCur = 0;
@@ -174,6 +175,7 @@ static void buildHopSchedule(void) {
     for (uint8_t i = 0; i < hopScheduleLen; i++) Serial.printf(" %u", hopSchedule[i]);
     Serial.println();
 #endif
+    scheduledMeshCh = meshChannel();
     hopIdx = 0;
     currentChannel = hopSchedule[0];
     slotBusyCur = 0;
@@ -862,7 +864,7 @@ static void wardriveStop(void) {
 #endif
     if (meshIsEnabled() || wifiCoexActive() || wifiRadioExternallyOwned()) {
         WiFi.disconnect(false, false);
-        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
     } else {
         WiFi.disconnect(true, true);
     }
@@ -912,7 +914,7 @@ static void wardriveLoop(void) {
         }
     }
 #endif
-    if (meshManagerJoined() && (meshInMeshWindow() || meshInRidWindow())) {
+    if ((meshManagerJoined() && (meshInMeshWindow() || meshInRidWindow())) || meshHealing()) {
         g_wdMeshSkip++;
 #ifdef OUISPY_DUAL_BAND
         zbSlotAbort();
@@ -921,6 +923,12 @@ static void wardriveLoop(void) {
     }
     if (!wardriveActive) return;
     unsigned long now = millis();
+
+    if (meshIsEnabled() && meshChannel() != scheduledMeshCh) {
+        buildHopSchedule();
+        if (wardriveRadio & 0x01) esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
+        lastChannelHop = now;
+    }
 
     wdFlockBleActive   = (engineGetState(ENGINE_FLOCK_BLE)  != ESTATE_DISABLED) ? 1 : 0;
     wdFlockWifiActive  = (engineGetState(ENGINE_FLOCK_WIFI) != ESTATE_DISABLED) ? 1 : 0;

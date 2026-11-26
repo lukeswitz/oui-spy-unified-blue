@@ -58,7 +58,12 @@ static bool    pcapZbOn    = false;
 #endif
 static uint8_t pcapHopList[PCAP_MAX_HOPS];
 static uint8_t pcapHopListLen = 0;
-static bool    pcapRendezvousInSet = false;
+static bool pcapRendezvousInSet(void) {
+    const uint8_t home = meshChannel();
+    for (uint8_t i = 0; i < pcapHopListLen; i++)
+        if (pcapHopList[i] == home) return true;
+    return false;
+}
 static unsigned long pcapLastHop = 0;
 static unsigned long pcapStartedAt = 0;
 static unsigned long pcapLastStatsNotify = 0;
@@ -427,7 +432,6 @@ static void pcapInit(void) {
 
 static void pcapBuildHopList(void) {
     pcapHopListLen = 0;
-    pcapRendezvousInSet = false;
 #ifdef OUISPY_DUAL_BAND
     if (pcapMode == PCAP_MODE_802154) {
         for (uint8_t c = pcapZbStart; c <= pcapZbEnd && pcapHopListLen < PCAP_MAX_HOPS; c++) pcapHopList[pcapHopListLen++] = c;
@@ -437,7 +441,6 @@ static void pcapBuildHopList(void) {
 #endif
     for (uint8_t c = pcapChanStart; c <= pcapChanEnd && pcapHopListLen < PCAP_MAX_HOPS; c++) {
         if (!wifiChanEnabled(c)) continue;
-        if (c == 1) pcapRendezvousInSet = true;
         pcapHopList[pcapHopListLen++] = c;
     }
 #ifdef OUISPY_DUAL_BAND
@@ -582,7 +585,7 @@ static void pcapStop(void) {
     }
 
     if (meshIsEnabled()) {
-        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
     }
 
     if (pcapSenderHandle) {
@@ -649,9 +652,9 @@ static void pcapLoop(void) {
     if (pcapMode == PCAP_MODE_WIFI) {
         if (wifiCoexShouldHop(ENGINE_PCAP) && now - pcapLastHop >= pcapDwellMs) {
             const bool meshOn = meshIsEnabled();
-            const bool rendezvousNow = (pcapCurChan == 1);
-            if (meshOn && !pcapRendezvousInSet && !rendezvousNow) {
-                pcapCurChan = 1;
+            const bool rendezvousNow = (pcapCurChan == meshChannel());
+            if (meshOn && !pcapRendezvousInSet() && !rendezvousNow) {
+                pcapCurChan = meshChannel();
             } else {
                 pcapHopIdx++;
                 if (pcapHopIdx >= pcapHopListLen) pcapHopIdx = 0;
@@ -659,7 +662,7 @@ static void pcapLoop(void) {
             }
             esp_wifi_set_channel(pcapCurChan, WIFI_SECOND_CHAN_NONE);
             pcapLastHop = now;
-            if (meshOn && pcapCurChan == 1) meshNoteOnHome();
+            if (meshOn && pcapCurChan == meshChannel()) meshNoteOnHome();
         }
     }
     if (pcapSenderHandle && (bufSizeA + bufSizeB) > (PCAP_BUF_SIZE / 4)) {

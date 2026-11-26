@@ -144,6 +144,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
   String _nodeId = '--';
   String _heapFree = '--';
   int? _selfTempC;
+  int? _pickedChannel;
 
   StreamSubscription<NodeConnectionState>? _connStateSub;
   StreamSubscription<HwGpsState>? _hwGpsSub;
@@ -1198,7 +1199,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         _MeshModeTile(
           icon: Icons.podcasts,
           label: 'BROADCAST (PLAINTEXT)',
-          subtitle: 'No peer table. Unlimited nodes hear every packet. ch=1',
+          subtitle: 'No peer table. Unlimited nodes hear every packet. ch=${appState.meshChannel}',
           selected: modePlain,
           onTap: () => appState.enableMesh(
             encryption: false,
@@ -1278,6 +1279,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             },
           ),
         ],
+        if (!modeOff) ...[
+          const SizedBox(height: 16),
+          ..._buildChannelSection(appState, t),
+        ],
         const SizedBox(height: 16),
         ConfigSectionHeader(label: 'Nodes'),
         ..._buildNodeManageRows(appState),
@@ -1337,6 +1342,85 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ];
         }(),
       ],
+    );
+  }
+
+  List<Widget> _buildChannelSection(AppState appState, ResolvedTheme t) {
+    final status = appState.meshChannelStatus;
+    final current = appState.meshChannel;
+    final picked = _pickedChannel ?? current;
+    final running = channelChangeRunning(status);
+    final summary = status == null ? null : channelChangeSummary(status, appState.labelForNode);
+    final unanswered = status == null ? const <String>[] : channelChangeUnanswered(status);
+    final fleetCap = ref.watch(boardCapsProvider).managerOnly;
+    final canMove = fleetCap.enabled && status != null && !running;
+    return [
+      const ConfigSectionHeader(label: 'Channel'),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8, left: 2),
+        child: Text(
+          'The manager asks every node to confirm, then the manager and the nodes switch together. '
+          'A node that misses it finds the fleet again on its own within a few minutes.',
+          style: TextStyle(color: t.textDim, fontSize: 11),
+        ),
+      ),
+      ConfigInfoRow(icon: Icons.settings_input_antenna, label: 'Channel now', value: status == null ? '—' : '$current'),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SegmentedButton<int>(
+          segments: [
+            for (var c = BleProtocol.meshChannelMin; c <= BleProtocol.meshChannelMax; c++)
+              ButtonSegment(value: c, label: Text('$c')),
+          ],
+          selected: {picked},
+          showSelectedIcon: false,
+          onSelectionChanged: canMove ? (s) => setState(() => _pickedChannel = s.first) : null,
+        ),
+      ),
+      ConfigActionRow(
+        icon: Icons.swap_horiz,
+        label: 'Move fleet to channel $picked',
+        subtitle: running
+            ? 'A change is in progress'
+            : picked == current
+                ? 'Already on channel $current'
+                : 'Every node follows the manager',
+        onTap: canMove && picked != current ? () => _confirmChannelMove(picked, appState) : null,
+      ),
+      if (summary != null) ConfigInfoRow(icon: Icons.info_outline, label: 'Last change', value: summary),
+      if (unanswered.isNotEmpty)
+        ConfigActionRow(
+          icon: Icons.warning_amber,
+          label: 'Move anyway',
+          subtitle: 'Leaves ${unanswered.map(appState.labelForNode).join(', ')} behind until it finds the fleet again',
+          destructive: true,
+          onTap: canMove ? () => _confirmChannelMove(status.target, appState, force: true) : null,
+        ),
+      if (!fleetCap.enabled) DisabledReason(fleetCap.reason!),
+    ];
+  }
+
+  Future<void> _confirmChannelMove(int channel, AppState appState, {bool force = false}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Move the fleet to channel $channel?'),
+        content: Text(
+          force
+              ? 'The manager asks once more and, after 15 seconds, moves with the nodes that answered. The others stay on the old channel until they find the fleet again, which takes a few minutes. A node on older firmware never does.'
+              : 'The manager asks every node to confirm. Once all have answered, the manager and the nodes switch to channel $channel together. If a node does not answer, nothing moves.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('MOVE')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final sent = await ref.read(bleManagerProvider).sendNodeControl(BleProtocol.encodeSetMeshChannel(channel, force: force));
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(sent ? 'Asking the nodes to move to channel $channel' : 'Not connected to a board')),
     );
   }
 
@@ -1409,6 +1493,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         if (detail != null) nodeDetailSummary(detail),
         if (filterResult != null) nodeFilterResultText(filterResult),
         if (editResult != null) 'filters ${filterOpName(editOp)}: ${nodeFilterOpText(editResult, editOp)}',
+        if (!isSelf) ?nodeChannelText(appState.meshChannelStatus, AppState.canonicalNodeId(id)),
       ];
       final t = AppTheme.of(context);
       return ConfigActionRow(

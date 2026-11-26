@@ -1401,10 +1401,16 @@ class EngineControlCallbacks : public NimBLECharacteristicCallbacks {
                              : cmd.command == NODE_CTL_IDENTIFY ? "IDENTIFY"
                              : cmd.command == NODE_CTL_LOCATE ? "LOCATE"
                              : cmd.command == NODE_CTL_REBOOT ? "REBOOT"
+                             : cmd.command == NODE_CTL_SETCHAN ? "SETCHAN"
                              : "OTHER";
         Serial.printf("[BLE] Engine command: %s engine %d\n", cmdName, cmd.engine_id);
 
 #ifdef OUISPY_ROLE_MANAGER
+        if (cmd.command == NODE_CTL_SETCHAN) {
+            if (cmd.payload_len >= 1)
+                meshChanRequest(cmd.payload[0], cmd.payload_len >= 2 && (cmd.payload[1] & 0x01) != 0);
+            return;
+        }
         if (cmd.command == 0x01 && cmd.engine_id < ENGINE_COUNT) {
             if (cmd.engine_id < ENGINE_COUNT_V1) mgrCommandedMask |= (1u << cmd.engine_id);
             mgrCommandedStates[cmd.engine_id] = (uint8_t)ESTATE_SCANNING;
@@ -3545,6 +3551,37 @@ static size_t meshAppendFilterOp(uint8_t* buf, size_t off, size_t limit) {
     return off;
 }
 
+#define MESH_TLV_CHANNEL 0x06
+#define MESH_TLV_CHANNEL_HEADER 5
+#define MESH_TLV_CHANNEL_ENTRY 3
+
+static size_t meshAppendChannel(uint8_t* buf, size_t off, size_t limit) {
+    MeshChanStatus s;
+    meshGetChanStatus(&s);
+    size_t start = off;
+    if (off + 2 + MESH_TLV_CHANNEL_HEADER > limit) return off;
+    buf[off] = MESH_TLV_CHANNEL;
+    off += 2;
+    buf[off++] = s.current;
+    buf[off++] = s.state;
+    buf[off++] = s.target;
+    buf[off++] = s.epoch;
+    size_t cntAt = off++;
+    uint8_t cnt = 0;
+    for (uint8_t i = 0; i < s.n; i++) {
+        if (off + MESH_TLV_CHANNEL_ENTRY > limit) break;
+        uint8_t b[2];
+        if (!meshIdToBytes(s.rows[i].id, b)) continue;
+        buf[off++] = b[0];
+        buf[off++] = b[1];
+        buf[off++] = s.rows[i].flags;
+        cnt++;
+    }
+    buf[cntAt] = cnt;
+    buf[start + 1] = (uint8_t)(off - start - 2);
+    return off;
+}
+
 #define MESH_TLV_ENGINE_EXT 0x05
 
 static size_t meshAppendEngineExt(uint8_t* buf, size_t off, size_t limit) {
@@ -3643,6 +3680,7 @@ void bleGattNotifyMeshStatus(void) {
 #ifdef OUISPY_ROLE_MANAGER
     {
         size_t lim = meshStatusLimit(sizeof(buf));
+        if (off < lim) off = meshAppendChannel(buf, off, lim);
         if (off < lim) off = meshAppendFilterPush(buf, off, lim);
         if (off < lim) off = meshAppendFilterOp(buf, off, lim);
         if (off < lim) off = meshAppendNodeDetail(buf, off, lim);

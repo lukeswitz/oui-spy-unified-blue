@@ -69,6 +69,14 @@ typedef MeshHeard = ({String id, int? rssi});
 /// What one node hears: the grid row for [id].
 typedef MeshSignalRow = ({String id, List<MeshHeard> hears});
 
+/// One node in a channel change: whether it confirmed the order and whether it was heard on the new channel since.
+typedef MeshChannelRow = ({String id, bool confirmed, bool followed});
+
+/// The manager's channel and its latest channel change. [state] is one of the [MeshChannelState] values.
+typedef MeshChannelStatus = ({int current, int state, int target, int epoch, List<MeshChannelRow> rows});
+
+enum MeshChannelState { idle, confirming, switching, done, failed }
+
 typedef MeshStatusData = ({
   bool enabled,
   int peerCount,
@@ -81,6 +89,7 @@ typedef MeshStatusData = ({
   MeshFilterPush? filterPush,
   MeshFilterOp? filterOp,
   List<MeshSignalRow> signal,
+  MeshChannelStatus? channel,
 });
 
 /// Binary encode/decode for GATT characteristic payloads.
@@ -245,6 +254,17 @@ class BleProtocol {
   static const nodeCtlLocate = 0x21;
   static const nodeCtlReboot = 0x22;
   static const nodeCtlStatus = 0x23;
+  static const nodeCtlSetChannel = 0x24;
+  static const meshChannelMin = 1;
+  static const meshChannelMax = 11;
+
+  /// Asks the manager to move the whole mesh to [channel] (1 to 11). With [force] it moves even if some nodes do not confirm.
+  static Uint8List encodeSetMeshChannel(int channel, {bool force = false}) {
+    if (channel < meshChannelMin || channel > meshChannelMax) {
+      throw ArgumentError('channel must be $meshChannelMin-$meshChannelMax, got $channel');
+    }
+    return Uint8List.fromList([nodeCtlSetChannel, 0x00, channel, force ? 0x01 : 0x00]);
+  }
 
   /// Asks one node (or, with a null id, every node) to report its build, filters, uptime and peers.
   static Uint8List encodeNodeStatusRequest(String? nodeId) => Uint8List.fromList([
@@ -499,6 +519,7 @@ class BleProtocol {
   static const meshTlvNeighbors = 0x03;
   static const meshTlvFilterOp = 0x04;
   static const meshTlvEngineExt = 0x05;
+  static const meshTlvChannel = 0x06;
 
   /// DetectorConfig op that edits one node's filter list: [0x06][op][target:4][data].
   static const detCfgOpNodeFilter = 0x06;
@@ -546,6 +567,7 @@ class BleProtocol {
         filterPush: null,
         filterOp: null,
         signal: const [],
+        channel: null,
       );
     }
     int? keyFailures;
@@ -553,6 +575,7 @@ class BleProtocol {
     MeshFilterPush? filterPush;
     MeshFilterOp? filterOp;
     var signal = <MeshSignalRow>[];
+    MeshChannelStatus? channel;
     final bytes = Uint8List.fromList(data);
     final view = ByteData.sublistView(bytes);
     final live = <MeshLiveEntry>[];
@@ -607,6 +630,7 @@ class BleProtocol {
               }
             }
           }
+          if (type == meshTlvChannel) channel = _decodeChannel(bytes, body, len);
           pos = body + len;
         }
       }
@@ -623,6 +647,28 @@ class BleProtocol {
       filterPush: filterPush,
       filterOp: filterOp,
       signal: signal,
+      channel: channel,
+    );
+  }
+
+  static MeshChannelStatus? _decodeChannel(Uint8List b, int at, int len) {
+    const header = 5;
+    const entry = 3;
+    if (len < header) return null;
+    final n = b[at + 4];
+    final rows = <MeshChannelRow>[];
+    for (var i = 0; i < n; i++) {
+      final o = at + header + i * entry;
+      if (o + entry > at + len) break;
+      rows.add((id: _nodeIdFromBytes(b, o), confirmed: b[o + 2] & 0x01 != 0, followed: b[o + 2] & 0x02 != 0));
+    }
+    final state = b[at + 1];
+    return (
+      current: b[at],
+      state: state < MeshChannelState.values.length ? state : 0,
+      target: b[at + 2],
+      epoch: b[at + 3],
+      rows: rows,
     );
   }
 

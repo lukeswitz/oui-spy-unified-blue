@@ -21,10 +21,6 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
-#ifndef MESH_CH
-#define MESH_CH 1
-#endif
-
 QueueHandle_t detectionQueue = NULL;
 uint16_t g_detQueueDepth = 0;
 QueueHandle_t engineCmdQueue = NULL;
@@ -142,7 +138,7 @@ void setup() {
     WiFi.disconnect(false, false);
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-    esp_wifi_set_channel(MESH_CH, WIFI_SECOND_CHAN_NONE);
+    esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
 
     if (wifiOtaHasPending()) {
         Serial.println("[BOOT] WiFi OTA pending -> OTA-only mode (BLE/mesh off, full heap)");
@@ -219,7 +215,7 @@ void setup() {
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     Serial.printf("[INIT] MAC %02X:%02X:%02X:%02X:%02X:%02X ch=%d heap=%u\n",
-        mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], MESH_CH, (unsigned)ESP.getFreeHeap());
+        mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], (int)meshChannel(), (unsigned)ESP.getFreeHeap());
     Serial.println("[INIT] *** MANAGER READY ***");
     Serial.println("[INIT] NOTE: MANAGER is a coordinator/aggregator and does NOT scan or detect on its own.");
     Serial.println("[INIT] For standalone detection flash NODE firmware; MANAGER needs 1+ NODE(s) meshed to it.");

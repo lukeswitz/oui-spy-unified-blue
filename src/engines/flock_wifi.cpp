@@ -32,6 +32,12 @@ static const uint8_t channels[] = {1, 6, 11};
 #endif
 static const int channelCount = sizeof(channels) / sizeof(channels[0]);
 static int channelIdx = 0;
+static bool flockHomeVisit = false;
+static bool flockChannelListed(uint8_t ch) {
+    for (int i = 0; i < channelCount; i++)
+        if (channels[i] == ch) return true;
+    return false;
+}
 static unsigned long lastChannelHop = 0;
 static const unsigned long DWELL_MS = 350;
 
@@ -201,7 +207,7 @@ static void flockWifiStop(void) {
     wifiCoexUnregister(wifiSnifferCb);
     if (meshIsEnabled() || wifiCoexActive() || wifiRadioExternallyOwned()) {
         WiFi.disconnect(false, false);
-        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
     } else {
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
@@ -216,14 +222,24 @@ static void flockWifiLoop(void) {
     if (engineGetState(ENGINE_WARDRIVE) != ESTATE_DISABLED) return;
     if (!wifiCoexShouldHop(ENGINE_FLOCK_WIFI)) return;
     if (millis() - lastChannelHop >= DWELL_MS) {
-        int guard = 0;
-        do {
-            channelIdx = (channelIdx + 1) % channelCount;
-        } while (!wifiChanEnabled(channels[channelIdx]) && ++guard < channelCount);
-        esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
+        const uint8_t home = meshChannel();
+        uint8_t next;
+        if (meshIsEnabled() && !flockChannelListed(home) && wifiChanEnabled(home) &&
+            !flockHomeVisit && channelIdx == channelCount - 1) {
+            flockHomeVisit = true;
+            next = home;
+        } else {
+            flockHomeVisit = false;
+            int guard = 0;
+            do {
+                channelIdx = (channelIdx + 1) % channelCount;
+            } while (!wifiChanEnabled(channels[channelIdx]) && ++guard < channelCount);
+            next = channels[channelIdx];
+        }
+        esp_wifi_set_channel(next, WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
         sendWildcardProbe();
-        if (meshIsEnabled() && channels[channelIdx] == 1) meshNoteOnHome();
+        if (meshIsEnabled() && next == home) meshNoteOnHome();
     }
 }
 

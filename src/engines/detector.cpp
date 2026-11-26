@@ -2010,7 +2010,7 @@ static void detectorStop(void) {
         wifiCoexUnregister(wifiSnifferCb);
         if (meshIsEnabled() || wifiCoexActive() || wifiRadioExternallyOwned()) {
             WiFi.disconnect(false, false);
-            esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+            esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
         } else {
             WiFi.disconnect(true);
             WiFi.mode(WIFI_OFF);
@@ -2060,7 +2060,7 @@ static void detectorLoop(void) {
         } while (!wifiChanEnabled(channels[channelIdx]) && ++guard < channelCount);
         esp_wifi_set_channel(channels[channelIdx], WIFI_SECOND_CHAN_NONE);
         lastChannelHop = millis();
-        if (meshIsEnabled() && channels[channelIdx] == 1) meshNoteOnHome();
+        if (meshIsEnabled() && channels[channelIdx] == meshChannel()) meshNoteOnHome();
     }
 
     if (detectorRadioMask & 0x02) bleCoexEnsureScanning();

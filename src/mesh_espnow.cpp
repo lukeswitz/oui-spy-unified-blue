@@ -21,6 +21,7 @@
 #include <mbedtls/gcm.h>
 #include <string.h>
 #include <esp_ota_ops.h>
+#include <Preferences.h>
 #ifdef OUISPY_NIMBLE2
 #include <freertos/idf_additions.h>
 #define MESH_QUEUE_CREATE(n, sz) xQueueCreateWithCaps((n), (sz), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
@@ -126,6 +127,8 @@ static void nodeStatusIfTargeted(const MeshCommandPacket* cmd);
 static void nodeSendFilterAck(uint8_t seq, const uint8_t* data, size_t n);
 static void nodeApplyFilterOp(const uint8_t* plain, size_t plainLen);
 static void sendOneSweep(const uint8_t* encrypted, size_t encLen);
+static void sendOnHome(const uint8_t* data, size_t len);
+static void sendOnHomeRestore(const uint8_t* data, size_t len);
 static bool sendOnRendezvous(const uint8_t* data, size_t len);
 static void retryTaskFn(void* arg);
 
@@ -134,7 +137,64 @@ static MeshConfig         pendingInviteCfg = {};
 static SemaphoreHandle_t  inviteMutex = NULL;
 static SemaphoreHandle_t  txMutex = NULL;
 
-#define MESH_RENDEZVOUS_CH      1
+#define MESH_RENDEZVOUS_CH      meshChannel()
+#define MESH_CHAN_NS            "ouispy-mesh"
+#define MESH_CHAN_KEY           "ch"
+#define MESH_HEAL_HIT_HERE      0xFE
+static_assert(MESH_NODE_ID_LEN == MESH_CHAN_ID_LEN, "chan id length");
+static_assert(MESH_CHAN_ROWS == MESH_LIVE_NODES_MAX, "chan rows");
+static_assert(MESH_CHAN_PREPARE == MCP_PREPARE && MESH_CHAN_COMMIT == MCP_COMMIT &&
+              MESH_CHAN_CANCEL == MCP_CANCEL, "chan phases");
+static_assert(MESH_CHAN_ACK_PREPARED == 0 && MESH_CHAN_ACK_ALREADY == 1, "chan ack codes");
+
+static volatile uint8_t  g_meshCh = 0;
+static portMUX_TYPE      g_chanMux = portMUX_INITIALIZER_UNLOCKED;
+static MeshChanNode      g_chanNode;
+#ifdef OUISPY_ROLE_MANAGER
+static MeshChanMgr       g_chanMgr;
+#endif
+static volatile uint32_t g_mgrHeardMs = 0;
+static volatile uint32_t g_healRefMs = 0;
+static volatile uint32_t g_healWaitMs = MESH_HEAL_FIRST_MS;
+static volatile bool     g_healing = false;
+static volatile uint8_t  g_healHit = 0;
+
+static uint8_t meshChanLoad(void) {
+    uint8_t v = MESH_CH_DEFAULT;
+    Preferences p;
+    if (p.begin(MESH_CHAN_NS, false)) {
+        v = meshChanClamp(p.getUChar(MESH_CHAN_KEY, MESH_CH_DEFAULT));
+        p.end();
+    }
+    return v;
+}
+
+static void meshChanSave(uint8_t ch) {
+    Preferences p;
+    if (p.begin(MESH_CHAN_NS, false)) {
+        if (p.getUChar(MESH_CHAN_KEY, 0) != ch) p.putUChar(MESH_CHAN_KEY, ch);
+        p.end();
+    }
+}
+
+uint8_t meshChannel(void) {
+    uint8_t c = g_meshCh;
+    if (c) return c;
+    c = meshChanLoad();
+    g_meshCh = c;
+    return c;
+}
+
+bool meshHealing(void) { return g_healing; }
+
+static void noteMgrHeard(void) {
+    uint32_t now = millis();
+    g_mgrHeardMs = now ? now : 1;
+    g_healRefMs = now;
+    g_healWaitMs = MESH_HEAL_FIRST_MS;
+    if (g_healing && g_healHit == 0) g_healHit = MESH_HEAL_HIT_HERE;
+}
+
 #if defined(OUISPY_LOWRAM) || defined(OUISPY_NIMBLE2)
 #define MESH_TX_QUEUE_DEPTH     12
 #else
@@ -342,6 +402,7 @@ static void recordLiveNode(const char* id, uint8_t role, uint8_t engines, uint32
     if (!liveMutex) return;
     if (id[0] == 0) return;
     if (memcmp(id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+    if (role == MESH_ROLE_MANAGER) noteMgrHeard();
     if (xSemaphoreTake(liveMutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
     int freeSlot = -1;
     int oldest = 0;
@@ -1196,6 +1257,43 @@ uint32_t ncUniqueCount(void)  { return ncSetCount; }
 uint32_t ncRxTotalCount(void) { return ncRxTotal; }
 #endif
 
+static void meshApplyChannel(uint8_t ch, const char* why) {
+    if (!meshChanValid(ch)) return;
+    uint8_t old = meshChannel();
+    if (ch == old) return;
+    g_meshCh = ch;
+    meshChanSave(ch);
+    bool locked = txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(200)) == pdTRUE;
+    esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+    if (locked) xSemaphoreGive(txMutex);
+    Serial.printf("[MESH-CH] channel %u -> %u (%s)\n", old, ch, why);
+}
+
+static void sendChanSet(uint8_t phase, uint8_t epoch, uint8_t ch, uint16_t countdownMs) {
+    MeshChanSetPacket p = {};
+    p.pkt_type = MESH_PKT_CHAN_SET;
+    memcpy(p.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    p.epoch = epoch;
+    p.phase = phase;
+    p.channel = ch;
+    p.countdown_ms = countdownMs;
+    uint8_t enc[64]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&p, sizeof(p), enc, &encLen)) return;
+    sendOnHome(enc, encLen);
+}
+
+static void sendChanAck(uint8_t epoch, uint8_t ch, uint8_t status) {
+    MeshChanAckPacket a = {};
+    a.pkt_type = MESH_PKT_CHAN_ACK;
+    memcpy(a.source_node_id, localNodeId, MESH_NODE_ID_LEN);
+    a.epoch = epoch;
+    a.channel = ch;
+    a.status = status;
+    uint8_t enc[64]; size_t encLen = 0;
+    if (!encryptPacket((const uint8_t*)&a, sizeof(a), enc, &encLen)) return;
+    sendOnHomeRestore(enc, encLen);
+}
+
 static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int len) {
     if (!meshCurrentConfig.enabled) return;
 
@@ -1208,7 +1306,23 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         bool sameCfg =
             (inv.encryption_enabled == meshCurrentConfig.encryption_enabled) &&
             (memcmp(inv.key, (const void*)meshCurrentConfig.key, MESH_KEY_LEN) == 0);
+#ifndef OUISPY_ROLE_MANAGER
+        const bool invChOk = meshChanValid(inv.channel);
+        if (sameCfg) {
+            if (invChOk && inv.channel != meshChannel() && !meshManagerJoined()) {
+                Serial.printf("[MESH-INVITE-RX] from=%.5s on ch=%u — following it (was %u)\n",
+                              inv.source_node_id, inv.channel, meshChannel());
+                meshApplyChannel(inv.channel, "invite");
+                if (g_healing) g_healHit = inv.channel;
+            } else if (invChOk && g_healing) {
+                g_healHit = inv.channel;
+            }
+            return;
+        }
+        if (invChOk) meshApplyChannel(inv.channel, "invite");
+#else
         if (sameCfg) return;
+#endif
         Serial.printf("[MESH-INVITE-RX] from=%.5s enc=%u ch=%u (new cfg)\n",
             inv.source_node_id, inv.encryption_enabled, inv.channel);
         if (inviteMutex && xSemaphoreTake(inviteMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
@@ -1440,6 +1554,55 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
 #endif
         return;
     }
+
+#ifndef OUISPY_ROLE_MANAGER
+    if (plainLen == sizeof(MeshChanSetPacket) && plainBuf[0] == MESH_PKT_CHAN_SET) {
+        MeshChanSetPacket cs;
+        memcpy(&cs, plainBuf, sizeof(cs));
+        if (memcmp(cs.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        recordLiveNode(cs.source_node_id, MESH_ROLE_MANAGER, 0);
+        const uint8_t cur = meshChannel();
+        uint8_t reply;
+        uint8_t pendBefore;
+        portENTER_CRITICAL(&g_chanMux);
+        pendBefore = g_chanNode.pendEpoch;
+        reply = meshChanNodeOnSet(&g_chanNode, cs.phase, cs.epoch, cs.channel, cs.countdown_ms, cur, millis());
+        portEXIT_CRITICAL(&g_chanMux);
+        static uint8_t s_lastLogEpoch = 0, s_lastLogPhase = 0;
+        if (cs.epoch != s_lastLogEpoch || cs.phase != s_lastLogPhase) {
+            s_lastLogEpoch = cs.epoch;
+            s_lastLogPhase = cs.phase;
+            Serial.printf("[MESH-CH] rx %s epoch=%u ch=%u countdown=%ums from=%.4s (on ch %u, pending=%u)\n",
+                          cs.phase == MESH_CHAN_PREPARE ? "PREPARE" :
+                          cs.phase == MESH_CHAN_COMMIT ? "COMMIT" : "CANCEL",
+                          cs.epoch, cs.channel, (unsigned)cs.countdown_ms, cs.source_node_id, cur,
+                          (unsigned)pendBefore);
+        }
+        if (reply != MCN_NO_REPLY)
+            sendChanAck(cs.epoch, cs.channel,
+                        reply == MCN_REPLY_ALREADY ? MESH_CHAN_ACK_ALREADY : MESH_CHAN_ACK_PREPARED);
+        return;
+    }
+#endif
+#ifdef OUISPY_ROLE_MANAGER
+    if (plainLen == sizeof(MeshChanAckPacket) && plainBuf[0] == MESH_PKT_CHAN_ACK) {
+        MeshChanAckPacket ca;
+        memcpy(&ca, plainBuf, sizeof(ca));
+        if (memcmp(ca.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        recordLiveSeen(ca.source_node_id);
+        bool fresh;
+        uint8_t acked, total;
+        portENTER_CRITICAL(&g_chanMux);
+        fresh = meshChanMgrOnAck(&g_chanMgr, ca.source_node_id, ca.epoch);
+        acked = meshChanMgrAcked(&g_chanMgr);
+        total = g_chanMgr.n;
+        portEXIT_CRITICAL(&g_chanMux);
+        if (fresh)
+            Serial.printf("[MESH-CH] confirm %.4s epoch=%u status=%u (%u/%u)\n",
+                          ca.source_node_id, ca.epoch, ca.status, acked, total);
+        return;
+    }
+#endif
 
     if (plainLen >= 7 && plainBuf[0] == MESH_PKT_IGNORELIST) {
         MeshIgnoreListPacket il;
@@ -1980,6 +2143,204 @@ void meshDebugForceManager(void) {
 }
 #endif
 
+#ifdef OUISPY_ROLE_MANAGER
+uint8_t meshChanRequest(uint8_t channel, bool force) {
+    if (!meshCurrentConfig.enabled) return MCR_MESH_OFF;
+    char ids[MESH_CHAN_ROWS * MESH_CHAN_ID_LEN];
+    uint8_t n = 0;
+    MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+    size_t lc = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, 30000);
+    for (size_t i = 0; i < lc && n < MESH_CHAN_ROWS; i++) {
+        if (ln[i].role == MESH_ROLE_MANAGER) continue;
+        memcpy(ids + (size_t)n * MESH_CHAN_ID_LEN, ln[i].id, MESH_CHAN_ID_LEN);
+        n++;
+    }
+    const uint8_t cur = meshChannel();
+    uint8_t rc, epoch;
+    portENTER_CRITICAL(&g_chanMux);
+    rc = meshChanMgrStart(&g_chanMgr, cur, channel, force, ids, n, millis());
+    epoch = g_chanMgr.epoch;
+    portEXIT_CRITICAL(&g_chanMux);
+    if (rc == MCR_OK)
+        Serial.printf("[MESH-CH] start epoch=%u ch %u -> %u, expecting %u node(s)%s\n",
+                      epoch, cur, channel, n, force ? " (forced)" : "");
+    else
+        Serial.printf("[MESH-CH] request refused rc=%u (ch=%u, now %u)\n", rc, channel, cur);
+    return rc;
+}
+
+void meshGetChanStatus(MeshChanStatus* out) {
+    MeshChanMgr snap;
+    portENTER_CRITICAL(&g_chanMux);
+    snap = g_chanMgr;
+    portEXIT_CRITICAL(&g_chanMux);
+    out->current = meshChannel();
+    out->state = snap.state;
+    out->target = snap.target;
+    out->epoch = snap.epoch;
+    out->n = snap.n;
+    for (uint8_t i = 0; i < snap.n; i++) {
+        memcpy(out->rows[i].id, snap.rows[i].id, MESH_CHAN_ID_LEN);
+        out->rows[i].flags = (uint8_t)((snap.rows[i].acked ? MESH_CHAN_FLAG_CONFIRMED : 0) |
+                                       (snap.rows[i].followed ? MESH_CHAN_FLAG_FOLLOWED : 0));
+    }
+}
+
+static void meshChanMgrService(void) {
+    static uint8_t s_prevState = MCS_IDLE;
+    static uint8_t s_doneLogged = 0;
+    static uint32_t s_followMs = 0;
+    const uint32_t now = millis();
+    MeshChanTick t;
+    MeshChanMgr snap;
+    portENTER_CRITICAL(&g_chanMux);
+    t = meshChanMgrTick(&g_chanMgr, now);
+    snap = g_chanMgr;
+    portEXIT_CRITICAL(&g_chanMux);
+
+    if (snap.state != s_prevState) {
+        s_prevState = snap.state;
+        const uint8_t acked = meshChanMgrAcked(&snap);
+        if (snap.state == MCS_COMMIT) {
+            Serial.printf("[MESH-CH] %u/%u confirmed%s — committing to ch %u in %ums\n", acked, snap.n,
+                          acked == snap.n ? "" : " (forced)", snap.target, (unsigned)MESH_CHAN_COMMIT_MS);
+        } else if (snap.state == MCS_FAILED) {
+            Serial.printf("[MESH-CH] aborted: %u of %u confirmed, staying on ch %u; no answer from:", acked,
+                          snap.n, meshChannel());
+            for (uint8_t i = 0; i < snap.n; i++)
+                if (!snap.rows[i].acked) Serial.printf(" %.4s", snap.rows[i].id);
+            Serial.println();
+        }
+    }
+    switch (t.act) {
+        case MCA_PREPARE: sendChanSet(MESH_CHAN_PREPARE, snap.epoch, snap.target, 0); break;
+        case MCA_COMMIT:  sendChanSet(MESH_CHAN_COMMIT, snap.epoch, snap.target, t.countdownMs); break;
+        case MCA_CANCEL:  sendChanSet(MESH_CHAN_CANCEL, snap.epoch, snap.target, 0); break;
+        case MCA_SWITCH:
+            sendChanSet(MESH_CHAN_COMMIT, snap.epoch, snap.target, 0);
+            meshApplyChannel(snap.target, "commit");
+            s_doneLogged = 0;
+            Serial.printf("[MESH-CH] manager now on ch %u (epoch=%u), waiting for %u node(s) to follow\n",
+                          snap.target, snap.epoch, snap.n);
+            break;
+        default: break;
+    }
+    if (snap.state == MCS_DONE && (uint32_t)(now - s_followMs) >= 500) {
+        s_followMs = now;
+        MeshLiveNode ln[MESH_LIVE_NODES_MAX];
+        size_t lc = meshGetLiveNodes(ln, MESH_LIVE_NODES_MAX, 30000);
+        for (size_t i = 0; i < lc; i++) {
+            bool fresh;
+            uint8_t followed;
+            portENTER_CRITICAL(&g_chanMux);
+            fresh = meshChanMgrMarkFollowed(&g_chanMgr, ln[i].id, ln[i].last_ms);
+            followed = meshChanMgrFollowed(&g_chanMgr);
+            portEXIT_CRITICAL(&g_chanMux);
+            if (fresh)
+                Serial.printf("[MESH-CH] node %.4s followed to ch %u (%u/%u)\n", ln[i].id, snap.target,
+                              followed, snap.n);
+        }
+        if (s_doneLogged != snap.epoch && meshChanMgrFollowed(&snap) == snap.n) {
+            s_doneLogged = snap.epoch;
+            Serial.printf("[MESH-CH] all %u node(s) on ch %u\n", snap.n, snap.target);
+        }
+    }
+}
+#else
+static void meshChanNodeService(void) {
+    uint8_t ch = 0;
+    bool apply;
+    portENTER_CRITICAL(&g_chanMux);
+    apply = meshChanNodeTick(&g_chanNode, millis(), &ch);
+    portEXIT_CRITICAL(&g_chanMux);
+    if (apply) {
+        Serial.printf("[MESH-CH] commit: switching to ch %u\n", ch);
+        meshApplyChannel(ch, "commit");
+    }
+}
+
+static bool meshHealDueNow(uint32_t now, bool* quick) {
+    *quick = false;
+    if (!meshCurrentConfig.enabled || g_otaRx.active) return false;
+    uint8_t pend;
+    portENTER_CRITICAL(&g_chanMux);
+    pend = meshChanNodePendingCh(&g_chanNode);
+    portEXIT_CRITICAL(&g_chanMux);
+    if (pend) {
+        const uint32_t heard = g_mgrHeardMs;
+        if (heard != 0 && (uint32_t)(now - heard) >= MESH_HEAL_QUICK_SILENCE_MS) {
+            *quick = true;
+            return true;
+        }
+        return false;
+    }
+    if (meshManagerJoined()) return false;
+    return meshHealDue(now, g_healRefMs, g_healWaitMs);
+}
+
+static void healSetChannel(uint8_t ch) {
+    bool locked = txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(50)) == pdTRUE;
+    esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
+    if (locked) xSemaphoreGive(txMutex);
+}
+
+static void meshHealPass(bool quick) {
+    uint8_t order[MESH_CH_MAX + 1];
+    const uint8_t cur = meshChannel();
+    uint8_t hint;
+    portENTER_CRITICAL(&g_chanMux);
+    hint = meshChanNodePendingCh(&g_chanNode);
+    portEXIT_CRITICAL(&g_chanMux);
+    const uint8_t n = meshHealOrder(order, cur, hint, quick);
+    uint8_t found = 0;
+    if (n) {
+        Serial.printf("[MESH-HEAL] %s pass over %u channel(s), saved ch=%u, hint=%u\n",
+                      quick ? "quick" : "full", n, cur, hint);
+        g_healHit = 0;
+        g_healing = true;
+        g_meshWindow = true;
+#if CONFIG_IDF_TARGET_ESP32
+        bleCoexPauseForMesh();
+#endif
+        for (uint8_t i = 0; i < n && !found; i++) {
+            const uint8_t ch = order[i];
+            healSetChannel(ch);
+            vTaskDelay(pdMS_TO_TICKS(40));
+            g_healHit = 0;
+            const uint32_t t0 = millis();
+            while ((uint32_t)(millis() - t0) < MESH_HEAL_DWELL_MS) {
+                vTaskDelay(pdMS_TO_TICKS(20));
+                const uint8_t hit = g_healHit;
+                if (hit) { found = (hit == MESH_HEAL_HIT_HERE) ? ch : hit; break; }
+                uint8_t rch = 0; wifi_second_chan_t rsec;
+                if (esp_wifi_get_channel(&rch, &rsec) == ESP_OK && rch != ch) healSetChannel(ch);
+            }
+        }
+        g_healing = false;
+    }
+    if (found) {
+        Serial.printf("[MESH-HEAL] fleet found on ch=%u\n", found);
+        if (found != meshChannel()) meshApplyChannel(found, "heal");
+        else healSetChannel(found);
+    } else {
+        healSetChannel(meshChannel());
+        if (quick) {
+            portENTER_CRITICAL(&g_chanMux);
+            g_chanNode.pendEpoch = 0;
+            g_chanNode.pendCh = 0;
+            g_chanNode.haveApply = 0;
+            portEXIT_CRITICAL(&g_chanMux);
+        }
+        g_healRefMs = millis();
+        g_healWaitMs = meshHealNextWait(g_healWaitMs);
+        Serial.printf("[MESH-HEAL] no fleet heard, back on ch %u, next pass in %lus\n", meshChannel(),
+                      (unsigned long)(g_healWaitMs / 1000));
+    }
+    g_meshWindow = false;
+    g_lastHomeMs = millis();
+}
+#endif
+
 #ifndef OUISPY_ROLE_MANAGER
 static void meshSchedTaskFn(void* arg) {
     (void)arg;
@@ -1988,6 +2349,13 @@ static void meshSchedTaskFn(void* arg) {
     uint8_t lastMask = engineGetActiveMask();
     bool wasJoined = false;
     for (;;) {
+        {
+            bool healQuick = false;
+            if (meshHealDueNow(millis(), &healQuick)) {
+                meshHealPass(healQuick);
+                continue;
+            }
+        }
         g_meshWindow = false;
         g_ridWindow = false;
         uint8_t curMask = engineGetActiveMask();
@@ -2076,6 +2444,12 @@ void meshInit(void) {
     memset((void*)&meshCurrentConfig, 0, sizeof(MeshConfig));
     memset((void*)&meshCurrentStatus, 0, sizeof(MeshStatus));
     memset(pendingCmds, 0, sizeof(pendingCmds));
+    meshChanNodeInit(&g_chanNode);
+#ifdef OUISPY_ROLE_MANAGER
+    meshChanMgrInit(&g_chanMgr, (uint8_t)(esp_random() & 0xFF));
+#endif
+    g_healRefMs = millis();
+    Serial.printf("[MESH-CH] home channel %u\n", meshChannel());
 
     uint8_t mac[6];
     opsecFactoryBtMac(mac);
@@ -2159,6 +2533,13 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
     }
     g_meshEverInit = true;
 
+    portENTER_CRITICAL(&g_chanMux);
+    meshChanNodeInit(&g_chanNode);
+#ifdef OUISPY_ROLE_MANAGER
+    g_chanMgr.state = MCS_IDLE;
+#endif
+    portEXIT_CRITICAL(&g_chanMux);
+
     xSemaphoreTake(meshMutex, portMAX_DELAY);
     memcpy((void*)&meshCurrentConfig, cfg, sizeof(MeshConfig));
     meshCurrentConfig.enabled = 0;
@@ -2207,16 +2588,17 @@ void meshEnableEx(const MeshConfig* cfg, bool sendInvite) {
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 #ifdef OUISPY_DONGLE
     esp_err_t startRc = esp_wifi_start();
-    esp_err_t chRc = esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    esp_err_t chRc = esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
     wifi_mode_t md = WIFI_MODE_NULL;
     esp_wifi_get_mode(&md);
     Serial.printf("[MESH] wifi start rc=0x%x ch rc=0x%x mode=%d\n",
                   (int)startRc, (int)chRc, (int)md);
 #else
     esp_wifi_start();
-    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
 #endif
 #endif
+    Serial.printf("[MESH-CH] radio on ch %u\n", meshChannel());
 
     if (esp_now_init() != ESP_OK) {
         Serial.println("[MESH] ESP-NOW init failed");
@@ -2278,9 +2660,9 @@ void meshSendInvite(void) {
     memcpy(inv.primary_mac, mac, 6);
     inv.encryption_enabled = meshCurrentConfig.encryption_enabled;
     memcpy(inv.key, (const void*)meshCurrentConfig.key, MESH_KEY_LEN);
-    inv.channel = 1;
+    inv.channel = meshChannel();
     sendOneSweep((const uint8_t*)&inv, sizeof(inv));
-    Serial.printf("[MESH-INVITE-TX] enc=%u\n", inv.encryption_enabled);
+    Serial.printf("[MESH-INVITE-TX] enc=%u ch=%u\n", inv.encryption_enabled, inv.channel);
 }
 
 void meshDisable(void) {
@@ -2705,7 +3087,7 @@ static void sendOneSweep(const uint8_t* data, size_t len) {
         esp_now_send(kBroadcastDst, data, len);
         vTaskDelay(pdMS_TO_TICKS(6));
     }
-    esp_wifi_set_channel(saved_ch != 0 ? saved_ch : 1, WIFI_SECOND_CHAN_NONE);
+    esp_wifi_set_channel(saved_ch != 0 ? saved_ch : meshChannel(), WIFI_SECOND_CHAN_NONE);
     if (txMutex) xSemaphoreGive(txMutex);
 }
 
@@ -2991,6 +3373,12 @@ static void retryTaskFn(void* arg) {
             }
         }
 
+#ifdef OUISPY_ROLE_MANAGER
+        meshChanMgrService();
+#else
+        meshChanNodeService();
+#endif
+
         if (pendingInviteApply && inviteMutex &&
             xSemaphoreTake(inviteMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
             MeshConfig cfg;
@@ -3216,3 +3604,93 @@ MeshStatus meshGetStatus(void) {
     }
     return s;
 }
+
+#ifdef OUISPY_PORT_SELFTEST
+int meshChanSelfTest(void) {
+    int fail = 0;
+    char d[96];
+    auto check = [&](const char* n, bool ok, const char* det = "") {
+        Serial.printf("[PST] mesh.%s %s %s\n", n, ok ? "PASS" : "FAIL", det);
+        if (!ok) fail++;
+    };
+    check("chan_packet_sizes", sizeof(MeshChanSetPacket) == 11 && sizeof(MeshChanAckPacket) == 9);
+    snprintf(d, sizeof(d), "ch=%u", meshChannel());
+    check("channel_in_range", meshChanValid(meshChannel()), d);
+    {
+        const uint8_t orig = meshChannel();
+        const uint8_t probe = orig == 6 ? 7 : 6;
+        meshChanSave(probe);
+        const bool saved = meshChanLoad() == probe;
+        meshChanSave(orig);
+        check("channel_persists_in_nvs", saved && meshChanLoad() == orig);
+    }
+    const char ids[2 * MESH_CHAN_ID_LEN] = {'A','B','1','2',0,'C','D','3','4',0};
+    {
+        MeshChanMgr m;
+        meshChanMgrInit(&m, 0);
+        bool ok = meshChanMgrStart(&m, 1, 6, false, ids, 2, 1000) == MCR_OK;
+        ok = ok && meshChanMgrTick(&m, 1000).act == MCA_PREPARE;
+        meshChanMgrOnAck(&m, ids, m.epoch);
+        ok = ok && meshChanMgrTick(&m, 1300).act == MCA_PREPARE && m.state == MCS_PREPARE;
+        meshChanMgrOnAck(&m, ids + MESH_CHAN_ID_LEN, m.epoch);
+        MeshChanTick t = meshChanMgrTick(&m, 1400);
+        ok = ok && t.act == MCA_COMMIT && t.countdownMs == MESH_CHAN_COMMIT_MS;
+        ok = ok && meshChanMgrTick(&m, 1400 + MESH_CHAN_COMMIT_MS).act == MCA_SWITCH && m.state == MCS_DONE;
+        ok = ok && !meshChanMgrMarkFollowed(&m, ids, m.switchMs) && meshChanMgrMarkFollowed(&m, ids, m.switchMs + 1);
+        check("chan_mgr_commit_after_all_confirm", ok);
+    }
+    {
+        MeshChanMgr m;
+        meshChanMgrInit(&m, 0);
+        meshChanMgrStart(&m, 1, 6, false, ids, 2, 0);
+        meshChanMgrOnAck(&m, ids, m.epoch);
+        bool sw = false, cancel = false;
+        for (uint32_t t = 0; t < MESH_CHAN_PREPARE_MS + 3000; t += 50) {
+            MeshChanTick k = meshChanMgrTick(&m, t);
+            sw = sw || k.act == MCA_SWITCH || k.act == MCA_COMMIT;
+            cancel = cancel || k.act == MCA_CANCEL;
+        }
+        check("chan_mgr_aborts_without_all_confirms", !sw && cancel && m.state == MCS_FAILED);
+    }
+    {
+        MeshChanMgr m;
+        meshChanMgrInit(&m, 0);
+        meshChanMgrStart(&m, 1, 6, true, ids, 2, 0);
+        bool sw = false;
+        for (uint32_t t = 0; t < MESH_CHAN_PREPARE_MS + 4000; t += 50)
+            sw = sw || meshChanMgrTick(&m, t).act == MCA_SWITCH;
+        check("chan_mgr_force_commits_anyway", sw);
+    }
+    {
+        MeshChanNode n;
+        meshChanNodeInit(&n);
+        uint8_t ch = 0;
+        bool ok = meshChanNodeOnSet(&n, MCP_PREPARE, 3, 6, 0, 1, 100) == MCN_REPLY_PREPARED;
+        ok = ok && meshChanNodeOnSet(&n, MCP_COMMIT, 3, 6, 500, 1, 200) == MCN_NO_REPLY;
+        ok = ok && !meshChanNodeTick(&n, 699, &ch) && meshChanNodeTick(&n, 700, &ch) && ch == 6;
+        ok = ok && meshChanNodeOnSet(&n, MCP_PREPARE, 3, 9, 0, 6, 800) == MCN_NO_REPLY;
+        check("chan_node_prepare_commit_apply", ok);
+        meshChanNodeInit(&n);
+        meshChanNodeOnSet(&n, MCP_PREPARE, 4, 6, 0, 1, 0);
+        meshChanNodeOnSet(&n, MCP_CANCEL, 4, 6, 0, 1, 10);
+        ok = meshChanNodePendingCh(&n) == 0 && !meshChanNodeTick(&n, 100000, &ch);
+        meshChanNodeOnSet(&n, MCP_PREPARE, 5, 6, 0, 1, 0);
+        ok = ok && !meshChanNodeTick(&n, MESH_CHAN_NODE_TTL_MS, &ch) && meshChanNodePendingCh(&n) == 0;
+        check("chan_node_cancel_and_expiry_never_switch", ok);
+        meshChanNodeInit(&n);
+        check("chan_node_commit_without_prepare_follows",
+              meshChanNodeOnSet(&n, MCP_COMMIT, 6, 8, 0, 1, 0) == MCN_NO_REPLY &&
+              meshChanNodeTick(&n, 0, &ch) && ch == 8);
+    }
+    {
+        uint8_t o[MESH_CH_MAX + 1];
+        uint8_t n = meshHealOrder(o, 4, 9, false);
+        bool ok = n == MESH_CH_MAX && o[0] == 9 && o[1] == 4;
+        ok = ok && meshHealOrder(o, 4, 9, true) == 1 && o[0] == 9 && meshHealOrder(o, 4, 0, true) == 0;
+        ok = ok && meshHealNextWait(MESH_HEAL_FIRST_MS) == 2 * MESH_HEAL_FIRST_MS &&
+             meshHealNextWait(MESH_HEAL_MAX_WAIT_MS) == MESH_HEAL_MAX_WAIT_MS;
+        check("chan_heal_order_and_backoff", ok);
+    }
+    return fail;
+}
+#endif

@@ -3,6 +3,7 @@
 
 #include "wifi_ota_handler.h"
 #include "ota_handler.h"
+#include "mesh_espnow.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -274,7 +275,7 @@ extern "C" void wifiStaDisconnect(void) {
         WiFi.disconnect(true, true);
 #ifdef OUISPY_ROLE_MANAGER
         WiFi.mode(WIFI_AP_STA);
-        esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(meshChannel(), WIFI_SECOND_CHAN_NONE);
 #else
         WiFi.mode(WIFI_OFF);
 #endif

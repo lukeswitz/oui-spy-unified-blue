@@ -17,3 +17,5 @@ clang++ -std=c++17 -Wall -Wextra -Isrc -o "$out/axeofftest" test/host/axeoff_mat
 "$out/axeofftest"
 clang++ -std=c++17 -Wall -Wextra -Isrc -o "$out/blesnifftest" test/host/blesniff_frame_test.cpp
 "$out/blesnifftest"
+clang++ -std=c++17 -Wall -Wextra -Isrc -o "$out/meshchantest" test/host/mesh_chan_test.cpp
+"$out/meshchantest"

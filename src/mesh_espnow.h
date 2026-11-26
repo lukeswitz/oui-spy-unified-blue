@@ -51,6 +51,31 @@ void meshDebugForceManager(void);
 const char* meshGetLocalNodeId(void);
 MeshStatus meshGetStatus(void);
 
+#include "mesh_chan.h"
+uint8_t meshChannel(void);
+bool meshHealing(void);
+#ifdef OUISPY_ROLE_MANAGER
+struct MeshChanStatusRow {
+    char    id[MESH_CHAN_ID_LEN];
+    uint8_t flags;
+};
+#define MESH_CHAN_FLAG_CONFIRMED 0x01
+#define MESH_CHAN_FLAG_FOLLOWED  0x02
+struct MeshChanStatus {
+    uint8_t           current;
+    uint8_t           state;
+    uint8_t           target;
+    uint8_t           epoch;
+    uint8_t           n;
+    MeshChanStatusRow rows[MESH_CHAN_ROWS];
+};
+uint8_t meshChanRequest(uint8_t channel, bool force);
+void meshGetChanStatus(MeshChanStatus* out);
+#endif
+#ifdef OUISPY_PORT_SELFTEST
+int meshChanSelfTest(void);
+#endif
+
 #define MESH_LIVE_NODES_MAX 16
 #define MESH_MANAGER_TTL_MS 45000
 #define MESH_NODE_TIMEOUT_MS 45000
