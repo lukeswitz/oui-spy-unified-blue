@@ -404,10 +404,13 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It receives only and shows no picture. Open it from the **FPV receiver** tile on HOME.
 
+<img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" />
+
 - **Channels:** the six standard bands A, B, E, F, R and L, 48 channels in all. The C5 tunes 5180–5885 MHz, so R8, E6, E7 and E8 show as N/A. L-band is below the C5's Wi-Fi channels and is experimental.
-- **Modes:** **SCAN** measures every channel once, then stops on the strongest transmitter. **SWEEP** repeats the measurement and keeps the heat map live. **HOP** visits each flagged channel for 2 s between sweeps. **STOP** holds one channel. The arrows step to the previous or next channel, and tapping a cell in the heat map tunes it.
+- **Modes:** **SCAN** measures every channel once, then stops on the strongest transmitter. If none is flagged, it stops on the loudest channel above the threshold. **SWEEP** repeats the measurement and keeps the heat map live. **HOP** visits each flagged channel for 2 s between sweeps. The arrows step to the previous or next channel, and tapping a cell in the heat map holds that channel. **LEAVE FPV** stops the receiver.
 - **Levels:** each cell shows a relative receiver level, not dBm. The noise floor is the lower quartile of the measured channels.
 - **Flags:** a channel is flagged when its level is above the floor by the **Flag threshold** (default 12) and the carrier is steady (coherence at least 40%). **LOCKED** shows after three steady readings on the tuned channel.
+- **Bleed:** a transmitter also reaches channels within 19 MHz of it. Only the strongest of those lights up and can be flagged. The others keep their number.
 - **Feed:** flagged channels appear in the Sky Spy list, the Drones list (**FPV** chip) and the feed as `FPV A1 5865`, with no position.
 - **Wi-Fi:** Wi-Fi engines pause while FPV is on and restart when you tap **LEAVE FPV**. FPV refuses to start while mesh or the ESP-NOW hub is on.
 - **Pins:** FPV drives GPIO 1, 0, 23, 7, 10, 5, 3 and 4 with receiver data. Keep them unconnected. It is not available on the T-Dongle-C5 or on manager builds.
