@@ -364,6 +364,26 @@
                     <div class="help-text" id="rStatus">Needs pip install rns lxmf.</div>
                 </div>
                 <div class="set-block">
+                    <h4>Meshtastic</h4>
+                    <div class="toggle-item"><input type="checkbox" id="mtEn"><label for="mtEn" class="toggle-label">Send alerts over the Meshtastic mesh</label></div>
+                    <label>Radio port</label>
+                    <input type="text" id="mtPort" class="field mono" list="mtPorts" placeholder="/dev/ttyUSB0, or tcp:&lt;host&gt;" autocomplete="off">
+                    <datalist id="mtPorts"></datalist>
+                    <label>Channel</label>
+                    <select id="mtChan" class="field"></select>
+                    <label>Also send to these nodes (optional, up to 4, like !0a1b2c3d)</label>
+                    <input type="text" id="mtRecips" class="field mono" placeholder="!0a1b2c3d !4d5e6f70">
+                    <div class="toggle-item"><input type="checkbox" id="mtNew"><label for="mtNew" class="toggle-label">New devices (a batch a minute)</label></div>
+                    <div class="toggle-item"><input type="checkbox" id="mtDrone"><label for="mtDrone" class="toggle-label">Drones (when one is first heard)</label></div>
+                    <div class="toggle-item"><input type="checkbox" id="mtLost"><label for="mtLost" class="toggle-label">Lost nodes (a lost node seen again)</label></div>
+                    <div class="toggle-item"><input type="checkbox" id="mtNodes"><label for="mtNodes" class="toggle-label">Nodes (joining and dropping)</label></div>
+                    <div class="ctl-row"><button class="btn ghost" id="mtTest">Send a test</button></div>
+                    <div class="help-text" id="mtStatus">Off.</div>
+                    <label>Heard on the radio</label>
+                    <div class="help-text" id="mtInbox">Nothing heard yet. Text messages on the channel land here.</div>
+                    <div class="help-text">Meshtastic airtime is shared by every radio in range: the dashboard batches new devices and spaces its messages out, at most one a minute per event type. It only sends on a channel with its own key, never the public default one. Save settings first: the test uses what was last saved.</div>
+                </div>
+                <div class="set-block">
                     <h4>Map Tiles</h4>
                     <select id="sTiles" class="field"></select>
                     <input type="text" id="sTilesCustom" class="field" placeholder="http://localhost:8080/{z}/{x}/{y}.png">

@@ -93,7 +93,7 @@ def link_summary(snapshot, sources, settings, mode):
     return {"mode": mode, "home": {"id": snapshot["home"].get("id"), "alive": bool(snapshot["home"].get("alive"))},
             "nodes": {"total": len(nodes), "online": sum(1 for n in nodes if n.get("online"))},
             "board": {"connected": bool(board.get("connected")), "detail": board.get("detail", "")},
-            "settings": {k: settings.get(k) for k in ("mqtt", "tak", "rns", "retention_days")}}
+            "settings": {k: settings.get(k) for k in ("mqtt", "tak", "rns", "meshtastic", "retention_days")}}
 
 
 def cot_event(uid, ctype, lat, lon, callsign, remarks="", how="m-g", stale=STALE_S, link_uid=None, now=None):

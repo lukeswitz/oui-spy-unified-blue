@@ -25,6 +25,7 @@ from flask_socketio import SocketIO
 
 import access
 import connectors
+import meshtastic_link
 from board_commands import BoardCommander, PlanError
 from board_source import BoardSource
 from fleet import Fleet
@@ -49,6 +50,7 @@ DEFAULT_SETTINGS = {
     "mqtt": dict(connectors.MQTT_DEFAULTS),
     "tak": dict(connectors.TAK_DEFAULTS),
     "rns": dict(connectors.RNS_DEFAULTS),
+    "meshtastic": meshtastic_link.defaults(),
 }
 CAPS = {"commands": ["status", "identify", "reboot"], "console_input": False, "filters": False,
         "firmware": False, "fleetkey": False, "notes": "Filters, presets, buzzer, channel, firmware and the "
@@ -123,6 +125,7 @@ store = Store(db_path)
 sources = {}
 src_lock = threading.RLock()
 seen_drones = set()
+lost_nodes = set()
 
 
 def settings():
@@ -131,6 +134,7 @@ def settings():
     s["mqtt"] = connectors.clean_mqtt({}, s.get("mqtt"))
     for k in ("tak", "rns"):
         s[k] = {**DEFAULT_SETTINGS[k], **(s.get(k) or {})}
+    s["meshtastic"] = meshtastic_link.merged(s.get("meshtastic"))
     return s
 
 
@@ -148,14 +152,27 @@ def emit(event, payload):
     _alerts(event, payload)
 
 
+def _node_label(nid):
+    return (store.nodes_meta().get(nid) or {}).get("alias") or nid
+
+
 def _alerts(event, payload):
     if event == "det" and payload.get("is_new"):
         rns.alert("new_devices", f"New device {payload['mac']} {payload.get('descr') or ''} at {payload['node']}".strip())
+        mesh.event("new_devices", f"{payload.get('descr') or 'device'} at {_node_label(payload['node'])}")
     elif event == "node_event" and payload.get("event") == "offline":
         rns.alert("lost_nodes", f"Node {payload['id']} went offline")
+        lost_nodes.add(payload["id"])
+        mesh.event("nodes", f"{_node_label(payload['id'])} dropped")
+    elif event == "node_event" and payload.get("event") == "online":
+        if payload["id"] in lost_nodes:
+            lost_nodes.discard(payload["id"])
+            mesh.event("lost_nodes", _node_label(payload["id"]))
+        mesh.event("nodes", f"{_node_label(payload['id'])} joined")
     elif event == "drone" and isinstance(payload, dict) and payload.get("mac") not in seen_drones:
         seen_drones.add(payload.get("mac"))
         rns.alert("drones", f"Drone heard: {payload.get('id') or payload.get('mac')}")
+        mesh.event("drones", f"{payload.get('id') or 'unknown ID'}")
 
 
 fleet = Fleet(store, emit)
@@ -182,6 +199,8 @@ def _collect():
 
 tak = connectors.TakLink(lambda: settings()["tak"], _collect)
 rns = connectors.ReticulumLink(lambda: settings()["rns"])
+mesh = meshtastic_link.MeshtasticLink(lambda: settings()["meshtastic"])
+MESH_PUBLIC = ("state", "error", "sent", "failed", "queued", "heard", "last", "radio", "channel_name")
 
 
 def public_settings():
@@ -191,6 +210,7 @@ def public_settings():
                  "password_set": bool(connectors.mqtt_password())}
     s["tak"] = {**s["tak"], **{k: v for k, v in tak.status().items() if k in ("state", "sent", "last", "error")}}
     s["rns"] = {**s["rns"], **{k: v for k, v in rns.status().items() if k in ("state", "address", "error")}}
+    s["meshtastic"] = {**s["meshtastic"], **{k: v for k, v in mesh.status().items() if k in MESH_PUBLIC}}
     return s
 
 
@@ -779,7 +799,16 @@ def api_settings_set():
                 store.set_setting(key, fn(data[key], settings()[key]))
             except (TypeError, ValueError) as e:
                 return jsonify({"ok": False, "error": f"{key.upper()}: {e}"}), 400
+    if "meshtastic" in data and isinstance(data["meshtastic"], dict):
+        try:
+            board = str(data.get("serial_port") or args.serial or settings()["serial_port"])
+            store.set_setting("meshtastic", meshtastic_link.clean_meshtastic(
+                data["meshtastic"], settings()["meshtastic"], board if board not in ("auto", "off") else ""))
+        except (TypeError, ValueError) as e:
+            return jsonify({"ok": False, "error": f"Meshtastic: {e}"}), 400
     if "serial_port" in data:
+        if str(data["serial_port"]) and str(data["serial_port"]) == settings()["meshtastic"]["port"]:
+            return jsonify({"ok": False, "error": "the Meshtastic radio already uses that port"}), 400
         store.set_setting("serial_port", str(data["serial_port"]) or "auto")
         restart = True
     if "mqtt" in data and isinstance(data["mqtt"], dict):
@@ -809,6 +838,19 @@ def api_tak():
 @app.route("/api/rns")
 def api_rns():
     return jsonify(rns.status())
+
+
+@app.route("/api/meshtastic")
+def api_meshtastic():
+    return jsonify({"config": settings()["meshtastic"], **mesh.status()})
+
+
+@app.route("/api/meshtastic/test", methods=["POST"])
+def api_meshtastic_test():
+    ok, why = mesh.test()
+    if not ok:
+        return jsonify({"ok": False, "error": why}), 409
+    return jsonify({"ok": True, "queued": True})
 
 
 @app.route("/api/ports")
@@ -908,6 +950,7 @@ def main():
     import atexit
 
     def _close_feeds(*_):
+        mesh.stop()
         with src_lock:
             for src in sources.values():
                 src.stop()

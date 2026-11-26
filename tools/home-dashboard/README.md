@@ -1,8 +1,8 @@
 # OUI-APEX Home Dashboard
 
-The home dashboard is a web page that runs on your computer and shows an OUI-APEX mesh live. It reads one board over USB, lists every node in the mesh, puts the nodes on a map, and keeps a searchable history of every detection. Nothing leaves your computer unless you switch on a link to a TAK server, Reticulum, or an online map layer.
+The home dashboard is a web page that runs on your computer and shows an OUI-APEX mesh live. It reads one board over USB, lists every node in the mesh, puts the nodes on a map, and keeps a searchable history of every detection. Nothing leaves your computer unless you switch on a link to a TAK server, Reticulum or a Meshtastic radio, or an online map layer.
 
-It is based on the OUI-SPY Mesh dashboard in [colonelpanichacks/ouispy-detector](https://github.com/colonelpanichacks/ouispy-detector) (`home-dashboard/`), written by Colonel Panic and released under the MIT license. The web page, the history database, the map, the drone tracker and the position model come from that project. The board link, the node commands, the access control and the TAK and Reticulum links are new. The upstream license is in [LICENSE](LICENSE) and the notice is in [companion/NOTICE](../../companion/NOTICE).
+It is based on the OUI-SPY Mesh dashboard in [colonelpanichacks/ouispy-detector](https://github.com/colonelpanichacks/ouispy-detector) (`home-dashboard/`), written by Colonel Panic and released under the MIT license. The web page, the history database, the map, the drone tracker and the position model come from that project. The board link, the node commands, the access control and the TAK, Reticulum and Meshtastic links are new. The upstream license is in [LICENSE](LICENSE) and the notice is in [companion/NOTICE](../../companion/NOTICE).
 
 ## Run it
 
@@ -74,7 +74,7 @@ If the board you plugged in is a manager, it is the home node. If it is a plain 
 - **Metrics.** Detections over time, vendors, nodes and signal strength.
 - **Console.** A log of what the board and the dashboard did. The board has no text console, so there is no command box.
 - **Node commands.** In the node drawer or on the **Fleet Control** tab: **Read status**, **Identify** and **Reboot**, to one node or to all. A status read finishes when the node answers. **Identify** and **Reboot** finish when the board accepts the command, because the node does not confirm them. Each job says which one it was.
-- **Settings.** Serial port, MQTT, map layer, notifications, and how many days to keep history (0 keeps everything, and old rows are pruned hourly).
+- **Settings.** Serial port, MQTT, TAK server, Reticulum, Meshtastic, map layer, notifications, and how many days to keep history (0 keeps everything, and old rows are pruned hourly).
 
 Filters, presets, buzzer and LED, radio channel, firmware updates and the fleet key are not available here. The firmware has no remote control for them from a computer, so you set them in the OUI-APEX app. Their controls are hidden. A request for one of them is refused with that message.
 
@@ -109,6 +109,36 @@ Its identity is kept in `~/.config/ouispy/reticulum_identity` with mode `0600`. 
 
 `GET /api/rns` returns `enabled`, `state`, `address`, `sent`, `failed`, `queued` and `error`.
 
+### Meshtastic
+
+The dashboard sends alerts as text messages through a Meshtastic radio that is plugged into this computer by USB or reachable on the network, and lists the text messages that radio hears. It needs nothing beyond `requirements.txt` (`pyserial` opens the serial port). It does not use the `meshtastic` Python package: it speaks the radio's client stream itself (`mt_codec.py`), written from the public field numbers in `mesh.proto`, `channel.proto` and `portnums.proto`.
+
+Set it up in **Settings** → **Meshtastic**, or in the app under **Meshtastic settings**, then save and press **Send a test**.
+
+| Setting | Meaning | Default |
+|---|---|---|
+| Radio port | A serial port such as `/dev/ttyUSB0`, `/dev/cu.usbmodem1101` or `COM5`, or `tcp:HOST[:PORT]` for a radio on the network (port 4403). It cannot be the port the board uses. | none |
+| Channel | The channel to send on, picked from the channels the radio reports. | 1 |
+| Also send to | Up to four node ids like `!0a1b2c3d`. Each message also goes to each of them as a direct message. | none |
+| Events | Which alerts to send: **New devices** (a batch a minute), **Drones** (when one is first heard), **Lost nodes** (a lost node seen again) and **Nodes** (joining and dropping). | all off |
+
+The link is off until you enable it, and every event is off until you tick it.
+
+Meshtastic airtime is shared by every radio in range, so the dashboard spaces its messages out:
+
+- Each event type sends at most one message a minute. Events that arrive in between are batched into it, and the same item twice reads `item x2`.
+- There are at least 20 seconds between any two packets, and a direct message to a recipient is a packet of its own.
+- A message is at most 200 bytes. What does not fit ends as `(+N more)`. An event waits at most 10 minutes, and each type keeps at most 50.
+- Messages carry a short description, not MAC addresses.
+
+The dashboard never sends on a channel that has no key of its own (the public default channel that any radio in range can read). It tells you instead.
+
+The inbox keeps the last 50 text messages the radio heard, in memory only: nothing is written to disk, and a restart empties it. A message from the mesh is shown as text and never run.
+
+The port and the channel can be set only through the settings API, which asks other devices for the access token like everything else, and a serial name must be `/dev/tty*`, `/dev/cu.*` or `COMn`. Nothing else is opened. While the link is up it sends a keep-alive every 60 seconds.
+
+`GET /api/meshtastic` returns `config`, `enabled`, `state` (`off`, `connecting`, `connected`, `retrying` or `error`), `error`, `radio`, `radio_name`, `channel_name`, `channels`, `sent`, `failed`, `queued`, `heard`, `last` and `inbox`. `POST /api/meshtastic/test` queues the test message with the saved settings, or says why it cannot.
+
 ## History
 
 Detections and sightings are stored in `ouispy.db` next to the program, or in `ouispy-demo.db` for `--demo`. Set **Keep history for** to a number of days to prune older rows, or to 0 to keep everything. **Clear detection history** deletes every detection and keeps devices, names, groups and drones.
@@ -119,7 +149,7 @@ Detections and sightings are stored in `ouispy.db` next to the program, or in `o
 python3 -m unittest discover -s tests
 ```
 
-The tests need only the Python standard library. They cover the link framing, the detection and mesh status decoders, the live feed against a fake board, node commands, the access token, the TAK link against a local server and the Reticulum link against a stand-in library.
+The tests need only the Python standard library, plus Flask for the web routes (those tests are skipped without it). They cover the link framing, the detection and mesh status decoders, the live feed against a fake board, node commands, the access token, the TAK link against a local server, the Reticulum link against a stand-in library and the Meshtastic link against a stand-in radio: the handshake, the channel list, the text packet bytes, batching and the rate limit, and the settings routes refusing a request without the token. The Meshtastic link has not been run against a real radio.
 
 ## Disclaimer
 

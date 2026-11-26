@@ -117,13 +117,15 @@ Meshtastic
 https://github.com/meshtastic/protobufs
 https://meshtastic.org/docs/development/device/client-api/
 
-lib/core/meshtastic/ speaks to a Meshtastic radio over Bluetooth. It uses the
-Bluetooth service and characteristic UUIDs from the Meshtastic client API
-documentation, and the field numbers, port numbers and enum values of the
-messages in mesh.proto, channel.proto and portnums.proto, so that the radio
-accepts and understands them. Only those identifiers are used. No Meshtastic
-code or .proto text is included. The Meshtastic protobufs are licensed under
-GPL-3.0.
+lib/core/meshtastic/ speaks to a Meshtastic radio over Bluetooth, and
+tools/home-dashboard/mt_codec.py and meshtastic_link.py speak to one over a
+serial port or TCP. They use the Bluetooth service and characteristic UUIDs,
+and the stream framing bytes, from the Meshtastic client API documentation,
+and the field numbers, port numbers and enum values of the messages in
+mesh.proto, channel.proto and portnums.proto, so that the radio accepts and
+understands them. Only those identifiers are used. No Meshtastic code or
+.proto text is included, and the GPL-3.0 meshtastic Python package is not
+used. The Meshtastic protobufs are licensed under GPL-3.0.
 
 --------------------------------------------------------------------------------
 WhisperPair

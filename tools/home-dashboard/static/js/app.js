@@ -2569,6 +2569,17 @@ async function loadSettingsForm() {
     $("rDrone").checked = rs.drones !== false;
     $("rLost").checked = rs.lost_nodes !== false;
     $("rStatus").textContent = rn.enabled ? `${rn.state || "off"}${rn.address ? ", address " + rn.address : ""}${rn.error ? ": " + rn.error : ""}` : "Needs pip install rns lxmf.";
+    const mt = s.meshtastic || {}, ms = mt.send || {};
+    $("mtEn").checked = !!mt.enabled;
+    $("mtPort").value = mt.port || "";
+    $("mtPorts").innerHTML = ports.map((p) => `<option value="${esc(p.device)}">${esc(p.desc)}</option>`).join("");
+    $("mtRecips").value = (mt.recipients || []).join(" ");
+    $("mtNew").checked = !!ms.new_devices;
+    $("mtDrone").checked = !!ms.drones;
+    $("mtLost").checked = !!ms.lost_nodes;
+    $("mtNodes").checked = !!ms.nodes;
+    $("mtChan").dataset.val = String(mt.channel ?? 1);
+    refreshMesh();
     $("sTiles").value = s.tiles || "osm-dark";
     $("sNotify").checked = !!s.notify;
     $("sLinks").checked = linkMode() !== "off";
@@ -2577,6 +2588,31 @@ async function loadSettingsForm() {
     $("sTilesCustom").value = s.tiles_custom || "";
     $("sTilesCustom").style.display = $("sTiles").value.startsWith("custom") ? "" : "none";
 }
+const MESH_STATE = { off: "Off", connecting: "Connecting", connected: "Connected", retrying: "Not connected: retrying", error: "Failed" };
+async function refreshMesh() {
+    let m;
+    try { m = await api("/api/meshtastic"); } catch (e) { return; }
+    if (!m || !m.config) return;
+    const sel = $("mtChan"), want = sel.dataset.val ?? String(m.config.channel);
+    const opts = (m.channels || []).map((c) => [String(c.index), `${c.index}: ${c.name}${c.private ? "" : " (public: not used)"}`]);
+    if (!opts.some(([v]) => v === want)) opts.push([want, `${want}: not read from a radio yet`]);
+    sel.innerHTML = opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
+    sel.value = want;
+    $("mtStatus").textContent = `${MESH_STATE[m.state] || "Off"}${m.radio ? `, radio ${m.radio}` : ""}${m.channel_name ? `, channel ${m.channel_name}` : ""}. ` +
+        `Sent ${m.sent}, failed ${m.failed}, queued ${m.queued}, heard ${m.heard}. Last sent ${m.last ? ago(m.last) : "never"}.` +
+        (m.error ? ` Last error: ${m.error}` : "");
+    $("mtInbox").innerHTML = (m.inbox || []).length
+        ? m.inbox.slice(0, 20).map((r) => `${esc(hms(r.ts))} ${esc(r.name || r.from)}: ${esc(r.text)}`).join("<br>")
+        : "Nothing heard yet. Text messages on the channel land here.";
+}
+$("mtChan").onchange = () => { $("mtChan").dataset.val = $("mtChan").value; };
+$("mtTest").onclick = async () => {
+    const r = await api("/api/meshtastic/test", { method: "POST", body: {} });
+    if (r.ok === false) toast("bad", "Test not sent", r.error);
+    else toast("good", "Test queued", "It goes out with the next free slot");
+    refreshMesh();
+};
+setInterval(() => { if ($("tab-settings").classList.contains("active") && !document.hidden) refreshMesh(); }, 5000);
 $("sNotify").onchange = async () => {
     if ($("sNotify").checked && "Notification" in window && Notification.permission !== "granted") {
         const p = await Notification.requestPermission();
@@ -2601,6 +2637,10 @@ $("saveSettings").onclick = async () => {
                ca_file: $("tCa").value.trim(), cert_file: $("tCert").value.trim(), key_file: $("tKey").value.trim() },
         rns: { enabled: $("rEn").checked, recipients: $("rRecips").value.split(/\s+/).filter(Boolean),
                send: { new_devices: $("rNew").checked, drones: $("rDrone").checked, lost_nodes: $("rLost").checked } },
+        meshtastic: { enabled: $("mtEn").checked, port: $("mtPort").value.trim(), channel: Number($("mtChan").value) || 0,
+                      recipients: $("mtRecips").value.split(/[\s,;]+/).filter(Boolean),
+                      send: { new_devices: $("mtNew").checked, drones: $("mtDrone").checked,
+                              lost_nodes: $("mtLost").checked, nodes: $("mtNodes").checked } },
     };
     const res = await api("/api/settings", { method: "POST", body });
     if (res.ok === false) { toast("bad", "Settings not saved", res.error); return; }
