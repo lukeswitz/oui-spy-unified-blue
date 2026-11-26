@@ -1297,6 +1297,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     void onDisconnect(NimBLEServer* server, NimBLEConnInfo& info, int reason) override {
         BlePeer* pe = blePeerFind(info.getConnHandle());
         bool wasAuthed = pe && pe->authed;
+        Serial.printf("[BLE] peer disconnected handle=%u reason=0x%03X authed=%d\n",
+                      (unsigned)info.getConnHandle(), (unsigned)reason, (int)wasAuthed);
         if (pe) { pe->handle = BLE_HS_CONN_HANDLE_NONE; pe->authed = false; }
         if (wasAuthed && !bleAnyAuthedPeer()) onDisconnect(server);
         else bleAdvStart();
