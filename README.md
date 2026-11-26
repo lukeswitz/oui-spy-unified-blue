@@ -488,7 +488,18 @@ The app can link to the [home dashboard](tools/home-dashboard/README.md) running
 
 The app can pair this phone's own Meshtastic radio over Bluetooth, so you can send a message or your position by LoRa radio when you have no network. It is off until you pick a radio: SETTINGS → DATA → **Meshtastic radio**.
 
-<img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio connected: nodes heard, messages sent and heard, send a message or position" />
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio settings: alert types, limits, today's count and destination" /></td>
+    <td width="50%" valign="top">
+      <ol>
+        <li><b>Alert types</b>: which alerts go out by LoRa when <b>Send alerts automatically</b> is on.</li>
+        <li><b>Limits</b>: the shortest gap between two messages and the most messages a day.</li>
+        <li><b>Sent today</b>: messages sent and alerts skipped by the limits.</li>
+        <li><b>Send to</b>: the private channel, or up to 4 chosen nodes.</li>
+      </ol></td>
+  </tr>
+</table>
 
 - **Find a radio:** scans for radios that advertise the Meshtastic Bluetooth service. A radio talks to one phone at a time, so close the Meshtastic app first. If Android asks for a PIN, the radio's default is 123456.
 - **Channel:** the app sends only on a channel that has a key of its own. It never sends on the public channel (no key, or the one-byte default key), and it cannot be chosen. If the radio has no private channel, add one in the Meshtastic app. The app reads each channel's key length to tell the two apart and does not keep or show the key.
