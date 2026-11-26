@@ -404,7 +404,20 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It receives only and shows no picture. Open it from the **FPV receiver** tile on HOME.
 
-<img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" />
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" /></td>
+    <td width="50%" valign="top">
+      <ol>
+        <li><b>Status</b>: LOCKED, TUNED or the running mode, the channel, its level, coherence and noise floor, and how many channels are flagged.</li>
+        <li><b>Proximity</b>: the needle moves toward CLOSE as the tuned channel rises above the floor.</li>
+        <li><b>LEAVE FPV</b>: stops the receiver and restarts the Wi-Fi engines.</li>
+        <li><b>Modes</b>: SCAN, SWEEP or HOP.</li>
+        <li><b>Channel</b>: the arrows step to the previous or next channel and hold it.</li>
+        <li><b>Channels</b>: brighter is stronger, a bolt marks a flagged transmitter, and tapping a cell holds that channel.</li>
+      </ol></td>
+  </tr>
+</table>
 
 - **Channels:** the six standard bands A, B, E, F, R and L, 48 channels in all. The C5 tunes 5180–5885 MHz, so R8, E6, E7 and E8 show as N/A. L-band is below the C5's Wi-Fi channels and is experimental.
 - **Modes:** **SCAN** measures every channel once, then stops on the strongest transmitter. If none is flagged, it stops on the loudest channel above the threshold. **SWEEP** repeats the measurement and keeps the heat map live. **HOP** visits each flagged channel for 2 s between sweeps. The arrows step to the previous or next channel, and tapping a cell in the heat map holds that channel. **LEAVE FPV** stops the receiver.
@@ -434,7 +447,17 @@ The app sends catches and Remote ID drones to ATAK as Cursor-on-Target markers o
 
 A language model can read what the app has seen and, when you allow it, change things. It is off by default. Turn it on in SETTINGS → DATA → **Assistant**, pick a model provider, then tap **Open the assistant**.
 
-<img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" />
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" /></td>
+    <td width="50%" valign="top">
+      <ol>
+        <li><b>Model provider</b>: Ollama on your network, or Claude, OpenAI or Gemini in the cloud.</li>
+        <li><b>ⓘ</b>: what the automatic features send and when.</li>
+        <li><b>Automatic</b>: alert lookups and scheduled reports. Both are off until you turn them on.</li>
+      </ol></td>
+  </tr>
+</table>
 
 - **Providers:** Ollama (a computer on your network, default port 11434), Claude, OpenAI or Gemini. A cloud provider asks for your OK once, then receives your questions and everything the model reads within the grants. Ollama keeps it all on your network, over plain http unless you give an https address. On Android, plain http to a LAN address may be blocked by the system; use https or a tunnel if the **Check** button fails.
 - **API keys** are kept in the phone's secure storage and sent only to their provider. They never go in settings, logs or exports. **Remove key** deletes one.
@@ -638,8 +661,19 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/mesh-channel.png" alt="Mesh channel: the current channel and the move control" /><br><sub>SETTINGS → NODE → MESH → <b>Channel</b></sub></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/fleet-metrics.png" alt="Fleet metrics, Detections view: totals and detections over time" /><br><sub><b>Fleet metrics</b>, Detections view</sub></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/mesh-channel.png" alt="Mesh channel: the current channel and the move control" />
+      <ol>
+        <li><b>Channel ⓘ</b>: how a move works.</li>
+        <li><b>Channel now</b>: the mesh's current channel.</li>
+        <li><b>Picker</b>: the channel to move to, 1 to 11.</li>
+        <li><b>Move fleet</b>: asks every node to confirm, then all switch together.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/fleet-metrics.png" alt="Fleet metrics, Detections view: totals and detections over time" />
+      <ol>
+        <li><b>Totals</b>: detections, change against the span before, unique and new devices, active nodes and the busiest period.</li>
+        <li><b>BLE / Wi-Fi</b>: unique devices on each radio.</li>
+        <li><b>Over time</b>: detections per period in the chosen span.</li>
+      </ol></td>
   </tr>
 </table>
 
