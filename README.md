@@ -12,7 +12,8 @@
 </div>
 
 <div align="center">
-<b>OUI-APEX detects surveillance hardware, trackers and drones.</b> Wardriving and recon app with support for external USB devices.
+<b>OUI-APEX detects surveillance hardware, trackers, drones and other devices and suspicious activity on the 2.4 and 5GHz bands.</b> 
+<p>Also a solid wardriving and recon app with support for external USB devices. Meshtastic & ATAK integration.</p>
 <p>
 
 <a href="#quick-start"><b>Quick start</b></a> &middot; <a href="#a-tour-of-the-app"><b>Tour</b></a> &middot; <a href="#engines"><b>Engines</b></a> &middot; <a href="#boards"><b>Boards</b></a> &middot; <a href="#mesh"><b>Mesh</b></a> &middot; <a href="#usb-radios-on-android"><b>USB radios</b></a>
@@ -34,7 +35,8 @@
 
 > Runs the OUI-SPY ecosystem by colonelpanichacks, with additional features.
 >
-> *Not affiliated with OUI-SPY*
+> Beta, possible unexpected behavior. *Not affiliated with OUI-SPY*
+> 
   
 ## Contents
 
