@@ -4,12 +4,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oui_spy/core/meshtastic/mesh_alerts.dart';
+import 'package:oui_spy/core/meshtastic/meshtastic_state.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/features/config/device_config.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'meshtastic_state_test.dart' show FakeBle, FakeLink;
+
 void main() {
+  testWidgets('Data lists a Meshtastic radio page, and the radio is no longer inside Export', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer(overrides: [
+      sharedPreferencesProvider.overrideWithValue(prefs),
+      meshtasticProvider.overrideWith((ref) => MeshtasticNotifier(ble: FakeBle(FakeLink()))),
+      meshAlertProvider.overrideWith((ref) => MeshAlertNotifier(send: (text, to) async => null)),
+    ]);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: AppTheme.darkTheme, home: const DeviceConfigScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Data'));
+    await tester.pumpAndSettle();
+    expect(find.text('Meshtastic radio'), findsOneWidget);
+    expect(find.text('Pair a radio, channel, messages, automatic alerts'), findsOneWidget);
+
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('OUI database'), 300);
+    expect(find.text('Home dashboard'), findsWidgets);
+    expect(find.text('Find a radio'), findsNothing);
+    await tester.tap(find.byTooltip('Data'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Meshtastic radio'));
+    await tester.pumpAndSettle();
+    expect(find.text('Find a radio'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Send alerts automatically'), 300);
+    expect(find.text('Automatic alerts'), findsOneWidget);
+  });
+
   testWidgets('section opens as a page and pops back to overview', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();

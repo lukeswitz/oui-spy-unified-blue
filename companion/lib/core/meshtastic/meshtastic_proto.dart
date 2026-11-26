@@ -52,8 +52,8 @@ class MeshtasticProto {
     return (PbWriter()..message(1, packet)).toBytes();
   }
 
-  static Uint8List encodeText(String text, {required int channel, required int id}) =>
-      encodePacket(portnum: portText, payload: utf8.encode(text), channel: channel, id: id);
+  static Uint8List encodeText(String text, {required int channel, required int id, int to = broadcast}) =>
+      encodePacket(portnum: portText, payload: utf8.encode(text), channel: channel, id: id, to: to);
 
   static Uint8List encodePosition(double lat, double lon, {int? altitude, required DateTime time, required int channel, required int id}) {
     final p = PbWriter()

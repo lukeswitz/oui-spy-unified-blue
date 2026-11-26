@@ -19,7 +19,7 @@ import 'package:oui_spy/features/config/ble_pin_flow.dart';
 import 'package:oui_spy/features/config/atak_section.dart';
 import 'package:oui_spy/features/assistant/assistant_settings_screen.dart';
 import 'package:oui_spy/features/config/home_dashboard_section.dart';
-import 'package:oui_spy/features/config/meshtastic_section.dart';
+import 'package:oui_spy/features/config/meshtastic_alerts_section.dart';
 import 'package:oui_spy/features/config/saved_map_areas_section.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
@@ -344,7 +344,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               'fw $_fwVersion',
               if (temp != null) formatTempC(temp, ref.read(unitSystemProvider)),
             ].join(' · ')}',
-      _ => 'Accounts, capture database, captures, export, triangulation, assistant',
+      _ => 'Accounts, capture database, captures, export, Meshtastic radio, triangulation, assistant',
     };
   }
 
@@ -425,6 +425,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Capture Database', 'Totals, channels, vendors, classified devices', Icons.analytics, () => const _WardriveConfigTab(showAccounts: false)),
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
             ('Export', 'Data and backup, saved map areas, ATAK, OUI database', Icons.ios_share, _buildExportTab),
+            ('Meshtastic radio', 'Pair a radio, channel, messages, automatic alerts', Icons.settings_input_antenna, () => const MeshtasticSettingsPage()),
             ('Triangulation', 'Signal model for placed mesh nodes', Icons.hub, () => ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: const [_TriangulationSection()],
@@ -700,8 +701,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'Home dashboard'),
         const HomeDashboardSection(),
-        const SizedBox(height: 16),
-        const MeshtasticSection(),
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'OUI database'),
         const _OuiDatabaseSection(),

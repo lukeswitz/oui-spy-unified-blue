@@ -37,6 +37,18 @@ class NotifChannel {
   static const quiet = 'alerts_quiet';
 }
 
+/// An alert that reached the notification path and was not silenced. [channel] is the [NotifChannel] the alert
+/// belongs to, before the sound-off fallback to [NotifChannel.quiet].
+class AlertEvent {
+  const AlertEvent({required this.title, required this.detail, required this.channel, this.kind, this.mac});
+
+  final String title;
+  final String detail;
+  final String channel;
+  final String? kind;
+  final String? mac;
+}
+
 class NotificationService extends ChangeNotifier {
   NotificationService() {
     _loadPrefs();
@@ -130,6 +142,12 @@ class NotificationService extends ChangeNotifier {
 
   // Rate limiter: timestamps of recent notifications
   final List<DateTime> _recentNotifications = [];
+
+  @visibleForTesting
+  void debugReady() {
+    _initialized = true;
+    _permissionGranted = true;
+  }
 
   Future<void> init({bool ask = true}) async {
     if (!_initialized) {
@@ -497,6 +515,12 @@ class NotificationService extends ChangeNotifier {
   }
 
   void Function(String title, String detail, String? kind, String? mac, bool alert)? onAlert;
+  final _alertListeners = <void Function(AlertEvent)>[];
+
+  void addAlertListener(void Function(AlertEvent) listener) => _alertListeners.add(listener);
+
+  void removeAlertListener(void Function(AlertEvent) listener) => _alertListeners.remove(listener);
+
   bool Function()? activityCanAlert;
   final classAlertedMacs = <String>{};
   final classAlertKinds = <String, String>{};
@@ -743,6 +767,7 @@ class NotificationService extends ChangeNotifier {
   }) async {
     if (gate.silenced) return;
     if (muteKey != null) _noteSent(muteKey);
+    final alertChannel = channel;
     final soundOn = soundEnabled && (sfx == null || sfxOn(sfx));
     if (!soundOn && channel != NotifChannel.wardrive && channel != NotifChannel.detectorQuiet) {
       channel = NotifChannel.quiet;
@@ -752,7 +777,14 @@ class NotificationService extends ChangeNotifier {
         WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed &&
         (activityCanAlert?.call() ?? false);
     if (channel != NotifChannel.wardrive) {
-      onAlert?.call(title, subtitle == null ? body : '$subtitle · $body', alertKind, alertMac, viaActivity);
+      final detail = subtitle == null ? body : '$subtitle · $body';
+      onAlert?.call(title, detail, alertKind, alertMac, viaActivity);
+      if (_alertListeners.isNotEmpty) {
+        final event = AlertEvent(title: title, detail: detail, channel: alertChannel, kind: alertKind, mac: alertMac);
+        for (final l in List.of(_alertListeners)) {
+          l(event);
+        }
+      }
     }
     final androidDetails = AndroidNotificationDetails(
       channel,
