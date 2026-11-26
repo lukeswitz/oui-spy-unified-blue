@@ -141,6 +141,21 @@ Everything the boards and the phone hear, live. Tap any row for its details.
         <li><b>Map, Copy, Delete</b>: show it on the map, copy its MAC address, or remove it.</li>
       </ol></td>
   </tr>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+      <ol>
+        <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
+        <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
+        <li><b>A camera you drove past</b>: its line shows the signal getting stronger, then weaker.</li>
+        <li><b>With you</b>: the walking icon marks a device that moves with you, such as your own earbuds.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/17-history.png" alt="History of saved detections" />
+      <ol>
+        <li><b>Tools</b>: filter, sort, back to LIVE, saved sessions, and more.</li>
+        <li><b>A detector hit</b>: what it matched, here a doorbell camera.</li>
+        <li><b>A watch alert</b>: here a lookalike network with weaker security.</li>
+      </ol></td>
+  </tr>
 </table>
 
 ### Alerts and what to watch for
