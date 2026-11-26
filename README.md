@@ -19,17 +19,19 @@
 <a href="#quick-start"><b>Quick start</b></a> &middot; <a href="#a-tour-of-the-app"><b>Tour</b></a> &middot; <a href="#engines"><b>Engines</b></a> &middot; <a href="#boards"><b>Boards</b></a> &middot; <a href="#mesh"><b>Mesh</b></a> &middot; <a href="#usb-radios-on-android"><b>USB radios</b></a>
 <p>
 
-<table>
-  <tr>
-    <td><img width="200" src="docs/screenshots/tour/00-map.png" alt="Map after a short wardrive: hits along the route, a drone, Flock and detector hits" /></td>
-    <td><img width="349" src="docs/screenshots/ui/home-photo.jpg" alt="Phone running OUI-APEX on the Home screen with an RTL-SDR connected" /></td>
-  </tr>
-</table>
+<p>
+  <img width="200" src="docs/screenshots/tour/00-map.png" alt="Map after a short wardrive: hits along the route, a drone, Flock and detector hits" />
+  <img width="349" src="docs/screenshots/ui/home-photo.jpg" alt="Phone running OUI-APEX on the Home screen with an RTL-SDR connected" />
+</p>
 
-| Platform | Phone scans | Detects on its own (no board) | Full feature hardware |
-|---|---|---|---|
-| Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices. Drones that send Remote ID over Bluetooth or Wi-Fi/Wi-Fi Aware | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
-| iPhone / macOS | Bluetooth | Bluetooth devices, no drones | ESP32 board(s) |
+- **Android**
+  - Phone scans: Bluetooth, Wi-Fi
+  - Detects on its own (no board): Wi-Fi networks and Bluetooth devices. Drones that send Remote ID over Bluetooth or Wi-Fi/Wi-Fi Aware
+  - Full feature hardware: ESP32 board(s), RTL-SDR, USB Wi-Fi adapter
+- **iPhone / macOS**
+  - Phone scans: Bluetooth
+  - Detects on its own (no board): Bluetooth devices, no drones
+  - Full feature hardware: ESP32 board(s)
 
 </div>
 
@@ -82,152 +84,136 @@ Every screen below is the app itself on Android, filled with made-up devices alo
 
 The app asks for each permission on its own screen, then opens Home.
 
-<table>
-  <tr>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/01-permissions.png" alt="Permission step: Bluetooth" />
-      <ol>
-        <li><b>Progress</b>: which permission step you are on. Android asks for five.</li>
-        <li><b>Continue</b>: your phone shows its own prompt next.</li>
-      </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/02-location-always.png" alt="Permission step: location all the time" />
-      <ol>
-        <li><b>Location all the time</b>: needed to keep wardriving with the screen off.</li>
-        <li><b>Continue</b>: opens Settings. Choose <b>Allow all the time</b>, then go back.</li>
-      </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/03-first-launch.png" alt="Home on first launch" />
-      <ol>
-        <li><b>Status</b>: board link and GPS fix.</li>
-        <li><b>Shortcuts</b>: the arrows open the Connect screen. The phone icon starts the phone scan.</li>
-        <li><b>USE THIS DEVICE</b>: scan with the phone's own radios, no board needed.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="240" src="docs/screenshots/tour/01-permissions.png" alt="Permission step: Bluetooth" />
+<ol>
+  <li><b>Progress</b>: which permission step you are on. Android asks for five.</li>
+  <li><b>Continue</b>: your phone shows its own prompt next.</li>
+</ol>
+
+<img width="240" src="docs/screenshots/tour/02-location-always.png" alt="Permission step: location all the time" />
+<ol>
+  <li><b>Location all the time</b>: needed to keep wardriving with the screen off.</li>
+  <li><b>Continue</b>: opens Settings. Choose <b>Allow all the time</b>, then go back.</li>
+</ol>
+
+<img width="240" src="docs/screenshots/tour/03-first-launch.png" alt="Home on first launch" />
+<ol>
+  <li><b>Status</b>: board link and GPS fix.</li>
+  <li><b>Shortcuts</b>: the arrows open the Connect screen. The phone icon starts the phone scan.</li>
+  <li><b>USE THIS DEVICE</b>: scan with the phone's own radios, no board needed.</li>
+</ol>
 
 ### Start a scan
 
 Pick what to look for and which radios to use, then tap START.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/04-home-ready.png" alt="Home before a scan" />
-      <ol>
-        <li><b>Counters</b>: unique devices, engines running, and hits per minute.</li>
-        <li><b>Targets</b>: Flock cameras, drones, every Wi-Fi and BLE device (SCAN), and your watchlist (DETECT).</li>
-        <li><b>START</b>: starts a session. The app then asks which radio each board uses.</li>
-        <li><b>Engine cards</b>: turn one engine on or off by itself.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/05-home-running.png" alt="Home during a scan" />
-      <ol>
-        <li><b>Status</b>: what is scanning and how good the GPS fix is.</li>
-        <li><b>PAUSE / STOP</b>: pause or end the session. A stopped session is saved.</li>
-        <li><b>Hit counts</b>: hits per engine this session, next to its switch.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/04-home-ready.png" alt="Home before a scan" />
+<ol>
+  <li><b>Counters</b>: unique devices, engines running, and hits per minute.</li>
+  <li><b>Targets</b>: Flock cameras, drones, every Wi-Fi and BLE device (SCAN), and your watchlist (DETECT).</li>
+  <li><b>START</b>: starts a session. The app then asks which radio each board uses.</li>
+  <li><b>Engine cards</b>: turn one engine on or off by itself.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/tour/05-home-running.png" alt="Home during a scan" />
+<ol>
+  <li><b>Status</b>: what is scanning and how good the GPS fix is.</li>
+  <li><b>PAUSE / STOP</b>: pause or end the session. A stopped session is saved.</li>
+  <li><b>Hit counts</b>: hits per engine this session, next to its switch.</li>
+</ol>
 
 ### Detections
 
 Everything the boards and the phone hear, live. Tap any row for its details.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
-      <ol>
-        <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open HISTORY, and more.</li>
-        <li><b>Top vendors and Flock</b>: tap a vendor to show only its devices.</li>
-        <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
-        <li><b>A detector hit</b>: here a camera, with its channel and hit count.</li>
-        <li><b>A Flock hit</b>: with its confidence.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
-      <ol>
-        <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
-        <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
-        <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches-and-alerts">Watches and alerts</a>.</li>
-      </ol></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
-      <ol>
-        <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
-        <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
-        <li><b>A camera you drove past</b>: its line shows the signal getting stronger, then weaker.</li>
-        <li><b>With you</b>: the walking icon marks a device that moves with you, such as your own earbuds.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/17-history.png" alt="History of saved detections" />
-      <ol>
-        <li><b>Tools</b>: filter, sort, back to LIVE, saved sessions, and more.</li>
-        <li><b>A detector hit</b>: what it matched, here a doorbell camera.</li>
-        <li><b>A watch alert</b>: here a lookalike network with weaker security.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
+<ol>
+  <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open HISTORY, and more.</li>
+  <li><b>Top vendors and Flock</b>: tap a vendor to show only its devices.</li>
+  <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
+  <li><b>A detector hit</b>: here a camera, with its channel and hit count.</li>
+  <li><b>A Flock hit</b>: with its confidence.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
+<ol>
+  <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
+  <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
+  <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches-and-alerts">Watches and alerts</a>.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+<ol>
+  <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
+  <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
+  <li><b>A camera you drove past</b>: its line shows the signal getting stronger, then weaker.</li>
+  <li><b>With you</b>: the walking icon marks a device that moves with you, such as your own earbuds.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/tour/17-history.png" alt="History of saved detections" />
+<ol>
+  <li><b>Tools</b>: filter, sort, back to LIVE, saved sessions, and more.</li>
+  <li><b>A detector hit</b>: what it matched, here a doorbell camera.</li>
+  <li><b>A watch alert</b>: here a lookalike network with weaker security.</li>
+</ol>
 
 ### Alerts and what to watch for
 
 Choose which device types alert you. Every alert lands in one list.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
-      <ol>
-        <li><b>An alert</b>: what was found, why, and when. Tap it for the map and the device.</li>
-        <li><b>Count and clear</b>: how many alerts, and a button to clear them.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/11-what-to-watch.png" alt="Settings, What to Watch For" />
-      <ol>
-        <li><b>Alert threshold</b>: how sure a detector hit must be before it notifies you.</li>
-        <li><b>Bell</b>: notify, or only log it.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
+<ol>
+  <li><b>An alert</b>: what was found, why, and when. Tap it for the map and the device.</li>
+  <li><b>Count and clear</b>: how many alerts, and a button to clear them.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/tour/11-what-to-watch.png" alt="Settings, What to Watch For" />
+<ol>
+  <li><b>Alert threshold</b>: how sure a detector hit must be before it notifies you.</li>
+  <li><b>Bell</b>: notify, or only log it.</li>
+</ol>
 
 ### Map
 
 Every hit is placed where you heard it, along your route. The numbers are how many hits share a spot.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Map during a wardrive with the Flock list open" />
-      <ol>
-        <li><b>Session</b>: time recording, and counts of Wi-Fi, Flock, drone, detector and BLE hits.</li>
-        <li><b>Flock list</b>: tap the chip to open or close it. Tap a row to zoom the map to it. Drones and detector hits have their own lists.</li>
-        <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/09-map.png" alt="A saved wardrive session on the map" />
-      <ol>
-        <li><b>Saved session</b>: unique devices, total hits and distance.</li>
-        <li><b>Lists</b>: Flock, drone and detector hits from this session.</li>
-        <li><b>A drone</b>: its flight path and its pilot.</li>
-        <li><b>A cluster</b>: tap it to list the devices there.</li>
-        <li><b>SESSIONS</b>: open, export or delete saved sessions.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Map during a wardrive with the Flock list open" />
+<ol>
+  <li><b>Session</b>: time recording, and counts of Wi-Fi, Flock, drone, detector and BLE hits.</li>
+  <li><b>Flock list</b>: tap the chip to open or close it. Tap a row to zoom the map to it. Drones and detector hits have their own lists.</li>
+  <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/tour/09-map.png" alt="A saved wardrive session on the map" />
+<ol>
+  <li><b>Saved session</b>: unique devices, total hits and distance.</li>
+  <li><b>Lists</b>: Flock, drone and detector hits from this session.</li>
+  <li><b>A drone</b>: its flight path and its pilot.</li>
+  <li><b>A cluster</b>: tap it to list the devices there.</li>
+  <li><b>SESSIONS</b>: open, export or delete saved sessions.</li>
+</ol>
 
 ### Sessions and reports
 
 Every session is saved. Open one to replay it on the map, or open its report.
 
-<table>
-  <tr>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
-      <ol>
-        <li><b>SELECT, IMPORT, CLEAR ALL</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
-        <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
-      </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
-      <ol>
-        <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
-        <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
-      </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
-      <ol>
-        <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
-        <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="240" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
+<ol>
+  <li><b>SELECT, IMPORT, CLEAR ALL</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
+  <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
+</ol>
+
+<img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
+<ol>
+  <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
+  <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
+</ol>
+
+<img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+<ol>
+  <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
+  <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
+</ol>
 
 ### Tips
 
@@ -244,18 +230,16 @@ Every session is saved. Open one to replay it on the map, or open its report.
 
 ## Engines
 
-| Engine | Finds |
-|---|---|
-| **Detector** | Your watchlist (exact MAC, maker prefix, Bluetooth name contains, starts with or pattern, Bluetooth company ID, company data with a mask, 16-bit or 128-bit service UUID, Wi-Fi probe prefix, Wi-Fi beacon prefix, and a phone-only maker name), plus built-in signatures, all off by default: tracker tags following you (AirTag, AirPods and other Find My items, SmartTag, Tile, Google Find Hub, Chipolo, Pebblebee, DULT-standard tags), floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, evil-twin and KARMA rogue access points, Pwnagotchi, Meshtastic and MeshCore mesh radios, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, Motorola Solutions radios and body cams, i-PRO body cams, police and fleet vehicle routers, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE, wearable cameras and recorders (GoPro, Insta360, Snap Spectacles, Even Realities, Vuzix, Brilliant Labs Frame, PLAUD), vehicles (Teslas, Bluetooth OBD-II dongles), drones over Bluetooth (Remote ID, DJI) |
-| **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras, Raven gunshot sensors, Penguin and Pigvision. Optional OUI-only Wi-Fi hits |
-| **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
-| **Foxhunter** | One target device. The board beeps faster as you get closer. The app's FIND IT view shows the signal and a ring that pulses faster, and the phone can buzz with it |
-| **UniPwn** | Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …) |
-| **Wardrive** | Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS and, with the **802.15.4 (Zigbee, Thread)** switch, passive 802.15.4 receive on channels 11–26 (PAN ID, source address, beacon info, channel, LQI; receive only, never transmits) |
-| **PCAP** | Raw 802.11, BLE advertising or (C5 boards) 802.15.4 frames to a Wireshark `.pcap` |
-| **AXEOFF** | Axon gear only, on Bluetooth and Wi-Fi, passive. The board plays a tone when Axon gear appears, while it stays near, and when it leaves |
-| **BLE Sniff** | Every Bluetooth LE advert as a live list, with filters and **RECORD PCAP**. Passive. Needs the board connected to the phone directly, or picked as the node on a manager |
-| **FPV receiver** | Analog 5.8 GHz FPV video transmitters on 44 of the 48 standard channels. XIAO ESP32-C5 only. See [FPV receiver](#fpv-receiver) |
+- **Detector:** Your watchlist (exact MAC, maker prefix, Bluetooth name contains, starts with or pattern, Bluetooth company ID, company data with a mask, 16-bit or 128-bit service UUID, Wi-Fi probe prefix, Wi-Fi beacon prefix, and a phone-only maker name), plus built-in signatures, all off by default: tracker tags following you (AirTag, AirPods and other Find My items, SmartTag, Tile, Google Find Hub, Chipolo, Pebblebee, DULT-standard tags), floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, evil-twin and KARMA rogue access points, Pwnagotchi, Meshtastic and MeshCore mesh radios, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, Motorola Solutions radios and body cams, i-PRO body cams, police and fleet vehicle routers, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE, wearable cameras and recorders (GoPro, Insta360, Snap Spectacles, Even Realities, Vuzix, Brilliant Labs Frame, PLAUD), vehicles (Teslas, Bluetooth OBD-II dongles), drones over Bluetooth (Remote ID, DJI)
+- **Flock BLE / Flock WiFi:** Flock Safety ALPR cameras, Raven gunshot sensors, Penguin and Pigvision. Optional OUI-only Wi-Fi hits
+- **Sky Spy:** Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position
+- **Foxhunter:** One target device. The board beeps faster as you get closer. The app's FIND IT view shows the signal and a ring that pulses faster, and the phone can buzz with it
+- **UniPwn:** Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …)
+- **Wardrive:** Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS and, with the **802.15.4 (Zigbee, Thread)** switch, passive 802.15.4 receive on channels 11–26 (PAN ID, source address, beacon info, channel, LQI; receive only, never transmits)
+- **PCAP:** Raw 802.11, BLE advertising or (C5 boards) 802.15.4 frames to a Wireshark `.pcap`
+- **AXEOFF:** Axon gear only, on Bluetooth and Wi-Fi, passive. The board plays a tone when Axon gear appears, while it stays near, and when it leaves
+- **BLE Sniff:** Every Bluetooth LE advert as a live list, with filters and **RECORD PCAP**. Passive. Needs the board connected to the phone directly, or picked as the node on a manager
+- **FPV receiver:** Analog 5.8 GHz FPV video transmitters on 44 of the 48 standard channels. XIAO ESP32-C5 only. See [FPV receiver](#fpv-receiver)
 
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
@@ -274,13 +258,21 @@ DETECTIONS → HISTORY can filter by tier.
 
 ## Ways to run
 
-| Mode | How | What you get |
-|---|---|---|
-| **App + board** | Phone app connected to an ESP32 board over Bluetooth | The board runs the engines. The app controls it, shows the feed and map, adds phone GPS, and saves PCAPs |
-| **Standalone** | No phone; boards with a screen and buttons | Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen |
-| **Mesh node** | Board runs under a MANAGER the phone connects to | The manager collects every node's hits; settings from the app reach all nodes |
-| **Phone only** | No board; PHONE SCAN on | Wardrive, classify, alert and foxhunt with the phone's own radios. Android also detects drones by Remote ID |
-| **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 315 / 433 / 915 MHz and ADS-B. A USB Wi-Fi adapter scans Wi-Fi, and the MT7921AU also scans Bluetooth LE. Both run alongside the phone's radios |
+- **App + board**
+  - How: Phone app connected to an ESP32 board over Bluetooth
+  - What you get: The board runs the engines. The app controls it, shows the feed and map, adds phone GPS, and saves PCAPs
+- **Standalone**
+  - How: No phone; boards with a screen and buttons
+  - What you get: Engines started from the buttons. T-Dongles log to microSD; M5Sticks beep and show hits on screen
+- **Mesh node**
+  - How: Board runs under a MANAGER the phone connects to
+  - What you get: The manager collects every node's hits; settings from the app reach all nodes
+- **Phone only**
+  - How: No board; PHONE SCAN on
+  - What you get: Wardrive, classify, alert and foxhunt with the phone's own radios. Android also detects drones by Remote ID
+- **Phone + USB radios**
+  - How: Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter
+  - What you get: SDR decodes 315 / 433 / 915 MHz and ADS-B. A USB Wi-Fi adapter scans Wi-Fi, and the MT7921AU also scans Bluetooth LE. Both run alongside the phone's radios
 
 - **Offline scan** (SETTINGS → NODE → OFFLINE SCAN): the board keeps scanning without the phone, even after a reboot, and uploads hits on reconnect. A directly connected board with a GPS module fix also wardrives, one row per device every 5 min, up to 1 MB. It stops after 60 s without a fix.
 - **Private Bluetooth link:** after pairing, the board hides its name, changes its address every 5–15 min and refuses unknown phones. The paired phone reconnects on its own.
@@ -292,12 +284,10 @@ DETECTIONS → HISTORY can filter by tier.
 
 The app controls your boards, shows what they find, and can scan with the phone's own radios. It has four main screens.
 
-| Screen | What it shows |
-|---|---|
-| **Home** | The session bar (targets, radio, START / PAUSE / STOP) and one card per engine. The status bar shows the link, GPS fix and node count. |
-| **Detections** | LIVE lists every hit, with filter, sort, search and export. DEVICES lists classified devices. HISTORY is the stored log, with CSV export. ALERTS lists every alert, newest first. |
-| **Map** | Choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then tap START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map. |
-| **SETTINGS** | APP, SCANNING (TIMING & RE-LOG, CHANNELS & BAND, EXTERNAL ADAPTERS), DETECTION & ALERTS (WHAT TO WATCH FOR, NOTIFICATIONS, YOUR LISTS, THIS PHONE, PRIVACY), NODE (SOUND & LIGHTS, GPS SOURCE, FLOCK DETECTION, RADIO PRIVACY, OFFLINE SCAN, MESH, FIRMWARE, JCMK NODE HUB), DATA (ACCOUNTS, CAPTURE DATABASE, CAPTURES, EXPORT). |
+- **Home:** The session bar (targets, radio, START / PAUSE / STOP) and one card per engine. The status bar shows the link, GPS fix and node count.
+- **Detections:** LIVE lists every hit, with filter, sort, search and export. DEVICES lists classified devices. HISTORY is the stored log, with CSV export. ALERTS lists every alert, newest first.
+- **Map:** Choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then tap START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
+- **SETTINGS:** APP, SCANNING (TIMING & RE-LOG, CHANNELS & BAND, EXTERNAL ADAPTERS), DETECTION & ALERTS (WHAT TO WATCH FOR, NOTIFICATIONS, YOUR LISTS, THIS PHONE, PRIVACY), NODE (SOUND & LIGHTS, GPS SOURCE, FLOCK DETECTION, RADIO PRIVACY, OFFLINE SCAN, MESH, FIRMWARE, JCMK NODE HUB), DATA (ACCOUNTS, CAPTURE DATABASE, CAPTURES, EXPORT).
 
 Tap any hit to see what it is and why, and to foxhunt or map it. SHOW ALL maps every hit of that class.
 
@@ -420,17 +410,12 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It receives only and shows no picture. Open it from the **FPV receiver** tile on HOME.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" /></td>
-    <td width="50%" valign="top">
-      <ol>
-        <li><b>Status</b>: LOCKED, TUNED or the running mode, the channel, its level, coherence and noise floor, and how many channels are flagged.</li>
-        <li><b>Proximity</b>: the needle moves toward CLOSE as the tuned channel rises above the floor.</li>
-        <li><b>Channels</b>: brighter is stronger, a bolt marks a flagged transmitter, and tapping a cell holds that channel.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" />
+<ol>
+  <li><b>Status</b>: LOCKED, TUNED or the running mode, the channel, its level, coherence and noise floor, and how many channels are flagged.</li>
+  <li><b>Proximity</b>: the needle moves toward CLOSE as the tuned channel rises above the floor.</li>
+  <li><b>Channels</b>: brighter is stronger, a bolt marks a flagged transmitter, and tapping a cell holds that channel.</li>
+</ol>
 
 - **Channels:** bands A, B, E, F, R and L. R8, E6, E7 and E8 are out of the C5's range, and L-band is experimental.
 - **Modes:** **SCAN** stops on the strongest transmitter, **SWEEP** keeps the grid live, and **HOP** visits flagged channels. Tap a cell or use the arrows to hold a channel.
@@ -457,17 +442,12 @@ The app sends catches and Remote ID drones to ATAK as Cursor-on-Target markers o
 
 A language model can read what the app has seen and, when you allow it, change things. It is off by default. Turn it on in SETTINGS → DATA → **Assistant**, pick a model provider, then tap **Open the assistant**.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" /></td>
-    <td width="50%" valign="top">
-      <ol>
-        <li><b>Model provider</b>: Ollama on your network, or Claude, OpenAI or Gemini in the cloud.</li>
-        <li><b>ⓘ</b>: what the automatic features send and when.</li>
-        <li><b>Automatic</b>: alert lookups and scheduled reports. Both are off until you turn them on.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" />
+<ol>
+  <li><b>Model provider</b>: Ollama on your network, or Claude, OpenAI or Gemini in the cloud.</li>
+  <li><b>ⓘ</b>: what the automatic features send and when.</li>
+  <li><b>Automatic</b>: alert lookups and scheduled reports. Both are off until you turn them on.</li>
+</ol>
 
 - **Providers:** Ollama on your network, or Claude, OpenAI or Gemini. A cloud provider asks for your OK once. On Android, use https if **Check** fails on a LAN address.
 - **API keys** stay in the phone's secure storage and go only to their provider.
@@ -494,24 +474,21 @@ The app can link to the [home dashboard](tools/home-dashboard/README.md) running
 
 Pair your own Meshtastic radio to send a message or your position by LoRa when you have no network. SETTINGS → DATA → **Meshtastic radio**.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/meshtastic-radio-top.png" alt="Meshtastic radio: the paired radio, connect, change or forget, and the automatic alerts switch" />
-      <ol>
-        <li><b>This phone's radio</b>: link state and the paired radio's name.</li>
-        <li><b>Connect</b>: links to the paired radio. Close the Meshtastic app first.</li>
-        <li><b>Change radio / Forget this radio</b>: pick another radio or drop this one.</li>
-        <li><b>Send alerts automatically</b>: off until you turn it on and confirm.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio settings: alert types, limits, today's count and destination" />
-      <ol>
-        <li><b>Alert types</b>: which alerts go out by LoRa when <b>Send alerts automatically</b> is on.</li>
-        <li><b>Limits</b>: the shortest gap between two messages and the most messages a day.</li>
-        <li><b>Sent today</b>: messages sent and alerts skipped by the limits.</li>
-        <li><b>Send to</b>: the private channel, or up to 4 chosen nodes.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/ui/meshtastic-radio-top.png" alt="Meshtastic radio: the paired radio, connect, change or forget, and the automatic alerts switch" />
+<ol>
+  <li><b>This phone's radio</b>: link state and the paired radio's name.</li>
+  <li><b>Connect</b>: links to the paired radio. Close the Meshtastic app first.</li>
+  <li><b>Change radio / Forget this radio</b>: pick another radio or drop this one.</li>
+  <li><b>Send alerts automatically</b>: off until you turn it on and confirm.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio settings: alert types, limits, today's count and destination" />
+<ol>
+  <li><b>Alert types</b>: which alerts go out by LoRa when <b>Send alerts automatically</b> is on.</li>
+  <li><b>Limits</b>: the shortest gap between two messages and the most messages a day.</li>
+  <li><b>Sent today</b>: messages sent and alerts skipped by the limits.</li>
+  <li><b>Send to</b>: the private channel, or up to 4 chosen nodes.</li>
+</ol>
 
 - **Find a radio:** close the Meshtastic app first. The radio's default PIN is 123456.
 - **Reconnect:** the app reconnects to the saved radio on its own.
@@ -535,11 +512,7 @@ SETTINGS → About → **Check for update**. **Check at launch** is off by defau
 OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle with no root, kernel driver or custom ROM.
 
 <div align="center">
-<table>
-  <tr>
-    <td align="center"><img width="400" src="docs/screenshots/ui/setup.jpg" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" /><br><sub>Settings → Scanning → External Adapters</sub></td>
-  </tr>
-</table>
+<p align="center"><img width="400" src="docs/screenshots/ui/setup.jpg" alt="Phone running OUI-APEX with an RTL-SDR and USB Wi-Fi adapter plugged in" /><br><sub>Settings → Scanning → External Adapters</sub></p>
 </div>
 
 - **Setup:** plug it in, choose OUI-APEX when Android asks, and tick "Use by default for this USB device". The app then reclaims it after a restart. It shows on Home with its own START control.
@@ -563,23 +536,22 @@ On the MT7921AU (Alfa AWUS036AXM), pick BLE or WiFi+BLE on the radio control to 
 
 Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR screen and pick a mode.
 
-| Mode | Frequency | What it receives |
-|---|---|---|
-| Spectrum | You set it, 100.1 MHz by default | A live waterfall of signal strength across the band |
-| ADS-B | 1090 MHz | Aircraft broadcasting their position and identity |
-| SCAN | 315, 433.92, or 915 MHz | The device types you pick from what the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire-pressure sensors |
+- **Spectrum**
+  - Frequency: You set it, 100.1 MHz by default
+  - What it receives: A live waterfall of signal strength across the band
+- **ADS-B**
+  - Frequency: 1090 MHz
+  - What it receives: Aircraft broadcasting their position and identity
+- **SCAN**
+  - Frequency: 315, 433.92, or 915 MHz
+  - What it receives: The device types you pick from what the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire-pressure sensors
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR SCAN with decoded devices" /></td>
-    <td width="50%" valign="top">
-      <ol>
-        <li><b>Bands</b>: pick 315, 433 or 915 MHz, or several to sweep them, then tap START.</li>
-        <li><b>Types</b>: tap a chip to turn that type on or off. Each chip counts what it found.</li>
-        <li><b>Decoded devices</b>: newest first. Tap one for its details and to foxhunt it.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR SCAN with decoded devices" />
+<ol>
+  <li><b>Bands</b>: pick 315, 433 or 915 MHz, or several to sweep them, then tap START.</li>
+  <li><b>Types</b>: tap a chip to turn that type on or off. Each chip counts what it found.</li>
+  <li><b>Decoded devices</b>: newest first. Tap one for its details and to foxhunt it.</li>
+</ol>
 
 - **Smart meters:** mesh hits show which meter talks to which and through which gateway. Readings are encrypted.
 - **History:** decoded devices save under an SDR filter, and you can foxhunt them.
@@ -587,16 +559,14 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 
 ## Boards
 
-| Board | Bands | Screen / buttons | microSD | Buzzer | Mesh node | Flasher target |
-|---|---|---|---|---|---|---|
-| XIAO ESP32-S3 | 2.4 GHz | – | – | GPIO3 (OUI-SPY board) | yes | `node-xiao_s3` |
-| ESP32-S3 N16R8 DevKitC | 2.4 GHz | – | – | GPIO3 | yes | `node-s3_devkitc` |
-| XIAO ESP32-C5 *(experimental)* | 2.4 + 5 GHz | – | – | GPIO25 | yes | `node-xiao_c5` |
-| LilyGO T-Dongle-S3 | 2.4 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_s3` |
-| LilyGO T-Dongle-C5 *(experimental)* | 2.4 + 5 GHz | LCD, 1 button, RGB LED | yes | none | yes | `node-tdongle_c5` |
-| M5StickC PLUS | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus` |
-| M5StickC PLUS2 | 2.4 GHz | LCD, 3 buttons | – | built in | **no** | `node-stickc_plus2` |
-| M5StickC (original) | 2.4 GHz | LCD, 3 buttons | – | none | **no** | `node-stickc` |
+- **XIAO ESP32-S3:** 2.4 GHz. No screen or microSD. Buzzer on GPIO3 (OUI-SPY board). Mesh node: yes. Flasher target `node-xiao_s3`
+- **ESP32-S3 N16R8 DevKitC:** 2.4 GHz. No screen or microSD. Buzzer on GPIO3. Mesh node: yes. Flasher target `node-s3_devkitc`
+- **XIAO ESP32-C5** *(experimental)***:** 2.4 + 5 GHz. No screen or microSD. Buzzer on GPIO25. Mesh node: yes. Flasher target `node-xiao_c5`
+- **LilyGO T-Dongle-S3:** 2.4 GHz. LCD, 1 button, RGB LED. microSD. No buzzer. Mesh node: yes. Flasher target `node-tdongle_s3`
+- **LilyGO T-Dongle-C5** *(experimental)***:** 2.4 + 5 GHz. LCD, 1 button, RGB LED. microSD. No buzzer. Mesh node: yes. Flasher target `node-tdongle_c5`
+- **M5StickC PLUS:** 2.4 GHz. LCD, 3 buttons. No microSD. Buzzer built in. Mesh node: **no**. Flasher target `node-stickc_plus`
+- **M5StickC PLUS2:** 2.4 GHz. LCD, 3 buttons. No microSD. Buzzer built in. Mesh node: **no**. Flasher target `node-stickc_plus2`
+- **M5StickC (original):** 2.4 GHz. LCD, 3 buttons. No microSD. No buzzer. Mesh node: **no**. Flasher target `node-stickc`
 
 - **Manager boards:** XIAO ESP32-S3 (`mgr-xiao_s3`), ESP32-S3 DevKitC (`mgr-s3_devkitc`), XIAO ESP32-C5 (`mgr-xiao_c5`), XIAO ESP32-C3 (`mgr-xiao_c3`), ESP32 WROOM (`mgr-wroom`). A manager does no scanning.
 - **Disabled, not hidden:** a control the connected board can't use stays visible, dimmed, with the reason.
@@ -684,23 +654,20 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - **Finding the fleet again:** a node that hears no manager for 2 minutes scans channels 1 to 11 to find it, then retries every 15 minutes.
 - **Fleet metrics** (SETTINGS → NODE → MESH → **Fleet control**) shows each node's build, uptime, peers and temperature, then the last hour, day, week or month of logged activity in three views: **Detections**, **Wardrive** and **Drones**.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/mesh-channel.png" alt="Mesh channel: the current channel and the move control" />
-      <ol>
-        <li><b>Channel ⓘ</b>: how a move works.</li>
-        <li><b>Channel now</b>: the mesh's current channel.</li>
-        <li><b>Picker</b>: the channel to move to, 1 to 11.</li>
-        <li><b>Move fleet</b>: asks every node to confirm, then all switch together.</li>
-      </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/fleet-metrics.png" alt="Fleet metrics, Detections view: totals and detections over time" />
-      <ol>
-        <li><b>Totals</b>: detections, change against the span before, unique and new devices, active nodes and the busiest period.</li>
-        <li><b>BLE / Wi-Fi</b>: unique devices on each radio.</li>
-        <li><b>Over time</b>: detections per period in the chosen span.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/ui/mesh-channel.png" alt="Mesh channel: the current channel and the move control" />
+<ol>
+  <li><b>Channel ⓘ</b>: how a move works.</li>
+  <li><b>Channel now</b>: the mesh's current channel.</li>
+  <li><b>Picker</b>: the channel to move to, 1 to 11.</li>
+  <li><b>Move fleet</b>: asks every node to confirm, then all switch together.</li>
+</ol>
+
+<img width="300" src="docs/screenshots/ui/fleet-metrics.png" alt="Fleet metrics, Detections view: totals and detections over time" />
+<ol>
+  <li><b>Totals</b>: detections, change against the span before, unique and new devices, active nodes and the busiest period.</li>
+  <li><b>BLE / Wi-Fi</b>: unique devices on each radio.</li>
+  <li><b>Over time</b>: detections per period in the chosen span.</li>
+</ol>
 
 ### Firmware updates
 
@@ -747,20 +714,54 @@ These settings limit what the boards and the phone send over the air and what th
 - The app connects to a service below only when you use its feature.
 - Detections, sessions and captures stay on the phone until you upload or export them.
 
-| Service | When the app connects | What it sends | Usage rules the app follows |
-|---|---|---|---|
-| Home dashboard on your computer | You turn on **Home dashboard** (Settings → Data → Export) | Plain HTTP requests to the address you set, every 10 s while that screen is open. Carries the access token if you saved one. | UA `OUI-APEX-app`. No address, no requests. With **Find on this network** on, also one multicast DNS question for `_ouispy._tcp`. |
-| [WiGLE](https://api.wigle.net) | Sign in or upload a session | API name + token; session file on upload | On HTTP 429, pauses WiGLE 24h. Each session uploads once, on confirm. |
-| [WDGWars](https://wdgwars.pl) | Link an account, upload a session, or turn on **WDG TERRITORY** | API key; compressed session file; territory requests | UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min. |
-| [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (`overpass-api.de`, fallback `overpass.private.coffee`) | **MAPPED ALPRs** on (off by default) and you move the map or open a Flock hit | The map corners in view | UA `oui-spy-companion/1.0`. Caches areas 7 days, one request at a time. On HTTP 429 waits 30s or longer. |
-| [OpenFreeMap](https://openfreemap.org) styles: Dark (default), Fiord, Liberty, Bright, Positron | A map is on screen | Tile numbers in view | No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap". |
-| [USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map): Satellite (US) | You pick Satellite (US) | Tile numbers in view | Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit. |
-| [GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) | You tap **Check for Update** (Settings → Node → Firmware) | Nothing about you or your board | UA `oui-spy-companion/1.0`. 60 checks/hour per IP; pauses to GitHub's reset. Firmware comes from the same release. |
-| [GitHub](https://github.com/lukeswitz/oui-spy-unified-blue/releases) releases | You tap **Check for update** or turn on **Check at launch** (Settings → About) | Nothing about you or your phone | UA `oui-spy-companion/1.0`. Downloads `release.json` and its signature, and the app file only when you tap **Install** or **Save to Downloads**. Off by default; no background checks. |
-| Signature sets: [Fieldwatch](https://github.com/OffGridPete/Fieldwatch), [Home Assistant](https://github.com/home-assistant/core), or a link you add | You turn a set on or tap **Update** (Settings → Detection & Alerts → Your Lists → Signature sets) | Nothing | UA `oui-spy-companion/1.0`. https only, 8 MB limit. No background checks. |
-| [Wireshark](https://www.wireshark.org/download/automated/data/) | You tap **Check for Update** (Settings → Data → Export → **OUI database**) | Nothing | Downloads Wireshark's MAC vendor list (`manuf.gz`). Limited to once every 7 days. UA `oui-spy-companion/1.0`. |
-| Assistant providers: [Anthropic](https://api.anthropic.com), [OpenAI](https://api.openai.com), [Google](https://generativelanguage.googleapis.com), or your own Ollama server | **Assistant** is on, you picked that provider and OK'd it, and you ask, look into a device, write a report or tap **Check** | Your question and what the model reads within the grants (device names and MACs, alerts and so on; positions only with LOCATION); the API key in a header | No background requests. Keys stay in secure storage. Ollama requests go only to the address you set. |
-| [FAA DroneZone](https://uasdoc.faa.gov) | You tap **FAA RemoteID Lookup** or **FAA lookup** on a drone | The drone's Remote ID serial | UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×. |
+- **Home dashboard on your computer**
+  - When the app connects: You turn on **Home dashboard** (Settings → Data → Export)
+  - What it sends: Plain HTTP requests to the address you set, every 10 s while that screen is open. Carries the access token if you saved one.
+  - Usage rules the app follows: UA `OUI-APEX-app`. No address, no requests. With **Find on this network** on, also one multicast DNS question for `_ouispy._tcp`.
+- **[WiGLE](https://api.wigle.net)**
+  - When the app connects: Sign in or upload a session
+  - What it sends: API name + token; session file on upload
+  - Usage rules the app follows: On HTTP 429, pauses WiGLE 24h. Each session uploads once, on confirm.
+- **[WDGWars](https://wdgwars.pl)**
+  - When the app connects: Link an account, upload a session, or turn on **WDG TERRITORY**
+  - What it sends: API key; compressed session file; territory requests
+  - Usage rules the app follows: UA `oui-spy-companion/1.0`. Retries an upload twice (2s, 8s) on dropped connection or server error. Honors the server's rate-limit wait. Territory refreshes at most every 5 min.
+- **[Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API)** (`overpass-api.de`, fallback `overpass.private.coffee`)
+  - When the app connects: **MAPPED ALPRs** on (off by default) and you move the map or open a Flock hit
+  - What it sends: The map corners in view
+  - Usage rules the app follows: UA `oui-spy-companion/1.0`. Caches areas 7 days, one request at a time. On HTTP 429 waits 30s or longer.
+- **[OpenFreeMap](https://openfreemap.org)** styles: Dark (default), Fiord, Liberty, Bright, Positron
+  - When the app connects: A map is on screen
+  - What it sends: Tile numbers in view
+  - Usage rules the app follows: No account or key, no limit. Tiles cached 30 days (≤50 MB). Shows "OpenFreeMap © OpenMapTiles Data from OpenStreetMap".
+- **[USGS The National Map](https://www.usgs.gov/faqs/what-are-terms-uselicensing-map-services-and-data-national-map):** Satellite (US)
+  - When the app connects: You pick Satellite (US)
+  - What it sends: Tile numbers in view
+  - Usage rules the app follows: Public domain, no account. US only. Tiles cached 7 days (≤200 MB). Enlarges zoom-16 tiles past zoom 16. Shows USGS credit.
+- **[GitHub](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)**
+  - When the app connects: You tap **Check for Update** (Settings → Node → Firmware)
+  - What it sends: Nothing about you or your board
+  - Usage rules the app follows: UA `oui-spy-companion/1.0`. 60 checks/hour per IP; pauses to GitHub's reset. Firmware comes from the same release.
+- **[GitHub](https://github.com/lukeswitz/oui-spy-unified-blue/releases) releases**
+  - When the app connects: You tap **Check for update** or turn on **Check at launch** (Settings → About)
+  - What it sends: Nothing about you or your phone
+  - Usage rules the app follows: UA `oui-spy-companion/1.0`. Downloads `release.json` and its signature, and the app file only when you tap **Install** or **Save to Downloads**. Off by default; no background checks.
+- **Signature sets:** [Fieldwatch](https://github.com/OffGridPete/Fieldwatch), [Home Assistant](https://github.com/home-assistant/core), or a link you add
+  - When the app connects: You turn a set on or tap **Update** (Settings → Detection & Alerts → Your Lists → Signature sets)
+  - What it sends: Nothing
+  - Usage rules the app follows: UA `oui-spy-companion/1.0`. https only, 8 MB limit. No background checks.
+- **[Wireshark](https://www.wireshark.org/download/automated/data/)**
+  - When the app connects: You tap **Check for Update** (Settings → Data → Export → **OUI database**)
+  - What it sends: Nothing
+  - Usage rules the app follows: Downloads Wireshark's MAC vendor list (`manuf.gz`). Limited to once every 7 days. UA `oui-spy-companion/1.0`.
+- **Assistant providers:** [Anthropic](https://api.anthropic.com), [OpenAI](https://api.openai.com), [Google](https://generativelanguage.googleapis.com), or your own Ollama server
+  - When the app connects: **Assistant** is on, you picked that provider and OK'd it, and you ask, look into a device, write a report or tap **Check**
+  - What it sends: Your question and what the model reads within the grants (device names and MACs, alerts and so on; positions only with LOCATION); the API key in a header
+  - Usage rules the app follows: No background requests. Keys stay in secure storage. Ollama requests go only to the address you set.
+- **[FAA DroneZone](https://uasdoc.faa.gov)**
+  - When the app connects: You tap **FAA RemoteID Lookup** or **FAA lookup** on a drone
+  - What it sends: The drone's Remote ID serial
+  - Usage rules the app follows: UA `oui-spy-companion/1.0`. Caches a registration 30 days. Retries only on HTTP 502, up to 3×.
 
 ## Build
 
