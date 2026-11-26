@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Luke Switzer
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -129,6 +131,27 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Set your own Bluetooth PIN'), findsNothing);
       expect(find.text('Bluetooth PIN'), findsNothing);
+    });
+
+    testWidgets('a prompt removed without a choice is not counted as answered', (tester) async {
+      bool? answered;
+      late BuildContext host;
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(builder: (ctx) {
+          host = ctx;
+          return const Scaffold();
+        }),
+      ));
+      unawaited(showSetPinPrompt(host, BleManager()).then((v) => answered = v));
+      await tester.pumpAndSettle();
+      Navigator.of(host).pop();
+      await tester.pumpAndSettle();
+      expect(answered, isFalse);
+      unawaited(showSetPinPrompt(host, BleManager()).then((v) => answered = v));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('LATER'));
+      await tester.pumpAndSettle();
+      expect(answered, isTrue);
     });
 
     testWidgets('SET PIN opens the existing PIN entry and rejects the default', (tester) async {

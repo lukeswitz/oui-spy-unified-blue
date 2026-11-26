@@ -316,28 +316,36 @@ class _AppShellState extends ConsumerState<AppShell> {
     super.initState();
     final ble = ref.read(bleManagerProvider);
     _pinSub = ble.connectionState.listen((s) {
-      if (s == NodeConnectionState.ready) _askSetPin();
+      if (s == NodeConnectionState.ready) _askSetPinSoon();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && ble.currentConnectionState == NodeConnectionState.ready) _askSetPin();
-    });
+    _router = ref.read(routerProvider).routerDelegate..addListener(_askSetPinSoon);
+    _askSetPinSoon();
   }
 
   @override
   void dispose() {
     _pinSub?.cancel();
+    _router?.removeListener(_askSetPinSoon);
     super.dispose();
+  }
+
+  GoRouterDelegate? _router;
+
+  void _askSetPinSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askSetPin());
   }
 
   Future<void> _askSetPin() async {
     if (!mounted || _pinPromptOpen) return;
     final ble = ref.read(bleManagerProvider);
+    if (ble.currentConnectionState != NodeConnectionState.ready) return;
+    if (!_routes.contains(_router?.currentConfiguration.uri.path)) return;
     final gate = ref.read(pinPromptGateProvider);
-    if (!gate.shouldPrompt(nodeId: ble.nodeId, pinIsDefault: ble.pinIsDefault)) return;
-    gate.answered(ble.nodeId);
+    final nodeId = ble.nodeId;
+    if (!gate.shouldPrompt(nodeId: nodeId, pinIsDefault: ble.pinIsDefault)) return;
     _pinPromptOpen = true;
     try {
-      await showSetPinPrompt(context, ble);
+      if (await showSetPinPrompt(context, ble)) gate.answered(nodeId);
     } finally {
       _pinPromptOpen = false;
     }

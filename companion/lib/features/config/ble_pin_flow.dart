@@ -40,7 +40,7 @@ Future<void> changeBlePin(BuildContext context, BleManager ble) async {
   ));
 }
 
-Future<void> showSetPinPrompt(BuildContext context, BleManager ble) async {
+Future<bool> showSetPinPrompt(BuildContext context, BleManager ble) async {
   final setPin = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -53,5 +53,7 @@ Future<void> showSetPinPrompt(BuildContext context, BleManager ble) async {
       ],
     ),
   );
-  if (setPin == true && context.mounted) await changeBlePin(context, ble);
+  if (setPin == null) return false;
+  if (setPin && context.mounted) await changeBlePin(context, ble);
+  return true;
 }
