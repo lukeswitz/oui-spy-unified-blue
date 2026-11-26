@@ -186,7 +186,7 @@ class _EngineCardState extends ConsumerState<EngineCard> {
   String _radioLabel(int radio) => switch (radio) {
     0x01 => 'WiFi',
     0x02 => 'BLE',
-    _ => 'W+B',
+    _ => 'WiFi+BLE',
   };
 
   IconData _radioIcon(int radio) => switch (radio) {

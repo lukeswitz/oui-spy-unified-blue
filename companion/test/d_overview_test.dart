@@ -189,7 +189,7 @@ void main() {
     expect(find.text('Idle'), findsOneWidget);
     expect(find.byType(SessionTargets), findsOneWidget);
     for (final l in ['FLOCK', 'DRONE', 'SCAN', 'DETECT', 'WiFi', 'BLE', 'WiFi+BLE']) {
-      expect(find.text(l), findsOneWidget, reason: l);
+      expect(find.descendant(of: find.byType(SessionTargets), matching: find.text(l)), findsOneWidget, reason: l);
     }
     expect(find.byType(SessionStartButton), findsOneWidget);
     final scan = tester.getRect(find.byKey(const ValueKey('group-scan')));
