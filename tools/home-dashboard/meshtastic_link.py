@@ -256,7 +256,7 @@ class MeshtasticLink:
         self.opener = opener or open_transport
         self.global_gap, self.heartbeat, self.handshake_wait, self.retry = global_gap, heartbeat, handshake_wait, retry
         self.cfg_ttl, self._cfg_at, self._cfg_val = cfg_ttl, -1e18, None
-        self.hs_start, self.hs_resent = 0.0, False
+        self.hs_start, self.hs_resent, self.last_any = 0.0, False, -1e18
         self.lock = threading.Lock()
         self.outbox = Outbox(kind_gap)
         self.wire = deque()
@@ -384,7 +384,7 @@ class MeshtasticLink:
         self.wire.clear()
         tr = self.tr = self.opener(port)
         deframer = mt.Deframer()
-        last_beat, last_any = time.monotonic(), -1e18
+        last_beat = time.monotonic()
         self._want_config()
         while not self.stop_evt.is_set() and self._same(port):
             for payload in deframer.feed(tr.recv()):
@@ -400,11 +400,11 @@ class MeshtasticLink:
             if now - last_beat >= self.heartbeat:
                 last_beat = now
                 self._send_raw(mt.to_radio_heartbeat())
-            if now - last_any >= self.global_gap:
+            if now - self.last_any >= self.global_gap:
                 if not self.wire:
                     self._expand(now)
                 if self.wire:
-                    last_any = now
+                    self.last_any = now
                     self._send_packet()
         self._close()
 
