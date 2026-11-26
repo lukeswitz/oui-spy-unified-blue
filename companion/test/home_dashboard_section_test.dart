@@ -169,8 +169,8 @@ void main() {
     expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Radio port')).controller!.text, '/dev/ttyUSB0');
     expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Also send to nodes (optional)')).controller!.text,
         '!0b0c0d0e');
-    await tester.ensureVisible(find.byTooltip('About CHANNEL'));
-    await tester.tap(find.byTooltip('About CHANNEL'));
+    await tester.ensureVisible(find.byTooltip('About Channel'));
+    await tester.tap(find.byTooltip('About Channel'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Meshtastic airtime is shared'), findsOneWidget);
   });

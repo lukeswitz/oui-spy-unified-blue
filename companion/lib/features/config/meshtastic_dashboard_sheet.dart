@@ -232,7 +232,7 @@ class _MeshtasticDashboardSheetState extends ConsumerState<MeshtasticDashboardSh
                   onTap: () => setState(() => _port.text = p.device),
                 ),
               const SizedBox(height: 12),
-              const ConfigSectionHeader(label: 'CHANNEL', info: [
+              const ConfigSectionHeader(label: 'Channel', info: [
                 'Meshtastic airtime is shared by every radio in range: the dashboard batches new devices and spaces its messages out.',
                 'It only sends on a channel with a key of its own.',
                 "Pick a channel the fleet's Meshtastic radios share.",
