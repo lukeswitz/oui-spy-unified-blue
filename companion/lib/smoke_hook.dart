@@ -161,7 +161,7 @@ void _inject(ProviderContainer container) {
   var waitedForFix = 0;
   Timer.periodic(const Duration(seconds: 1), (t) {
     if (tick == 0 && container.read(gpsProvider).lastPosition == null && waitedForFix++ < 20) return;
-    final r = tick % 5;
+    final r = (10 + 8 * math.sin(tick * 0.8) + 4 * math.sin(tick * 2.1)).round().clamp(0, 22);
     final block = tick ~/ 6;
     const ssids = [
       'Harbor Cafe', 'Library_Guest', 'Riverside Flats', 'PrintShop-5G', 'Bakery WiFi', 'Studio 4B',
@@ -178,6 +178,7 @@ void _inject(ProviderContainer container) {
     }
     int at(double share) => (_seconds * share).round();
     bool inRange(double share) => tick >= at(share) && tick < at(share) + win;
+    int passBy(double share) => (-88 + 38 * math.sin(math.pi * (tick - at(share)) / win)).round() - r ~/ 5;
     if (inRange(0)) {
       for (var i = 0; i < 2; i++) {
         send('wifi_client', smokeFrame(Engine.wardrive, '02:00:00:00:02:0$i', -70 - r, 1, 2,
@@ -199,12 +200,14 @@ void _inject(ProviderContainer container) {
       send('ble_adv', smokeFrame(Engine.wardrive, mac, -65 - r, 37, 1,
           _wardriveExt('', 0, bleNames[(block * 3 + i) % bleNames.length])));
     }
+    send('ble_carried', smokeFrame(Engine.wardrive, '02:00:00:00:09:00', -52 - r ~/ 3, 37, 1,
+        _wardriveExt('', 0, 'Pixel Buds')));
     if (inRange(0.25)) {
-      send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -55 - r, 37, 1,
+      send('flockBle', smokeFrame(Engine.flockBle, '02:00:00:00:04:00', passBy(0.25), 37, 1,
           _flockExt(raven: true, fw: '1.3.2', signals: 0x47, name: 'Penguin-1234567890')));
     }
     if (inRange(0.55)) {
-      send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', -58 - r, 6, 4,
+      send('flockWifi', smokeFrame(Engine.flockWifi, '02:00:00:00:04:01', passBy(0.55), 6, 4,
           _flockExt(raven: false, fw: '', signals: 0x05, name: 'Flock-A1B2C3')));
     }
     const detectors = {
