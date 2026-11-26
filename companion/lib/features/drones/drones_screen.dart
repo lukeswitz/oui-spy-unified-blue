@@ -5,12 +5,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/drone_log.dart';
 import 'package:oui_spy/core/drone_tags.dart';
 import 'package:oui_spy/features/drones/drone_data.dart';
 import 'package:oui_spy/features/drones/drone_page.dart';
-import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvRssiToLevel;
+import 'package:oui_spy/features/fpv/fpv_screen.dart' show fpvStateLabel;
+import 'package:oui_spy/features/fpv/fpv_state.dart' show FpvState, fpvChannelName, fpvNoLevel, fpvRssiToLevel;
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_stats_strip.dart';
@@ -198,6 +201,7 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            if (_source != DroneSource.rid) const _FpvReceiverCard(),
             if (!_loaded)
               const Padding(
                 padding: EdgeInsets.all(24),
@@ -225,6 +229,95 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FpvReceiverCard extends ConsumerWidget {
+  const _FpvReceiverCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ble = ref.watch(bleManagerProvider);
+    if (!(ble.board.toLowerCase().contains('c5') && ble.fpvAvailable)) return const SizedBox.shrink();
+    final t = AppTheme.of(context);
+    return StreamBuilder<FpvState>(
+      stream: ble.fpvState,
+      initialData: ble.latestFpvState,
+      builder: (context, snap) {
+        final s = snap.data ?? FpvState.empty;
+        final color = !s.active
+            ? t.textDim
+            : s.hasError
+                ? AppTheme.error
+                : s.locked
+                    ? AppTheme.success
+                    : AppTheme.accent;
+        final stats = <(String, String)>[
+          if (s.active) ('Channel', '${fpvChannelName(s.channel)} · ${s.mhz} MHz'),
+          if (s.active && s.level != fpvNoLevel) ('LVL', '${s.level}'),
+          if (s.active) ('Flagged', '${s.flaggedCount}'),
+        ];
+        return Container(
+          key: const Key('fpv-receiver-card'),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: t.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: color.withValues(alpha: s.active ? 0.8 : 0.3)),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            onTap: () => context.push('/fpv'),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Icon(Icons.videocam, color: color, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('FPV RECEIVER',
+                          style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: AppTheme.mono)),
+                    ),
+                    Text(fpvStateLabel(s),
+                        key: const Key('fpv-receiver-state'),
+                        style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: AppTheme.mono,
+                            letterSpacing: 1)),
+                    Icon(Icons.chevron_right, color: t.textDim, size: 18),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(
+                    s.active ? 'Analog 5.8 GHz video receiver' : 'Off · tap to open the receiver',
+                    style: TextStyle(color: t.textSecondary, fontSize: 12),
+                  ),
+                  if (stats.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 14, runSpacing: 4, children: [
+                      for (final x in stats)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text('${x.$1} ', style: TextStyle(color: t.textDim, fontSize: 11)),
+                          Text(x.$2,
+                              style: TextStyle(
+                                  color: t.textPrimary, fontSize: 12, fontFamily: AppTheme.mono)),
+                        ]),
+                    ]),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
