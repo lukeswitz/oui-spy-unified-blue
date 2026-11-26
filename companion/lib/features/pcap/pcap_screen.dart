@@ -214,7 +214,6 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final ble = ref.watch(bleManagerProvider);
-    final caps = ref.watch(boardCapsProvider);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -248,6 +247,7 @@ class _PcapScreenState extends ConsumerState<PcapScreen> {
   }
 
   Widget _captureBody(BuildContext context, ResolvedTheme t, BleManager ble) {
+    final caps = ref.watch(boardCapsProvider);
     return StreamBuilder<PcapStats>(
         stream: ble.pcapStats,
         initialData: ble.latestPcapStats,
