@@ -72,11 +72,15 @@ void main() {
     expect(find.text('Meshtastic settings'), findsOneWidget);
     expect(find.textContaining('Connected'), findsWidgets);
     expect(find.text('14 days'), findsOneWidget);
-    expect(find.textContaining("set on the dashboard's Settings tab"), findsOneWidget);
+    expect(find.textContaining("set on the dashboard's Settings tab"), findsNothing);
 
     await tester.tap(find.text('TAK server'));
     await tester.pump();
     expect(api.posts.last, {'tak': {'enabled': true}});
+
+    await tester.tap(find.byTooltip('About Connectors'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining("set on the dashboard's Settings tab"), findsOneWidget);
   });
 
   testWidgets('a refused change shows the dashboard reason', (tester) async {
@@ -160,11 +164,15 @@ void main() {
     expect(find.text('Last sent'), findsOneWidget);
     expect(find.textContaining('North Gate'), findsOneWidget);
     expect(find.text('all quiet'), findsOneWidget);
-    expect(find.textContaining('Meshtastic airtime is shared'), findsOneWidget);
+    expect(find.textContaining('Meshtastic airtime is shared'), findsNothing);
     expect(find.text('Nothing heard yet. Text messages on the channel land here.'), findsNothing);
     expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Radio port')).controller!.text, '/dev/ttyUSB0');
     expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Also send to nodes (optional)')).controller!.text,
         '!0b0c0d0e');
+    await tester.ensureVisible(find.byTooltip('About CHANNEL'));
+    await tester.tap(find.byTooltip('About CHANNEL'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Meshtastic airtime is shared'), findsOneWidget);
   });
 
   testWidgets('with nothing heard, no ports and no radio the sheet says so', (tester) async {

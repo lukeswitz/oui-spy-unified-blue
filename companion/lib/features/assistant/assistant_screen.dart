@@ -15,6 +15,7 @@ import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/command_bar.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 class AssistantScreen extends ConsumerStatefulWidget {
   const AssistantScreen({super.key});
@@ -79,6 +80,13 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
         appBar: AppBar(
           title: const Text('Assistant'),
           actions: [
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: 'About this tab',
+                onPressed: () => _showTabInfo(ctx, DefaultTabController.of(ctx).index),
+              ),
+            ),
             IconButton(
               icon: const Icon(Icons.delete_sweep_outlined),
               tooltip: 'Clear the conversation',
@@ -92,6 +100,28 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
         ),
       ),
     );
+  }
+}
+
+void _showTabInfo(BuildContext context, int tab) {
+  final t = AppTheme.of(context);
+  switch (tab) {
+    case 1:
+      showInfoSheet(context, t, 'Intel', const [
+        'What the model makes of a device from all the app knows of it: maker, likely kind, why it may matter.',
+        'Its name, MAC and how it was heard go to the model; never where it was.',
+      ]);
+    case 2:
+      showInfoSheet(context, t, 'Reports', const [
+        'Sums up new devices, alerts, drones, the wardriver and the mesh within your grants.',
+        'Positions are never included.',
+        'Reports are written when you ask, or on the schedule set in Settings > Data > Assistant.',
+      ]);
+    default:
+      showInfoSheet(context, t, 'Ask', const [
+        'A model answers from the app\'s data within what you granted: devices, alerts, drones, the wardriver, the mesh.',
+        'Every tool it runs shows here, and a change to the board waits for your OK.',
+      ]);
   }
 }
 
@@ -287,7 +317,6 @@ class _IntelPane extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final access = ref.watch(assistantAccessProvider);
     final intel = ref.watch(assistantIntelProvider);
     final masked = ref.watch(privacyScreenProvider);
@@ -311,13 +340,6 @@ class _IntelPane extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            'What the model makes of a device from all the app knows of it: maker, likely kind, why it may matter. Its name, MAC and how it was heard go to the model; never where it was.',
-            style: TextStyle(color: t.textDim, fontSize: 12),
-          ),
-        ),
         for (final d in devices.take(50)) _IntelRow(device: d, intel: intel, masked: masked),
       ],
     );
@@ -401,11 +423,6 @@ class _ReportsPaneState extends ConsumerState<_ReportsPane> {
             onPressed: reports.writing ? null : () => reports.writeNow(_hours),
             child: Text(reports.writing ? 'WRITING...' : 'WRITE ONE NOW'),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Sums up new devices, alerts, drones, the wardriver and the mesh within your grants. Positions are never included. Reports are written when you ask, or on the schedule set in Settings > Data > Assistant.',
-          style: TextStyle(color: t.textDim, fontSize: 12),
         ),
         const SizedBox(height: 12),
         if (reports.reports.isEmpty)

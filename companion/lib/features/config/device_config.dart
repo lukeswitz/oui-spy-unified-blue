@@ -701,7 +701,6 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         const ConfigSectionHeader(label: 'Home dashboard'),
         const HomeDashboardSection(),
         const SizedBox(height: 16),
-        const ConfigSectionHeader(label: 'Meshtastic radio'),
         const MeshtasticSection(),
         const SizedBox(height: 16),
         const ConfigSectionHeader(label: 'OUI database'),

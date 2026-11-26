@@ -14,6 +14,7 @@ import 'package:oui_spy/core/ota/firmware_image.dart';
 import 'package:oui_spy/core/ota/mesh_firmware.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 String leftLabel(Duration d) {
   if (d.inSeconds < 10) return 'a few seconds left';
@@ -133,19 +134,23 @@ class _MeshFirmwareScreenState extends ConsumerState<MeshFirmwareScreen> {
 
     return Scaffold(
       backgroundColor: t.background,
-      appBar: AppBar(title: const Text('FIRMWARE OVER THE MESH')),
+      appBar: AppBar(
+        title: const Text('FIRMWARE OVER THE MESH'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'About firmware over the mesh',
+            onPressed: () => showInfoSheet(context, t, 'Firmware over the mesh', const [
+              'The image is saved once on the manager on this phone\'s link, then sent over the mesh to one node at a time.',
+              'Each node checks it, restarts into it and rejoins.',
+              'Check the image first; the manager and each node verify the OUI-SPY signature before installing.',
+            ]),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'The image is saved once on the manager on this phone\'s link, then sent over the mesh to one node at a time. '
-              'Each node checks it, restarts into it and rejoins. Check the image first; the manager and each node verify '
-              'the OUI-SPY signature before installing.',
-              style: TextStyle(color: t.textDim, fontSize: 11),
-            ),
-          ),
           if (!ble.isManagerConnected)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),

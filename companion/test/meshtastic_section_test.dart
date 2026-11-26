@@ -55,6 +55,9 @@ void main() {
     await pump(tester, n);
     expect(find.text('Find a radio'), findsOneWidget);
     expect(find.text('No radio'), findsOneWidget);
+    expect(find.textContaining('never the public one'), findsNothing);
+    await tester.tap(find.byTooltip('About Meshtastic radio'));
+    await tester.pumpAndSettle();
     expect(find.textContaining('never the public one'), findsOneWidget);
     expect(find.text('Send a message'), findsNothing);
   });

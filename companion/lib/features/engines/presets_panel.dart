@@ -9,6 +9,7 @@ import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/node_filters.dart';
 import 'package:oui_spy/core/watchlist_state.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 import 'package:oui_spy/widgets/node_filters_dialog.dart';
 
 /// The signature presets: watch one on this phone, or install it on the nodes you pick.
@@ -25,14 +26,28 @@ class PresetsPanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'PRESETS',
-            style: TextStyle(color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'PRESETS',
+                  style: TextStyle(color: AppTheme.detector, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 2),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.info_outline, size: 18, color: t.textSecondary),
+                tooltip: 'About presets',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () => showInfoSheet(context, t, 'Presets', const [
+                  'Signature sets for common gear.',
+                  'Tap one to watch it on this phone or install it on nodes.',
+                ]),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
-          Text('Signature sets for common gear. Tap one to watch it on this phone or install it on nodes.',
-              style: TextStyle(color: t.textDim, fontSize: 12)),
-          const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 6,

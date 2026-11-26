@@ -85,7 +85,6 @@ class AssistantGrantsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final access = ref.watch(assistantAccessProvider);
     final grantedCount = access.granted.length;
     return Column(
@@ -103,15 +102,11 @@ class AssistantGrantsSection extends ConsumerWidget {
           onChanged: (v) => _toggleOn(context, ref, v),
         ),
         const SizedBox(height: 16),
-        ConfigSectionHeader(label: 'Grants  ·  $grantedCount of ${AssistantGrant.values.length}'),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 2),
-          child: Text(
-            'Each grant is off until you switch it on. Device health is always readable while the assistant is on. '
-            'Every change that reaches the board still asks you first, one call at a time.',
-            style: TextStyle(color: t.textDim, fontSize: 13),
-          ),
-        ),
+        ConfigSectionHeader(label: 'Grants  ·  $grantedCount of ${AssistantGrant.values.length}', info: const [
+          'Each grant is off until you switch it on.',
+          'Device health is always readable while the assistant is on.',
+          'Every change that reaches the board still asks you first, one call at a time.',
+        ]),
         for (final g in AssistantGrant.values)
           ConfigToggleRow(
             icon: grantIcon(g),
@@ -447,15 +442,11 @@ class AssistantAutoSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const ConfigSectionHeader(label: 'Automatic'),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8, left: 2),
-          child: Text(
-            'Both are off until you switch them on. They send data to the model without a tap from you, only while the app is running, '
-            'the assistant is on and a model provider is set up. Positions are never included.',
-            style: TextStyle(color: t.textDim, fontSize: 13),
-          ),
-        ),
+        const ConfigSectionHeader(label: 'Automatic', info: [
+          'Both are off until you switch them on.',
+          'They send data to the model without a tap from you, only while the app is running, the assistant is on and a model provider is set up.',
+          'Positions are never included.',
+        ]),
         ConfigToggleRow(
           icon: Icons.manage_search,
           label: 'Look into new alerts automatically',

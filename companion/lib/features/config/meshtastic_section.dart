@@ -161,15 +161,10 @@ class _MeshtasticSectionState extends ConsumerState<MeshtasticSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(
-            "Pair this phone's own Meshtastic radio over Bluetooth to send messages and your position by LoRa "
-            'when you have no network. Nothing is sent unless you tap a send button, and only on a private channel, '
-            'never the public one.',
-            style: TextStyle(color: t.textDim, fontSize: 13),
-          ),
-        ),
+        const ConfigSectionHeader(label: 'Meshtastic radio', info: [
+          "Pair this phone's own Meshtastic radio over Bluetooth to send messages and your position by LoRa when you have no network.",
+          'Nothing is sent unless you tap a send button, and only on a private channel, never the public one.',
+        ]),
         ConfigInfoRow(
           icon: Icons.settings_input_antenna,
           label: 'This phone\'s radio',

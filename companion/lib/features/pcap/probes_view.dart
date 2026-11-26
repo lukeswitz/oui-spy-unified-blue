@@ -9,6 +9,7 @@ import 'package:oui_spy/core/probes/probe_intel.dart';
 import 'package:oui_spy/core/probes/probe_ranks.dart';
 import 'package:oui_spy/core/probes/probe_store.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 enum _ProbeTab { devices, named, networks }
 
@@ -87,15 +88,6 @@ class _ProbesViewState extends ConsumerState<ProbesView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Text(
-            'Phones and laptops asking for Wi-Fi networks they know, heard by the connected board when its detector '
-            'checks probe requests or a Wi-Fi PCAP capture runs. Makers come from each MAC, looked up on this phone. '
-            'Kept on this phone.',
-            style: TextStyle(color: t.textDim, fontSize: 11),
-          ),
-        ),
-        Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: _Seg(
             labels: const ['DEVICES', 'NAMED', 'NETWORKS'],
@@ -154,6 +146,16 @@ class _ProbesViewState extends ConsumerState<ProbesView> {
               Text(
                 '$shown OF $total ${isNet ? 'NETWORKS' : 'DEVICES'}',
                 style: TextStyle(color: t.textDim, fontSize: 10, letterSpacing: 2, fontFamily: AppTheme.mono),
+              ),
+              IconButton(
+                icon: Icon(Icons.info_outline, size: 18, color: t.textSecondary),
+                tooltip: 'About probe requests',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => showInfoSheet(context, t, 'Probe requests', const [
+                  'Phones and laptops asking for Wi-Fi networks they know, heard by the connected board when its detector checks probe requests or a Wi-Fi PCAP capture runs.',
+                  'Makers come from each MAC, looked up on this phone.',
+                  'Kept on this phone.',
+                ]),
               ),
               const Spacer(),
               TextButton(

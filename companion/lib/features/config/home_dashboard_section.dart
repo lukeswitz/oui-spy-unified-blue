@@ -224,7 +224,10 @@ class _HomeDashboardSectionState extends ConsumerState<HomeDashboardSection> {
               value: '${sum.nodesOnline} of ${sum.nodesTotal} online',
             ),
             const SizedBox(height: 16),
-            const ConfigSectionHeader(label: 'Connectors'),
+            const ConfigSectionHeader(label: 'Connectors', info: [
+              "Hosts, certificates and passwords are set on the dashboard's Settings tab.",
+              'This page turns each connector on or off; Meshtastic has its own settings above.',
+            ]),
             for (final k in DashboardConnector.values)
               ConfigToggleRow(
                 icon: switch (k) {
@@ -246,14 +249,7 @@ class _HomeDashboardSectionState extends ConsumerState<HomeDashboardSection> {
               subtitle: 'Radio port, channel, events, test and inbox',
               onTap: () => showMeshtasticDashboardSheet(context),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
-              child: Text(
-                "Hosts, certificates and passwords are set on the dashboard's Settings tab. "
-                'This page turns each connector on or off; Meshtastic has its own settings above.',
-                style: TextStyle(color: t.textDim, fontSize: 13),
-              ),
-            ),
+            const SizedBox(height: 8),
             const ConfigSectionHeader(label: 'Dashboard data'),
             ConfigActionRow(
               icon: Icons.history,

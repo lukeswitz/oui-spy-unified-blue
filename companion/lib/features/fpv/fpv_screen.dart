@@ -98,6 +98,9 @@ class _FpvScreenState extends ConsumerState<FpvScreen> {
               'Wi-Fi scanning pauses while FPV is on and resumes when you leave.',
               'Flagged transmitters also show up in the Sky Spy list and the feed.',
               'Levels are relative receiver counts, not dBm. The picture is not shown: Bluetooth cannot carry live video.',
+              'Brighter is stronger over the noise floor. A bolt marks a flagged transmitter.',
+              'Dimmed channels are outside the 5180 to 5885 MHz tuning window. Tap a channel to tune it.',
+              'A channel is flagged when its level is this far above the measured noise floor and the carrier is steady (coherence at least $fpvMinCoherence%).',
             ]),
           ),
         ],
@@ -412,11 +415,6 @@ class FpvHeatMap extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            'Brighter is stronger over the noise floor. A bolt marks a flagged transmitter. Dimmed channels are outside the 5180 to 5885 MHz tuning window. Tap a channel to tune it.',
-            style: TextStyle(color: t.textDim, fontSize: 10, height: 1.3),
-          ),
         ],
       ),
     );
@@ -517,10 +515,6 @@ class _ThresholdCard extends StatelessWidget {
             divisions: fpvMaxThreshold - fpvMinThreshold,
             onChanged: (v) => onChanged(v.round()),
             onChangeEnd: (v) => onChangeEnd(v.round()),
-          ),
-          Text(
-            'A channel is flagged when its level is this far above the measured noise floor and the carrier is steady (coherence at least $fpvMinCoherence%).',
-            style: TextStyle(color: t.textDim, fontSize: 10, height: 1.3),
           ),
         ],
       ),
