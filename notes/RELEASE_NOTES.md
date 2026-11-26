@@ -2,6 +2,23 @@
 
 ## New
 
+- FPV receiver on the XIAO ESP32-C5: finds analog 5.8 GHz FPV video transmitters on 44 of 48 channels, with a proximity gauge. Receive only, no picture.
+- Drones: a page per drone with name, tag and notes, a 90-day log with CSV and KML export, Remote ID or FPV filter, and Follow on map.
+- Alerts: alert zones on the map, re-arm after a quiet period, node down and back alerts, and Silence all.
+- Search across detections, drones, alerts and nodes.
+- Devices: name, group and notes on any device, single-device export, and Alert when a board hears it.
+- Map: pins, measure, offline map areas, and triangulation from three placed nodes (off by default).
+- Assistant: Ollama, Claude, OpenAI or Gemini can read what the app has seen and act within grants you allow. Off by default.
+- Meshtastic radio: pair the phone's own radio and send a message, your position or automatic alerts by LoRa on a private channel.
+- Home dashboard link: manage `tools/home-dashboard` connectors from the app.
+- ATAK: catches and Remote ID drones as Cursor-on-Target markers over UDP.
+- Probe intel, rule builder with node presets, and the AXEOFF and BLE Sniff engines.
+- Capture database backup, restore and delete.
+- Signed self-update for the app, and firmware over the mesh.
+- Mesh channel move: the whole fleet switches channel together, and lost nodes find it again.
+- Fleet control and fleet metrics: each node's build, filters, uptime, peers and temperature, and activity over time.
+- Mesh signal: how strongly each node hears the others.
+- Boards pair with a PIN, 123456 until you set your own.
 - Over-the-air updates must carry a release signature; boards and the app refuse others.
 - Device classifier: DETECTIONS → DEVICES lists and classifies every nearby device.
 - 20 classes including cameras, surveillance, public safety, drones, finder tags.
@@ -67,7 +84,8 @@
 - WiGLE sessions start without waiting for a GPS fix.
 - Classifier: iBeacon now "Beacons", Honeywell moved to industrial.
 - Shorter notification body: RSSI, channel, name, MAC.
-- The board advertises a rotating private Bluetooth address. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections. Pairing needs no PIN, because the board has no screen to show one.
+- The board advertises a rotating private Bluetooth address. A paired phone resolves that address and reconnects, including after the board reboots, with no new pairing. The link stays encrypted with Secure Connections.
+- Mesh nodes send wardrive batches straight to the manager, so far fewer records are lost.
 - Settings: OUI-only matches now sits under Flock, and the alert threshold sits under Trackers.
 - The status bar shows a board icon while connected and a clearer GPS label. The connection timer is gone.
 - A wardrive keeps recording on the phone and USB adapters when the board drops.
@@ -102,7 +120,9 @@
 - A connected phone dropped a few seconds after its screen went idle.
 - Connecting to a board stalled when a phone scan was running at the same time.
 - iPhone phone scan left Apple devices unclassified, because iOS removes their manufacturer data.
-- Pairing a board asked for a PIN the board had no screen to show, so pairing could not finish. The board now pairs with no PIN.
+- XIAO ESP32-C5: out-of-memory errors on ESP-NOW, and a lockup when the mesh channel changed.
+- Re-pairing after Forget works on the first try.
+- The Capture Database channel chart no longer overflows with large text.
 - A board paired but then dropped to "not connected" right after. The link now stays up after pairing.
 - The scan picker (Flock, Drone, Scan, Detect) looked like it changed your selection after you pressed START. The chips now stay on what you chose.
 - A board used on its own did not appear in the connect list after you disconnected from a manager. Solo boards show up again.
