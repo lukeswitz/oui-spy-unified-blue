@@ -114,10 +114,8 @@ class _FeedCountsStripState extends ConsumerState<FeedCountsStrip> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 18,
-            runSpacing: 6,
-            children: [
+          LayoutBuilder(builder: (context, box) {
+            final stats = [
               stat('NODES ONLINE', '${c.nodesOnline}/${c.nodesTotal}'),
               stat('HEARD NOW', '${c.heardNow}'),
               stat('LIVE DRONES', '${c.liveDrones}', color: c.liveDrones > 0 ? AppTheme.skySpy : null),
@@ -125,8 +123,22 @@ class _FeedCountsStripState extends ConsumerState<FeedCountsStrip> {
               stat(silenced ? 'UNREAD ALERTS (SILENCED)' : 'UNREAD ALERTS', '$unread',
                   color: unread > 0 ? AppTheme.error : null),
               stat('MACS KEPT', '${c.macsKept}'),
-            ],
-          ),
+            ];
+            const gap = 12.0;
+            final cols = box.maxWidth >= 600 ? 6 : 3;
+            final w = (box.maxWidth - gap * (cols - 1)) / cols;
+            return Wrap(
+              spacing: gap,
+              runSpacing: 6,
+              children: [
+                for (final s in stats)
+                  SizedBox(
+                    width: w,
+                    child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: s),
+                  ),
+              ],
+            );
+          }),
           const SizedBox(height: 6),
           Row(
             children: [
