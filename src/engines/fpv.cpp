@@ -126,6 +126,8 @@ struct SavedPhy {
 };
 
 TaskHandle_t s_task = nullptr;
+portMUX_TYPE s_taskMux = portMUX_INITIALIZER_UNLOCKED;
+bool s_taskAlive = false;
 QueueHandle_t s_q = nullptr;
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -858,26 +860,27 @@ void fpvTask(void*) {
     Cmd c;
     for (;;) {
         TickType_t wait = s_busy ? 0 : pdMS_TO_TICKS(250);
-        if (xQueueReceive(s_q, &c, wait) == pdTRUE) {
-            handle(c);
-            continue;
+        if (xQueueReceive(s_q, &c, wait) == pdTRUE) handle(c);
+        else if (s_busy) step();
+        bool done = false;
+        portENTER_CRITICAL(&s_taskMux);
+        if (!s_busy && uxQueueMessagesWaiting(s_q) == 0) {
+            s_taskAlive = false;
+            s_task = nullptr;
+            done = true;
         }
-        if (s_busy) step();
+        portEXIT_CRITICAL(&s_taskMux);
+        if (done) vTaskDelete(nullptr);
     }
 }
 
 }  // namespace
 
 void fpvInit(void) {
-    if (s_task) return;
+    if (s_q) return;
     memset(s_level, kNoLevel, sizeof(s_level));
     s_q = xQueueCreate(8, sizeof(Cmd));
     if (!s_q) return;
-    if (xTaskCreate(fpvTask, "fpv", 8192, nullptr, 4, &s_task) != pdPASS) {
-        s_task = nullptr;
-        Serial.println("[FPV] task create failed");
-        return;
-    }
     Serial.println("[FPV] ready");
 }
 
@@ -889,7 +892,23 @@ void fpvCommand(const uint8_t* data, size_t len) {
     if (!s_q || !data || len < 1) return;
     Cmd c = {data[0], (uint8_t)(len > 1 ? data[1] : 0), 1};
     if (c.op < kOpEnter || c.op > kOpThreshold) return;
-    xQueueSend(s_q, &c, 0);
+    if (xQueueSend(s_q, &c, 0) != pdTRUE || c.op != kOpEnter) return;
+    bool create = false;
+    portENTER_CRITICAL(&s_taskMux);
+    if (!s_taskAlive) {
+        s_taskAlive = true;
+        create = true;
+    }
+    portEXIT_CRITICAL(&s_taskMux);
+    if (!create) return;
+    if (xTaskCreate(fpvTask, "fpv", 8192, nullptr, 4, &s_task) != pdPASS) {
+        portENTER_CRITICAL(&s_taskMux);
+        s_taskAlive = false;
+        s_task = nullptr;
+        portEXIT_CRITICAL(&s_taskMux);
+        xQueueReset(s_q);
+        Serial.println("[FPV] task create failed");
+    }
 }
 
 void fpvAbort(void) {
