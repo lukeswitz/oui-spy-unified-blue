@@ -53,6 +53,7 @@ MeshStatus meshGetStatus(void);
 
 #include "mesh_chan.h"
 uint8_t meshChannel(void);
+void meshChanPersistTick(void);
 bool meshHealing(void);
 #ifdef OUISPY_ROLE_MANAGER
 struct MeshChanStatusRow {

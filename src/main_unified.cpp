@@ -1945,6 +1945,7 @@ void setup() {
 
 void loop() {
     otaTrialTick();
+    meshChanPersistTick();
 #ifdef OUISPY_STACKPROBE
     static int stackProbeDone = 0;
     if ((stackProbeDone == 0 && millis() > 10000) || (stackProbeDone == 1 && millis() > 45000)) {

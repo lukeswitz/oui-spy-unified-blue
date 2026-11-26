@@ -229,6 +229,7 @@ void setup() {
 
 void loop() {
     otaTrialTick();
+    meshChanPersistTick();
     delay(50);
 #ifdef OUISPY_WD_CYCLE_TEST
     bleGattWdCycleTick();

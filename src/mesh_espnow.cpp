@@ -140,7 +140,8 @@ static SemaphoreHandle_t  txMutex = NULL;
 #define MESH_RENDEZVOUS_CH      meshChannel()
 #define MESH_CHAN_NS            "ouispy-mesh"
 #define MESH_CHAN_KEY           "ch"
-#define MESH_HEAL_HIT_HERE      0xFE
+#define MESH_FOLLOW_HITS        3
+#define MESH_FOLLOW_WINDOW_MS   15000UL
 static_assert(MESH_NODE_ID_LEN == MESH_CHAN_ID_LEN, "chan id length");
 static_assert(MESH_CHAN_ROWS == MESH_LIVE_NODES_MAX, "chan rows");
 static_assert(MESH_CHAN_PREPARE == MCP_PREPARE && MESH_CHAN_COMMIT == MCP_COMMIT &&
@@ -192,7 +193,6 @@ static void noteMgrHeard(void) {
     g_mgrHeardMs = now ? now : 1;
     g_healRefMs = now;
     g_healWaitMs = MESH_HEAL_FIRST_MS;
-    if (g_healing && g_healHit == 0) g_healHit = MESH_HEAL_HIT_HERE;
 }
 
 #if defined(OUISPY_LOWRAM) || defined(OUISPY_NIMBLE2)
@@ -1257,12 +1257,21 @@ uint32_t ncUniqueCount(void)  { return ncSetCount; }
 uint32_t ncRxTotalCount(void) { return ncRxTotal; }
 #endif
 
+static volatile uint8_t g_chanSavePending = 0;
+
+void meshChanPersistTick(void) {
+    uint8_t ch = g_chanSavePending;
+    if (!ch) return;
+    g_chanSavePending = 0;
+    meshChanSave(ch);
+}
+
 static void meshApplyChannel(uint8_t ch, const char* why) {
     if (!meshChanValid(ch)) return;
     uint8_t old = meshChannel();
     if (ch == old) return;
     g_meshCh = ch;
-    meshChanSave(ch);
+    g_chanSavePending = ch;
     bool locked = txMutex && xSemaphoreTake(txMutex, pdMS_TO_TICKS(200)) == pdTRUE;
     esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
     if (locked) xSemaphoreGive(txMutex);
@@ -1281,6 +1290,33 @@ static void sendChanSet(uint8_t phase, uint8_t epoch, uint8_t ch, uint16_t count
     if (!encryptPacket((const uint8_t*)&p, sizeof(p), enc, &encLen)) return;
     sendOnHome(enc, encLen);
 }
+
+#ifndef OUISPY_ROLE_MANAGER
+static void meshChanOnAnnounce(uint8_t ch) {
+    static uint8_t s_followCh = 0, s_followHits = 0;
+    static uint32_t s_followFirstMs = 0;
+    if (!meshChanValid(ch)) return;
+    if (g_healing) {
+        g_healHit = ch;
+        return;
+    }
+    if (ch == meshChannel()) {
+        s_followHits = 0;
+        return;
+    }
+    const uint32_t now = millis();
+    if (s_followCh != ch || (uint32_t)(now - s_followFirstMs) > MESH_FOLLOW_WINDOW_MS) {
+        s_followCh = ch;
+        s_followHits = 0;
+        s_followFirstMs = now;
+    }
+    if (++s_followHits >= MESH_FOLLOW_HITS) {
+        s_followHits = 0;
+        Serial.printf("[MESH-CH] manager states ch %u, following (was %u)\n", ch, meshChannel());
+        meshApplyChannel(ch, "follow");
+    }
+}
+#endif
 
 static void sendChanAck(uint8_t epoch, uint8_t ch, uint8_t status) {
     MeshChanAckPacket a = {};
@@ -1560,6 +1596,10 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
         MeshChanSetPacket cs;
         memcpy(&cs, plainBuf, sizeof(cs));
         if (memcmp(cs.source_node_id, localNodeId, MESH_NODE_ID_LEN) == 0) return;
+        if (cs.phase == MESH_CHAN_ANNOUNCE) {
+            meshChanOnAnnounce(cs.channel);
+            return;
+        }
         recordLiveNode(cs.source_node_id, MESH_ROLE_MANAGER, 0);
         const uint8_t cur = meshChannel();
         uint8_t reply;
@@ -2311,7 +2351,7 @@ static void meshHealPass(bool quick) {
             while ((uint32_t)(millis() - t0) < MESH_HEAL_DWELL_MS) {
                 vTaskDelay(pdMS_TO_TICKS(20));
                 const uint8_t hit = g_healHit;
-                if (hit) { found = (hit == MESH_HEAL_HIT_HERE) ? ch : hit; break; }
+                if (hit) { found = hit; break; }
                 uint8_t rch = 0; wifi_second_chan_t rsec;
                 if (esp_wifi_get_channel(&rch, &rsec) == ESP_OK && rch != ch) healSetChannel(ch);
             }
@@ -3547,6 +3587,9 @@ void meshSendHeartbeat(uint8_t active_engines_mask) {
     uint8_t enc[128]; size_t encLen = 0;
     if (!encryptPacket((const uint8_t*)&hb, sizeof(hb), enc, &encLen)) return;
     enqueueTx(enc, encLen);
+#ifdef OUISPY_ROLE_MANAGER
+    if (hb.role) sendChanSet(MESH_CHAN_ANNOUNCE, 0, meshChannel(), 0);
+#endif
 
     static uint8_t s_lastExt = 0;
     uint8_t ext = engineGetActiveMaskExt();

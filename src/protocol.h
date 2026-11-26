@@ -571,6 +571,7 @@ typedef struct __attribute__((packed)) {
 #define MESH_CHAN_PREPARE 1
 #define MESH_CHAN_COMMIT  2
 #define MESH_CHAN_CANCEL  3
+#define MESH_CHAN_ANNOUNCE 4  // manager states its home channel after each heartbeat (epoch 0)
 
 typedef struct __attribute__((packed)) {
     uint8_t  pkt_type;              // MESH_PKT_CHAN_SET (manager -> nodes)
