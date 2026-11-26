@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/device_notes.dart';
 import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/drone_log.dart';
 import 'package:oui_spy/core/drone_tags.dart';
@@ -341,6 +342,7 @@ class _DroneCard extends ConsumerWidget {
     final d = summary;
     final last = d.last;
     final fpv = d.fpv;
+    final alias = ref.watch(deviceNotesProvider)[DeviceNotesNotifier.keyOf(last.mac)]?.name.trim() ?? '';
     final reg = fpv ? null : ref.watch(faaCachedProvider(d.id)).valueOrNull;
     final maker = fpv ? null : droneMakerOf(d, reg);
     final color = tag?.color ?? droneColorForMac(last.mac);
@@ -376,7 +378,7 @@ class _DroneCard extends ConsumerWidget {
                 Icon(fpv ? Icons.videocam : Icons.flight, color: color, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(d.id,
+                  child: Text(alias.isEmpty ? d.id : alias,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           color: t.textPrimary,
@@ -389,6 +391,7 @@ class _DroneCard extends ConsumerWidget {
               const SizedBox(height: 4),
               Text(
                 [
+                  if (alias.isNotEmpty) d.id,
                   if (fpv) 'Analog 5.8 GHz video',
                   if (maker != null) '${maker.name} (${maker.source})',
                   d.airborne ? 'In the air now' : droneHeardText(DateTime.now().difference(last.ts)),

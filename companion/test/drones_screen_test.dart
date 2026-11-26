@@ -145,6 +145,32 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('a drone card shows the saved name with the id as its subtitle', (tester) async {
+    final now = DateTime.now();
+    final (container, log) = await _setup(tester, [
+      _r(now.subtract(const Duration(seconds: 10)), 'SERIALNAMED', height: 5),
+      _r(now.subtract(const Duration(seconds: 20)), 'SERIALPLAIN', height: 5, mac: '02:00:00:00:00:02'),
+    ]);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: AppTheme.darkTheme, home: const DronesScreen()),
+    ));
+    await _settle(tester);
+    final named = find.byKey(const Key('drone-card-SERIALNAMED'));
+    expect(find.descendant(of: named, matching: find.text('SERIALNAMED')), findsOneWidget);
+
+    await container
+        .read(deviceNotesProvider.notifier)
+        .set('02:00:00:00:00:01', const DeviceNote(name: 'Yard drone'));
+    await tester.pump();
+    expect(find.descendant(of: named, matching: find.text('Yard drone')), findsOneWidget);
+    expect(find.descendant(of: named, matching: find.text('SERIALNAMED')), findsNothing);
+    expect(find.descendant(of: named, matching: find.textContaining('SERIALNAMED · ')), findsOneWidget);
+    final plain = find.byKey(const Key('drone-card-SERIALPLAIN'));
+    expect(find.descendant(of: plain, matching: find.text('SERIALPLAIN')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('the drone page of an FPV transmitter has no FAA record and shows LVL', (tester) async {
     final t = DateTime.now().subtract(const Duration(minutes: 1));
     final (container, log) = await _setup(tester, [
