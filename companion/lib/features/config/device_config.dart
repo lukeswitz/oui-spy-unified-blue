@@ -44,7 +44,6 @@ import 'package:oui_spy/core/ble/gatt_uuids.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/mesh_node_info.dart';
 import 'package:oui_spy/core/node_filters.dart';
-import 'package:oui_spy/features/config/widgets/mesh_signal_grid.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
@@ -1288,15 +1287,17 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
         ..._buildNodeManageRows(appState),
         if (appState.meshSignal.isNotEmpty) ...[
           const SizedBox(height: 16),
-          const ConfigSectionHeader(label: 'Signal'),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8, left: 2),
-            child: Text(
-              'Rows hear columns, in dBm. A board measures strength when it is an ESP32-C5 or is running a Wi-Fi engine; otherwise its row shows heard.',
-              style: TextStyle(color: t.textDim, fontSize: 11),
+          const ConfigSectionHeader(label: 'Signal', info: [
+            'How strongly each node hears the others, one row per direction.',
+            'A board measures strength when it is an ESP32-C5 or runs a Wi-Fi engine; otherwise it shows Heard.',
+            'Boards right next to each other read close to 0 dBm.',
+          ]),
+          for (final l in signalLinks(appState.meshSignal))
+            ConfigInfoRow(
+              icon: Icons.settings_input_antenna,
+              label: '${appState.labelForNode(l.from)} hears ${appState.labelForNode(l.to)}',
+              value: signalLinkValue(l.rssi),
             ),
-          ),
-          MeshSignalGrid(rows: appState.meshSignal, label: appState.labelForNode),
         ],
         ...() {
           final fleetCap = ref.watch(boardCapsProvider).managerOnly;
@@ -1355,15 +1356,10 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     final fleetCap = ref.watch(boardCapsProvider).managerOnly;
     final canMove = fleetCap.enabled && status != null && !running;
     return [
-      const ConfigSectionHeader(label: 'Channel'),
-      Padding(
-        padding: const EdgeInsets.only(bottom: 8, left: 2),
-        child: Text(
-          'The manager asks every node to confirm, then the manager and the nodes switch together. '
-          'A node that misses it finds the fleet again on its own within a few minutes.',
-          style: TextStyle(color: t.textDim, fontSize: 11),
-        ),
-      ),
+      const ConfigSectionHeader(label: 'Channel', info: [
+        'The manager asks every node to confirm, then the manager and the nodes switch together.',
+        'A node that misses it finds the fleet again on its own within a few minutes.',
+      ]),
       ConfigInfoRow(icon: Icons.settings_input_antenna, label: 'Channel now', value: status == null ? '—' : '$current'),
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,

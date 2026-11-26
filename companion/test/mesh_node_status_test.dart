@@ -190,16 +190,18 @@ void main() {
     expect(signalLevel(null), SignalLevel.heard);
   });
 
-  test('grid axes list reporters first, then peers that only get heard; cells are asymmetric', () {
+  test('signal links list each heard peer once per listener, in both directions', () {
     final rows = <MeshSignalRow>[
-      (id: 'AB12', hears: [(id: 'CD34', rssi: -55), (id: 'EF56', rssi: -90)]),
-      (id: 'CD34', hears: [(id: 'AB12', rssi: -75)]),
+      (id: 'AB12', hears: [(id: 'CD34', rssi: -55), (id: 'EF56', rssi: null)]),
+      (id: 'CD34', hears: [(id: 'AB12', rssi: -75), (id: 'CD34', rssi: -10)]),
     ];
-    expect(signalGridIds(rows), ['AB12', 'CD34', 'EF56']);
-    expect(signalCell(rows, 'AB12', 'CD34')!.rssi, -55);
-    expect(signalCell(rows, 'CD34', 'AB12')!.rssi, -75);
-    expect(signalCell(rows, 'CD34', 'EF56'), isNull);
-    expect(signalCell(rows, 'EF56', 'AB12'), isNull);
+    expect(signalLinks(rows), [
+      (from: 'AB12', to: 'CD34', rssi: -55),
+      (from: 'AB12', to: 'EF56', rssi: null),
+      (from: 'CD34', to: 'AB12', rssi: -75),
+    ]);
+    expect(signalLinkValue(-55), '-55 dBm');
+    expect(signalLinkValue(null), 'Heard');
   });
 
   test('formatters', () {

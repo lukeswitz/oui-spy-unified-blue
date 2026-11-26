@@ -122,27 +122,14 @@ String signalLevelName(SignalLevel l) => switch (l) {
       SignalLevel.heard => 'Heard',
     };
 
-/// Grid axes: every node that reports, then every peer that is heard but does not report.
-List<String> signalGridIds(List<MeshSignalRow> rows) {
-  final ids = <String>[for (final r in rows) r.id];
-  for (final r in rows) {
-    for (final h in r.hears) {
-      if (!ids.contains(h.id)) ids.add(h.id);
-    }
-  }
-  return ids;
-}
+/// One entry per node a reporting node hears, in report order.
+List<({String from, String to, int? rssi})> signalLinks(List<MeshSignalRow> rows) => [
+      for (final r in rows)
+        for (final h in r.hears)
+          if (h.id != r.id) (from: r.id, to: h.id, rssi: h.rssi),
+    ];
 
-/// What [row] hears of [col]: null when it does not hear it, otherwise the reading.
-({int? rssi})? signalCell(List<MeshSignalRow> rows, String row, String col) {
-  for (final r in rows) {
-    if (r.id != row) continue;
-    for (final h in r.hears) {
-      if (h.id == col) return (rssi: h.rssi);
-    }
-  }
-  return null;
-}
+String signalLinkValue(int? rssi) => rssi == null ? 'Heard' : '$rssi dBm';
 
 /// The lines shown in a node's dialog after a status read.
 List<String> nodeDetailLines(MeshNodeDetail d, int ageS) => [

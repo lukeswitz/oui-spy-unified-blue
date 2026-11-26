@@ -4,20 +4,34 @@
 import 'package:flutter/material.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
+import 'package:oui_spy/widgets/info_sheet.dart';
 
 BoxDecoration _hairline(ResolvedTheme t, {Color? color}) =>
     BoxDecoration(border: Border(bottom: BorderSide(color: color ?? t.border)));
 
 class ConfigSectionHeader extends StatelessWidget {
-  const ConfigSectionHeader({super.key, required this.label, this.topPadding = 4});
+  const ConfigSectionHeader({super.key, required this.label, this.topPadding = 4, this.info});
   final String label;
   final double topPadding;
+  final List<String>? info;
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final lines = info;
     return Padding(
       padding: EdgeInsets.only(bottom: 6, top: topPadding),
-      child: DSectionHeader(label: label),
+      child: DSectionHeader(
+        label: label,
+        trailing: lines == null
+            ? null
+            : IconButton(
+                icon: Icon(Icons.info_outline, size: 18, color: t.textSecondary),
+                tooltip: 'About $label',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => showInfoSheet(context, t, label, lines),
+              ),
+      ),
     );
   }
 }
