@@ -16,11 +16,12 @@ import 'package:oui_spy/features/drones/drones_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-DroneReport _r(DateTime ts, String id, {int? status, int? height, double? lat, double? lon, double? hlat, double? hlon, double? plat, double? plon}) =>
+DroneReport _r(DateTime ts, String id, {int? status, int? height, double? lat, double? lon, double? hlat, double? hlon, double? plat, double? plon, bool fpv = false, int rssi = -60, String mac = '02:00:00:00:00:01'}) =>
     DroneReport(
       ts: ts,
       id: id,
-      mac: '02:00:00:00:00:01',
+      mac: mac,
+      fpv: fpv,
       status: status,
       height: height,
       lat: lat,
@@ -29,7 +30,7 @@ DroneReport _r(DateTime ts, String id, {int? status, int? height, double? lat, d
       hereLon: hlon,
       pilotLat: plat,
       pilotLon: plon,
-      rssi: -60,
+      rssi: rssi,
     );
 
 class _MemoryLog extends DroneLog {
@@ -100,6 +101,65 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
 
+  });
+
+  testWidgets('the Drones list filters Remote ID and FPV and shows FPV with channel and LVL', (tester) async {
+    final now = DateTime.now();
+    final (container, log) = await _setup(tester, [
+      _r(now.subtract(const Duration(seconds: 10)), 'SERIALRID', status: 2, height: 90, lat: 10.0, lon: 20.0, plat: 10.0, plon: 20.0),
+      _r(now.subtract(const Duration(seconds: 12)), 'FPV A1 5865', fpv: true, rssi: -68, mac: '02:46:50:56:16:E9'),
+    ]);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: AppTheme.darkTheme, home: const DronesScreen()),
+    ));
+    await _settle(tester);
+
+    expect(find.byKey(const Key('drone-card-SERIALRID')), findsOneWidget);
+    expect(find.byKey(const Key('drone-card-FPV A1 5865')), findsOneWidget);
+    final strip = find.byKey(const Key('drone-counts'));
+    expect(find.descendant(of: strip, matching: find.text('2')), findsNWidgets(2));
+    expect(find.descendant(of: strip, matching: find.text('1')), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const Key('drone-source-fpv')));
+    await _settle(tester);
+    final card = find.byKey(const Key('drone-card-FPV A1 5865'));
+    expect(find.byKey(const Key('drone-card-SERIALRID')), findsNothing);
+    expect(find.descendant(of: card, matching: find.text('A1 · 5865 MHz')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('LVL ')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('120')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.textContaining('dBm')), findsNothing);
+    expect(find.descendant(of: card, matching: find.textContaining('Pilot')), findsNothing);
+    expect(find.descendant(of: strip, matching: find.text('0')), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const Key('drone-source-rid')));
+    await _settle(tester);
+    expect(find.byKey(const Key('drone-card-SERIALRID')), findsOneWidget);
+    expect(find.byKey(const Key('drone-card-FPV A1 5865')), findsNothing);
+    expect(find.descendant(of: find.byKey(const Key('drone-card-SERIALRID')), matching: find.text('-60 dBm')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('drone-source-all')));
+    await _settle(tester);
+    expect(find.byKey(const Key('drone-card-FPV A1 5865')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the drone page of an FPV transmitter has no FAA record and shows LVL', (tester) async {
+    final t = DateTime.now().subtract(const Duration(minutes: 1));
+    final (container, log) = await _setup(tester, [
+      _r(t, 'FPV A1 5865', fpv: true, rssi: -68, mac: '02:46:50:56:16:E9'),
+    ]);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: AppTheme.darkTheme, home: const DronePage(id: 'FPV A1 5865')),
+    ));
+    await _settle(tester);
+    expect(find.text('FAA record'), findsNothing);
+    expect(find.byKey(const Key('drone-faa-lookup')), findsNothing);
+    expect(find.text('LVL'), findsOneWidget);
+    expect(find.text('120'), findsOneWidget);
+    expect(find.text('Channel'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('the drone page shows the detection location with its range and saves a tag shown in the list', (tester) async {

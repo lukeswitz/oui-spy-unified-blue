@@ -24,8 +24,15 @@ enum FaaState { noSerial, notIndexed, ready }
 
 /// Whether a drone's id is a serial the FAA registry can be asked about.
 FaaState faaStateOf(DroneSummary d) {
+  if (d.fpv) return FaaState.notIndexed;
   if (d.macs.contains(d.id)) return FaaState.noSerial;
   return _ctaSerial.hasMatch(d.id) ? FaaState.ready : FaaState.notIndexed;
+}
+
+/// "A1 · 5865 MHz" from an FPV id such as "FPV A1 5865".
+String fpvChannelText(String id) {
+  final p = id.split(' ');
+  return p.length == 3 && p[0] == 'FPV' ? '${p[1]} · ${p[2]} MHz' : id;
 }
 
 String droneAgo(Duration d) {

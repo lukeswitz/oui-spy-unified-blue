@@ -4,6 +4,7 @@
 import 'package:latlong2/latlong.dart';
 import 'package:oui_spy/core/cta2063.dart';
 import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvDetectionMethod;
 
 const _distance = Distance();
 
@@ -41,6 +42,7 @@ class DroneReport {
     this.hereLat,
     this.hereLon,
     this.maker = '',
+    this.fpv = false,
   });
 
   final DateTime ts;
@@ -60,6 +62,7 @@ class DroneReport {
   final double? hereLat;
   final double? hereLon;
   final String maker;
+  final bool fpv;
 
   LatLng? get dronePoint => validCoord(lat, lon) ? LatLng(lat!, lon!) : null;
   LatLng? get pilotPoint =>
@@ -91,6 +94,7 @@ class DroneReport {
       hereLat: d.latitude,
       hereLon: d.longitude,
       maker: maker,
+      fpv: d.method == fpvDetectionMethod,
     );
   }
 
@@ -112,6 +116,7 @@ class DroneReport {
         if (hereLat != null) 'hlat': hereLat,
         if (hereLon != null) 'hlon': hereLon,
         if (maker.isNotEmpty) 'maker': maker,
+        if (fpv) 'fpv': true,
       };
 
   factory DroneReport.fromJson(Map<String, dynamic> j) => DroneReport(
@@ -132,6 +137,7 @@ class DroneReport {
         hereLat: (j['hlat'] as num?)?.toDouble(),
         hereLon: (j['hlon'] as num?)?.toDouble(),
         maker: j['maker'] as String? ?? '',
+        fpv: j['fpv'] as bool? ?? false,
       );
 }
 
@@ -266,7 +272,8 @@ class DroneSummary {
   Set<String> get macs => {for (final r in reports) r.mac};
   bool get live => now.difference(last.ts) <= droneLiveWindow;
   bool get airborne => live && last.status == odidStatusAirborne;
-  bool get hasPilot => reports.any((r) => r.pilotPoint != null);
+  bool get fpv => last.fpv;
+  bool get hasPilot => !fpv && reports.any((r) => r.pilotPoint != null);
   int? get topHeight {
     int? best;
     for (final r in reports) {

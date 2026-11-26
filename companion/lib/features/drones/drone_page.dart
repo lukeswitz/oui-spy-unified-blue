@@ -18,6 +18,7 @@ import 'package:oui_spy/core/services/faa_service.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/features/drones/drone_data.dart';
 import 'package:oui_spy/features/drones/drone_kit_section.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvRssiToLevel;
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_header.dart';
@@ -111,9 +112,10 @@ class _DronePageState extends ConsumerState<DronePage> {
         ? null
         : (_flightIndex ?? flights.length - 1).clamp(0, flights.length - 1);
     final flight = idx == null ? null : flights[idx];
-    final cachedFaa = ref.watch(faaCachedProvider(widget.id)).valueOrNull;
+    final fpv = summary?.fpv ?? false;
+    final cachedFaa = fpv ? null : ref.watch(faaCachedProvider(widget.id)).valueOrNull;
     final reg = _faa ?? cachedFaa;
-    final maker = summary == null ? null : droneMakerOf(summary, reg);
+    final maker = summary == null || fpv ? null : droneMakerOf(summary, reg);
     final live = _liveDetection();
     final color = tag?.color ??
         (summary == null ? AppTheme.skySpy : droneColorForMac(summary.last.mac));
@@ -177,14 +179,16 @@ class _DronePageState extends ConsumerState<DronePage> {
                   const DSectionHeader(label: 'Flight'),
                   ..._rows(summary, flight, units),
                 ],
-                const DSectionHeader(label: 'FAA record'),
-                _FaaBlock(
-                  summary: summary,
-                  reg: reg,
-                  note: _faaNote,
-                  busy: _faaBusy,
-                  onLookup: _lookupFaa,
-                ),
+                if (!fpv) ...[
+                  const DSectionHeader(label: 'FAA record'),
+                  _FaaBlock(
+                    summary: summary,
+                    reg: reg,
+                    note: _faaNote,
+                    busy: _faaBusy,
+                    onLookup: _lookupFaa,
+                  ),
+                ],
                 if (flights.isNotEmpty) ...[
                   const DSectionHeader(label: 'Past flights'),
                   for (var i = flights.length - 1; i >= 0; i--)
@@ -219,7 +223,11 @@ class _DronePageState extends ConsumerState<DronePage> {
           label: 'Detection location',
           value: '${droneRangeText(range, units)} to the drone',
         ),
-      if (last.rssi != null) DSpecRow(label: 'Signal', value: '${last.rssi} dBm'),
+      if (s.fpv) DSpecRow(label: 'Channel', value: fpvChannelText(s.id)),
+      if (last.rssi != null)
+        s.fpv
+            ? DSpecRow(label: 'LVL', value: '${fpvRssiToLevel(last.rssi!)}')
+            : DSpecRow(label: 'Signal', value: '${last.rssi} dBm'),
       if (s.macs.length > 1 || !s.macs.contains(s.id))
         DSpecRow(label: 'Also heard as', value: s.macs.map((m) => m.toUpperCase()).join('\n'), mono: true),
     ];

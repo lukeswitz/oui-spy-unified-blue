@@ -3,6 +3,9 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/drone_flights.dart';
+import 'package:oui_spy/core/models/detection.dart';
+import 'package:oui_spy/core/models/engine.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvDetectionMethod;
 
 final _t0 = DateTime(2026, 1, 1, 12);
 
@@ -78,6 +81,33 @@ void main() {
     expect(back.status, 2);
     expect(back.herePoint!.latitude, 10.3);
     expect(back.rssi, -70);
+  });
+
+  test('an FPV detection becomes an FPV report that survives the log and is never counted with a pilot', () {
+    final det = Detection(
+      id: 'x',
+      sessionId: 's',
+      nodeId: 'n',
+      macAddress: '02:46:50:56:16:E9',
+      engine: Engine.skySpy,
+      method: fpvDetectionMethod,
+      rssi: -68,
+      channel: 1,
+      deviceTimestampMs: 0,
+      appTimestamp: _t0,
+      odid: const OdidExtension(uavId: 'FPV A1 5865'),
+    );
+    final r = DroneReport.fromDetection(det);
+    expect(r.fpv, isTrue);
+    expect(r.id, 'FPV A1 5865');
+    final back = DroneReport.fromJson(r.toJson());
+    expect(back.fpv, isTrue);
+    expect(_r(0).toJson().containsKey('fpv'), isFalse);
+    expect(_r(0).fpv, isFalse);
+    final withPilot = DroneReport(ts: _t0, id: 'FPV A1 5865', mac: 'm', pilotLat: 10.0, pilotLon: 20.0, fpv: true);
+    final drones = summarizeDrones([withPilot, _r(0, id: 'RID', plat: 10.0, plon: 20.0)], _t0);
+    expect(drones.firstWhere((d) => d.fpv).hasPilot, isFalse);
+    expect(countDrones(drones).pilots, 1);
   });
 
   test('counts: live, airborne, pilots, top height and in window', () {

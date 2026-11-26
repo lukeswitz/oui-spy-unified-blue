@@ -10,6 +10,7 @@ import 'package:oui_spy/core/drone_log.dart';
 import 'package:oui_spy/core/drone_tags.dart';
 import 'package:oui_spy/features/drones/drone_data.dart';
 import 'package:oui_spy/features/drones/drone_page.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvRssiToLevel;
 import 'package:oui_spy/features/wardrive/drone_markers.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/d/d_stats_strip.dart';
@@ -28,6 +29,21 @@ enum DroneWindow {
   final Duration? span;
 }
 
+enum DroneSource {
+  all('All'),
+  rid('Remote ID'),
+  fpv('FPV');
+
+  const DroneSource(this.label);
+  final String label;
+
+  bool matches(DroneReport r) => switch (this) {
+        all => true,
+        rid => !r.fpv,
+        fpv => r.fpv,
+      };
+}
+
 class DronesScreen extends ConsumerStatefulWidget {
   const DronesScreen({super.key});
 
@@ -38,6 +54,7 @@ class DronesScreen extends ConsumerStatefulWidget {
 class _DronesScreenState extends ConsumerState<DronesScreen> {
   static const _prefKey = 'drones_window';
   DroneWindow _window = DroneWindow.h24;
+  DroneSource _source = DroneSource.all;
   DateTimeRange? _range;
   List<DroneReport> _reports = const [];
   bool _loaded = false;
@@ -117,7 +134,8 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
     final tags = ref.watch(droneTagsProvider);
     final units = ref.watch(unitSystemProvider);
     final now = DateTime.now();
-    final drones = summarizeDrones(_reports, now);
+    final shown = [for (final r in _reports) if (_source.matches(r)) r];
+    final drones = summarizeDrones(shown, now);
     final counts = countDrones(drones);
     final top = counts.topHeight;
 
@@ -130,7 +148,7 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
             key: const Key('drones-export'),
             icon: const Icon(Icons.ios_share),
             tooltip: 'Export drone log',
-            onPressed: () => shareDroneLog(context, _reports, tags),
+            onPressed: () => shareDroneLog(context, shown, tags),
           ),
         ],
       ),
@@ -165,6 +183,20 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
                   ),
               ],
             ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final s in DroneSource.values)
+                  ChoiceChip(
+                    key: Key('drone-source-${s.name}'),
+                    label: Text(s.label),
+                    selected: _source == s,
+                    onSelected: (_) => setState(() => _source = s),
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             if (!_loaded)
               const Padding(
@@ -174,7 +206,10 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
             else if (drones.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('No drone was heard in this window.',
+                child: Text(
+                    _source == DroneSource.fpv
+                        ? 'No FPV transmitter was found in this window.'
+                        : 'No drone was heard in this window.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: t.textDim, fontSize: 13)),
               )
@@ -212,15 +247,21 @@ class _DroneCard extends ConsumerWidget {
     final t = AppTheme.of(context);
     final d = summary;
     final last = d.last;
-    final reg = ref.watch(faaCachedProvider(d.id)).valueOrNull;
-    final maker = droneMakerOf(d, reg);
+    final fpv = d.fpv;
+    final reg = fpv ? null : ref.watch(faaCachedProvider(d.id)).valueOrNull;
+    final maker = fpv ? null : droneMakerOf(d, reg);
     final color = tag?.color ?? droneColorForMac(last.mac);
-    final range = pilotRange(last);
+    final range = fpv ? null : pilotRange(last);
     final stats = <(String, String)>[
-      if (last.height != null) ('Height', UnitFormatter.altitude(last.height!.toDouble(), units)),
-      if (last.speed != null) ('Speed', '${last.speed} m/s'),
-      if (range != null) ('Pilot', droneRangeText(range, units)),
-      if (last.rssi != null) ('Signal', '${last.rssi} dBm'),
+      if (fpv) ...[
+        ('Channel', fpvChannelText(d.id)),
+        if (last.rssi != null) ('LVL', '${fpvRssiToLevel(last.rssi!)}'),
+      ] else ...[
+        if (last.height != null) ('Height', UnitFormatter.altitude(last.height!.toDouble(), units)),
+        if (last.speed != null) ('Speed', '${last.speed} m/s'),
+        if (range != null) ('Pilot', droneRangeText(range, units)),
+        if (last.rssi != null) ('Signal', '${last.rssi} dBm'),
+      ],
     ];
     return Container(
       key: Key('drone-card-${d.id}'),
@@ -239,7 +280,7 @@ class _DroneCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Icon(Icons.flight, color: color, size: 18),
+                Icon(fpv ? Icons.videocam : Icons.flight, color: color, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(d.id,
@@ -255,6 +296,7 @@ class _DroneCard extends ConsumerWidget {
               const SizedBox(height: 4),
               Text(
                 [
+                  if (fpv) 'Analog 5.8 GHz video',
                   if (maker != null) '${maker.name} (${maker.source})',
                   d.airborne ? 'In the air now' : droneHeardText(DateTime.now().difference(last.ts)),
                 ].join(' · '),
