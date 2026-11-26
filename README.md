@@ -351,15 +351,23 @@ Turning it off puts each board back to its own setting.
 
 ### Watches and alerts
 
+#### Watches
+
 - **Seen at your stops** (HISTORY → More): radios heard at 2 or more of your stops in the last 7 days.
 - **Trusted networks** (**Trust this network** on an access point): warns when a lookalike appears with weaker security, another maker, or far from home.
 - **Cell and GPS watch** (Android, SETTINGS → Detection & Alerts → This Phone): warns on a drop to 2G or 3G, a new tower at a known place, or faked GPS.
 - **Movement alerts** (off by default): a car following you (needs an RTL-SDR), an aircraft circling, a drone hovering near you, or a device moving between nodes.
-- **Watchlist:** import or export CSV or JSON in SETTINGS → Detection & Alerts → Your Lists. CSV rows are `identifier,description,kind`.
+
+#### Watchlist
+
+- **Import and export:** CSV or JSON in SETTINGS → Detection & Alerts → Your Lists. CSV rows are `identifier,description,kind`.
 - **Add a rule** (**+** on the watchlist): a MAC, maker prefix, name, company ID or data, service UUID, or Wi-Fi probe or beacon prefix. In name patterns, `#` is a hex digit, `?` any character and `*` any run.
 - **Rule limits:** a board holds 50 MAC and prefix rules, 50 service UUIDs and 32 other rules.
 - **Alert when a board hears it** (tap a Bluetooth device): adds it to every board's watchlist. **UNDO** takes it back.
 - **Watched devices** alert with their own label and sound, even when muted.
+
+#### Sounds and muting
+
 - **Alert sounds:** pick or compose a melody for each alert type, and preview it on the board.
 - **Repeat for a device** (Notifications): alerts again after the device goes 60 s unheard.
 - **Node down / Node back:** alerts when a mesh node goes missing for 45 s, and when it returns.
@@ -368,19 +376,27 @@ Turning it off puts each board back to its own setting.
 
 ### Map layers and geofences
 
+#### Map tools
+
 - **Pins:** hold the map to drop one. Tap it to rename or remove it.
 - **Measure:** tap the ruler, then tap points on the map.
-- **Follow on map:** keeps a Remote ID drone centered as it moves.
-- **Detection location:** a drone's flight shows where your phone was when it was first heard, and the range.
+- **Offline maps:** the download button saves the area in view, up to 3,000 tiles.
+- **Triangulation** (off by default): place 3 or more nodes with **Place at my position**. The map then estimates where a device is, with an error ring.
+- **MAPPED ALPRs:** marks a Flock hit `ON MAP` when OpenStreetMap lists a plate camera within 75 m.
+- **WDG TERRITORY:** shows a linked account's WDGWars territory.
+
+#### Drones
+
 - **Drones list** (SKY SPY → history): every drone in a time window. Tap one for its tag, notes, flight map, pilot, FAA record and kit.
 - **Remote ID or FPV:** chips that filter the Drones list.
+- **Follow on map:** keeps a Remote ID drone centered as it moves.
+- **Detection location:** a drone's flight shows where your phone was when it was first heard, and the range.
 - **Tags:** mark a drone Friendly, Neutral, Suspicious or Hostile. The tag colors its marker.
 - **Drone log:** Remote ID reports are kept 90 days. **Export logs** saves CSV or KML.
 - **Drone kit:** link a drone's controller, goggles, pilot phone and other devices. The app suggests likely ones.
-- **Triangulation** (off by default): place 3 or more nodes with **Place at my position**. The map then estimates where a device is, with an error ring.
-- **Offline maps:** the download button saves the area in view, up to 3,000 tiles.
-- **MAPPED ALPRs:** marks a Flock hit `ON MAP` when OpenStreetMap lists a plate camera within 75 m.
-- **WDG TERRITORY:** shows a linked account's WDGWars territory.
+
+#### Zones
+
 - **Geofences:** a **QUIET** zone hides detections and silences boards inside it.
 - **Alert zones:** with **In your zone** on, the app alerts when a drone or caught device is inside an **ALERT** zone.
 
@@ -644,6 +660,8 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 
 ## Mesh
 
+### How it works
+
 - One MANAGER connects to the phone; up to 6 NODES report to it over ESP-NOW on 2.4 GHz channel 1 until you move them (see **Channel**).
 - Nodes join on their own within about 10 s. Single hop: every node must reach the manager directly, about 200 m line of sight.
 - Default is plaintext broadcast. SETTINGS → NODE → MESH can switch to AES-256-GCM with a shared key.
@@ -651,15 +669,19 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - A node silent for 45 s drops off and rejoins when back in range.
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
-- **Read all** (SETTINGS → NODE → MESH → **Fleet control**) shows each node's build, filters, uptime and peers under **Nodes**.
+
+### Node watchlists
+
 - **Presets** (SETTINGS → Detection & Alerts → Your Lists → Watchlist → **Presets**) are ten signature sets: Axon, Meta glasses, i-PRO, Verkada, Trackers, Drones, Vehicles, Wearables, Flipper and Police. Tap one for **WATCH ON PHONE** or **INSTALL ON NODES**. A node takes the rules it can hold, and the message counts the rest as skipped.
 - **A node's filters** (a node in **Nodes** → **Filters**, through a manager) shows what one node watches for, and adds, removes, replaces or clears its rules. An edited node keeps its own list until the phone sends a new watchlist.
 - **Watchlist results:** each node reports whether it took the watchlist, such as "On 3 of 4 nodes; NODE2 refused (list too long for it)".
+
+### Fleet control
+
+- **Read all** (SETTINGS → NODE → MESH → **Fleet control**) shows each node's build, filters, uptime and peers under **Nodes**.
 - **Signal** (SETTINGS → NODE → MESH → **Signal**) shows how strongly each node hears each other node, one row per direction, updated about every 6 s.
 - **Channel** (SETTINGS → NODE → MESH → **Channel**) moves the whole mesh to channel 1 to 11. Every node confirms first, then all switch together without a reboot. If a node does not answer within 15 s, nothing moves unless you tap **Move anyway**. Update older nodes first.
 - **Finding the fleet again:** a node that hears no manager for 2 minutes scans channels 1 to 11 to find it, then retries every 15 minutes.
-- Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
-- **Firmware over the mesh** (SETTINGS → NODE → MESH → **Fleet control**, or SETTINGS → NODE → FIRMWARE) updates the nodes you tick over the mesh, with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks the image, the chip and the signature before sending. Nodes update one at a time, each row shows its progress, and **STOP** cancels. Needs a manager on firmware with this feature.
 - **Fleet metrics** (SETTINGS → NODE → MESH → **Fleet control**) shows each node's build, uptime, peers and temperature, then the last hour, day, week or month of logged activity in three views: **Detections**, **Wardrive** and **Drones**.
 
 <table>
@@ -679,6 +701,11 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
       </ol></td>
   </tr>
 </table>
+
+### Firmware updates
+
+- **Over Wi-Fi** (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image. Nodes older than v0.6.1 get the board picked in the app.
+- **Over the mesh** (SETTINGS → NODE → MESH → **Fleet control**, or SETTINGS → NODE → FIRMWARE): updates the nodes you tick with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks the image, the chip and the signature before sending. Nodes update one at a time, each row shows its progress, and **STOP** cancels. Needs a manager on firmware with this feature.
 
 ## Home dashboard
 
@@ -761,6 +788,8 @@ Over-the-air updates must be signed with the release key. A board flashed over U
 >
 > **Not affiliated with OUI-SPY.**
 
+### Code and techniques
+
 - Upstream engines: [Detector](https://github.com/colonelpanichacks/ouispy-detector), [Foxhunter](https://github.com/colonelpanichacks/ouispy-foxhunter), [Flock You](https://github.com/colonelpanichacks/flock-you), [Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy), [UniPwn](https://github.com/colonelpanichacks/Oui-Spy-UniPwn) by **colonelpanichacks**.
 - **colonelpanichacks** (Colonel Panic, MIT): `tools/home-dashboard/` is adapted from the `home-dashboard` folder of [ouispy-detector](https://github.com/colonelpanichacks/ouispy-detector). Details in [companion/NOTICE](companion/NOTICE).
 - **Meshtastic** ([protobufs](https://github.com/meshtastic/protobufs), GPL-3.0): the Meshtastic radio link uses the Bluetooth UUIDs and message field numbers from the Meshtastic protocol. No Meshtastic code is included. Details in [companion/NOTICE](companion/NOTICE).
@@ -770,6 +799,9 @@ Over-the-air updates must be signed with the release key. A board flashed over U
 - **DeFlockJoplin** ([flock-you](https://github.com/DeflockJoplin/flock-you)): wildcard-probe signature.
 - **OffGridPete** ([Fieldwatch](https://github.com/OffGridPete/Fieldwatch), MIT): the app's signature catalog starts from Fieldwatch catalog 92. The advertisement decoder, device explanations, signature engine, field decoder, pairing-flood and co-travel code are Dart ports of Fieldwatch. Details in [companion/NOTICE](companion/NOTICE).
 - **Twotoz** ([C5VRX](https://github.com/Twotoz/C5VRX), GPL-3.0): the FPV receiver uses its published technique for tuning the C5 and reading the receiver data. We wrote our own code. Details in [companion/NOTICE](companion/NOTICE).
+
+### Data and libraries
+
 - Catalog entries from [Home Assistant](https://github.com/home-assistant/core) Bluetooth matchers, the [buttplug.io](https://github.com/buttplugio/buttplug) device config, and [Theengs Decoder](https://github.com/theengs/decoder) device identifiers.
 - Fast Pair model names: the [WhisperPair](https://github.com/KULeuven-COSIC/WhisperPair) model list by KU Leuven COSIC (CC BY 4.0).
 - Company and service IDs: [Bluetooth SIG assigned numbers](https://bitbucket.org/bluetooth-SIG/public).
