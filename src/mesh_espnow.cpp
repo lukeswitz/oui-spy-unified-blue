@@ -330,13 +330,19 @@ bool meshIsFleetMac(const uint8_t* mac) {
 static portMUX_TYPE g_mgrMacMux = portMUX_INITIALIZER_UNLOCKED;
 static uint8_t g_mgrMac[6];
 static bool g_mgrMacKnown = false;
+static uint32_t g_mgrMacSeenMs = 0;
+#define MESH_MGR_MAC_REPIN_MS 10000
 
 static void noteManagerMac(const uint8_t* mac) {
     if (!mac) return;
+    const uint32_t now = millis();
     portENTER_CRITICAL(&g_mgrMacMux);
-    if (!g_mgrMacKnown || memcmp(g_mgrMac, mac, 6) != 0) {
+    if (g_mgrMacKnown && memcmp(g_mgrMac, mac, 6) == 0) {
+        g_mgrMacSeenMs = now;
+    } else if (!g_mgrMacKnown || (uint32_t)(now - g_mgrMacSeenMs) > MESH_MGR_MAC_REPIN_MS) {
         memcpy(g_mgrMac, mac, 6);
         g_mgrMacKnown = true;
+        g_mgrMacSeenMs = now;
     }
     portEXIT_CRITICAL(&g_mgrMacMux);
 }
