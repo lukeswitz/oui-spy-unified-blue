@@ -93,6 +93,14 @@ class ExportScreen extends ConsumerWidget {
               trailingIcon: Icons.folder_open,
               onTap: () => _restoreDatabase(context, ref),
             ),
+            _ExportButton(
+              label: 'DELETE DATABASE',
+              description: 'Erase ALL captures, sessions and alerts on this phone',
+              icon: Icons.delete_forever,
+              trailingIcon: Icons.warning_amber,
+              destructive: true,
+              onTap: () => _deleteDatabase(context, ref),
+            ),
           ],
         ),
       ),
@@ -191,6 +199,55 @@ class ExportScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _deleteDatabase(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final t = AppTheme.of(ctx);
+        return AlertDialog(
+          backgroundColor: t.surface,
+          title: Text('Delete the database?', style: TextStyle(color: t.textPrimary)),
+          content: Text(
+            'This erases every capture, session, alert, device note and drone log on this phone. '
+            'It cannot be undone. Tap BACKUP DATABASE first if you want to keep a copy.',
+            style: TextStyle(color: t.textDim, fontSize: 13),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('DELETE', style: TextStyle(color: AppTheme.error))),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(databaseProvider).deleteAllData();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      return;
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final t = AppTheme.of(ctx);
+        return AlertDialog(
+          backgroundColor: t.surface,
+          title: Text('Database deleted', style: TextStyle(color: t.textPrimary)),
+          content: Text(
+            'Fully close and reopen the app now. It starts with an empty database.',
+            style: TextStyle(color: t.textDim, fontSize: 13),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+        );
+      },
+    );
+  }
+
   Future<void> _exportWigleCsv(BuildContext context, List<Detection> detections, GeofenceFilter geofence, String board) async {
     final csv = WigleCsv.generate(detections, geofenceFilter: geofence, board: board);
     await _shareFile(context, csv, 'oui_spy_wigle.csv');
@@ -221,36 +278,46 @@ class ExportScreen extends ConsumerWidget {
 }
 
 class _ExportButton extends StatelessWidget {
-  const _ExportButton({required this.label, required this.description, required this.icon, this.onTap, this.trailingIcon = Icons.ios_share});
+  const _ExportButton({
+    required this.label,
+    required this.description,
+    required this.icon,
+    this.onTap,
+    this.trailingIcon = Icons.ios_share,
+    this.destructive = false,
+  });
   final String label;
   final String description;
   final IconData icon;
   final VoidCallback? onTap;
   final IconData trailingIcon;
+  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
     final enabled = onTap != null;
+    final accent = destructive ? AppTheme.error : AppTheme.accent;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: OutlinedButton(
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
           foregroundColor: enabled ? t.textPrimary : t.textDim,
-          side: BorderSide(color: enabled ? t.border : t.border.withValues(alpha: 0.3)),
+          side: BorderSide(
+              color: !enabled ? t.border.withValues(alpha: 0.3) : (destructive ? AppTheme.error : t.border)),
           padding: const EdgeInsets.all(16),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: enabled ? AppTheme.accent : t.textDim),
+            Icon(icon, size: 20, color: enabled ? accent : t.textDim),
             const SizedBox(width: 16),
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 1,
-                  color: enabled ? t.textPrimary : t.textDim,
+                  color: !enabled ? t.textDim : (destructive ? AppTheme.error : t.textPrimary),
                 )),
                 Text(description, style: TextStyle(
                   fontSize: 11, color: enabled ? t.textDim : t.textDim.withValues(alpha: 0.5),

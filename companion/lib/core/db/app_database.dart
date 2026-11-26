@@ -1251,11 +1251,21 @@ class AppDatabase extends _$AppDatabase {
     final dir = await getApplicationDocumentsDirectory();
     final dbPath = p.join(dir.path, 'oui_spy.db');
     await close();
+    await deleteFiles(dbPath);
+    await File(srcPath).copy(dbPath);
+  }
+
+  Future<void> deleteAllData() async {
+    final dir = await getApplicationDocumentsDirectory();
+    await close();
+    await deleteFiles(p.join(dir.path, 'oui_spy.db'));
+  }
+
+  static Future<void> deleteFiles(String dbPath) async {
     for (final ext in ['', '-wal', '-shm']) {
       final f = File('$dbPath$ext');
       if (await f.exists()) await f.delete();
     }
-    await File(srcPath).copy(dbPath);
   }
 }
 

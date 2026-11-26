@@ -106,6 +106,13 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
             return _CollectionStatsView(stats: s);
           },
         ),
+        const SizedBox(height: 12),
+        ConfigActionRow(
+          icon: Icons.settings_backup_restore,
+          label: 'Backup, restore or delete',
+          subtitle: 'Save the database to a file, load one, or erase it',
+          onTap: () => context.push('/export'),
+        ),
         const SizedBox(height: 20),
       ],
     );
@@ -536,9 +543,15 @@ class _ChannelChart extends StatelessWidget {
                               _CollectionStatsView._fmt(e.value), style: countStyle),
                         ),
                       const SizedBox(height: 2),
-                      Container(
-                        height: 40 * f,
-                        color: color.withValues(alpha: 0.85),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: FractionallySizedBox(
+                            heightFactor: f.toDouble(),
+                            widthFactor: 1,
+                            child: Container(color: color.withValues(alpha: 0.85)),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 3),
                       if (angled)
