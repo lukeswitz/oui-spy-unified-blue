@@ -50,6 +50,10 @@ class MeshtasticUuids {
 }
 
 class FbpMeshtasticBle implements MeshtasticBle {
+  FbpMeshtasticBle({this.connectWait = const Duration(seconds: 15)});
+
+  final Duration connectWait;
+
   @override
   Future<List<MtRadioFound>> scan({Duration timeout = const Duration(seconds: 8)}) async {
     final found = <String, MtRadioFound>{};
@@ -72,7 +76,15 @@ class FbpMeshtasticBle implements MeshtasticBle {
   @override
   Future<MeshtasticLink> open(String id) async {
     final device = BluetoothDevice.fromId(id);
-    await device.connect(autoConnect: false, timeout: const Duration(seconds: 15));
+    await device.connect(autoConnect: true, mtu: null);
+    try {
+      await device.connectionState
+          .firstWhere((s) => s == BluetoothConnectionState.connected)
+          .timeout(connectWait);
+    } on TimeoutException {
+      await device.disconnect();
+      throw StateError('no answer in ${connectWait.inSeconds} s');
+    }
     try {
       if (Platform.isAndroid) await device.createBond(timeout: 120);
       try {
