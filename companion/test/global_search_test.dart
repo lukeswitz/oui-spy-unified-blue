@@ -9,9 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/feed_counts.dart';
 import 'package:oui_spy/core/global_search.dart';
+import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/features/feed/feed_counts_strip.dart';
 import 'package:oui_spy/features/feed/search_sheet.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 SearchEntry _e(SearchArea a, String title, List<Object?> hay, {int at = 0, Object? payload}) =>
     SearchEntry(area: a, title: title, subtitle: 'sub $title', haystack: hay, atMs: at, payload: payload);
@@ -179,6 +181,28 @@ void main() {
         home: SizedBox(width: 120, height: 28, child: CustomPaint(painter: a, size: Size.infinite)),
       ));
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('every count fits on a phone-width screen', (tester) async {
+      final db = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(db.close);
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await tester.binding.setSurfaceSize(const Size(360, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db), sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: const Scaffold(body: FeedCountsStrip(refresh: Duration(hours: 1))),
+        ),
+      ));
+      await tester.pump();
+      for (final label in ['NODES ONLINE', 'HEARD NOW', 'LIVE DRONES', 'HEARD TODAY', 'UNREAD ALERTS', 'MACS KEPT']) {
+        expect(tester.getRect(find.text(label)).right, lessThanOrEqualTo(360), reason: label);
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('the results sheet shows area chips and narrows by area', (tester) async {

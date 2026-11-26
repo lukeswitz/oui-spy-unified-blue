@@ -91,22 +91,19 @@ class _FeedCountsStripState extends ConsumerState<FeedCountsStrip> {
     final unread = ref.watch(alertsFeedProvider).unread;
     final silenced = ref.watch(notificationServiceProvider.select((n) => n.silenced));
     final c = _counts;
-    Widget stat(String label, String value, {Color? color}) => Padding(
-          padding: const EdgeInsets.only(right: 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: t.textSecondary)),
-              Text(value,
-                  style: TextStyle(
-                    color: color ?? t.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: AppTheme.mono,
-                  )),
-            ],
-          ),
+    Widget stat(String label, String value, {Color? color}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: t.textSecondary)),
+            Text(value,
+                style: TextStyle(
+                  color: color ?? t.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: AppTheme.mono,
+                )),
+          ],
         );
     return Container(
       key: const Key('feed-counts'),
@@ -117,19 +114,18 @@ class _FeedCountsStripState extends ConsumerState<FeedCountsStrip> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                stat('NODES ONLINE', '${c.nodesOnline}/${c.nodesTotal}'),
-                stat('HEARD NOW', '${c.heardNow}'),
-                stat('LIVE DRONES', '${c.liveDrones}', color: c.liveDrones > 0 ? AppTheme.skySpy : null),
-                stat('HEARD TODAY', '${c.today}'),
-                stat(silenced ? 'UNREAD ALERTS (SILENCED)' : 'UNREAD ALERTS', '$unread',
-                    color: unread > 0 ? AppTheme.error : null),
-                stat('MACS KEPT', '${c.macsKept}'),
-              ],
-            ),
+          Wrap(
+            spacing: 18,
+            runSpacing: 6,
+            children: [
+              stat('NODES ONLINE', '${c.nodesOnline}/${c.nodesTotal}'),
+              stat('HEARD NOW', '${c.heardNow}'),
+              stat('LIVE DRONES', '${c.liveDrones}', color: c.liveDrones > 0 ? AppTheme.skySpy : null),
+              stat('HEARD TODAY', '${c.today}'),
+              stat(silenced ? 'UNREAD ALERTS (SILENCED)' : 'UNREAD ALERTS', '$unread',
+                  color: unread > 0 ? AppTheme.error : null),
+              stat('MACS KEPT', '${c.macsKept}'),
+            ],
           ),
           const SizedBox(height: 6),
           Row(
