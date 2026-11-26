@@ -145,6 +145,40 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('the Remote ID or FPV choice is remembered like the time window', (tester) async {
+    final now = DateTime.now();
+    final (container, log) = await _setup(tester, [
+      _r(now.subtract(const Duration(seconds: 10)), 'SERIALRID', height: 5),
+      _r(now.subtract(const Duration(seconds: 12)), 'FPV A1 5865', fpv: true, rssi: -68, mac: '02:46:50:56:16:E9'),
+    ]);
+    SharedPreferences.setMockInitialValues({'drones_source': 'fpv'});
+    Future<void> open() async {
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(theme: AppTheme.darkTheme, home: const DronesScreen()),
+      ));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await open();
+    expect(tester.widget<ChoiceChip>(find.byKey(const Key('drone-source-fpv'))).selected, isTrue);
+    expect(find.byKey(const Key('drone-card-SERIALRID')), findsNothing);
+    expect(find.byKey(const Key('drone-card-FPV A1 5865')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('drone-source-rid')));
+    await tester.pump();
+    expect((await SharedPreferences.getInstance()).getString('drones_source'), 'rid');
+
+    await tester.pumpWidget(const SizedBox());
+    await open();
+    expect(tester.widget<ChoiceChip>(find.byKey(const Key('drone-source-rid'))).selected, isTrue);
+    expect(find.byKey(const Key('drone-card-SERIALRID')), findsOneWidget);
+    expect(find.byKey(const Key('drone-card-FPV A1 5865')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a drone card shows the saved name with the id as its subtitle', (tester) async {
     final now = DateTime.now();
     final (container, log) = await _setup(tester, [

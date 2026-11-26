@@ -57,6 +57,7 @@ class DronesScreen extends ConsumerStatefulWidget {
 
 class _DronesScreenState extends ConsumerState<DronesScreen> {
   static const _prefKey = 'drones_window';
+  static const _sourceKey = 'drones_source';
   DroneWindow _window = DroneWindow.h24;
   DroneSource _source = DroneSource.all;
   DateTimeRange? _range;
@@ -64,6 +65,7 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
   bool _loaded = false;
   Timer? _timer;
   bool _windowChosen = false;
+  bool _sourceChosen = false;
 
   @override
   void initState() {
@@ -86,7 +88,20 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
         if (w.name == saved && w != DroneWindow.dates) _window = w;
       }
     }
+    final savedSource = p.getString(_sourceKey);
+    if (!_sourceChosen && savedSource != null) {
+      for (final s in DroneSource.values) {
+        if (s.name == savedSource) _source = s;
+      }
+    }
     await _reload();
+  }
+
+  Future<void> _pickSource(DroneSource s) async {
+    _sourceChosen = true;
+    setState(() => _source = s);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_sourceKey, s.name);
   }
 
   ({DateTime? from, DateTime? to}) get _bounds {
@@ -197,7 +212,7 @@ class _DronesScreenState extends ConsumerState<DronesScreen> {
                     key: Key('drone-source-${s.name}'),
                     label: Text(s.label),
                     selected: _source == s,
-                    onSelected: (_) => setState(() => _source = s),
+                    onSelected: (_) => _pickSource(s),
                   ),
               ],
             ),
