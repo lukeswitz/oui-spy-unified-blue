@@ -15,11 +15,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart' show showSessionHistory;
 import 'package:oui_spy/features/stops/stops_screen.dart';
+import 'package:oui_spy/features/config/ble_pin_flow.dart';
 import 'package:oui_spy/features/config/atak_section.dart';
 import 'package:oui_spy/features/assistant/assistant_settings_screen.dart';
 import 'package:oui_spy/features/config/home_dashboard_section.dart';
 import 'package:oui_spy/features/config/meshtastic_section.dart';
-import 'package:oui_spy/widgets/text_prompt_dialog.dart';
 import 'package:oui_spy/features/config/saved_map_areas_section.dart';
 import 'package:oui_spy/features/trusted/trusted_networks_screen.dart';
 import 'package:oui_spy/features/signatures/user_signatures_screen.dart';
@@ -1700,37 +1700,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
     await ref.read(bleManagerProvider).rebootDevice();
   }
 
-  Future<void> _changeBlePin() async {
-    final pin = await showDialog<String>(
-      context: context,
-      builder: (_) => TextPromptDialog(
-        title: 'Bluetooth PIN',
-        confirmLabel: 'SAVE',
-        message: 'Six digits, not starting with 0. Phones already paired stay paired. '
-            'A new phone enters this PIN when it pairs.',
-        labelText: 'New PIN',
-        maxLength: 6,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        isValid: BleProtocol.blePinValid,
-      ),
-    );
-    if (pin == null) return;
-    bool? ok;
-    try {
-      ok = await ref.read(bleManagerProvider).setBlePin(int.parse(pin));
-    } catch (e) {
-      DebugLog.log('CONFIG: setBlePin failed: $e');
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-      content: Text(switch (ok) {
-        true => 'PIN saved. Use it the next time a phone pairs.',
-        false => 'The board refused the PIN.',
-        null => 'The board did not answer. Update its firmware, then try again.',
-      }),
-    ));
-  }
+  Future<void> _changeBlePin() => changeBlePin(context, ref.read(bleManagerProvider));
 
   Future<void> _confirmFactoryReset() async {
     final ok = await showDialog<bool>(

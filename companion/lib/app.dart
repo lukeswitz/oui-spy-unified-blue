@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Luke Switzer
 // SPDX-License-Identifier: MIT
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +28,8 @@ import 'package:oui_spy/features/pcap/pcap_library_screen.dart';
 import 'package:oui_spy/features/sdr/sdr_screen.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/pin_prompt.dart';
+import 'package:oui_spy/features/config/ble_pin_flow.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
@@ -304,6 +308,40 @@ class _AppShellState extends ConsumerState<AppShell> {
   static const _routes = ['/home', '/detections', '/wardrive', '/config'];
   static const _configIndex = 3;
   bool _sdrAutoOpened = false;
+  bool _pinPromptOpen = false;
+  StreamSubscription<NodeConnectionState>? _pinSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final ble = ref.read(bleManagerProvider);
+    _pinSub = ble.connectionState.listen((s) {
+      if (s == NodeConnectionState.ready) _askSetPin();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ble.currentConnectionState == NodeConnectionState.ready) _askSetPin();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pinSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _askSetPin() async {
+    if (!mounted || _pinPromptOpen) return;
+    final ble = ref.read(bleManagerProvider);
+    final gate = ref.read(pinPromptGateProvider);
+    if (!gate.shouldPrompt(nodeId: ble.nodeId, pinIsDefault: ble.pinIsDefault)) return;
+    gate.answered(ble.nodeId);
+    _pinPromptOpen = true;
+    try {
+      await showSetPinPrompt(context, ble);
+    } finally {
+      _pinPromptOpen = false;
+    }
+  }
 
   void _onNavTap(int i) {
     final alreadyHere = _routes[i] == GoRouterState.of(context).uri.path;

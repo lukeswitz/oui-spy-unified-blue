@@ -11,6 +11,7 @@ import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_permissions.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/ble/pin_prompt.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/link_net.dart';
@@ -39,6 +40,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   bool _connecting = false;
   String? _connectingId;
   String? _error;
+  String? _pairError;
   StreamSubscription<List<ScanResult>>? _scanSub;
   StreamSubscription<NodeConnectionState>? _connSub;
   StreamSubscription<List<UsbSerialDevice>>? _usbSub;
@@ -134,6 +136,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     _results.clear();
     _pairedSeen.clear();
     _error = null;
+    if (user) _pairError = null;
     setState(() => _scanning = true);
 
     try {
@@ -220,6 +223,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     setState(() {
       _connecting = true;
       _connectingId = id;
+      _pairError = null;
     });
 
     try {
@@ -242,11 +246,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       DebugLog.log('SCAN: connected to ${result.device.platformName}');
       if (mounted) context.go('/home');
     } on FlutterBluePlusException catch (e) {
-      DebugLog.log('SCAN: connect failed: ${e.description}');
+      final failure = ble.lastPairingFailure;
+      DebugLog.log('SCAN: connect failed: ${e.description}${failure == null ? '' : ' (${failure.name})'}');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Connection failed: ${e.description}'), backgroundColor: AppTheme.error),
-        );
+        if (failure != null) {
+          setState(() => _pairError = failure.message);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Connection failed: ${e.description}'), backgroundColor: AppTheme.error),
+          );
+        }
         unawaited(_startScan());
       }
     } finally {
@@ -510,7 +519,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          if (_error != null)
+          if (_pairError ?? _error case final banner?)
             SliverToBoxAdapter(child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Container(
@@ -520,7 +529,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   borderRadius: BorderRadius.circular(AppRadius.card),
                   border: Border.all(color: AppTheme.error),
                 ),
-                child: Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: AppTheme.mono)),
+                child: Text(banner, style: TextStyle(color: AppTheme.error, fontSize: 11, fontFamily: AppTheme.mono)),
               ),
             )),
 
@@ -734,6 +743,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                     ),
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                pinHintLine,
+                                style: TextStyle(color: t.textDim, fontSize: 10, fontFamily: AppTheme.mono),
                               ),
                             ],
                           )),

@@ -14,6 +14,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
 import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/ble/pairing_failure.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/detector_rules.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
@@ -425,10 +426,21 @@ class BleManager {
   int? get bootCount => _bootCount;
   bool get spoolStorageOk => _spoolStorageOk;
   bool get boardRestarted => _boardRestarted;
+  bool? _pinIsDefault;
+  bool? get pinIsDefault => _pinIsDefault;
+
+  PairingFailure? _lastPairingFailure;
+  PairingFailure? get lastPairingFailure => _lastPairingFailure;
 
   static Map<String, String> deviceInfoKeyed(List<String> parts) => {
         for (final p in parts)
           if (p.indexOf('=') case final i when i > 0) p.substring(0, i): p.substring(i + 1),
+      };
+
+  static bool? pinIsDefaultFromInfo(Map<String, String> kv) => switch (kv['pindef']) {
+        '1' => true,
+        '0' => false,
+        _ => null,
       };
   bool get isC5 => _board.endsWith('c5');
   String get role => _role;
@@ -821,10 +833,16 @@ class BleManager {
       return;
     }
     _connecting = true;
+    _lastPairingFailure = null;
     try {
       await _doConnect(device, sessionId: sessionId, autoConnect: autoConnect);
     } catch (e) {
       final used = _device ?? device;
+      _lastPairingFailure = PairingFailure.classify(
+          android: Platform.isAndroid, error: e, disconnectCode: used.disconnectReason?.code);
+      if (_lastPairingFailure != null) {
+        DebugLog.log('BLE: connect failed as pairing ${_lastPairingFailure!.name}: $e');
+      }
       try {
         await used.disconnect(queue: false);
       } on Exception catch (de) {
@@ -1202,6 +1220,7 @@ class BleManager {
     _protoVersion = int.tryParse(kv['proto'] ?? '');
     _bootCount = int.tryParse(kv['boot'] ?? '');
     _spoolStorageOk = kv['spool'] != '0';
+    _pinIsDefault = pinIsDefaultFromInfo(kv);
     final linked = _device;
     if (linked != null && !Platform.isAndroid) {
       unawaited(_rememberPaired(linked.remoteId.toString(), _role == 'mgr' ? 'OUI-SPY-MGR' : 'OUI-SPY'));
@@ -1494,7 +1513,9 @@ class BleManager {
         .timeout(const Duration(seconds: 5))
         .then<bool?>((ok) => ok, onError: (Object _) => null);
     await sys.write(BleProtocol.encodeBlePin(pin), withoutResponse: false);
-    return reply;
+    final ok = await reply;
+    if (ok == true) _pinIsDefault = pin == BleProtocol.blePinDefault;
+    return ok;
   }
 
   final _ringResultStream = StreamController<({String mac, int status, int protocol})>.broadcast();

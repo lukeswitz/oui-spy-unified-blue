@@ -378,6 +378,8 @@ class BleProtocol {
 
   static bool blePinValid(String pin) => RegExp(r'^[1-9][0-9]{5}$').hasMatch(pin);
 
+  static bool blePinChosen(String pin) => blePinValid(pin) && pin != '$blePinDefault';
+
   static Uint8List encodeBlePin(int pin) => Uint8List.fromList([
         blePinCmd, 0xC0, 0xDE,
         pin & 0xFF, (pin >> 8) & 0xFF, (pin >> 16) & 0xFF, (pin >> 24) & 0xFF,
