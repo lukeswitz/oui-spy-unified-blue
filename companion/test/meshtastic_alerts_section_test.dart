@@ -61,7 +61,7 @@ void main() {
     expect(find.text('Automatic alerts'), findsOneWidget);
     expect(find.text('Send alerts automatically'), findsOneWidget);
     expect(on(tester, 'Send alerts automatically'), isFalse);
-    expect(find.text('Off: nothing is sent unless you tap send'), findsOneWidget);
+    expect(find.text('Messages only go out when you send them'), findsOneWidget);
     for (final type in MeshAlertType.values) {
       expect(find.text(type.label), findsOneWidget, reason: type.label);
     }

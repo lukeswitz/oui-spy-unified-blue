@@ -119,7 +119,7 @@ class _MeshtasticAlertsSectionState extends ConsumerState<MeshtasticAlertsSectio
         ConfigToggleRow(
           icon: Icons.sensors,
           label: 'Send alerts automatically',
-          subtitle: s.enabled ? 'On: alerts go out by radio without a tap' : 'Off: nothing is sent unless you tap send',
+          subtitle: s.enabled ? 'Your alerts go out over the radio on their own' : 'Messages only go out when you send them',
           color: AppTheme.accent,
           value: s.enabled,
           notify: false,

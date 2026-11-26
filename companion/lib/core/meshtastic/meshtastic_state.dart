@@ -107,6 +107,8 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
     Random? random,
     this.setupTimeout = const Duration(seconds: 20),
     DateTime Function()? clock,
+    this.autoConnect = false,
+    this.retryAfter = const Duration(seconds: 15),
   })  : _ble = ble,
         _random = random ?? Random.secure(),
         _clock = clock ?? DateTime.now,
@@ -121,6 +123,10 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
   final Random _random;
   final DateTime Function() _clock;
   final Duration setupTimeout;
+  final bool autoConnect;
+  final Duration retryAfter;
+  bool _wantLink = false;
+  Timer? _retry;
   MeshtasticLink? _link;
   StreamSubscription<void>? _numSub;
   Completer<void>? _setup;
@@ -137,6 +143,18 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
       radioName: p.getString(_kName) ?? '',
       channelIndex: p.getInt(_kChannel),
     );
+    if (autoConnect && state.radioId.isNotEmpty) {
+      _wantLink = true;
+      unawaited(connect());
+    }
+  }
+
+  void _scheduleRetry() {
+    _retry?.cancel();
+    if (!autoConnect || !_wantLink || !mounted || state.radioId.isEmpty) return;
+    _retry = Timer(retryAfter, () {
+      if (mounted && _wantLink && _link == null && state.link != MtLinkState.connecting) unawaited(connect());
+    });
   }
 
   Future<void> scan() async {
@@ -155,6 +173,8 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
     _changed = true;
     final id = radio?.id ?? state.radioId;
     if (id.isEmpty) return;
+    _wantLink = true;
+    _retry?.cancel();
     final name = radio?.name ?? state.radioName;
     await _drop();
     state = state.copyWith(link: MtLinkState.connecting, radioId: id, radioName: name, error: '', channels: const [], nodes: const {});
@@ -192,6 +212,7 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
   Future<void> _fail(String why) async {
     await _drop();
     if (mounted) state = state.copyWith(link: MtLinkState.error, error: why);
+    _scheduleRetry();
   }
 
   void _lost(MeshtasticLink link) {
@@ -200,6 +221,7 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
     _numSub?.cancel();
     _numSub = null;
     state = state.copyWith(link: MtLinkState.error, error: 'the radio disconnected');
+    _scheduleRetry();
   }
 
   Future<void> _drop() async {
@@ -212,6 +234,8 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
   }
 
   Future<void> disconnect() async {
+    _wantLink = false;
+    _retry?.cancel();
     await _drop();
     if (mounted) state = state.copyWith(link: MtLinkState.off, error: '');
   }
@@ -219,6 +243,8 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
   /// Disconnects and forgets the saved radio and channel.
   Future<void> forget() async {
     _changed = true;
+    _wantLink = false;
+    _retry?.cancel();
     await _drop();
     final p = await SharedPreferences.getInstance();
     await p.remove(_kId);
@@ -353,6 +379,7 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
 
   @override
   void dispose() {
+    _retry?.cancel();
     _numSub?.cancel();
     _link?.close();
     super.dispose();
@@ -360,5 +387,5 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
 }
 
 final meshtasticProvider = StateNotifierProvider<MeshtasticNotifier, MeshtasticState>((ref) {
-  return MeshtasticNotifier(ble: FbpMeshtasticBle());
+  return MeshtasticNotifier(ble: FbpMeshtasticBle(), autoConnect: true);
 });

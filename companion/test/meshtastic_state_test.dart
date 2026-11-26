@@ -106,8 +106,11 @@ class FakeBle implements MeshtasticBle {
     return found;
   }
 
+  int opens = 0;
+
   @override
   Future<MeshtasticLink> open(String id) async {
+    opens++;
     if (openError != null) throw openError!;
     return link;
   }
@@ -310,6 +313,35 @@ void main() {
     expect(n.state.hasRadio, isFalse);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getKeys().where((k) => k.startsWith('mt_')), isEmpty);
+    n.dispose();
+  });
+
+  test('auto-connect opens the saved radio at start and retries after a failure until disconnect', () async {
+    SharedPreferences.setMockInitialValues({'mt_radio_id': 'radio-1', 'mt_radio_name': 'Meshtastic_a1b2'});
+    ble.openError = Exception('out of range');
+    final n = MeshtasticNotifier(
+        ble: ble,
+        random: Random(1),
+        clock: () => DateTime.utc(2026, 1, 1),
+        autoConnect: true,
+        retryAfter: const Duration(milliseconds: 30));
+    await settle();
+    expect(ble.opens, greaterThanOrEqualTo(1));
+    final before = ble.opens;
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(ble.opens, greaterThan(before));
+    await n.disconnect();
+    final stopped = ble.opens;
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(ble.opens, stopped);
+    n.dispose();
+  });
+
+  test('without auto-connect a saved radio is not opened at start', () async {
+    SharedPreferences.setMockInitialValues({'mt_radio_id': 'radio-1'});
+    final n = make();
+    await settle();
+    expect(ble.opens, 0);
     n.dispose();
   });
 }
