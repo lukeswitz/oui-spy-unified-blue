@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -52,8 +53,9 @@ class FbpMeshtasticBle implements MeshtasticBle {
   @override
   Future<List<MtRadioFound>> scan({Duration timeout = const Duration(seconds: 8)}) async {
     final found = <String, MtRadioFound>{};
-    final sub = FlutterBluePlus.scanResults.listen((results) {
+    final sub = FlutterBluePlus.onScanResults.listen((results) {
       for (final r in results) {
+        if (!r.advertisementData.serviceUuids.contains(MeshtasticUuids.service)) continue;
         final name = r.advertisementData.advName.isNotEmpty ? r.advertisementData.advName : r.device.platformName;
         found[r.device.remoteId.str] = MtRadioFound(id: r.device.remoteId.str, name: name, rssi: r.rssi);
       }
@@ -72,6 +74,7 @@ class FbpMeshtasticBle implements MeshtasticBle {
     final device = BluetoothDevice.fromId(id);
     await device.connect(autoConnect: false, timeout: const Duration(seconds: 15));
     try {
+      if (Platform.isAndroid) await device.createBond(timeout: 120);
       try {
         await device.requestMtu(512);
       } on FlutterBluePlusException {
@@ -108,7 +111,7 @@ class _FbpLink implements MeshtasticLink {
       if (s == BluetoothConnectionState.disconnected && !_closed.isCompleted) _closed.complete();
     });
     _numSub = _num.onValueReceived.listen((_) => _notify.add(null));
-    await _num.setNotifyValue(true);
+    await _num.setNotifyValue(true, timeout: 120);
   }
 
   @override
