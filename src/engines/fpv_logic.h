@@ -202,6 +202,48 @@ inline bool isTransmitter(uint8_t level, uint8_t coherence, uint8_t floor, uint8
     return (uint16_t)level >= (uint16_t)floor + threshold && coherence >= kMinCoherence;
 }
 
+inline uint8_t loudestChannel(const uint8_t* levels, uint8_t floor, uint8_t threshold) {
+    uint8_t best = kNoChannel;
+    for (uint8_t i = 0; i < kChannelCount; i++) {
+        if (!supported(i) || levels[i] == kNoLevel) continue;
+        if ((uint16_t)levels[i] < (uint16_t)floor + threshold) continue;
+        if (best == kNoChannel || levels[i] > levels[best]) best = i;
+    }
+    return best;
+}
+
+constexpr uint16_t kBleedMhz = 19;
+
+inline uint64_t bleedMask(const uint8_t* levels) {
+    uint8_t order[kChannelCount];
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < kChannelCount; i++)
+        if (supported(i) && levels[i] != kNoLevel) order[n++] = i;
+    for (uint8_t a = 1; a < n; a++) {
+        uint8_t key = order[a];
+        uint8_t b = a;
+        while (b > 0 && levels[order[b - 1]] < levels[key]) {
+            order[b] = order[b - 1];
+            b--;
+        }
+        order[b] = key;
+    }
+    uint64_t peaks = 0;
+    uint64_t bleed = 0;
+    for (uint8_t a = 0; a < n; a++) {
+        uint8_t i = order[a];
+        bool near = false;
+        for (uint8_t j = 0; j < kChannelCount && !near; j++) {
+            if (!((peaks >> j) & 1u)) continue;
+            int d = (int)kFreqMhz[j] - (int)kFreqMhz[i];
+            near = (d < 0 ? -d : d) < (int)kBleedMhz;
+        }
+        if (near) bleed |= (uint64_t)1 << i;
+        else peaks |= (uint64_t)1 << i;
+    }
+    return bleed;
+}
+
 struct LockTracker {
     uint8_t hits = 0;
     uint8_t misses = 0;

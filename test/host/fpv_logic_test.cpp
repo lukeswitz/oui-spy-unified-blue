@@ -264,8 +264,46 @@ static void testIdentity() {
     for (int l = 0; l <= 254; l += 2) CHECK(rssiToLevel(levelToRssi((uint8_t)l)) == l);
 }
 
+static void testBleed() {
+    using namespace fpv;
+    uint8_t lv[kChannelCount];
+    std::memset(lv, 0, sizeof(lv));
+    lv[7] = 166;
+    lv[34] = 151;
+    lv[8] = 68;
+    lv[24] = 16;
+    lv[6] = 1;
+    uint64_t b = bleedMask(lv);
+    CHECK(!((b >> 7) & 1u));
+    CHECK((b >> 34) & 1u);
+    CHECK((b >> 8) & 1u);
+    CHECK((b >> 24) & 1u);
+    CHECK(!((b >> 6) & 1u));
+    lv[5] = 120;
+    b = bleedMask(lv);
+    CHECK(!((b >> 5) & 1u) && !((b >> 7) & 1u));
+    std::memset(lv, 0, sizeof(lv));
+    lv[34] = 200;
+    lv[7] = 90;
+    b = bleedMask(lv);
+    CHECK((b >> 7) & 1u);
+    CHECK(!((b >> 34) & 1u));
+    uint8_t none[kChannelCount];
+    std::memset(none, kNoLevel, sizeof(none));
+    CHECK(bleedMask(none) == 0);
+    CHECK(loudestChannel(none, 0, 12) == kNoChannel);
+    std::memset(lv, 2, sizeof(lv));
+    CHECK(loudestChannel(lv, 0, 12) == kNoChannel);
+    lv[7] = 15;
+    lv[34] = 17;
+    lv[8] = 14;
+    CHECK(loudestChannel(lv, 0, 12) == 34);
+    CHECK(loudestChannel(lv, 8, 12) == kNoChannel);
+}
+
 int main() {
     testTable();
+    testBleed();
     testStep();
     testBootstrap();
     testMeasure();

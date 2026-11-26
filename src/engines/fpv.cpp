@@ -449,9 +449,10 @@ void setFlag(uint8_t idx, bool on) {
 
 void finishPass() {
     s_floor = noiseFloor(s_level, kChannelCount);
+    uint64_t bleed = bleedMask(s_level);
     for (uint8_t i = 0; i < kChannelCount; i++) {
         if (!supported(i) || s_level[i] == kNoLevel) continue;
-        bool hit = isTransmitter(s_level[i], s_coh[i], s_floor, s_threshold);
+        bool hit = isTransmitter(s_level[i], s_coh[i], s_floor, s_threshold) && !((bleed >> i) & 1u);
         if (hit) {
             if (s_streak[i] < 255) s_streak[i]++;
         } else {
@@ -522,7 +523,7 @@ void stepStop() {
                       (unsigned)m.coherence, (unsigned)s_floor);
         markDirty();
     }
-    setFlag(s_chan, s_lock.locked || hit);
+    setFlag(s_chan, (s_lock.locked || hit) && !((bleedMask(s_level) >> s_chan) & 1u));
     if (s_lock.locked) pushDetect(s_chan);
     markDirty();
 }
@@ -561,10 +562,13 @@ void stepScan() {
         setMode(kModeStop);
         selectChannel(best);
     } else {
-        Serial.printf("[FPV] scan found no transmitter (floor=%u thr=%u passUs=%u)\n", (unsigned)s_floor,
-                      (unsigned)s_threshold, (unsigned)s_passUs);
+        uint8_t loud = loudestChannel(s_level, s_floor, s_threshold);
+        Serial.printf("[FPV] scan found no transmitter (floor=%u thr=%u passUs=%u) loudest=%c%u lvl=%u\n",
+                      (unsigned)s_floor, (unsigned)s_threshold, (unsigned)s_passUs,
+                      loud == kNoChannel ? '-' : bandLetter(loud), loud == kNoChannel ? 0u : (unsigned)bandNumber(loud),
+                      loud == kNoChannel ? 0u : (unsigned)s_level[loud]);
         setMode(kModeStop);
-        selectChannel(supported(s_prevChan) ? s_prevChan : s_chan);
+        selectChannel(loud != kNoChannel ? loud : (supported(s_prevChan) ? s_prevChan : s_chan));
     }
 }
 
