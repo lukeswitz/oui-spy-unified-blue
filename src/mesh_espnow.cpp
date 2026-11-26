@@ -326,6 +326,47 @@ bool meshIsFleetMac(const uint8_t* mac) {
     return false;
 }
 
+#ifndef OUISPY_ROLE_MANAGER
+static portMUX_TYPE g_mgrMacMux = portMUX_INITIALIZER_UNLOCKED;
+static uint8_t g_mgrMac[6];
+static bool g_mgrMacKnown = false;
+
+static void noteManagerMac(const uint8_t* mac) {
+    if (!mac) return;
+    portENTER_CRITICAL(&g_mgrMacMux);
+    if (!g_mgrMacKnown || memcmp(g_mgrMac, mac, 6) != 0) {
+        memcpy(g_mgrMac, mac, 6);
+        g_mgrMacKnown = true;
+    }
+    portEXIT_CRITICAL(&g_mgrMacMux);
+}
+
+static bool managerUnicastDest(uint8_t out[6]) {
+    static uint8_t s_peer[6];
+    static bool s_havePeer = false;
+    portENTER_CRITICAL(&g_mgrMacMux);
+    const bool known = g_mgrMacKnown;
+    if (known) memcpy(out, g_mgrMac, 6);
+    portEXIT_CRITICAL(&g_mgrMacMux);
+    if (!known) return false;
+    if (s_havePeer && memcmp(s_peer, out, 6) != 0) {
+        esp_now_del_peer(s_peer);
+        s_havePeer = false;
+    }
+    if (!esp_now_is_peer_exist(out)) {
+        esp_now_peer_info_t p = {};
+        memcpy(p.peer_addr, out, 6);
+        p.channel = 0;
+        p.ifidx = WIFI_IF_STA;
+        p.encrypt = false;
+        if (esp_now_add_peer(&p) != ESP_OK) return false;
+        memcpy(s_peer, out, 6);
+        s_havePeer = true;
+    }
+    return true;
+}
+#endif
+
 #define MESH_RSSI_SLOTS 16
 #define MESH_RSSI_FRESH_MS 4000
 #define MESH_RSSI_STALE_MS 15000
@@ -1533,6 +1574,9 @@ static void meshProcessRxPacket(const uint8_t* macAddr, const uint8_t* data, int
                           hb.source_node_id, hb.role, hb.active_engines_mask,
                           (unsigned)hb.fw_version, hb.phone_connected);
             if (hb.role == MESH_ROLE_MANAGER) {
+#ifndef OUISPY_ROLE_MANAGER
+                noteManagerMac(macAddr);
+#endif
                 hwAlertsSuppressed = hb.alerts_suppressed != 0;
                 g_mgrPhoneConnected = hb.phone_connected != 0;
                 g_mgrPhoneSeenMs = millis();
@@ -2933,10 +2977,14 @@ static void flushDetBatches(void) {
         size_t plainLen = offsetof(MeshDetectionBatchPacket, data) + off;
         uint8_t enc[256]; size_t encLen = 0;
         if (encryptPacket((const uint8_t*)&pkt, plainLen, enc, &encLen)) {
-            for (int retry = 0; retry < 3; retry++) {
-                if (esp_now_send(kBroadcastDst, enc, encLen) == ESP_OK) break;
-                vTaskDelay(pdMS_TO_TICKS(1));
+            uint8_t dest[6];
+            const bool unicast = managerUnicastDest(dest);
+            bool queued = false;
+            for (int retry = 0; retry < 3 && !queued; retry++) {
+                queued = esp_now_send(unicast ? dest : kBroadcastDst, enc, encLen) == ESP_OK;
+                if (!queued) vTaskDelay(pdMS_TO_TICKS(1));
             }
+            if (!queued && unicast) esp_now_send(kBroadcastDst, enc, encLen);
             if (xSemaphoreTake(meshMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
                 MeshStatus s; memcpy(&s, (void*)&meshCurrentStatus, sizeof(s));
                 s.tx_count += pkt.count;
