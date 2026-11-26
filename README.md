@@ -508,6 +508,7 @@ The app can pair this phone's own Meshtastic radio over Bluetooth, so you can se
 </table>
 
 - **Find a radio:** scans for radios that advertise the Meshtastic Bluetooth service. A radio talks to one phone at a time, so close the Meshtastic app first. If Android asks for a PIN, the radio's default is 123456.
+- **Reconnect:** the app connects to the saved radio when it starts and tries again every 15 s if the link drops. **Disconnect** or **Forget this radio** stops it.
 - **Channel:** the app sends only on a channel that has a key of its own. It never sends on the public channel (no key, or the one-byte default key), and it cannot be chosen. If the radio has no private channel, add one in the Meshtastic app. The app reads each channel's key length to tell the two apart and does not keep or show the key.
 - **Send a message** sends up to 200 characters. **Send my position** sends this phone's last position once, after you confirm. Nothing else is sent unless you turn on **Send alerts automatically** (below).
 - **Heard on the radio** lists the last text messages the radio received on the private channel. **Sent / heard** counts them.
