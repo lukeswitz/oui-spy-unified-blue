@@ -99,6 +99,7 @@ class _FpvScreenState extends ConsumerState<FpvScreen> {
               'Flagged transmitters also show up in the Sky Spy list and the feed.',
               'Levels are relative receiver counts, not dBm. The picture is not shown: Bluetooth cannot carry live video.',
               'Brighter is stronger over the noise floor. A bolt marks a flagged transmitter.',
+              'A transmitter also reaches channels within $fpvBleedMhz MHz of it. Only the strongest of those lights up and can be flagged; the others keep their number.',
               'Dimmed channels are outside the 5180 to 5885 MHz tuning window. Tap a channel to tune it.',
               'A channel is flagged when its level is this far above the measured noise floor and the carrier is steady (coherence at least $fpvMinCoherence%).',
             ]),
@@ -276,7 +277,7 @@ class FpvModeSelector extends StatelessWidget {
   final FpvMode mode;
   final ValueChanged<FpvMode> onChanged;
 
-  static const _modes = [FpvMode.scan, FpvMode.sweep, FpvMode.hop, FpvMode.stop];
+  static const _modes = [FpvMode.scan, FpvMode.sweep, FpvMode.hop];
 
   @override
   Widget build(BuildContext context) {
@@ -383,6 +384,7 @@ class FpvHeatMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTheme.of(context);
+    final bleed = state.bleedChannels;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -409,7 +411,7 @@ class FpvHeatMap extends StatelessWidget {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                      child: _cell(context, t, band * fpvPerBand + n),
+                      child: _cell(context, t, band * fpvPerBand + n, bleed),
                     ),
                   ),
               ],
@@ -420,12 +422,12 @@ class FpvHeatMap extends StatelessWidget {
     );
   }
 
-  Widget _cell(BuildContext context, ResolvedTheme t, int idx) {
+  Widget _cell(BuildContext context, ResolvedTheme t, int idx, Set<int> bleed) {
     final supported = state.isSupported(idx);
     final level = supported ? state.levelOf(idx) : null;
     final flagged = state.isFlagged(idx);
     final current = state.active && state.channel == idx;
-    final heat = fpvHeat(level, state.floor);
+    final heat = bleed.contains(idx) ? 0.0 : fpvHeat(level, state.floor);
     final fill = !supported
         ? t.surfaceLight.withValues(alpha: 0.4)
         : AppTheme.accent.withValues(alpha: 0.06 + 0.7 * heat);

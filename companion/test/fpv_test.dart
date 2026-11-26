@@ -238,8 +238,30 @@ void main() {
       final modes = <FpvMode>[];
       await tester.pumpWidget(host(FpvModeSelector(mode: FpvMode.scan, onChanged: modes.add)));
       await tester.tap(find.byKey(const ValueKey('fpv-mode-hop')));
-      await tester.tap(find.byKey(const ValueKey('fpv-mode-stop')));
-      expect(modes, [FpvMode.hop, FpvMode.stop]);
+      await tester.tap(find.byKey(const ValueKey('fpv-mode-sweep')));
+      expect(modes, [FpvMode.hop, FpvMode.sweep]);
+      expect(find.byKey(const ValueKey('fpv-mode-stop')), findsNothing);
+    });
+
+    test('bleed: only the strongest channel within 19 MHz keeps its signal', () {
+      final lv = List<int>.filled(fpvChannelCount, 0);
+      lv[7] = 166;
+      lv[34] = 151;
+      lv[8] = 68;
+      lv[24] = 16;
+      lv[6] = 1;
+      bool all(int i) => fpvFreqMhz[i] >= fpvTuneMinMhz && fpvFreqMhz[i] <= fpvTuneMaxMhz;
+      final b = fpvBleedChannels(lv, all);
+      expect(b.containsAll({34, 8, 24}), isTrue);
+      expect(b.contains(7), isFalse);
+      expect(b.contains(6), isFalse);
+      lv[5] = 120;
+      expect(fpvBleedChannels(lv, all).contains(5), isFalse);
+      final swapped = List<int>.filled(fpvChannelCount, 0)
+        ..[34] = 200
+        ..[7] = 90;
+      expect(fpvBleedChannels(swapped, all).contains(7), isTrue);
+      expect(fpvBleedChannels(List<int>.filled(fpvChannelCount, fpvNoLevel), all), isEmpty);
     });
 
     test('state labels follow active, locked and mode', () {

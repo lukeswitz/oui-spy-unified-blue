@@ -36,6 +36,34 @@ const fpvDefaultThreshold = 12;
 const fpvMinThreshold = 4;
 const fpvMaxThreshold = 80;
 
+const fpvBleedMhz = 19;
+
+Set<int> fpvBleedChannels(List<int> levels, bool Function(int) supported) {
+  final order = [
+    for (var i = 0; i < fpvChannelCount && i < levels.length; i++)
+      if (supported(i) && levels[i] != fpvNoLevel) i,
+  ];
+  for (var a = 1; a < order.length; a++) {
+    final key = order[a];
+    var b = a;
+    while (b > 0 && levels[order[b - 1]] < levels[key]) {
+      order[b] = order[b - 1];
+      b--;
+    }
+    order[b] = key;
+  }
+  final peaks = <int>[];
+  final bleed = <int>{};
+  for (final i in order) {
+    if (peaks.any((j) => (fpvFreqMhz[j] - fpvFreqMhz[i]).abs() < fpvBleedMhz)) {
+      bleed.add(i);
+    } else {
+      peaks.add(i);
+    }
+  }
+  return bleed;
+}
+
 enum FpvMode { off, stop, scan, sweep, hop }
 
 class FpvOp {
@@ -197,6 +225,8 @@ class FpvState {
     final v = levels[idx];
     return v == fpvNoLevel ? null : v;
   }
+
+  Set<int> get bleedChannels => fpvBleedChannels(levels, isSupported);
 
   List<int> get flaggedChannels => [
         for (var i = 0; i < fpvChannelCount; i++)
