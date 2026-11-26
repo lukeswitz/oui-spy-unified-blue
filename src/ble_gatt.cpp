@@ -2873,6 +2873,10 @@ static int deviceInfoKeyed(char* info, int len, int cap) {
     len += snprintf(info + len, cap - len, "boot=%lu", (unsigned long)s_bootCount);
     len++;
     len += snprintf(info + len, cap - len, "spool=%u", detSpoolStorageOk() ? 1u : 0u);
+#if OUISPY_BLE_SECURE
+    len++;
+    len += snprintf(info + len, cap - len, "pindef=%u", s_blePin == BLE_PIN_DEFAULT ? 1u : 0u);
+#endif
     return len;
 }
 
@@ -3893,7 +3897,11 @@ int bleGattPortSelfTest(void) {
     int len = snprintf(info, sizeof(info), "x");
     len = deviceInfoKeyed(info, len, sizeof(info));
     bool hasProto = false, hasEpoch = false, hasBoot = false, hasSpool = false, hasPk = false;
+    bool hasPinFlag = !OUISPY_BLE_SECURE;
     for (int i = 0; i < len; i += strlen(info + i) + 1) {
+#if OUISPY_BLE_SECURE
+        hasPinFlag |= strcmp(info + i, s_blePin == BLE_PIN_DEFAULT ? "pindef=1" : "pindef=0") == 0;
+#endif
         hasProto |= strcmp(info + i, "proto=2") == 0;
         hasEpoch |= strncmp(info + i, "epoch=", 6) == 0 && strlen(info + i) == 14;
         hasBoot |= strncmp(info + i, "boot=", 5) == 0 && s_bootCount > 0;
@@ -3901,7 +3909,7 @@ int bleGattPortSelfTest(void) {
         hasPk |= strncmp(info + i, "pk=", 3) == 0;
     }
     snprintf(d, sizeof(d), "boot=%lu epoch=%08lx", (unsigned long)s_bootCount, (unsigned long)s_bootEpoch);
-    check("device_info_keyed_fields", hasProto && hasEpoch && hasBoot && hasSpool && !hasPk, d);
+    check("device_info_keyed_fields", hasProto && hasEpoch && hasBoot && hasSpool && !hasPk && hasPinFlag, d);
 
     DetectionEvent ev = {};
     ev.engine_id = ENGINE_DETECTOR;
