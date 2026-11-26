@@ -411,7 +411,7 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 ### 802.15.4 wardrive (C5 boards)
 
-- The **802.15.4 (Zigbee, Thread)** switch under the radio picker works on C5 boards.
+- The **802.15.4 (Zigbee, Thread)** switch under the radio picker works on C5 boards, and on a manager while a C5 node is live in the mesh. Only the C5 nodes listen on 802.15.4.
 - The board listens for about 2.4 s of every 8 s, and pauses Wi-Fi and BLE meanwhile.
 - Sightings show in lime in the feed and on the map, with PAN ID, address, channel and LQI.
 - Receive only. Sightings go in the detections CSV, not in WiGLE exports.

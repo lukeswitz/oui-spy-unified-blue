@@ -97,7 +97,7 @@ class SessionTargets extends ConsumerWidget {
     final t = AppTheme.of(context);
     final wd = ref.watch(wardriveProvider);
     final app = ref.watch(appStateProvider);
-    final zigbeeCap = ref.watch(boardCapsProvider).ieee802154;
+    final zigbeeCap = ref.watch(boardCapsProvider).wardrive802154;
     final live = {
       for (final x in WardriveController.selectableTargets)
         if (targetEngineRunning(app, x)) x,

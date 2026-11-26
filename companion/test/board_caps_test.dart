@@ -80,6 +80,18 @@ void main() {
       expect(_none.wifi5Ghz.reason, contains('Connect'));
     });
 
+    test('wardrive 802.15.4 on a manager follows the C5 nodes live in the mesh', () {
+      const mgrC5Node = BoardCaps(board: 'xiao_c3', connected: true, manager: true, meshHas802154: true);
+      const mgrNoC5 = BoardCaps(board: 'xiao_c3', connected: true, manager: true);
+      expect(mgrC5Node.wardrive802154.enabled, isTrue);
+      expect(mgrC5Node.ieee802154.enabled, isFalse);
+      expect(mgrNoC5.wardrive802154.reason, contains('No C5 node is live in the mesh'));
+      expect(const BoardCaps(board: 'xiao_s3', connected: true, manager: false, meshHas802154: true).wardrive802154.enabled, isFalse);
+      expect(_c5.wardrive802154.enabled, isTrue);
+      expect(_none.wardrive802154.reason, contains('Connect'));
+      expect(mgrC5Node == mgrNoC5, isFalse);
+    });
+
     test('boards without a buzzer are the ones the settings page already named', () {
       for (final b in ['tdongle_s3', 'tdongle_c5', 'stickc']) {
         expect(BoardCaps(board: b, connected: true, manager: false).buzzer.enabled, isFalse, reason: b);
@@ -145,6 +157,20 @@ void main() {
       await _open(tester, _c5, const Scaffold(body: SingleChildScrollView(child: SessionTargets())));
       expect(tester.widget<Switch>(find.byKey(const ValueKey('zigbee-switch'))).onChanged, isNotNull);
       expect(find.textContaining('Needs an ESP32-C5 board'), findsNothing);
+    });
+
+    testWidgets('the wardrive 802.15.4 switch works on a manager with a C5 node in the mesh', (tester) async {
+      await _open(tester, const BoardCaps(board: 'xiao_c3', connected: true, manager: true, meshHas802154: true),
+          const Scaffold(body: SingleChildScrollView(child: SessionTargets())));
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('zigbee-switch'))).onChanged, isNotNull);
+      expect(find.textContaining('Needs an ESP32-C5 board'), findsNothing);
+    });
+
+    testWidgets('the wardrive 802.15.4 switch on a manager without a C5 node says so', (tester) async {
+      await _open(tester, const BoardCaps(board: 'xiao_c3', connected: true, manager: true),
+          const Scaffold(body: SingleChildScrollView(child: SessionTargets())));
+      expect(tester.widget<Switch>(find.byKey(const ValueKey('zigbee-switch'))).onChanged, isNull);
+      expect(find.textContaining('No C5 node is live in the mesh'), findsOneWidget);
     });
 
     testWidgets('Settings keeps the Buzzer rows on a board without one, disabled, with the reason', (tester) async {

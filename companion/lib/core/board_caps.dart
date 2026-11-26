@@ -29,11 +29,12 @@ const _noBuzzerBoards = {'tdongle_s3', 'tdongle_c5', 'stickc'};
 bool boardHasBuzzer(String board) => !_noBuzzerBoards.contains(board);
 
 class BoardCaps {
-  const BoardCaps({required this.board, required this.connected, required this.manager});
+  const BoardCaps({required this.board, required this.connected, required this.manager, this.meshHas802154 = false});
 
   final String board;
   final bool connected;
   final bool manager;
+  final bool meshHas802154;
 
   Cap get _c5 => !connected
       ? const Cap.off('Needs an ESP32-C5 board. Connect one to use this.')
@@ -43,6 +44,12 @@ class BoardCaps {
 
   Cap get wifi5Ghz => _c5;
   Cap get ieee802154 => _c5;
+
+  Cap get wardrive802154 => !connected || !manager || boardHas802154(board)
+      ? _c5
+      : meshHas802154
+          ? const Cap.on()
+          : const Cap.off('Needs an ESP32-C5 board. No C5 node is live in the mesh.');
 
   Cap get buzzer => boardHasBuzzer(board)
       ? const Cap.on()
@@ -59,10 +66,11 @@ class BoardCaps {
       other is BoardCaps &&
       other.board == board &&
       other.connected == connected &&
-      other.manager == manager;
+      other.manager == manager &&
+      other.meshHas802154 == meshHas802154;
 
   @override
-  int get hashCode => Object.hash(board, connected, manager);
+  int get hashCode => Object.hash(board, connected, manager, meshHas802154);
 }
 
 final boardCapsProvider = Provider<BoardCaps>((ref) {
@@ -72,5 +80,6 @@ final boardCapsProvider = Provider<BoardCaps>((ref) {
     board: ble.board,
     connected: app.isConnected,
     manager: app.isManagerConnected,
+    meshHas802154: app.meshHas802154,
   );
 });

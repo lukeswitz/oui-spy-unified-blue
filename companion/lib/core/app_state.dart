@@ -25,6 +25,7 @@ import 'package:oui_spy/core/node_watch.dart';
 import 'package:oui_spy/core/atak/atak_connector.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/radio_classifier.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 
@@ -500,6 +501,9 @@ class AppState extends ChangeNotifier {
         for (final id in _meshLiveNodeIds)
           if (!_meshManagerNodeIds.contains(id)) _nodeBoard[id] ?? '',
       };
+  bool get meshHas802154 =>
+      isManagerConnected &&
+      liveKnownNodes.any((id) => !_meshManagerNodeIds.contains(id) && boardHas802154(_nodeBoard[id] ?? ''));
   late final NodeWatch _nodeWatch = NodeWatch(
     onDown: (id) => _notificationService.onNodeDown(labelForNode(id)),
     onUp: (id) => _notificationService.onNodeUp(labelForNode(id)),

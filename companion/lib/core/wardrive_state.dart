@@ -22,6 +22,7 @@ import 'package:oui_spy/core/export/wigle_csv_import.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/watch_alert_log.dart' show alertsFeedProvider;
 import 'package:oui_spy/core/watchlist_state.dart';
+import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/gps/gps_types.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
@@ -453,7 +454,8 @@ class WardriveController extends ChangeNotifier {
   WardriveRadio radio = WardriveRadio.both;
   bool zigbee = false;
   bool _zigbeeChanged = false;
-  bool get zigbeeAvailable => boardHas802154(_ble.board);
+  bool Function() meshHas802154 = () => false;
+  bool get zigbeeAvailable => boardHas802154(_ble.board) || meshHas802154();
   bool get zigbeeActive => zigbee && zigbeeAvailable;
   bool flockFilter = false;
   bool detectorFilter = false;
@@ -2212,6 +2214,7 @@ final wardriveProvider = ChangeNotifierProvider<WardriveController>((ref) {
   final controller = WardriveController(ble, gps, db, allowlist, geofence, notif, liveActivity);
   controller.setWatchlistGetter(() => ref.read(watchlistProvider).enabledEntries);
   controller.setMakerLookup(ref.read(ouiLookupProvider).lookup);
+  controller.meshHas802154 = () => ref.read(appStateProvider).meshHas802154;
   controller.isImperial = ref.read(unitSystemProvider) == UnitSystem.imperial;
   ref.listen<UnitSystem>(unitSystemProvider, (_, next) {
     controller.isImperial = next == UnitSystem.imperial;
