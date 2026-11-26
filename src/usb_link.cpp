@@ -364,7 +364,15 @@ void usbLinkNotify(const NimBLECharacteristic* chr, const uint8_t* data, size_t 
     if (i < 0) return;
     for (size_t k = 0; k < portCount; k++) {
         UsbLinkPort* p = ports[k];
-        if (p->up && (p->subscribed & (1u << i))) enqueue(p, chars[i].id, data, len, 0);
+        if (p->up && (p->subscribed & (1u << i)) && !enqueue(p, chars[i].id, data, len, 0)) {
+            static uint32_t s_drops = 0, s_logMs = 0;
+            s_drops++;
+            const uint32_t now = millis();
+            if (now - s_logMs >= 5000) {
+                s_logMs = now;
+                Serial.printf("[USB] link notify dropped, buffer full: %lu total\n", (unsigned long)s_drops);
+            }
+        }
     }
 }
 

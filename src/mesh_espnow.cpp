@@ -2886,6 +2886,13 @@ void meshEnqueueWardriveRecord(const DetectionEvent* evt) {
 
     if (xQueueSend(detRecQueue, &r, 0) != pdTRUE) {
         txDedupForget(evt->engine_id, evt->mac, evt->channel);
+        static uint32_t s_dropped = 0, s_lastLogMs = 0;
+        s_dropped++;
+        const uint32_t now = millis();
+        if (now - s_lastLogMs >= 5000) {
+            s_lastLogMs = now;
+            Serial.printf("[MESH-TX] wardrive records dropped, queue full: %lu total\n", (unsigned long)s_dropped);
+        }
         return;
     }
     if (meshTxTaskHandle) xTaskNotifyGive(meshTxTaskHandle);
