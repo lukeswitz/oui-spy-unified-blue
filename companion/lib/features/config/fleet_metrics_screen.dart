@@ -16,8 +16,10 @@ import 'package:oui_spy/core/metrics/fleet_metrics.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
 import 'package:oui_spy/core/probes/probe_intel.dart';
 import 'package:oui_spy/core/wardrive_report.dart';
+import 'package:oui_spy/features/config/device_config.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
+import 'package:oui_spy/widgets/d/d_stats_strip.dart';
 
 enum _Mode {
   detections('Detections'),
@@ -163,10 +165,10 @@ class _FleetMetricsScreenState extends ConsumerState<FleetMetricsScreen> {
     final temp = app.nodeTempC(id);
     final ver = app.nodeFwVersion(id);
     final parts = <String>[
-      if (app.nodeBoard(id) case final b? when b.isNotEmpty) b,
+      if (app.nodeBoard(id) case final b? when b.isNotEmpty) boardDisplayName(b),
       ver == null ? 'build unknown' : 'v$ver',
       if (d != null) ...[filterCountText(d), 'up ${formatUptime(d.uptimeS)}', '${d.peerCount} peers'],
-      if (temp != null) '$temp°C',
+      if (temp != null) formatTempC(temp, ref.watch(unitSystemProvider)),
     ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -235,15 +237,14 @@ class _FleetMetricsScreenState extends ConsumerState<FleetMetricsScreen> {
   List<Widget> _charts(ResolvedTheme t, FleetMetrics m) {
     final change = m.changePercent;
     return [
-      Row(
-        children: [
-          _Kpi(label: 'DETECTIONS', value: '${m.detections}', sub: change == null ? '' : '${change >= 0 ? '+' : ''}$change% vs before'),
-          _Kpi(label: 'UNIQUE', value: '${m.unique}', sub: 'devices'),
-          _Kpi(label: 'NEW', value: '${m.newDevices}', sub: 'first seen'),
-          _Kpi(label: 'NODES', value: '${m.nodesActive}', sub: 'active'),
-          _Kpi(label: 'PEAK', value: '${m.peak}', sub: 'per ${_bucketLabel(_range)}'),
-        ],
-      ),
+      DStatsStrip(items: [
+        ('${m.detections}', 'Detections'),
+        if (change != null) ('${change >= 0 ? '+' : ''}$change%', 'Change vs before'),
+        ('${m.unique}', 'Unique devices'),
+        ('${m.newDevices}', 'First seen'),
+        ('${m.nodesActive}', 'Active nodes'),
+        ('${m.peak}', 'Peak per ${_bucketLabel(_range)}'),
+      ]),
       _radioLine(t, m),
       _Panel(title: 'OVER TIME', child: _Bars(values: m.series, color: AppTheme.accent, height: 90)),
       if (m.byNode.isNotEmpty) _Panel(title: 'BY NODE', child: _HBars(items: m.byNode)),
@@ -281,15 +282,13 @@ class _FleetMetricsScreenState extends ConsumerState<FleetMetricsScreen> {
       if (m.ghz5 > 0) '5 GHz ${m.ghz5}',
     ].join('  ·  ');
     return [
-      Row(
-        children: [
-          _Kpi(label: 'DEVICES', value: '${m.unique}', sub: 'unique'),
-          _Kpi(label: 'NEW', value: '${m.newDevices}', sub: 'first seen'),
-          _Kpi(label: 'OPEN', value: '${m.openNetworks}', sub: 'networks'),
-          _Kpi(label: 'PLACED', value: '${m.placed}', sub: 'with a position'),
-          _Kpi(label: 'NODES', value: '${m.nodesActive}', sub: 'active'),
-        ],
-      ),
+      DStatsStrip(items: [
+        ('${m.unique}', 'Unique devices'),
+        ('${m.newDevices}', 'First seen'),
+        ('${m.openNetworks}', 'Open networks'),
+        ('${m.placed}', 'With a position'),
+        ('${m.nodesActive}', 'Active nodes'),
+      ]),
       _radioLine(t, m),
       _Panel(
         title: 'DISCOVERED OVER TIME  ·  NEW PER ${_bucketLabel(_range).toUpperCase()}',
@@ -340,20 +339,15 @@ class _FleetMetricsScreenState extends ConsumerState<FleetMetricsScreen> {
     }
     String m(int? v) => v == null ? '-' : '$v m';
     return [
-      Row(
-        children: [
-          _Kpi(label: 'REPORTS', value: '${d.reports}', sub: 'total'),
-          _Kpi(label: 'DRONES', value: '${d.drones}', sub: 'unique'),
-          _Kpi(label: 'LIVE', value: '${d.live}', sub: 'last ${droneLiveWindow.inSeconds} s'),
-        ],
-      ),
-      Row(
-        children: [
-          _Kpi(label: 'MAX ALT', value: m(d.maxAlt), sub: 'AGL ${m(d.maxAgl)}'),
-          _Kpi(label: 'MAX SPEED', value: d.maxSpeed == null ? '-' : '${d.maxSpeed} m/s', sub: ''),
-          _Kpi(label: 'BEST RSSI', value: d.bestRssi == null ? '-' : '${d.bestRssi}', sub: 'dBm'),
-        ],
-      ),
+      DStatsStrip(items: [
+        ('${d.reports}', 'Reports'),
+        ('${d.drones}', 'Unique drones'),
+        ('${d.live}', 'Live, last ${droneLiveWindow.inSeconds} s'),
+        (m(d.maxAlt), 'Max altitude'),
+        (m(d.maxAgl), 'Max above ground'),
+        (d.maxSpeed == null ? '-' : '${d.maxSpeed} m/s', 'Max speed'),
+        (d.bestRssi == null ? '-' : '${d.bestRssi} dBm', 'Best signal'),
+      ]),
       _Panel(
         title: 'OVER TIME  ·  REPORTS PER ${_bucketLabel(_range).toUpperCase()}',
         child: _Bars(values: d.series, color: AppTheme.skySpy, height: 90),
@@ -411,34 +405,6 @@ class _FleetMetricsScreenState extends ConsumerState<FleetMetricsScreen> {
     if (b.inDays >= 1) return 'day';
     if (b.inHours >= 1) return '${b.inHours} h';
     return '${b.inMinutes} min';
-  }
-}
-
-class _Kpi extends StatelessWidget {
-  const _Kpi({required this.label, required this.value, required this.sub});
-  final String label;
-  final String value;
-  final String sub;
-
-  Widget _fit(Widget w) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: w);
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTheme.of(context);
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _fit(Text(label, maxLines: 1, style: TextStyle(color: t.textDim, fontSize: 9, letterSpacing: 1.5))),
-            const SizedBox(height: 2),
-            _fit(Text(value, maxLines: 1, style: TextStyle(color: AppTheme.accent, fontFamily: AppTheme.mono, fontSize: 20, fontWeight: FontWeight.bold))),
-            _fit(Text(sub, maxLines: 1, style: TextStyle(color: t.textDim, fontSize: 9))),
-          ],
-        ),
-      ),
-    );
   }
 }
 

@@ -80,12 +80,12 @@ void main() {
       }
     });
     await pump(tester);
-    expect(find.text('DETECTIONS'), findsAtLeastNWidgets(1));
+    expect(find.text('Detections'), findsAtLeastNWidgets(1));
     expect(find.text('OVER TIME'), findsOneWidget);
     expect(find.text('BY TYPE'), findsOneWidget);
     expect(find.text('SIGNAL'), findsOneWidget);
     expect(find.text('3'), findsAtLeastNWidgets(1));
-    expect(find.text('NEW'), findsOneWidget);
+    expect(find.text('First seen'), findsOneWidget);
   });
 
   Future<void> insert(String mac, int at, {String engine = 'wardrive', String method = 'wifi_ap', int channel = 6, int auth = 3, String? uav, int? alt, int? spd}) =>
@@ -121,8 +121,8 @@ void main() {
     });
     await pump(tester);
     await choose(tester, 'Wardrive');
-    expect(find.text('DEVICES'), findsOneWidget);
-    expect(find.text('OPEN'), findsOneWidget);
+    expect(find.text('Unique devices'), findsOneWidget);
+    expect(find.text('Open networks'), findsOneWidget);
     expect(find.textContaining('DISCOVERED OVER TIME'), findsOneWidget);
     expect(find.text('SECURITY'), findsOneWidget);
     expect(find.text('WPA2'), findsOneWidget);
@@ -145,8 +145,8 @@ void main() {
     });
     await choose(tester, 'Detections');
     await choose(tester, 'Drones');
-    expect(find.text('REPORTS'), findsOneWidget);
-    expect(find.text('LIVE'), findsAtLeastNWidgets(1));
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.textContaining('Live, last'), findsOneWidget);
     expect(find.text('95 m'), findsOneWidget);
     expect(find.text('6 m/s'), findsOneWidget);
     expect(find.text('DRONE-A'), findsOneWidget);
