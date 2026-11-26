@@ -58,6 +58,12 @@ void main() {
             json(400, {'ok': false, 'error': 'a TAK server address is needed'});
           case '/api/detections/clear':
             json(200, {'ok': true, 'n': 7});
+          case '/api/ports':
+            json(200, [
+              {'device': '/dev/ttyUSB0', 'desc': 'CP2102', 'espressif': false}
+            ]);
+          case '/api/meshtastic/test':
+            json(409, {'ok': false, 'error': 'the radio is not connected'});
           default:
             res.write('<html>not json</html>');
         }
@@ -94,6 +100,20 @@ void main() {
       expect(seen.single.method, 'POST');
       expect(seen.single.headers.contentType?.mimeType, 'application/json');
       expect(jsonDecode(bodies.single), {'tak': {'enabled': true}});
+    });
+
+    test('a JSON array (the serial port list) comes back as items', () async {
+      final r = await HttpDashboardApi().get(ep, '/api/ports');
+      expect(r['items'], [
+        {'device': '/dev/ttyUSB0', 'desc': 'CP2102', 'espressif': false}
+      ]);
+    });
+
+    test('a Meshtastic test the dashboard refuses carries its reason', () async {
+      await expectLater(
+        HttpDashboardApi().post(ep, '/api/meshtastic/test', const {}),
+        throwsA(isA<DashboardError>().having((e) => e.message, 'message', 'the radio is not connected')),
+      );
     });
 
     test('a page that is not JSON is not a dashboard', () async {

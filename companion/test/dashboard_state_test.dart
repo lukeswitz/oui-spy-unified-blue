@@ -17,8 +17,39 @@ class FakeApi implements DashboardApi {
     'mqtt': {'enabled': true, 'connected': true, 'detail': '192.0.2.1:1883'},
     'tak': {'enabled': false, 'state': 'off'},
     'rns': {'enabled': true, 'state': 'error', 'error': 'install the rns and lxmf packages', 'address': ''},
+    'meshtastic': {'enabled': true, 'state': 'retrying', 'error': 'could not open the port', 'sent': 3},
     'retention_days': 14,
   };
+  Map<String, dynamic> meshtastic = {
+    'config': {
+      'enabled': true,
+      'port': '/dev/ttyUSB0',
+      'channel': 1,
+      'recipients': ['!0b0c0d0e'],
+      'send': {'new_devices': true, 'drones': false, 'lost_nodes': false, 'nodes': true},
+    },
+    'state': 'connected',
+    'error': '',
+    'radio': '!0a1b2c3d',
+    'radio_name': 'Dashboard Radio',
+    'channel_name': 'Fleet',
+    'channels': [
+      {'index': 0, 'name': 'LongFast', 'role': 'primary', 'private': false},
+      {'index': 1, 'name': 'Fleet', 'role': 'secondary', 'private': true},
+    ],
+    'sent': 4,
+    'failed': 1,
+    'queued': 2,
+    'heard': 1,
+    'last': 1700000000.5,
+    'inbox': [
+      {'ts': 1700000100.0, 'from': '!0b0c0d0e', 'name': 'North Gate', 'channel': 1, 'text': 'all quiet'},
+    ],
+  };
+  List<Map<String, dynamic>> ports = [
+    {'device': '/dev/ttyUSB0', 'desc': 'CP2102 USB to UART', 'espressif': false},
+    {'device': '/dev/cu.usbmodem1101', 'desc': 'USB JTAG/serial', 'espressif': true},
+  ];
 
   @override
   Future<Map<String, dynamic>> get(DashboardEndpoint e, String path, {String? token}) async {
@@ -26,6 +57,8 @@ class FakeApi implements DashboardApi {
     lastToken = token;
     final f = failWith;
     if (f != null) throw f;
+    if (path == '/api/meshtastic') return meshtastic;
+    if (path == '/api/ports') return {'items': ports};
     return {
       'home': {'id': 'A1B2', 'alive': homeAlive},
       'nodes': {'total': 4, 'online': 3},
@@ -107,6 +140,8 @@ void main() {
     expect(s.connectors[DashboardConnector.mqtt]!.up, isTrue);
     expect(s.connectors[DashboardConnector.tak]!.enabled, isFalse);
     expect(s.connectors[DashboardConnector.rns]!.error, contains('rns'));
+    final m = s.connectors[DashboardConnector.meshtastic]!;
+    expect((m.enabled, m.state, m.up, m.error, m.sent), (true, 'retrying', false, 'could not open the port', 3));
     n.dispose();
   });
 

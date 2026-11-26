@@ -452,7 +452,8 @@ The app can link to the [home dashboard](tools/home-dashboard/README.md) running
 - **Find on this network (off by default):** looks for a dashboard started with `--lan --advertise` using multicast DNS, and only while this is on.
 - **Access token:** the token the dashboard printed once when `--lan` made it. The app keeps it in the phone's secure storage and sends it with each request.
 - **Link:** shows **Off**, **Waiting** (no address yet or none found), **Connecting**, **Live**, **Home down** (the dashboard answers but its board has gone silent), **Refused** (the dashboard wants a token) or **Not connected**. The app asks the dashboard every 10 seconds while this screen is open.
-- **Connectors:** with the link up, **MQTT**, **TAK server** and **Reticulum** each have a switch. Hosts, certificates and addresses are set on the dashboard's Settings tab. The app only turns each link on or off and shows its state. If the dashboard refuses the change, the app shows why.
+- **Connectors:** with the link up, **MQTT**, **TAK server**, **Reticulum** and **Meshtastic** each have a switch. Hosts, certificates and addresses are set on the dashboard's Settings tab. The app only turns each link on or off and shows its state. If the dashboard refuses the change, the app shows why.
+- **Meshtastic settings** (below the connectors) sets the dashboard's own Meshtastic link: the radio port on the dashboard computer (a list of its serial ports, or `tcp:<host>`), the channel (picked from the radio, never the public one), up to four nodes to also send to, and which events go out: **New devices**, **Drones**, **Lost nodes** and **Nodes**. It shows the link state, the radio, the sent, failed, queued and heard counts, the last send and error, and **Heard on the radio**. **Send a test** asks first, then sends one message with the settings last saved. Nothing is sent until you turn the link and an event on.
 - **History kept** sets how many days the dashboard keeps detections (0 keeps everything). **Clear detection history** deletes every detection on the dashboard after two confirmations. Devices, names, groups and drones stay.
 
 ### Meshtastic radio
@@ -635,6 +636,7 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - Listens on `127.0.0.1` only. `--lan` lets other devices in, and then every one of them needs the access token. Only the token's hash is kept.
 - Nothing starts by itself, and nothing goes online unless you turn on a map layer, a TAK server, Reticulum or an optional download.
 - **TAK server** and **Reticulum** links and **MQTT** are set on the dashboard. The app turns them on and off (SETTINGS → DATA → **Home dashboard**).
+- **Meshtastic:** alerts go out through a Meshtastic radio on the dashboard computer (serial port or `tcp:<host>`), batched and at most one message a minute per event type, never on a channel without its own key. The app sets it too (SETTINGS → DATA → **Home dashboard** → **Meshtastic settings**). Everything is off until you turn it on.
 - Run it with `python3 ouispymesh.py` from that folder. See [its README](tools/home-dashboard/README.md).
 
 ## Optional GPS module

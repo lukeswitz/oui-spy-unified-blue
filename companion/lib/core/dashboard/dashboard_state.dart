@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:oui_spy/core/dashboard/dashboard_api.dart';
 import 'package:oui_spy/core/dashboard/dashboard_discovery.dart';
+import 'package:oui_spy/core/dashboard/dashboard_meshtastic.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum DashboardLink { off, waiting, notConnected, connecting, live, homeDown, refused }
@@ -23,7 +24,7 @@ extension DashboardLinkText on DashboardLink {
       };
 }
 
-enum DashboardConnector { mqtt, tak, rns }
+enum DashboardConnector { mqtt, tak, rns, meshtastic }
 
 extension DashboardConnectorText on DashboardConnector {
   String get key => name;
@@ -32,12 +33,14 @@ extension DashboardConnectorText on DashboardConnector {
         DashboardConnector.mqtt => 'MQTT',
         DashboardConnector.tak => 'TAK server',
         DashboardConnector.rns => 'Reticulum',
+        DashboardConnector.meshtastic => 'Meshtastic',
       };
 
   String get subtitle => switch (this) {
         DashboardConnector.mqtt => 'Detections in from nodes on Wi-Fi',
         DashboardConnector.tak => 'Nodes, drones and pilots to a TAK server',
         DashboardConnector.rns => 'Alerts as LXMF messages',
+        DashboardConnector.meshtastic => 'Alerts over a Meshtastic radio on the dashboard computer',
       };
 }
 
@@ -324,6 +327,42 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       });
 
   Future<String?> setRetention(int days) => _post('/api/settings', {'retention_days': days < 0 ? 0 : days});
+
+  /// The Meshtastic link's settings, state, counters and inbox, or why the dashboard did not give them.
+  Future<({MeshtasticStatus? status, String? error})> loadMeshtastic() async {
+    final ep = state.endpoint;
+    if (ep == null) return (status: null, error: 'Not connected to the dashboard.');
+    try {
+      return (status: MeshtasticStatus.fromJson(await _api.get(ep, '/api/meshtastic', token: _token)), error: null);
+    } on DashboardError catch (e) {
+      return (status: null, error: e.fault == DashboardFault.rejected ? 'The dashboard did not answer /api/meshtastic (an older dashboard?).' : e.message);
+    }
+  }
+
+  /// The serial ports the dashboard computer sees.
+  Future<({List<MeshPort> ports, String? error})> loadPorts() async {
+    final ep = state.endpoint;
+    if (ep == null) return (ports: const <MeshPort>[], error: 'Not connected to the dashboard.');
+    try {
+      final r = await _api.get(ep, '/api/ports', token: _token);
+      final items = r['items'];
+      return (
+        ports: [
+          if (items is List)
+            for (final p in items) ?MeshPort.fromJson(p),
+        ],
+        error: null,
+      );
+    } on DashboardError catch (e) {
+      return (ports: const <MeshPort>[], error: e.message);
+    }
+  }
+
+  /// Saves the Meshtastic settings on the dashboard. Returns why it was refused, or null.
+  Future<String?> saveMeshtastic(MeshtasticConfig c) => _post('/api/settings', {'meshtastic': c.toJson()});
+
+  /// Asks the dashboard to send its Meshtastic test message with the settings it has saved.
+  Future<String?> testMeshtastic() => _post('/api/meshtastic/test', const {});
 
   /// Deletes every detection the dashboard holds. Returns the number deleted, or the reason it was refused.
   Future<({int? cleared, String? error})> clearHistory() async {

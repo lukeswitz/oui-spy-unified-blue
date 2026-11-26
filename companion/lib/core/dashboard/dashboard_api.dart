@@ -73,7 +73,8 @@ abstract class DashboardApi {
 }
 
 /// Talks to the dashboard over plain HTTP. The access token, when there is one, goes in the cookie the
-/// dashboard sets for browsers (`ouispy_token`).
+/// dashboard sets for browsers (`ouispy_token`). A reply that is a JSON array (GET /api/ports) comes back as
+/// `{'items': [...]}`.
 class HttpDashboardApi implements DashboardApi {
   HttpDashboardApi({this.timeout = const Duration(seconds: 5)});
 
@@ -109,7 +110,7 @@ class HttpDashboardApi implements DashboardApi {
       } on FormatException {
         json = null;
       }
-      final map = json is Map<String, dynamic> ? json : null;
+      final map = json is Map<String, dynamic> ? json : (json is List ? <String, dynamic>{'items': json} : null);
       if (res.statusCode >= 400 || (map != null && map['ok'] == false)) {
         final why = map?['error'];
         throw DashboardError(DashboardFault.rejected, why is String ? why : 'HTTP ${res.statusCode} on $path');

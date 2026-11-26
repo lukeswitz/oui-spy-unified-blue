@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/dashboard/dashboard_api.dart';
 import 'package:oui_spy/core/dashboard/dashboard_state.dart';
+import 'package:oui_spy/features/config/meshtastic_dashboard_sheet.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:oui_spy/widgets/text_prompt_dialog.dart';
@@ -15,6 +16,7 @@ String connectorStatus(DashboardConnector c, ConnectorInfo i) {
   final sent = i.sent == null ? '' : ', ${i.sent} sent';
   if (i.up) return 'Connected$sent';
   if (i.state == 'connecting') return 'Connecting';
+  if (i.state == 'retrying') return 'Not connected: retrying';
   final why = i.error.isNotEmpty ? i.error : i.detail;
   return why.isEmpty ? 'Down' : 'Down: $why';
 }
@@ -229,6 +231,7 @@ class _HomeDashboardSectionState extends ConsumerState<HomeDashboardSection> {
                   DashboardConnector.mqtt => Icons.sensors,
                   DashboardConnector.tak => Icons.map_outlined,
                   DashboardConnector.rns => Icons.cell_tower,
+                  DashboardConnector.meshtastic => Icons.settings_input_antenna,
                 },
                 label: k.title,
                 subtitle: '${k.subtitle}. ${connectorStatus(k, sum.connectors[k] ?? const ConnectorInfo())}',
@@ -237,11 +240,17 @@ class _HomeDashboardSectionState extends ConsumerState<HomeDashboardSection> {
                 notify: false,
                 onChanged: (v) => _toggle(k, v),
               ),
+            ConfigActionRow(
+              icon: Icons.tune,
+              label: 'Meshtastic settings',
+              subtitle: 'Radio port, channel, events, test and inbox',
+              onTap: () => showMeshtasticDashboardSheet(context),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
               child: Text(
                 "Hosts, certificates and passwords are set on the dashboard's Settings tab. "
-                'This page only turns each connector on or off.',
+                'This page turns each connector on or off; Meshtastic has its own settings above.',
                 style: TextStyle(color: t.textDim, fontSize: 13),
               ),
             ),
