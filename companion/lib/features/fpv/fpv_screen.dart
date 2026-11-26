@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -136,6 +137,10 @@ class _FpvScreenState extends ConsumerState<FpvScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       FpvStateCard(state: s, t: t),
+                      if (s.active) ...[
+                        const SizedBox(height: 12),
+                        FpvProximityMeter(state: s),
+                      ],
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
                         onPressed: _pending ? null : () => _toggle(s.active),
@@ -475,6 +480,90 @@ class FpvHeatMap extends StatelessWidget {
       ),
     );
   }
+}
+
+class FpvProximityMeter extends StatelessWidget {
+  const FpvProximityMeter({super.key, required this.state});
+  final FpvState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTheme.of(context);
+    final heat = fpvHeat(state.level, state.floor);
+    return Container(
+      key: const ValueKey('fpv-proximity'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('PROXIMITY', style: TextStyle(color: t.textDim, letterSpacing: 2, fontSize: 11)),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 120,
+            width: double.infinity,
+            child: CustomPaint(painter: _GaugePainter(heat: heat, track: t.surfaceLight, needle: t.textPrimary)),
+          ),
+          Row(
+            children: [
+              Text('FAR', style: TextStyle(color: t.textDim, fontFamily: AppTheme.mono, fontSize: 10)),
+              const Spacer(),
+              Text('CLOSE', style: TextStyle(color: t.textDim, fontFamily: AppTheme.mono, fontSize: 10)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  _GaugePainter({required this.heat, required this.track, required this.needle});
+  final double heat;
+  final Color track;
+  final Color needle;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 16.0;
+    final radius = math.min(size.width / 2, size.height) - stroke / 2;
+    final center = Offset(size.width / 2, size.height - 4);
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    canvas.drawArc(rect, math.pi, math.pi, false,
+        Paint()
+          ..color = track
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round);
+    const steps = 24;
+    final lit = (heat * steps).round();
+    for (var i = 0; i < lit; i++) {
+      final f = i / (steps - 1);
+      final color = f < 0.5
+          ? Color.lerp(AppTheme.success, AppTheme.warning, f * 2)!
+          : Color.lerp(AppTheme.warning, AppTheme.error, (f - 0.5) * 2)!;
+      canvas.drawArc(rect, math.pi + math.pi * i / steps, math.pi / steps * 0.8, false,
+          Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = stroke);
+    }
+    final angle = math.pi + math.pi * heat;
+    final tip = center + Offset(math.cos(angle), math.sin(angle)) * (radius - stroke);
+    canvas.drawLine(center, tip,
+        Paint()
+          ..color = needle
+          ..strokeWidth = 3
+          ..strokeCap = StrokeCap.round);
+    canvas.drawCircle(center, 6, Paint()..color = needle);
+  }
+
+  @override
+  bool shouldRepaint(_GaugePainter old) => old.heat != heat || old.track != track || old.needle != needle;
 }
 
 class _ThresholdCard extends StatelessWidget {

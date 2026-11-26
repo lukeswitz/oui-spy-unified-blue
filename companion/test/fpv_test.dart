@@ -234,6 +234,15 @@ void main() {
       expect(find.textContaining('5785'), findsWidgets);
     });
 
+    testWidgets('proximity meter lights segments by level over the floor', (tester) async {
+      final s = _goldenState();
+      await tester.pumpWidget(host(FpvProximityMeter(state: s)));
+      expect(find.text('PROXIMITY'), findsOneWidget);
+      expect(find.descendant(of: find.byType(FpvProximityMeter), matching: find.byType(CustomPaint)), findsWidgets);
+      expect(find.text('FAR'), findsOneWidget);
+      expect(find.text('CLOSE'), findsOneWidget);
+    });
+
     testWidgets('mode selector reports taps', (tester) async {
       final modes = <FpvMode>[];
       await tester.pumpWidget(host(FpvModeSelector(mode: FpvMode.scan, onChanged: modes.add)));
