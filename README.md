@@ -434,6 +434,8 @@ The app sends catches and Remote ID drones to ATAK as Cursor-on-Target markers o
 
 A language model can read what the app has seen and, when you allow it, change things. It is off by default. Turn it on in SETTINGS → DATA → **Assistant**, pick a model provider, then tap **Open the assistant**.
 
+<img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" />
+
 - **Providers:** Ollama (a computer on your network, default port 11434), Claude, OpenAI or Gemini. A cloud provider asks for your OK once, then receives your questions and everything the model reads within the grants. Ollama keeps it all on your network, over plain http unless you give an https address. On Android, plain http to a LAN address may be blocked by the system; use https or a tunnel if the **Check** button fails.
 - **API keys** are kept in the phone's secure storage and sent only to their provider. They never go in settings, logs or exports. **Remove key** deletes one.
 - **ASK** is a chat. Every tool the model runs shows in the conversation with its arguments and what it returned. It stops after 12 rounds, and **Stop** cancels a run. The conversation is kept in memory only; **Clear the conversation** ends it.
@@ -462,6 +464,8 @@ The app can link to the [home dashboard](tools/home-dashboard/README.md) running
 ### Meshtastic radio
 
 The app can pair this phone's own Meshtastic radio over Bluetooth, so you can send a message or your position by LoRa radio when you have no network. It is off until you pick a radio: SETTINGS → DATA → Export → **Meshtastic radio**.
+
+<img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio connected: nodes heard, messages sent and heard, send a message or position" />
 
 - **Find a radio:** scans for radios that advertise the Meshtastic Bluetooth service. A radio talks to one phone at a time, so close the Meshtastic app first. If Android asks for a PIN, the radio's default is 123456.
 - **Channel:** the app sends only on a channel that has a key of its own. It never sends on the public channel (no key, or the one-byte default key), and it cannot be chosen. If the radio has no private channel, add one in the Meshtastic app. The app reads each channel's key length to tell the two apart and does not keep or show the key.
@@ -631,6 +635,13 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
 - **Firmware over the mesh** (SETTINGS → NODE → MESH → **Fleet control**, or SETTINGS → NODE → FIRMWARE) updates the nodes you tick over the mesh itself, with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks it before anything is sent: an ESP32 app image, the chip, the app slot size, the OUI-SPY signature and its SHA-256, which it shows. Each node is marked **Current** (already runs this build), **Older** (runs any other build, even a newer one), **Other board** (the image can't go on it, so it can't be ticked) or **Build unknown**. **Update** needs a second tap. The image is saved once on the manager on the phone's link, then sent to one node at a time (up to 8); each row shows its step, rate and time left, and **STOP** ends the transfer in flight and restarts the node that was receiving. A node already on the build can still be ticked to re-flash it. A node checks the signature itself, restarts into the build and rejoins. Needs a manager on firmware with this feature; nodes on older firmware ignore it and still update over Wi-Fi.
 - **Fleet metrics** (SETTINGS → NODE → MESH → **Fleet control**) shows the mesh counters (state, TX / RX, failed key checks, each node's build, filters, uptime, peers and temperature), then the logged detections for the last hour, day, week or month, all nodes or one, in three views. **Detections**: detections against the span before, unique devices, new devices (never logged before the span), active nodes, the busiest period, BLE and Wi-Fi device counts, detections over time, and by node, vendor and type, a signal histogram and a weekday by hour grid. **Wardrive**: devices, new, open networks, devices with a position, discovered over time (new BLE and Wi-Fi devices per period), Wi-Fi security mix, Wi-Fi channels with the 2.4 and 5 GHz split, top makers and by node. **Drones**: Remote ID reports, drones, drones heard in the last minute, highest altitude (and above ground), top speed, best signal, reports over time, by node, and each drone with its tag, reports, peaks, node and last report.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/mesh-channel.png" alt="Mesh channel: the current channel and the move control" /><br><sub>SETTINGS → NODE → MESH → <b>Channel</b></sub></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/fleet-metrics.png" alt="Fleet metrics, Detections view: totals and detections over time" /><br><sub><b>Fleet metrics</b>, Detections view</sub></td>
+  </tr>
+</table>
 
 ## Home dashboard
 
