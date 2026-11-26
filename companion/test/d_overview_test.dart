@@ -294,7 +294,7 @@ void main() {
 
   testWidgets('stats strip has three equal columns without a manager', (tester) async {
     await _pump(tester);
-    final cols = find.descendant(of: find.byType(DStatsStrip), matching: find.byType(Expanded));
+    final cols = find.descendant(of: find.byType(DStatsStrip), matching: find.byType(Material));
     expect(cols, findsNWidgets(3));
     final widths = tester.widgetList(cols).map((w) => tester.getSize(find.byWidget(w)).width).toSet();
     expect(widths.length, 1);
@@ -304,7 +304,7 @@ void main() {
 
   testWidgets('stats strip has four equal columns with a manager', (tester) async {
     await _pump(tester, manager: true);
-    final cols = find.descendant(of: find.byType(DStatsStrip), matching: find.byType(Expanded));
+    final cols = find.descendant(of: find.byType(DStatsStrip), matching: find.byType(Material));
     expect(cols, findsNWidgets(4));
     final widths = tester.widgetList(cols).map((w) => tester.getSize(find.byWidget(w)).width).toSet();
     expect(widths.length, 1);
