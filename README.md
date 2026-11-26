@@ -26,10 +26,10 @@
   </tr>
 </table>
 
-| Platform | Phone scans | Detects on its own (no board) | Add-ons |
+| Platform | Phone scans | Detects on its own (no board) | Full feature hardware |
 |---|---|---|---|
-| Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices, sorted into types such as trackers, cameras, glasses and hacking tools. Drones that send Remote ID over Bluetooth or Wi-Fi. Phones with Wi-Fi Aware also catch drones that send it that way | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
-| iPhone / macOS | Bluetooth | Bluetooth devices, sorted into types. Does not detect drones without an ESP32 | ESP32 board(s) |
+| Android | Bluetooth, Wi-Fi | Wi-Fi networks and Bluetooth devices. Drones that send Remote ID over Bluetooth or Wi-Fi/Wi-Fi Aware | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter |
+| iPhone / macOS | Bluetooth | Bluetooth devices, no drones | ESP32 board(s) |
 
 </div>
 
