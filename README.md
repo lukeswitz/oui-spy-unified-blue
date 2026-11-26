@@ -490,8 +490,14 @@ The app can pair this phone's own Meshtastic radio over Bluetooth, so you can se
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio settings: alert types, limits, today's count and destination" /></td>
-    <td width="50%" valign="top">
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/meshtastic-radio-top.png" alt="Meshtastic radio: the paired radio, connect, change or forget, and the automatic alerts switch" />
+      <ol>
+        <li><b>This phone's radio</b>: link state and the paired radio's name.</li>
+        <li><b>Connect</b>: links to the paired radio. Close the Meshtastic app first.</li>
+        <li><b>Change radio / Forget this radio</b>: pick another radio or drop this one.</li>
+        <li><b>Send alerts automatically</b>: off until you turn it on and confirm.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio settings: alert types, limits, today's count and destination" />
       <ol>
         <li><b>Alert types</b>: which alerts go out by LoRa when <b>Send alerts automatically</b> is on.</li>
         <li><b>Limits</b>: the shortest gap between two messages and the most messages a day.</li>
