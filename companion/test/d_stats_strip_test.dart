@@ -30,6 +30,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('no label is cut off at any phone width', (tester) async {
+    const labels = ['Detections', 'Change vs before', 'Unique devices', 'First seen', 'Active nodes', 'Peak per 1 h'];
+    for (var w = 300.0; w <= 480; w += 2) {
+      await pump(tester, [for (final l in labels) ('0', l)], width: w);
+      for (final l in labels) {
+        final p = tester.renderObject<RenderParagraph>(find.text(l));
+        expect(p.didExceedMaxLines, isFalse, reason: '$l at width $w');
+      }
+    }
+  });
+
   testWidgets('labels that fit stay on one row', (tester) async {
     const labels = ['Unique', 'Engines', 'Per min', 'Nodes'];
     await pump(tester, [for (final l in labels) ('0', l)], width: 600);

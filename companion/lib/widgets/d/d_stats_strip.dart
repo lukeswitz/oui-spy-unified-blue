@@ -15,7 +15,8 @@ class DStatsStrip extends StatelessWidget {
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(AppRadius.card),
     );
-    final labelStyle = TextStyle(color: t.textSecondary, fontSize: 12);
+    final labelStyle = (Theme.of(context).textTheme.bodyMedium ?? const TextStyle())
+        .merge(TextStyle(color: t.textSecondary, fontSize: 12));
     const gap = 8.0;
     return LayoutBuilder(
       builder: (context, constraints) {
