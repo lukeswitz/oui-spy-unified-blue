@@ -15,7 +15,6 @@
 #include <Arduino.h>
 #include <driver/gpio.h>
 #include <driver/parlio_rx.h>
-#include <esp_cache.h>
 #include <esp_heap_caps.h>
 #include <esp_rom_gpio.h>
 #include <esp_wifi.h>
@@ -340,7 +339,6 @@ bool capture() {
         recoverRx();
         return false;
     }
-    esp_cache_msync(s_buf, kCapBytes, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
     return true;
 }
 
@@ -523,7 +521,7 @@ void stepStop() {
                       (unsigned)m.coherence, (unsigned)s_floor);
         markDirty();
     }
-    setFlag(s_chan, (s_lock.locked || hit) && !((bleedMask(s_level) >> s_chan) & 1u));
+    setFlag(s_chan, s_lock.locked && !((bleedMask(s_level) >> s_chan) & 1u));
     if (s_lock.locked) pushDetect(s_chan);
     markDirty();
 }
