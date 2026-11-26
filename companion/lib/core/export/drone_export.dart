@@ -4,6 +4,7 @@
 import 'package:flutter/painting.dart';
 import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/drone_tags.dart';
+import 'package:oui_spy/features/fpv/fpv_state.dart' show fpvRssiToLevel;
 
 String _xml(String s) => s
     .replaceAll('&', '&amp;')
@@ -32,7 +33,7 @@ class DroneExport {
 
   static const csvHeader = 'time_utc,id,mac,maker,tag,lat,lon,height_agl_m,'
       'alt_msl_m,speed_ms,heading_deg,status,pilot_lat,pilot_lon,rssi_dbm,'
-      'node,detected_from_lat,detected_from_lon,range_to_drone_m';
+      'level,node,detected_from_lat,detected_from_lon,range_to_drone_m';
 
   static String csv(List<DroneReport> reports,
       {Map<String, DroneTag> tags = const {}}) {
@@ -59,7 +60,8 @@ class DroneExport {
         r.status,
         r.pilotLat,
         r.pilotLon,
-        r.rssi,
+        r.fpv ? null : r.rssi,
+        r.fpv && r.rssi != null ? fpvRssiToLevel(r.rssi!) : null,
         r.node,
         r.hereLat,
         r.hereLon,

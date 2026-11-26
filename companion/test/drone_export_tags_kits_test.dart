@@ -47,6 +47,23 @@ void main() {
       expect(lines[1].split(',').last, '110');
     });
 
+    test('FPV rows leave rssi_dbm empty and write the level; Remote ID rows do the reverse', () {
+      final fpv = DroneReport(ts: _t0, id: 'FPV A1 5865', mac: 'AA:BB:CC:DD:EE:FF', rssi: -68, fpv: true);
+      final csv = DroneExport.csv([fpv, _r(10)]);
+      final lines = csv.trim().split('\n');
+      final head = lines.first.split(',');
+      final iDbm = head.indexOf('rssi_dbm');
+      final iLevel = head.indexOf('level');
+      expect(iLevel, iDbm + 1);
+      expect(head.length, lines[1].split(',').length);
+      final f = lines[1].split(',');
+      expect(f[iDbm], '');
+      expect(f[iLevel], '120');
+      final r = lines[2].split(',');
+      expect(r[iDbm], '-60');
+      expect(r[iLevel], '');
+    });
+
     test('KML has the path, pilot, detection location and the dashed range line', () {
       final kml = DroneExport.kml(
         [_r(0, hlat: 10.0, hlon: 20.001), _r(10, lat: 10.001, hlat: 10.0, hlon: 20.001)],
