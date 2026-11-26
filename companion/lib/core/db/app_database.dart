@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/db/sqlite_guard.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/db/tables.dart';
+import 'package:oui_spy/core/drone_flights.dart';
 import 'package:oui_spy/core/metrics/fleet_metrics.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -550,7 +551,8 @@ class AppDatabase extends _$AppDatabase {
     await _ensureDetectionExtTable();
     final rows = await customSelect(
       'SELECT d.mac_address AS mac, d.engine AS engine, d.detection_method AS method, d.rssi AS rssi, '
-      'd.channel AS channel, d.app_timestamp AS at, '
+      'd.channel AS channel, d.app_timestamp AS at, d.auth_mode AS auth, '
+      '(d.latitude IS NOT NULL AND d.longitude IS NOT NULL) AS placed, '
       "COALESCE(json_extract(e.data, '\$.sourceNodeId'), '') AS node "
       'FROM detections d LEFT JOIN detection_ext e ON e.detection_id = d.id '
       'WHERE d.app_timestamp >= ? AND d.app_timestamp <= ? '
@@ -567,6 +569,56 @@ class AppDatabase extends _$AppDatabase {
           rssi: r.read<int>('rssi'),
           channel: r.read<int>('channel'),
           atMs: r.read<int>('at'),
+          node: r.read<String>('node'),
+          auth: r.read<int>('auth'),
+          placed: r.read<int>('placed') != 0,
+        ),
+    ];
+  }
+
+  Future<Set<String>> metricNewMacs(int fromMs, int toMs, {String? node}) async {
+    await _ensureDetectionExtTable();
+    const nodeOf = "COALESCE(json_extract(%s.data, '\$.sourceNodeId'), '') = ?";
+    final cur = node == null ? '' : 'AND ${nodeOf.replaceFirst('%s', 'e')} ';
+    final prev = node == null ? '' : 'AND ${nodeOf.replaceFirst('%s', 'pe')} ';
+    final rows = await customSelect(
+      'SELECT DISTINCT d.mac_address AS mac FROM detections d LEFT JOIN detection_ext e ON e.detection_id = d.id '
+      'WHERE d.app_timestamp >= ? AND d.app_timestamp <= ? $cur'
+      'AND NOT EXISTS (SELECT 1 FROM detections p LEFT JOIN detection_ext pe ON pe.detection_id = p.id '
+      'WHERE p.mac_address = d.mac_address AND p.app_timestamp < ? $prev)',
+      variables: [
+        Variable.withInt(fromMs),
+        Variable.withInt(toMs),
+        if (node != null) Variable.withString(node),
+        Variable.withInt(fromMs),
+        if (node != null) Variable.withString(node),
+      ],
+    ).get();
+    return {for (final r in rows) r.read<String>('mac')};
+  }
+
+  Future<List<DroneReport>> metricDrones(int fromMs, int toMs, {String? node}) async {
+    await _ensureDetectionExtTable();
+    final rows = await customSelect(
+      'SELECT d.mac_address AS mac, d.uav_id AS uav, d.rssi AS rssi, d.app_timestamp AS at, '
+      'd.height_agl AS agl, d.altitude_msl AS alt, d.drone_speed AS spd, '
+      "COALESCE(json_extract(e.data, '\$.sourceNodeId'), '') AS node "
+      'FROM detections d LEFT JOIN detection_ext e ON e.detection_id = d.id '
+      "WHERE d.engine = 'skySpy' AND d.app_timestamp >= ? AND d.app_timestamp <= ? "
+      "${node == null ? '' : "AND COALESCE(json_extract(e.data, '\$.sourceNodeId'), '') = ? "}"
+      'ORDER BY d.app_timestamp DESC LIMIT $metricRowCap',
+      variables: [Variable.withInt(fromMs), Variable.withInt(toMs), if (node != null) Variable.withString(node)],
+    ).get();
+    return [
+      for (final r in rows)
+        DroneReport(
+          ts: DateTime.fromMillisecondsSinceEpoch(r.read<int>('at')),
+          id: (r.readNullable<String>('uav') ?? '').isNotEmpty ? r.read<String>('uav') : r.read<String>('mac'),
+          mac: r.read<String>('mac'),
+          height: r.readNullable<int>('agl'),
+          alt: r.readNullable<int>('alt'),
+          speed: r.readNullable<int>('spd'),
+          rssi: r.read<int>('rssi'),
           node: r.read<String>('node'),
         ),
     ];

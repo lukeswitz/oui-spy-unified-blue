@@ -85,5 +85,79 @@ void main() {
     expect(find.text('BY TYPE'), findsOneWidget);
     expect(find.text('SIGNAL'), findsOneWidget);
     expect(find.text('3'), findsAtLeastNWidgets(1));
+    expect(find.text('NEW'), findsOneWidget);
+  });
+
+  Future<void> insert(String mac, int at, {String engine = 'wardrive', String method = 'wifi_ap', int channel = 6, int auth = 3, String? uav, int? alt, int? spd}) =>
+      db.insertDetectionRow(DetectionsCompanion(
+        sessionId: const drift.Value('s1'),
+        nodeId: const drift.Value('default'),
+        macAddress: drift.Value(mac),
+        engine: drift.Value(engine),
+        detectionMethod: drift.Value(method),
+        rssi: const drift.Value(-60),
+        channel: drift.Value(channel),
+        deviceTimestampMs: drift.Value(at),
+        appTimestamp: drift.Value(at),
+        authMode: drift.Value(auth),
+        uavId: drift.Value(uav),
+        altitudeMsl: drift.Value(alt),
+        droneSpeed: drift.Value(spd),
+      ));
+
+  Future<void> choose(WidgetTester tester, String label) async {
+    await tester.tap(find.widgetWithText(ChoiceChip, label));
+    await tester.pump();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pump();
+  }
+
+  testWidgets('wardrive mode shows discovered over time, security, channels and makers', (tester) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await tester.runAsync(() async {
+      await insert('02:00:00:00:01:01', now - 60000);
+      await insert('02:00:00:00:01:02', now - 120000, channel: 36, auth: 0);
+      await insert('02:00:00:00:01:03', now - 180000, engine: 'detector', method: 'ble_adv', channel: 0, auth: 0);
+    });
+    await pump(tester);
+    await choose(tester, 'Wardrive');
+    expect(find.text('DEVICES'), findsOneWidget);
+    expect(find.text('OPEN'), findsOneWidget);
+    expect(find.textContaining('DISCOVERED OVER TIME'), findsOneWidget);
+    expect(find.text('SECURITY'), findsOneWidget);
+    expect(find.text('WPA2'), findsOneWidget);
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('CHANNELS'), findsOneWidget);
+    expect(find.text('Ch 36'), findsOneWidget);
+    expect(find.text('MAKERS'), findsOneWidget);
+    expect(find.text('OVER TIME'), findsNothing);
+  });
+
+  testWidgets('drones mode lists each drone with its tag and peaks, and says so when there are none', (tester) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await pump(tester);
+    await choose(tester, 'Drones');
+    expect(find.textContaining('No metrics'), findsOneWidget);
+    await tester.runAsync(() async {
+      await insert('02:00:00:00:02:01', now - 5000, engine: 'skySpy', method: 'wifi_beacon', uav: 'DRONE-A', alt: 80, spd: 6);
+      await insert('02:00:00:00:02:01', now - 90000, engine: 'skySpy', method: 'wifi_beacon', uav: 'DRONE-A', alt: 95, spd: 3);
+      await insert('02:00:00:00:02:02', now - 600000, engine: 'detector', method: 'ble_adv', channel: 0, auth: 0);
+    });
+    await choose(tester, 'Detections');
+    await choose(tester, 'Drones');
+    expect(find.text('REPORTS'), findsOneWidget);
+    expect(find.text('LIVE'), findsAtLeastNWidgets(1));
+    expect(find.text('95 m'), findsOneWidget);
+    expect(find.text('6 m/s'), findsOneWidget);
+    expect(find.text('DRONE-A'), findsOneWidget);
+    expect(find.textContaining('2 reports'), findsOneWidget);
+  });
+
+  testWidgets('drones mode with logged detections but no Remote ID reports says no drones', (tester) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await tester.runAsync(() => insert('02:00:00:00:03:01', now - 5000, engine: 'detector', method: 'ble_adv', channel: 0, auth: 0));
+    await pump(tester);
+    await choose(tester, 'Drones');
+    expect(find.textContaining('No drones'), findsOneWidget);
   });
 }
