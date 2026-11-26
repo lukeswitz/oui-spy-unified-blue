@@ -33,6 +33,59 @@ Future<void> trustNetwork(WidgetRef ref, String ssid) async {
       );
 }
 
+class _TrustDialog extends StatefulWidget {
+  const _TrustDialog({required this.nearby});
+  final List<String> nearby;
+
+  @override
+  State<_TrustDialog> createState() => _TrustDialogState();
+}
+
+class _TrustDialogState extends State<_TrustDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Trust a network'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _ctrl,
+            autofocus: widget.nearby.isEmpty,
+            decoration: const InputDecoration(labelText: 'Network name (SSID)'),
+            onSubmitted: (v) => Navigator.pop(context, v.trim()),
+          ),
+          if (widget.nearby.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text('Nearby'),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final n in widget.nearby) ActionChip(label: Text(n), onPressed: () => Navigator.pop(context, n)),
+              ],
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+        ElevatedButton(onPressed: () => Navigator.pop(context, _ctrl.text.trim()), child: const Text('TRUST')),
+      ],
+    );
+  }
+}
+
 class TrustedNetworksScreen extends ConsumerWidget {
   const TrustedNetworksScreen({super.key});
 
@@ -43,40 +96,10 @@ class TrustedNetworksScreen extends ConsumerWidget {
       for (final d in reg.devices.toList()..sort((a, b) => b.obs.rssi.compareTo(a.obs.rssi)))
         if (d.obs.isAp && d.obs.name.trim().isNotEmpty && !trusted.isTrusted(d.obs.name)) d.obs.name,
     }.take(8).toList();
-    final ctrl = TextEditingController();
     final ssid = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Trust a network'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: ctrl,
-              autofocus: nearby.isEmpty,
-              decoration: const InputDecoration(labelText: 'Network name (SSID)'),
-              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-            ),
-            if (nearby.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text('Nearby'),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [for (final n in nearby) ActionChip(label: Text(n), onPressed: () => Navigator.pop(ctx, n))],
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CANCEL')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('TRUST')),
-        ],
-      ),
+      builder: (_) => _TrustDialog(nearby: nearby),
     );
-    ctrl.dispose();
     if (ssid == null || ssid.isEmpty) return;
     await trustNetwork(ref, ssid);
   }
