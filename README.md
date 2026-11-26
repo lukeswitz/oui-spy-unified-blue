@@ -73,7 +73,6 @@ The app asks for each permission on its own screen, then opens Home.
     <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/01-permissions.png" alt="Permission step: Bluetooth" />
       <ol>
         <li><b>Progress</b>: which permission step you are on. Android asks for five.</li>
-        <li><b>Why</b>: what the app uses this permission for.</li>
         <li><b>Continue</b>: your phone shows its own prompt next.</li>
       </ol></td>
     <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/02-location-always.png" alt="Permission step: location all the time" />
@@ -85,9 +84,7 @@ The app asks for each permission on its own screen, then opens Home.
       <ol>
         <li><b>Status</b>: board link and GPS fix.</li>
         <li><b>Shortcuts</b>: the arrows open the Connect screen. The phone icon starts the phone scan.</li>
-        <li><b>CONNECT</b>: find your board over Bluetooth.</li>
-        <li><b>USE THIS DEVICE</b>: scan with the phone's own radios.</li>
-        <li><b>Engines</b>: what each engine looks for.</li>
+        <li><b>USE THIS DEVICE</b>: scan with the phone's own radios, no board needed.</li>
       </ol></td>
   </tr>
 </table>
@@ -102,14 +99,12 @@ Pick what to look for and which radios to use, then tap START.
       <ol>
         <li><b>Counters</b>: unique devices, engines running, and hits per minute.</li>
         <li><b>Targets</b>: Flock cameras, drones, every Wi-Fi and BLE device (SCAN), and your watchlist (DETECT).</li>
-        <li><b>Radio</b>: Wi-Fi, BLE or both.</li>
         <li><b>START</b>: starts a session. The app then asks which radio each board uses.</li>
         <li><b>Engine cards</b>: turn one engine on or off by itself.</li>
       </ol></td>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/05-home-running.png" alt="Home during a scan" />
       <ol>
         <li><b>Status</b>: what is scanning and how good the GPS fix is.</li>
-        <li><b>Counters</b>: update live.</li>
         <li><b>PAUSE / STOP</b>: pause or end the session. A stopped session is saved.</li>
         <li><b>Hit counts</b>: hits per engine this session, next to its switch.</li>
       </ol></td>
@@ -124,7 +119,6 @@ Everything the boards and the phone hear, live. Tap any row for its details.
   <tr>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
       <ol>
-        <li><b>Tabs</b>: LIVE hits, classified DEVICES, stored HISTORY and ALERTS.</li>
         <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open HISTORY, and more.</li>
         <li><b>Top vendors and Flock</b>: tap a vendor to show only its devices.</li>
         <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
@@ -133,12 +127,9 @@ Everything the boards and the phone hear, live. Tap any row for its details.
       </ol></td>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
       <ol>
-        <li><b>Type</b>: what kind of device this is.</li>
         <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
         <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
-        <li><b>Check this AP on WiGLE</b>: look the network up on WiGLE.</li>
         <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches-and-alerts">Watches and alerts</a>.</li>
-        <li><b>Map, Copy, Delete</b>: show it on the map, copy its MAC address, or remove it.</li>
       </ol></td>
   </tr>
   <tr>
@@ -167,16 +158,12 @@ Choose which device types alert you. Every alert lands in one list.
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
       <ol>
         <li><b>An alert</b>: what was found, why, and when. Tap it for the map and the device.</li>
-        <li><b>Kind</b>: each kind has its own color.</li>
         <li><b>Count and clear</b>: how many alerts, and a button to clear them.</li>
-        <li><b>Info</b>: explains each tab and icon.</li>
       </ol></td>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/11-what-to-watch.png" alt="Settings, What to Watch For" />
       <ol>
         <li><b>Alert threshold</b>: how sure a detector hit must be before it notifies you.</li>
-        <li><b>A device type</b>: what it covers.</li>
         <li><b>Bell</b>: notify, or only log it.</li>
-        <li><b>Switch</b>: watch for this type or not.</li>
       </ol></td>
   </tr>
 </table>
@@ -190,21 +177,15 @@ Every hit is placed where you heard it, along your route. The numbers are how ma
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Map during a wardrive with the Flock list open" />
       <ol>
         <li><b>Session</b>: time recording, and counts of Wi-Fi, Flock, drone, detector and BLE hits.</li>
-        <li><b>Flock list</b>: tap the chip to open or close it. Drones and detector hits have their own.</li>
-        <li><b>Each hit</b>: its name, type, address and signal. Tap a row to zoom the map to it.</li>
+        <li><b>Flock list</b>: tap the chip to open or close it. Tap a row to zoom the map to it. Drones and detector hits have their own lists.</li>
         <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
       </ol></td>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/09-map.png" alt="A saved wardrive session on the map" />
       <ol>
         <li><b>Saved session</b>: unique devices, total hits and distance.</li>
         <li><b>Lists</b>: Flock, drone and detector hits from this session.</li>
-        <li><b>CSV</b>: export the session as a WiGLE CSV.</li>
-        <li><b>Layers</b>: map style and extra layers.</li>
         <li><b>A drone</b>: its flight path and its pilot.</li>
         <li><b>A cluster</b>: tap it to list the devices there.</li>
-        <li><b>Targets</b>: what the next session looks for.</li>
-        <li><b>Radio</b>: Wi-Fi, BLE or both.</li>
-        <li><b>START</b>: start a new session.</li>
         <li><b>SESSIONS</b>: open, export or delete saved sessions.</li>
       </ol></td>
   </tr>
@@ -220,21 +201,14 @@ Every session is saved. Open one to replay it on the map, or open its report.
       <ol>
         <li><b>SELECT, IMPORT, CLEAR ALL</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
         <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
-        <li><b>REPORT</b>: opens the report.</li>
-        <li><b>CSV, DELETE</b>: export or remove this session.</li>
       </ol></td>
     <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
       <ol>
-        <li><b>Session</b>: start time, length and distance.</li>
         <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
-        <li><b>Route</b>: where you drove.</li>
         <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
-        <li><b>Share</b>: sends the report as text.</li>
       </ol></td>
     <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
       <ol>
-        <li><b>Security</b>: how many networks use each kind of security.</li>
-        <li><b>Top makers</b>: the most common device makers.</li>
         <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
         <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
       </ol></td>
@@ -261,12 +235,12 @@ Every session is saved. Open one to replay it on the map, or open its report.
 | **Detector** | Your watchlist (exact MAC, maker prefix, Bluetooth name contains, starts with or pattern, Bluetooth company ID, company data with a mask, 16-bit or 128-bit service UUID, Wi-Fi probe prefix, Wi-Fi beacon prefix, and a phone-only maker name), plus built-in signatures, all off by default: tracker tags following you (AirTag, AirPods and other Find My items, SmartTag, Tile, Google Find Hub, Chipolo, Pebblebee, DULT-standard tags), floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, evil-twin and KARMA rogue access points, Pwnagotchi, Meshtastic and MeshCore mesh radios, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, Motorola Solutions radios and body cams, i-PRO body cams, police and fleet vehicle routers, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE, wearable cameras and recorders (GoPro, Insta360, Snap Spectacles, Even Realities, Vuzix, Brilliant Labs Frame, PLAUD), vehicles (Teslas, Bluetooth OBD-II dongles), drones over Bluetooth (Remote ID, DJI) |
 | **Flock BLE / Flock WiFi** | Flock Safety ALPR cameras, Raven gunshot sensors, Penguin and Pigvision. Optional OUI-only Wi-Fi hits |
 | **Sky Spy** | Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position |
-| **Foxhunter** | One target device. Beep rate (or the RSSI meter on boards without a buzzer) rises as you get closer. The app's FIND IT view shows the signal in dBm and a ring that pulses faster as it climbs (every 1.4 s weak, every 0.09 s close), and the phone buzzes with each pulse; **Buzz on** / **Buzz off** switches it, and a Mac has no buzz. The reading comes from the node that hears the device best |
+| **Foxhunter** | One target device. The board beeps faster as you get closer. The app's FIND IT view shows the signal and a ring that pulses faster, and the phone can buzz with it |
 | **UniPwn** | Unitree robots by BLE name (`Go2_`, `G1_`, `H1_`, …) |
 | **Wardrive** | Every Wi-Fi AP and BLE device, GPS-stamped, WiGLE CSV format. 2.4 GHz channels 1–14 by default; C5 boards add 5 GHz including DFS and, with the **802.15.4 (Zigbee, Thread)** switch, passive 802.15.4 receive on channels 11–26 (PAN ID, source address, beacon info, channel, LQI; receive only, never transmits) |
 | **PCAP** | Raw 802.11, BLE advertising or (C5 boards) 802.15.4 frames to a Wireshark `.pcap` |
-| **AXEOFF** | Axon gear only, headless: BLE adverts with Axon's company ID `0x034D`, service `0xFC81` / `0xFE6B` / `0xFE6C` or `00:25:DF` address prefix, and Wi-Fi probe requests and beacons from `00:25:DF` while it sweeps channels 11 to 1. Passive on both radios. Hits show as Axon detections; the board plays the Axon appeared, still-near (faster as it gets closer) and lost tones, and a four-note start tone. It stops reporting after 8 s of silence. On a mesh node it joins the channel handoff like the other Wi-Fi engines, and a manager's Sky Spy node denies it |
-| **BLE Sniff** | Every Bluetooth LE advert, repeats included, as a live list (type, address kind, signal, name, services, maker) with filters for advert type and address kind, and **RECORD PCAP** to save a Wireshark file on the phone. Passive, never sends a scan request. Stop PCAP capture first, they share the Bluetooth radio. Needs the phone connected to the board: the list is not relayed over the mesh, so on a manager pick the node to sniff on |
+| **AXEOFF** | Axon gear only, on Bluetooth and Wi-Fi, passive. The board plays a tone when Axon gear appears, while it stays near, and when it leaves |
+| **BLE Sniff** | Every Bluetooth LE advert as a live list, with filters and **RECORD PCAP**. Passive. Needs the board connected to the phone directly, or picked as the node on a manager |
 | **FPV receiver** | Analog 5.8 GHz FPV video transmitters on 44 of the 48 standard channels. XIAO ESP32-C5 only. See [FPV receiver](#fpv-receiver) |
 
 > [!IMPORTANT]
@@ -295,7 +269,9 @@ DETECTIONS → HISTORY can filter by tier.
 | **Phone + USB radios** | Android, no board; plug in an RTL-SDR and/or a USB Wi-Fi adapter | SDR decodes 315 / 433 / 915 MHz and ADS-B. A USB Wi-Fi adapter scans Wi-Fi, and the MT7921AU also scans Bluetooth LE. Both run alongside the phone's radios |
 
 - **Offline scan** (SETTINGS → NODE → OFFLINE SCAN): the board keeps scanning without the phone, even after a reboot, and uploads hits on reconnect. A directly connected board with a GPS module fix also wardrives, one row per device every 5 min, up to 1 MB. It stops after 60 s without a fix.
-- **Private Bluetooth link:** the board changes its private address at random every 5–15 min. After pairing, it hides its name and refuses unknown phones. The paired phone reconnects on its own, even after a reboot. Pairing asks for the board's 6-digit PIN: 123456 on a new board. The CONNECT screen shows this under each new board. Change it in SETTINGS → NODE → Firmware → **Bluetooth PIN**. While a connected board still uses 123456, the app offers **SET PIN** or **LATER** after connecting, once per board each time the app starts. A PIN of 123456 is not accepted as your own. If pairing fails, CONNECT says whether the board is not taking new phones or the PIN was wrong. A phone paired before the PIN existed must forget the board and pair again. To pair another phone, restart the board: it accepts one new phone in the 2 min after power-on. After updating an S3, C3 or older ESP32 board, forget it in your phone's Bluetooth settings and pair again.
+- **Private Bluetooth link:** after pairing, the board hides its name, changes its address every 5–15 min and refuses unknown phones. The paired phone reconnects on its own.
+- **PIN:** a new board's PIN is 123456. The app asks you to set your own after the first pairing. Change it in SETTINGS → NODE → Firmware → **Bluetooth PIN**.
+- **Pair another phone:** restart the board. It accepts one new phone in the 2 min after power-on. After updating an S3, C3 or older ESP32 board, forget it in your phone's Bluetooth settings and pair again.
 - **JCMK node hub** (SETTINGS → NODE → JCMK NODE HUB): the board adds Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes to your wardrive. Tap **Start hub**, power on a Piglet, and tap **Pair** under **Nearby nodes**. The hub board leaves the mesh while it runs. The wardrive radio picker can leave out any paired node.
 
 ## App
@@ -369,7 +345,7 @@ These features add their own alerts and set how alerts sound.
 - **Movement alerts** (Detection & Alerts → What to Watch For, off by default) warn about a car following you, an aircraft circling you (ADS-B), a drone hovering near you or its pilot closing in, and a device moving from one mesh node to another. A car counts as following when the RTL-SDR hears its tire sensors over 2+ km and 10+ min. The app learns your own car.
 - **Watchlist** imports and exports as CSV or JSON in SETTINGS → Detection & Alerts → Your Lists. A CSV row is `identifier,description,kind` where kind is OUI, MAC, UUID, CONTAINS, STARTS, PATTERN, COMPANY, DATA, PROBE, BEACON or MAKER; JSON rows use `matchType` with the same kinds by their camelCase names.
 - **Add a rule** (the **+** on the watchlist) builds a rule from a kind and a value. Bluetooth rules: exact MAC; maker prefix; name contains, starts with, or pattern (`#` a hex digit, `?` any character, `*` any run, whole name, such as `S################C` for a Tesla); company ID (`004C`); company data with a mask (`004C:121910/FFFF30`: the bits set in the mask must match); service UUID, 16-bit (`FD5F`) or 128-bit. Wi-Fi rules: probe prefix (the source address of a probe or association request) and beacon prefix (a beacon or probe response), 3 to 6 bytes. A maker name rule is phone-only: it flags a WiGLE import or rescan row whose address maps to that maker, and nodes never receive it. Name rules are ASCII, up to 18 characters, and ignore case.
-- **Rule limits:** a board holds 50 MAC and prefix rules, 50 service UUIDs and 32 name, company, Wi-Fi and 128-bit rules. One mesh frame carries 220 bytes of the list (about 31 MAC rules, fewer with other rules), so with a manager the fleet list gets the first part and the add and import messages say so. Nodes name a rule they match by its kind and value, such as "Name has Flipper"; the description you type stays on the phone. A board on firmware without these rules ignores them and keeps the MAC, prefix and 16-bit UUID rules; a node that old still reports a list as taken. Rules never reach firmware that predates them, and an app that predates them reads the new kinds as maker prefixes it cannot parse and sends nothing for them.
+- **Rule limits:** a board holds 50 MAC and prefix rules, 50 service UUIDs and 32 other rules. Through a manager, the mesh carries about 31 MAC rules, and the app says when a list is cut short. Older firmware keeps only the MAC, prefix and 16-bit UUID rules.
 - **Alert when a board hears it** (tap a Bluetooth device in the feed) adds its exact MAC to the watchlist. The connected board, and through a manager every mesh node, then reports it as a detection. **UNDO** in the message takes it back off. A device with a random address may change it.
 - **Alert sounds** plays a built-in melody or one you compose for each alert type. You can preview it on the board. **Sound on this phone** in the same screen turns the phone's sound on or off for filter hits, trackers, watched devices, drones, node down and node back.
 - **Alert again** (SETTINGS → Detection & Alerts → Notifications → **Repeat for a device**): a device alerts the first time, and again once it has gone 60 seconds unheard. The slider changes that time.
@@ -385,8 +361,8 @@ These features add their own alerts and set how alerts sound.
 - **Measure:** tap the ruler button, then tap the map to add points. The label shows the total length. Tap the ruler again to stop.
 - **Follow on map:** tap a drone that sends Remote ID, then **Follow on map**. The map opens and keeps the drone centered as its position updates. A chip at the top names it. Tap its **X**, drag the map, or tap the follow button to let go.
 - **Detection location:** a drone's flight shows the spot where this phone was when the flight was first heard, a dashed line to the drone and the range, on its drone page, the Sky Spy map and the main map. A flight ends after 5 minutes unheard (25 minutes while it stays above 10 m).
-- **Drones list:** SKY SPY → the history button opens every drone heard in a window of 1, 4, 8 or 24 hours, all time, or dates you pick, the ones in the air first. A drone you named shows that name with its ID underneath. The top shows how many are live, airborne, have a pilot located, the highest height and how many are in the window. Tap a drone for its page: its tag, **Name, group and notes** (your name shows as the page title, the same name the feed uses for that MAC), a map of the flight with its pilot and detection location, its FAA record, its past flights and its kit.
-- **Remote ID or FPV:** the Drones list has **All**, **Remote ID** and **FPV** chips under the time window. FPV rows show the channel and `LVL` (a relative level, not dBm) with no pilot and no FAA record, and are left out of the pilot count. The chip you pick is remembered, like the time window. Export saves the rows the chip shows. With a connected XIAO ESP32-C5 running the FPV receiver, an **FPV RECEIVER** card on **All** and **FPV** shows the receiver's state, tuned channel, level and flagged count. Tap it to open the FPV receiver. It shows no picture.
+- **Drones list:** SKY SPY → the history button opens every drone heard in a time window you pick, the ones in the air first. Tap a drone for its page: its tag, **Name, group and notes**, a map of the flight with its pilot, its FAA record, past flights and kit.
+- **Remote ID or FPV:** chips under the time window filter the Drones list. FPV rows show the channel and a relative level, with no pilot. With an FPV receiver running, an **FPV RECEIVER** card opens it.
 - **Tags:** tag a drone **Friendly**, **Neutral**, **Suspicious** or **Hostile** on its page. The tag colors its marker, shows in the lists and in exports, and is kept on this phone.
 - **Drone log:** every Remote ID report is saved to the phone for 90 days. **Export logs** on the Drones list or a drone's page saves a CSV (every report; FPV rows leave `rssi_dbm` empty and fill `level`) or KML (flights, pilot, detection location and range, for Google Earth and ATAK).
 - **Drone kit:** a drone's page lists the devices that belong to it: controller, goggles, dock, Remote ID module, the drone's own Wi-Fi, pilot phone or other. Add a device you heard, or take a suggestion: a device with a known controller or module name, or one heard almost only around the drone's flights, near its pilot or take-off.
@@ -402,7 +378,7 @@ These features add their own alerts and set how alerts sound.
 The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 - Start, pause and resume a capture by hand.
-- **802.15.4** mode needs a C5 board; on any other it stays visible, disabled, with the reason. The **5 GHz** setting under Wi-Fi works the same way. Pick a channel range from 11 to 26; the board hops through it. Frames save with link type 195 (IEEE 802.15.4 with FCS, recomputed from the frames the radio accepted) in a `_154_` file. A T-Dongle-C5 also writes `cap_*_154.pcap` to its SD card. The pcap carries no channel or signal level.
+- **802.15.4** and **5 GHz** need a C5 board. Pick a channel range from 11 to 26 and the board hops through it. A T-Dongle-C5 also writes `cap_*_154.pcap` to its SD card.
 - Auto-PCAP records 3–120 s whenever an engine fires.
 - SETTINGS → DATA → PCAPS lists saved captures.
 - **PROBES** (the toggle at the top of the PCAP screen, next to **CAPTURE**) is the probe database: which Wi-Fi networks nearby phones and laptops ask for by name. It fills from the detector's probe-request check and from every Wi-Fi capture, and is kept on the phone. **DEVICES** lists each asking device with its maker, probe count, signal, band, first and last heard and every network it names (a device that names the same networks as other MACs is flagged); **NAMED** hides devices that only ask for any network; **NETWORKS** ranks the names by how many devices ask, with their makers and any matching access points from your wardrives. Search, sort, **THIS RUN** and **CLEAR** are on the same screen.
@@ -410,7 +386,7 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 ### 802.15.4 wardrive (C5 boards)
 
 - A **802.15.4 (Zigbee, Thread)** switch sits under the radio picker. On a C5 board it works; on any other board, or with none connected, it stays off and disabled, with the reason.
-- The C5 has one RF path shared by Wi-Fi, BLE and 802.15.4, and 802.15.4 receive has the lowest priority. So the board hops 802.15.4 channels 11–26 in its own slot about every 8 s (about 2.4 s long), pausing Wi-Fi sniffing and BLE scanning for that slot. Frames sent outside the slot are missed.
+- The board listens on channels 11–26 for about 2.4 s every 8 s, and pauses Wi-Fi and BLE scanning meanwhile. It misses frames sent outside that window.
 - Sightings show in the feed and on the map in lime. Each shows the network name (Thread), PAN ID, short or EUI-64 source address, channel and LQI. Zigbee and Thread beacons also show the extended PAN ID and stack info.
 - The radio only listens: promiscuous mode, no ACKs, no beacons, no transmit.
 - Sightings are not in WiGLE exports, the board's away log or the T-Dongle's WiGLE CSV, which have no 802.15.4 type. They are in the detections CSV with radio `802.15.4`.
@@ -426,9 +402,6 @@ On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It recei
       <ol>
         <li><b>Status</b>: LOCKED, TUNED or the running mode, the channel, its level, coherence and noise floor, and how many channels are flagged.</li>
         <li><b>Proximity</b>: the needle moves toward CLOSE as the tuned channel rises above the floor.</li>
-        <li><b>LEAVE FPV</b>: stops the receiver and restarts the Wi-Fi engines.</li>
-        <li><b>Modes</b>: SCAN, SWEEP or HOP.</li>
-        <li><b>Channel</b>: the arrows step to the previous or next channel and hold it.</li>
         <li><b>Channels</b>: brighter is stronger, a bolt marks a flagged transmitter, and tapping a cell holds that channel.</li>
       </ol></td>
   </tr>
@@ -442,7 +415,6 @@ On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It recei
 - **Feed:** flagged channels appear in the Sky Spy list, the Drones list (**FPV** chip) and the feed as `FPV A1 5865`, with no position.
 - **Wi-Fi:** Wi-Fi engines pause while FPV is on and restart when you tap **LEAVE FPV**. FPV refuses to start while mesh or the ESP-NOW hub is on.
 - **Pins:** FPV drives GPIO 1, 0, 23, 7, 10, 5, 3 and 4 with receiver data. Keep them unconnected. It is not available on the T-Dongle-C5 or on manager builds.
-- **No video:** the raw receiver data is 40 MB/s and Bluetooth carries well under 0.2 MB/s, so the app shows signal levels only.
 - **Serial log:** every state change prints a line that starts with `[FPV]`.
 
 ### Lock screen and notifications
@@ -479,7 +451,7 @@ A language model can read what the app has seen and, when you allow it, change t
 - **ASK** is a chat. Every tool the model runs shows in the conversation with its arguments and what it returned. It stops after 12 rounds, and **Stop** cancels a run. The conversation is kept in memory only; **Clear the conversation** ends it.
 - **INTEL** (needs DEVICES) tells you what the model makes of one device: maker, likely kind, why it may matter. It sees the device's name, MAC, maker and how it was heard, never where.
 - **REPORTS** sums up the last 6, 12, 24 or 48 hours when you tap **Write one now**: new devices, alerts, drones, the wardriver and the mesh, within the grants. Positions are never included.
-- **Automatic (both off by default):** under **Automatic** in the same settings, **Look into new alerts automatically** runs INTEL on the device behind each new alert: at most one every 20 seconds and 40 a day, and never on a device that already has a note. **Write a report automatically** writes a report **Every** 1, 2, 4, 6, 12 or 24 hours, or **Daily** at a time you pick, covering the time since the last one (at most 7 days). Both run only while the app is open, with the assistant on and a model provider set up; INTEL also needs DEVICES, and a report needs at least one of DEVICES, DRONES, WARDRIVE or MESH. A report missed while the app was closed is written once when it next opens. Switching either on asks first, because it sends data to the provider without a tap, and names a cloud provider. Positions are never included.
+- **Automatic (both off by default):** **Look into new alerts automatically** runs INTEL on each new alert's device, at most 40 a day. **Write a report automatically** writes one every 1 to 24 hours, or daily at a time you pick. Both run only while the app is open, and ask first because they send data without a tap. Positions are never included.
 - **Text from the air is untrusted.** Names and network names are sent to the model as data, and it is told never to follow instructions found in them. Every change to the board still waits for your OK, whatever the model asks.
 - **Grants:** each of DEVICES, DRONES, WARDRIVE, MESH, CAPTURES, LOCATION, CONTROL and IRREVERSIBLE is off until you switch it on. Device health is always readable while the assistant is on. A tool outside the grants is refused.
 - **LOCATION off** removes every position from what the model reads: sightings, drones and pilots, mesh nodes. Positions are also scrubbed from the text of every reply.
@@ -524,14 +496,13 @@ The app can pair this phone's own Meshtastic radio over Bluetooth, so you can se
 
 - **Find a radio:** scans for radios that advertise the Meshtastic Bluetooth service. A radio talks to one phone at a time, so close the Meshtastic app first. If Android asks for a PIN, the radio's default is 123456.
 - **Reconnect:** the app connects to the saved radio when it starts and tries again every 15 s if the link drops. **Disconnect** or **Forget this radio** stops it.
-- **Channel:** the app sends only on a channel that has a key of its own. It never sends on the public channel (no key, or the one-byte default key), and it cannot be chosen. If the radio has no private channel, add one in the Meshtastic app. The app reads each channel's key length to tell the two apart and does not keep or show the key.
+- **Channel:** the app sends only on a private channel with its own key, never on the public one. If the radio has no private channel, add one in the Meshtastic app.
 - **Send a message** sends up to 200 characters. **Send my position** sends this phone's last position once, after you confirm. Nothing else is sent unless you turn on **Send alerts automatically** (below).
 - **Heard on the radio** lists the last text messages the radio received on the private channel. **Sent / heard** counts them.
-- **Send alerts automatically** is off by default and asks you to confirm when you turn it on. The app then sends each alert that already notifies you as a text, "OUI-APEX title: detail" cut to 200 bytes, with no tap. It includes what was detected and the device address, and never a position. Silenced alerts and silent suspected detections are not sent. An alert is skipped, and counted, when the radio is not connected, no private channel is picked, or a limit is hit.
-- **Alert types** choose which alerts go out: **Flock**, **Drones**, **Detector and watchlist**, **Foxhunt** (off by default) and **Node down and up**.
-- **Minimum gap between messages** (10 to 600 seconds, 60 by default) and **Messages per day** (1 to 200, 50 by default) keep a busy day off the shared LoRa channel. **Sent today** shows the count, for example "3 of 50 · skipped 2".
-- **Send to** sends each alert on the private channel, or straight to up to four nodes you name, like `!0a1b2c3d`. Auto-send works only while the radio is connected in the app.
-- **Change radio** scans again. **Forget this radio** disconnects and removes the saved radio and channel.
+- **Send alerts automatically** is off by default and asks you to confirm. Each alert that notifies you then goes out as a short text with what was detected and its address, never a position. Alerts are skipped and counted when the radio is not connected or a limit is hit.
+- **Alert types:** **Flock**, **Drones**, **Detector and watchlist**, **Foxhunt** (off by default) and **Node down and up**.
+- **Limits:** **Minimum gap between messages** (10 to 600 s, default 60) and **Messages per day** (1 to 200, default 50).
+- **Send to:** the private channel, or up to four nodes you name, such as `!0a1b2c3d`.
 
 ### App updates
 
@@ -587,7 +558,6 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR SCAN with decoded devices" /></td>
     <td width="50%" valign="top">
       <ol>
-        <li><b>Mode</b>: Spectrum, ADS-B or SCAN.</li>
         <li><b>Bands</b>: pick 315, 433 or 915 MHz, or several to sweep them, then tap START.</li>
         <li><b>Types</b>: tap a chip to turn that type on or off. Each chip counts what it found.</li>
         <li><b>Decoded devices</b>: newest first. Tap one for its details and to foxhunt it.</li>
@@ -686,15 +656,15 @@ Detector MAC, OUI and UUID targets, their labels, and signatures set in the app 
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
 - **Read all** (SETTINGS → NODE → MESH → **Fleet control**) asks every node for its build, filter count, uptime and how many peers it hears. The answers show under each node in **Nodes**. **Read status** in a node's own dialog asks just that node. Nodes on older firmware do not answer.
-- **Presets** (SETTINGS → Detection & Alerts → Your Lists → Watchlist → **Presets**) are ten signature sets: Axon, Meta glasses, i-PRO, Verkada, Trackers, Drones, Vehicles, Wearables, Flipper and Police. Tap one for **WATCH ON PHONE** (its rows join the watchlist) or **INSTALL ON NODES** (all nodes, or the ones you tick). A node holds the table itself, so an install is one small message however long the set is. A node set to Bluetooth only skips a preset's Wi-Fi rows, and one set to Wi-Fi only skips the Bluetooth rows; a preset with nothing the node can match is refused, and the message says why. A node holds 32 name, company, Wi-Fi and 128-bit rules, so the Police, Meta and Wearables sets together do not all fit; it takes what fits and the message counts the rest as skipped.
-- **A node's filters** (a node in **Nodes** → **Filters**, through a manager) reads what the node watches for, adds a rule, removes one, installs a preset, replaces the list with this phone's watchlist, or clears it. Each node's answer shows in its row and in the message. A node you edit keeps its own list: the manager's periodic list no longer overwrites it. A new watchlist from the phone (or **Alert when a board hears it**) replaces every node's list again. Nodes on firmware without filter edits do not answer, and the message says so. Presets and filters need a manager; a board connected directly takes its list from the watchlist.
-- **Watchlist results:** after the manager pushes the watchlist, each node answers whether it took it. The message after **Alert when a board hears it** says how many nodes did, such as "On 3 of 4 nodes; NODE2 refused (list too long for it)". Each node in **Nodes** shows its own result. A node refuses when its firmware has no detector, when the manager has turned its detector off, or when the list does not fit. Nodes on older firmware take the list without answering.
-- **Signal** (SETTINGS → NODE → MESH → **Signal**) lists who hears whom, one row per link: "NODE1 hears NODE2" and its strength in dBm. Each direction is its own row. A board reads dBm when it is an ESP32-C5 or is running a Wi-Fi engine; otherwise its row says **Heard**. The manager updates the list about every 6 seconds.
-- **Channel** (SETTINGS → NODE → MESH → **Channel**) moves the whole mesh to channel 1 to 11. Pick the number, tap **Move fleet to channel**, confirm. The manager asks every live node to confirm, and only when all have answered do the manager and the nodes switch together about 3 seconds later; the boards keep their settings and the key, and nothing reboots. **Last change** and each node under **Nodes** say which nodes confirmed and which are on the new channel. If a node does not answer within 15 seconds, nothing moves and the screen names it; **Move anyway** moves with the nodes that did answer. The channel is saved on each board and survives a reboot. Nodes and managers on older firmware ignore the order, so update them first.
-- **Finding the fleet again:** a node that has heard no manager for 2 minutes listens on each channel 1 to 11 in turn for about 2 seconds each, adopts the channel the manager says it is on and saves it, and tries again after 4, 8 and then every 15 minutes. A node that confirmed a move but missed the switch checks the new channel after 12 seconds of silence. A node that has never joined a fleet, or one that is on its own, does the same sweep, so it costs a stand-alone node about 20 seconds of scanning every 15 minutes. The manager never sweeps. The manager states its channel after each heartbeat, and a node that hears it state another channel 3 times within 15 seconds moves there, since nearby channels overlap and a close node can hear the manager from the wrong one.
+- **Presets** (SETTINGS → Detection & Alerts → Your Lists → Watchlist → **Presets**) are ten signature sets: Axon, Meta glasses, i-PRO, Verkada, Trackers, Drones, Vehicles, Wearables, Flipper and Police. Tap one for **WATCH ON PHONE** or **INSTALL ON NODES**. A node takes the rules it can hold, and the message counts the rest as skipped.
+- **A node's filters** (a node in **Nodes** → **Filters**, through a manager) shows what one node watches for, and adds, removes, replaces or clears its rules. An edited node keeps its own list until the phone sends a new watchlist.
+- **Watchlist results:** each node reports whether it took the watchlist, such as "On 3 of 4 nodes; NODE2 refused (list too long for it)".
+- **Signal** (SETTINGS → NODE → MESH → **Signal**) shows how strongly each node hears each other node, one row per direction, updated about every 6 s.
+- **Channel** (SETTINGS → NODE → MESH → **Channel**) moves the whole mesh to channel 1 to 11. Every node confirms first, then all switch together without a reboot. If a node does not answer within 15 s, nothing moves unless you tap **Move anyway**. Update older nodes first.
+- **Finding the fleet again:** a node that hears no manager for 2 minutes scans channels 1 to 11 to find it, then retries every 15 minutes.
 - Fleet update (SETTINGS → NODE → FIRMWARE): each node downloads its own board's image over Wi-Fi. Nodes older than v0.6.1 get the board picked in the app.
-- **Firmware over the mesh** (SETTINGS → NODE → MESH → **Fleet control**, or SETTINGS → NODE → FIRMWARE) updates the nodes you tick over the mesh itself, with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks it before anything is sent: an ESP32 app image, the chip, the app slot size, the OUI-SPY signature and its SHA-256, which it shows. Each node is marked **Current** (already runs this build), **Older** (runs any other build, even a newer one), **Other board** (the image can't go on it, so it can't be ticked) or **Build unknown**. **Update** needs a second tap. The image is saved once on the manager on the phone's link, then sent to one node at a time (up to 8); each row shows its step, rate and time left, and **STOP** ends the transfer in flight and restarts the node that was receiving. A node already on the build can still be ticked to re-flash it. A node checks the signature itself, restarts into the build and rejoins. Needs a manager on firmware with this feature; nodes on older firmware ignore it and still update over Wi-Fi.
-- **Fleet metrics** (SETTINGS → NODE → MESH → **Fleet control**) shows the mesh counters (state, TX / RX, failed key checks, each node's build, filters, uptime, peers and temperature), then the logged detections for the last hour, day, week or month, all nodes or one, in three views. **Detections**: detections against the span before, unique devices, new devices (never logged before the span), active nodes, the busiest period, BLE and Wi-Fi device counts, detections over time, and by node, vendor and type, a signal histogram and a weekday by hour grid. **Wardrive**: devices, new, open networks, devices with a position, discovered over time (new BLE and Wi-Fi devices per period), Wi-Fi security mix, Wi-Fi channels with the 2.4 and 5 GHz split, top makers and by node. **Drones**: Remote ID reports, drones, drones heard in the last minute, highest altitude (and above ground), top speed, best signal, reports over time, by node, and each drone with its tag, reports, peaks, node and last report.
+- **Firmware over the mesh** (SETTINGS → NODE → MESH → **Fleet control**, or SETTINGS → NODE → FIRMWARE) updates the nodes you tick over the mesh, with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks the image, the chip and the signature before sending. Nodes update one at a time, each row shows its progress, and **STOP** cancels. Needs a manager on firmware with this feature.
+- **Fleet metrics** (SETTINGS → NODE → MESH → **Fleet control**) shows each node's build, uptime, peers and temperature, then the last hour, day, week or month of logged activity in three views: **Detections**, **Wardrive** and **Drones**.
 
 <table>
   <tr>
