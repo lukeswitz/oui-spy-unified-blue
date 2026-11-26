@@ -22,6 +22,7 @@ import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/link/usb_autoconnect.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
+import 'package:oui_spy/core/meshtastic/mesh_alerts.dart';
 import 'package:oui_spy/core/notifications/live_activity_service.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/oui/oui_lookup_service.dart';
@@ -99,6 +100,7 @@ void main() async {
   container.read(phoneWatchProvider);
   container.read(watchAlertsProvider);
   container.read(triangulationProvider);
+  container.read(meshAlertProvider);
 
   runApp(UncontrolledProviderScope(
     container: container,

@@ -98,8 +98,8 @@ class MeshtasticState {
       );
 }
 
-/// The phone's own Meshtastic radio, over Bluetooth. Nothing is sent by radio unless the user taps a send button,
-/// and it is only ever sent on a channel that has its own key. The radio's key is read to tell public from private
+/// The phone's own Meshtastic radio, over Bluetooth. Nothing is sent by radio unless the user taps a send button
+/// or turns on automatic alerts, and it is only ever sent on a channel that has its own key. The radio's key is read to tell public from private
 /// and is neither kept nor shown.
 class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
   MeshtasticNotifier({
@@ -323,6 +323,23 @@ class MeshtasticNotifier extends StateNotifier<MeshtasticState> {
     if (t.isEmpty) return 'Type a message first';
     if (utf8.encode(t).length > MeshtasticProto.maxTextBytes) return 'Messages are up to ${MeshtasticProto.maxTextBytes} characters';
     return _send(MeshtasticProto.encodeText(t, channel: state.channel!.index, id: _packetId()));
+  }
+
+  /// Sends an alert text on the chosen private channel: to everyone on it, or as one direct packet to each node
+  /// number in [to]. Returns why it was not sent, or null.
+  Future<String?> sendAlert(String text, {List<int> to = const []}) async {
+    final why = _sendCheck();
+    if (why != null) return why;
+    final t = text.trim();
+    if (t.isEmpty) return 'Type a message first';
+    if (utf8.encode(t).length > MeshtasticProto.maxTextBytes) return 'Messages are up to ${MeshtasticProto.maxTextBytes} characters';
+    final channel = state.channel!.index;
+    if (to.isEmpty) return _send(MeshtasticProto.encodeText(t, channel: channel, id: _packetId()));
+    for (final node in to) {
+      final failed = await _send(MeshtasticProto.encodeText(t, channel: channel, id: _packetId(), to: node));
+      if (failed != null) return failed;
+    }
+    return null;
   }
 
   /// Sends a position on the chosen private channel.

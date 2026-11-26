@@ -194,6 +194,29 @@ void main() {
     n.dispose();
   });
 
+  test('an alert goes to the channel, or as one direct packet to each node, and only on a private channel', () async {
+    final n = await ready();
+    expect(await n.sendAlert('a'), 'Pick a private channel first');
+    await n.selectChannel(1);
+    expect(await n.sendAlert('to all'), isNull);
+    var packet = pbRead(pbRead(link.writes.last).single.data).toList();
+    expect(packet.firstWhere((f) => f.number == 2).value, MeshtasticProto.broadcast);
+    expect(await n.sendAlert('to two', to: [0x0A1B2C3D, 0x01020304]), isNull);
+    expect(link.writes, hasLength(4));
+    packet = pbRead(pbRead(link.writes[2]).single.data).toList();
+    expect(packet.firstWhere((f) => f.number == 2).value, 0x0A1B2C3D);
+    expect(packet.firstWhere((f) => f.number == 3).value, 1);
+    packet = pbRead(pbRead(link.writes[3]).single.data).toList();
+    expect(packet.firstWhere((f) => f.number == 2).value, 0x01020304);
+    expect(n.state.sent, 3);
+    expect(await n.sendAlert('a' * 201), 'Messages are up to 200 characters');
+    link.failWrites = true;
+    expect(await n.sendAlert('x', to: [5]), startsWith("Not sent: the radio didn't take it"));
+    await n.disconnect();
+    expect(await n.sendAlert('x'), 'The radio is not connected');
+    n.dispose();
+  });
+
   test('empty, over-long and disconnected sends are refused', () async {
     final n = await ready();
     await n.selectChannel(1);

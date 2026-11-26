@@ -64,6 +64,12 @@ void main() {
       ]);
     });
 
+    test('a direct text carries the node number in the to field', () {
+      final b = MeshtasticProto.encodeText('hi', channel: 1, id: 1, to: 0x0A1B2C3D);
+      final packet = pbRead(pbRead(b).single.data).toList();
+      expect(packet.firstWhere((f) => f.number == 2).value, 0x0A1B2C3D);
+    });
+
     test('channel 0 is left out, as proto3 does for a default value', () {
       final b = MeshtasticProto.encodeText('hi', channel: 0, id: 1);
       expect(pbRead(b).single.number, 1);

@@ -463,14 +463,18 @@ The app can link to the [home dashboard](tools/home-dashboard/README.md) running
 
 ### Meshtastic radio
 
-The app can pair this phone's own Meshtastic radio over Bluetooth, so you can send a message or your position by LoRa radio when you have no network. It is off until you pick a radio: SETTINGS → DATA → Export → **Meshtastic radio**.
+The app can pair this phone's own Meshtastic radio over Bluetooth, so you can send a message or your position by LoRa radio when you have no network. It is off until you pick a radio: SETTINGS → DATA → **Meshtastic radio**.
 
 <img width="300" src="docs/screenshots/ui/meshtastic-radio.png" alt="Meshtastic radio connected: nodes heard, messages sent and heard, send a message or position" />
 
 - **Find a radio:** scans for radios that advertise the Meshtastic Bluetooth service. A radio talks to one phone at a time, so close the Meshtastic app first. If Android asks for a PIN, the radio's default is 123456.
 - **Channel:** the app sends only on a channel that has a key of its own. It never sends on the public channel (no key, or the one-byte default key), and it cannot be chosen. If the radio has no private channel, add one in the Meshtastic app. The app reads each channel's key length to tell the two apart and does not keep or show the key.
-- **Send a message** sends up to 200 characters. **Send my position** sends this phone's last position once, after you confirm. Nothing else is sent: the app does not send in the background or relay your catches.
+- **Send a message** sends up to 200 characters. **Send my position** sends this phone's last position once, after you confirm. Nothing else is sent unless you turn on **Send alerts automatically** (below).
 - **Heard on the radio** lists the last text messages the radio received on the private channel. **Sent / heard** counts them.
+- **Send alerts automatically** is off by default and asks you to confirm when you turn it on. The app then sends each alert that already notifies you as a text, "OUI-APEX title: detail" cut to 200 bytes, with no tap. It includes what was detected and the device address, and never a position. Silenced alerts and silent suspected detections are not sent. An alert is skipped, and counted, when the radio is not connected, no private channel is picked, or a limit is hit.
+- **Alert types** choose which alerts go out: **Flock**, **Drones**, **Detector and watchlist**, **Foxhunt** (off by default) and **Node down and up**.
+- **Minimum gap between messages** (10 to 600 seconds, 60 by default) and **Messages per day** (1 to 200, 50 by default) keep a busy day off the shared LoRa channel. **Sent today** shows the count, for example "3 of 50 · skipped 2".
+- **Send to** sends each alert on the private channel, or straight to up to four nodes you name, like `!0a1b2c3d`. Auto-send works only while the radio is connected in the app.
 - **Change radio** scans again. **Forget this radio** disconnects and removes the saved radio and channel.
 
 ### App updates
