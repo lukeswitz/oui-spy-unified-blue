@@ -404,7 +404,7 @@ class _ReportsPaneState extends ConsumerState<_ReportsPane> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Sums up new devices, alerts, drones, the wardriver and the mesh within your grants. Positions are never included. Reports are written only when you ask.',
+          'Sums up new devices, alerts, drones, the wardriver and the mesh within your grants. Positions are never included. Reports are written when you ask, or on the schedule set in Settings > Data > Assistant.',
           style: TextStyle(color: t.textDim, fontSize: 12),
         ),
         const SizedBox(height: 12),

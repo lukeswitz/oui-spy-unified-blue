@@ -87,9 +87,10 @@ class AssistantReport {
 class AssistantReports extends ChangeNotifier {
   AssistantReports({required this.access, required this.provider, required this.env, required this.modelLabel, DateTime Function()? clock})
       : _clock = clock ?? DateTime.now {
-    _load();
+    loaded = _load();
   }
 
+  late final Future<void> loaded;
   final AssistantAccess Function() access;
   final Future<LlmProvider?> Function() provider;
   final AssistantEnv env;

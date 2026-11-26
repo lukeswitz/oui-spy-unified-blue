@@ -55,8 +55,10 @@ class IntelNote {
 
 class AssistantIntel extends ChangeNotifier {
   AssistantIntel({required this.access, required this.provider, required this.env, required this.modelLabel}) {
-    _load();
+    loaded = _load();
   }
+
+  late final Future<void> loaded;
 
   final AssistantAccess Function() access;
   final Future<LlmProvider?> Function() provider;
@@ -90,6 +92,11 @@ class AssistantIntel extends ChangeNotifier {
   }
 
   bool get ready => access().has(AssistantGrant.devices);
+
+  bool knows(String mac) {
+    final key = mac.toUpperCase();
+    return env.devices().any((d) => '${d['mac']}'.toUpperCase() == key);
+  }
 
   Future<void> lookInto(String mac) async {
     final key = mac.toUpperCase();

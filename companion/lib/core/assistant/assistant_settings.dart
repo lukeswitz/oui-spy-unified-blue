@@ -60,6 +60,24 @@ String? normalizeOllamaUrl(String raw) {
   return Uri(scheme: u.scheme, host: u.host, port: u.hasPort ? u.port : (u.scheme == 'http' ? 11434 : null), path: path).toString();
 }
 
+enum ReportEvery {
+  off('Off'),
+  every('Every'),
+  daily('Daily');
+
+  const ReportEvery(this.label);
+  final String label;
+
+  static ReportEvery byName(String? name) {
+    for (final e in values) {
+      if (e.name == name) return e;
+    }
+    return off;
+  }
+}
+
+const reportEveryHours = [1, 2, 4, 6, 12, 24];
+
 class AssistantSettings {
   const AssistantSettings({
     this.provider,
@@ -67,6 +85,11 @@ class AssistantSettings {
     this.ollamaUrl = '',
     this.hasKey = const {},
     this.acked = const {},
+    this.autoIntel = false,
+    this.reportEvery = ReportEvery.off,
+    this.reportHours = 6,
+    this.reportDailyMinutes = 480,
+    this.reportLastMs = 0,
   });
 
   final LlmKind? provider;
@@ -74,6 +97,11 @@ class AssistantSettings {
   final String ollamaUrl;
   final Set<LlmKind> hasKey;
   final Set<LlmKind> acked;
+  final bool autoIntel;
+  final ReportEvery reportEvery;
+  final int reportHours;
+  final int reportDailyMinutes;
+  final int reportLastMs;
 
   String modelOf(LlmKind k) => models[k] ?? '';
 
@@ -92,6 +120,11 @@ class AssistantSettings {
     String? ollamaUrl,
     Set<LlmKind>? hasKey,
     Set<LlmKind>? acked,
+    bool? autoIntel,
+    ReportEvery? reportEvery,
+    int? reportHours,
+    int? reportDailyMinutes,
+    int? reportLastMs,
   }) =>
       AssistantSettings(
         provider: clearProvider ? null : provider ?? this.provider,
@@ -99,18 +132,31 @@ class AssistantSettings {
         ollamaUrl: ollamaUrl ?? this.ollamaUrl,
         hasKey: hasKey ?? this.hasKey,
         acked: acked ?? this.acked,
+        autoIntel: autoIntel ?? this.autoIntel,
+        reportEvery: reportEvery ?? this.reportEvery,
+        reportHours: reportHours ?? this.reportHours,
+        reportDailyMinutes: reportDailyMinutes ?? this.reportDailyMinutes,
+        reportLastMs: reportLastMs ?? this.reportLastMs,
       );
 }
 
 class AssistantSettingsNotifier extends StateNotifier<AssistantSettings> {
-  AssistantSettingsNotifier(this._store) : super(const AssistantSettings()) {
+  AssistantSettingsNotifier(this._store, {DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now,
+        super(const AssistantSettings()) {
     _load();
   }
 
   final KeyStore _store;
+  final DateTime Function() _clock;
   bool _changed = false;
   static const keyProvider = 'assistant_provider';
   static const keyOllamaUrl = 'assistant_ollama_url';
+  static const keyAutoIntel = 'assistant_auto_intel';
+  static const keyReportEvery = 'assistant_report_every';
+  static const keyReportHours = 'assistant_report_hours';
+  static const keyReportDaily = 'assistant_report_daily';
+  static const keyReportLast = 'assistant_report_last';
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
@@ -130,7 +176,42 @@ class AssistantSettingsNotifier extends StateNotifier<AssistantSettings> {
       ollamaUrl: p.getString(keyOllamaUrl) ?? '',
       hasKey: keys,
       acked: {for (final k in LlmKind.values) if (p.getBool(k.ackPref) ?? false) k},
+      autoIntel: p.getBool(keyAutoIntel) ?? false,
+      reportEvery: ReportEvery.byName(p.getString(keyReportEvery)),
+      reportHours: (p.getInt(keyReportHours) ?? 6).clamp(1, 24),
+      reportDailyMinutes: (p.getInt(keyReportDaily) ?? 480).clamp(0, 1439),
+      reportLastMs: p.getInt(keyReportLast) ?? 0,
     );
+  }
+
+  Future<void> setAutoIntel(bool on) async {
+    _changed = true;
+    state = state.copyWith(autoIntel: on);
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(keyAutoIntel, on);
+  }
+
+  Future<void> setReportSchedule({ReportEvery? every, int? hours, int? dailyMinutes}) async {
+    _changed = true;
+    final next = state.copyWith(
+      reportEvery: every,
+      reportHours: hours?.clamp(1, 24),
+      reportDailyMinutes: dailyMinutes?.clamp(0, 1439),
+    );
+    final since = next.reportEvery == ReportEvery.off ? next.reportLastMs : _clock().millisecondsSinceEpoch;
+    state = next.copyWith(reportLastMs: since);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(keyReportEvery, state.reportEvery.name);
+    await p.setInt(keyReportHours, state.reportHours);
+    await p.setInt(keyReportDaily, state.reportDailyMinutes);
+    await p.setInt(keyReportLast, state.reportLastMs);
+  }
+
+  Future<void> markReportRan(int atMs) async {
+    _changed = true;
+    state = state.copyWith(reportLastMs: atMs);
+    final p = await SharedPreferences.getInstance();
+    await p.setInt(keyReportLast, atMs);
   }
 
   Future<void> setProvider(LlmKind k) async {

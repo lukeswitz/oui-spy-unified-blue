@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:oui_spy/core/assistant/assistant_auto.dart';
 import 'package:oui_spy/features/analysis/analysis_screen.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/config/device_config.dart';
@@ -148,6 +149,7 @@ class _OuiSpyAppState extends ConsumerState<OuiSpyApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ref.read(configMenuWantedProvider.notifier).state = false;
+    ref.read(assistantAutoProvider);
   }
 
   @override

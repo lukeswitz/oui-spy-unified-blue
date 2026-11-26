@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:oui_spy/core/app_time.dart';
+import 'package:oui_spy/core/assistant/assistant_auto.dart';
 import 'package:oui_spy/core/assistant/assistant_chat.dart';
 import 'package:oui_spy/core/assistant/assistant_grants.dart';
 import 'package:oui_spy/core/assistant/assistant_llm.dart';
@@ -385,6 +387,136 @@ class _AssistantProviderSectionState extends ConsumerState<AssistantProviderSect
   }
 }
 
+String autoSendsDataNote(AssistantSettings s, String what) {
+  final k = s.provider;
+  final where = k == null
+      ? 'the model provider you set up'
+      : (k.isCloud ? '${k.vendor}\'s cloud (${k.label})' : 'your Ollama server');
+  final terms = k != null && k.isCloud ? ' There it may be logged, kept or reviewed under ${k.vendor}\'s terms.' : '';
+  return 'While the app is running, $what goes to $where without a tap from you.$terms '
+      'Positions are never included. You can switch it off here at any time.';
+}
+
+class AssistantAutoSection extends ConsumerWidget {
+  const AssistantAutoSection({super.key});
+
+  Future<void> _toggleIntel(BuildContext context, WidgetRef ref, bool on) async {
+    final notifier = ref.read(assistantSettingsProvider.notifier);
+    if (!on) return notifier.setAutoIntel(false);
+    final ok = await confirmDialog(
+      context,
+      title: 'Look into alerts automatically?',
+      message: autoSendsDataNote(
+        ref.read(assistantSettingsProvider),
+        'the name, MAC, maker and how it was heard of each newly alerted device',
+      ),
+      action: 'SWITCH ON',
+    );
+    if (ok) await notifier.setAutoIntel(true);
+  }
+
+  Future<void> _toggleReports(BuildContext context, WidgetRef ref, bool on) async {
+    final notifier = ref.read(assistantSettingsProvider.notifier);
+    if (!on) return notifier.setReportSchedule(every: ReportEvery.off);
+    final ok = await confirmDialog(
+      context,
+      title: 'Write reports automatically?',
+      message: autoSendsDataNote(
+        ref.read(assistantSettingsProvider),
+        'a summary of what the app saw since the last report, within your grants,',
+      ),
+      action: 'SWITCH ON',
+    );
+    if (ok) await notifier.setReportSchedule(every: ReportEvery.every);
+  }
+
+  Future<void> _pickTime(BuildContext context, WidgetRef ref, int minutes) async {
+    final picked = await showTimePicker(context: context, initialTime: TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));
+    if (picked == null) return;
+    await ref.read(assistantSettingsProvider.notifier).setReportSchedule(dailyMinutes: picked.hour * 60 + picked.minute);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final access = ref.watch(assistantAccessProvider);
+    final s = ref.watch(assistantSettingsProvider);
+    final notifier = ref.read(assistantSettingsProvider.notifier);
+    final next = nextReportAt(s, DateTime.now());
+    final reportsOn = s.reportEvery != ReportEvery.off;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const ConfigSectionHeader(label: 'Automatic'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8, left: 2),
+          child: Text(
+            'Both are off until you switch them on. They send data to the model without a tap from you, only while the app is running, '
+            'the assistant is on and a model provider is set up. Positions are never included.',
+            style: TextStyle(color: t.textDim, fontSize: 13),
+          ),
+        ),
+        ConfigToggleRow(
+          icon: Icons.manage_search,
+          label: 'Look into new alerts automatically',
+          subtitle: 'Each new alert, by itself. At most one every 20 s and 40 a day. Skips a device that already has a note. Needs DEVICES.',
+          color: AppTheme.accent,
+          value: s.autoIntel,
+          onChanged: access.on || s.autoIntel ? (v) => _toggleIntel(context, ref, v) : null,
+        ),
+        ConfigToggleRow(
+          icon: Icons.schedule,
+          label: 'Write a report automatically',
+          subtitle: !reportsOn
+              ? 'Off: no reports until you set when they come.'
+              : 'Next: ${next == null ? '-' : AppTime.dateTimeShort(next)}, covering the time since the last one.',
+          color: AppTheme.accent,
+          value: reportsOn,
+          onChanged: access.on || reportsOn ? (v) => _toggleReports(context, ref, v) : null,
+        ),
+        if (reportsOn) ...[
+          const SizedBox(height: 8),
+          Text('REPORTS COME', style: TextStyle(color: t.textDim, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+          for (final mode in const [ReportEvery.every, ReportEvery.daily])
+            ConfigActionRow(
+              icon: mode == ReportEvery.every ? Icons.update : Icons.today,
+              label: mode.label,
+              subtitle: mode == ReportEvery.every ? 'A set number of hours apart' : 'Once a day, at a time you pick',
+              color: s.reportEvery == mode ? AppTheme.accent : t.textDim,
+              onTap: () => notifier.setReportSchedule(every: mode),
+              trailing: Icon(
+                s.reportEvery == mode ? Icons.check_circle : Icons.circle_outlined,
+                size: 22,
+                color: s.reportEvery == mode ? AppTheme.accent : t.textDim,
+              ),
+            ),
+          if (s.reportEvery == ReportEvery.every)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final h in reportEveryHours)
+                    ChoiceChip(
+                      label: Text('$h h'),
+                      selected: s.reportHours == h,
+                      onSelected: (_) => notifier.setReportSchedule(hours: h),
+                    ),
+                ],
+              ),
+            )
+          else
+            ConfigActionRow(
+              icon: Icons.access_time,
+              label: 'At ${AppTime.time(DateTime(2000, 1, 1, s.reportDailyMinutes ~/ 60, s.reportDailyMinutes % 60))}',
+              onTap: () => _pickTime(context, ref, s.reportDailyMinutes),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
 class AssistantOpenRow extends ConsumerWidget {
   const AssistantOpenRow({super.key});
 
@@ -416,6 +548,8 @@ class AssistantSettingsBody extends StatelessWidget {
           AssistantGrantsSection(),
           SizedBox(height: 16),
           AssistantProviderSection(),
+          SizedBox(height: 16),
+          AssistantAutoSection(),
           SizedBox(height: 16),
           AssistantToolsSection(),
         ],
