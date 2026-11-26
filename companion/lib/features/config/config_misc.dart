@@ -417,7 +417,7 @@ class _TriangulationSection extends ConsumerWidget {
         ConfigToggleRow(
           icon: Icons.hub,
           label: 'Triangulation',
-          subtitle: 'Locate devices heard by 3 or more placed nodes',
+          subtitle: 'Needs 3 or more mesh nodes with a GPS position. To set one, stand at the node and tap Place at my position in its menu',
           color: AppTheme.success,
           value: s.enabled,
           onChanged: n.setEnabled,

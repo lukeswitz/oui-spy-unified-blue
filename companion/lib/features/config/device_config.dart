@@ -426,7 +426,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Captures', 'Saved PCAP files', Icons.folder_open, () => const PcapLibraryScreen(embedded: true)),
             ('Export', 'Data and backup, saved map areas, ATAK, OUI database', Icons.ios_share, _buildExportTab),
             ('Meshtastic radio', 'Pair a radio, channel, messages, automatic alerts', Icons.settings_input_antenna, () => const MeshtasticSettingsPage()),
-            ('Triangulation', 'Signal model for placed mesh nodes', Icons.hub, () => ListView(
+            ('Triangulation', 'Locate devices with 3 or more mesh nodes that have a GPS position', Icons.hub, () => ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   children: const [_TriangulationSection()],
                 )),
