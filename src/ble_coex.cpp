@@ -2,17 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "ble_coex.h"
-#include "ble_gatt.h"
 #include "mesh_espnow.h"
 #include <Arduino.h>
 
 #define BLE_COEX_MAX 8
-#define BLE_COEX_LINKED_SCAN_MS 800
-#define BLE_COEX_LINKED_PERIOD_MS 3000
-
-static bool g_ownScan = false;
-static uint32_t g_ownScanStartMs = 0;
-static uint32_t g_ownScanIdleUntilMs = 0;
 
 static NimBLEAdvertisedDeviceCallbacks* g_cbs[BLE_COEX_MAX];
 static volatile int g_count = 0;
@@ -99,18 +92,7 @@ void bleCoexEnsureScanning(void) {
         g_passiveRestart = false;
         if (s->isScanning()) s->stop();
     }
-    const uint32_t now = millis();
-    const bool linked = bleGattIsConnected();
-    if (s->isScanning()) {
-        if (g_ownScan && linked && now - g_ownScanStartMs >= BLE_COEX_LINKED_SCAN_MS) {
-            s->stop();
-            g_ownScan = false;
-            g_ownScanIdleUntilMs = now + (BLE_COEX_LINKED_PERIOD_MS - BLE_COEX_LINKED_SCAN_MS);
-        }
-        return;
-    }
-    g_ownScan = false;
-    if (linked && (int32_t)(now - g_ownScanIdleUntilMs) < 0) return;
+    if (s->isScanning()) return;
     s->setActiveScan(g_wantActive && !g_passiveOnly);
     s->setInterval(100);
     s->setWindow(99);
@@ -119,8 +101,6 @@ void bleCoexEnsureScanning(void) {
 #else
     s->start(0, nullptr, false);
 #endif
-    g_ownScan = true;
-    g_ownScanStartMs = now;
 }
 
 void bleCoexUnregister(NimBLEAdvertisedDeviceCallbacks* cb) {
@@ -139,7 +119,6 @@ void bleCoexUnregister(NimBLEAdvertisedDeviceCallbacks* cb) {
 
     if (empty) {
         g_wantActive = false;
-        g_ownScan = false;
         NimBLEScan* s = NimBLEDevice::getScan();
         if (s->isScanning()) s->stop();
         s->setAdvertisedDeviceCallbacks(nullptr, false);
