@@ -62,7 +62,7 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
           padding: const EdgeInsets.only(bottom: 10, left: 2),
           child: Text(
             'Counts below are from this app\'s own wardrive sessions only.',
-            style: TextStyle(color: t.textDim, fontSize: 11),
+            style: TextStyle(color: t.textDim, fontSize: 13),
           ),
         ),
         FutureBuilder<CollectionStats>(
@@ -96,7 +96,7 @@ class _WardriveConfigTabState extends ConsumerState<_WardriveConfigTab> {
                     Expanded(
                       child: Text(
                         'No data yet — run a wardrive session to build stats.',
-                        style: TextStyle(color: t.textDim, fontSize: 12),
+                        style: TextStyle(color: t.textDim, fontSize: 14),
                       ),
                     ),
                   ],
@@ -354,7 +354,7 @@ class _StatBlockLabel extends StatelessWidget {
         Icon(icon, size: 13, color: t.textDim),
         const SizedBox(width: 6),
         Text(label, style: TextStyle(
-          color: t.textSecondary, fontSize: 10,
+          color: t.textSecondary, fontSize: 12,
           fontWeight: FontWeight.w700, letterSpacing: 1.5,
         )),
       ],
@@ -394,14 +394,14 @@ class _MiniStatTile extends StatelessWidget {
               Icon(icon, size: 13, color: color),
               const SizedBox(width: 5),
               Text(label, style: TextStyle(
-                color: t.textDim, fontSize: 8,
+                color: t.textDim, fontSize: 11,
                 fontWeight: FontWeight.w700, letterSpacing: 1,
               )),
             ],
           ),
           const SizedBox(height: 4),
           Text(value, style: TextStyle(
-            color: t.textPrimary, fontSize: 18,
+            color: t.textPrimary, fontSize: 22,
             fontWeight: FontWeight.w700, fontFamily: AppTheme.mono, height: 1,
           )),
         ],
@@ -441,7 +441,7 @@ class _BarRow extends StatelessWidget {
       _CollectionStatsView._fmt(value),
       textAlign: TextAlign.right,
       style: TextStyle(
-        color: t.textPrimary, fontSize: 11,
+        color: t.textPrimary, fontSize: 13,
         fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
       ),
     );
@@ -455,7 +455,7 @@ class _BarRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(color: t.textSecondary, fontSize: 11),
+                  style: TextStyle(color: t.textSecondary, fontSize: 13),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -476,7 +476,7 @@ class _BarRow extends StatelessWidget {
           width: 96,
           child: Text(
             label,
-            style: TextStyle(color: t.textSecondary, fontSize: 11),
+            style: TextStyle(color: t.textSecondary, fontSize: 13),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -508,17 +508,17 @@ class _ChannelChart extends StatelessWidget {
     final entries = counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     final maxV = entries.map((e) => e.value).reduce((a, b) => a > b ? a : b);
     final countStyle = TextStyle(
-      color: t.textDim, fontSize: 8, fontFamily: AppTheme.mono,
+      color: t.textDim, fontSize: 11, fontFamily: AppTheme.mono,
     );
     final chStyle = TextStyle(
-      color: t.textSecondary, fontSize: 8, fontFamily: AppTheme.mono,
+      color: t.textSecondary, fontSize: 11, fontFamily: AppTheme.mono,
     );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(band, style: TextStyle(
-          color: t.textDim, fontSize: 9,
+          color: t.textDim, fontSize: 12,
           fontWeight: FontWeight.w600, letterSpacing: 1,
         )),
         const SizedBox(height: 4),
