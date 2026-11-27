@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/models/session.dart';
+import 'package:oui_spy/core/wardrive_state.dart' show WardriveTarget;
 import 'package:oui_spy/features/wardrive/wardrive_stats.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -75,6 +76,14 @@ void main() {
     expect(find.byKey(const Key('count-flock')), findsOneWidget);
     expect(find.byKey(const Key('count-drone')), findsOneWidget);
     expect(find.byKey(const Key('count-detect')), findsOneWidget);
+    Color? valueColor(String key, String value) => tester
+        .widget<Text>(find.descendant(of: find.byKey(Key('count-$key')), matching: find.text(value)))
+        .style
+        ?.color;
+    expect(valueColor('flock', '2'), WardriveTarget.flock.color);
+    expect(valueColor('drone', '1'), WardriveTarget.drone.color);
+    expect(valueColor('detect', '4'), WardriveTarget.detector.color);
+    expect(valueColor('wifi', '12'), isNot(WardriveTarget.flock.color));
   });
 
   testWidgets('two counts still align and zero counts are hidden', (tester) async {

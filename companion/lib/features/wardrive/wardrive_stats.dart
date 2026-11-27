@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/models/session.dart';
+import 'package:oui_spy/core/wardrive_state.dart' show WardriveTarget;
 import 'package:oui_spy/theme/app_theme.dart';
 
 class WardriveStats extends ConsumerWidget {
@@ -25,19 +26,19 @@ class WardriveStats extends ConsumerWidget {
     final hasWifi = stats.wifiDetections > 0 || stats.wifiTotal > 0;
     final hasBle = stats.bleDetections > 0 || stats.bleTotal > 0;
     final hasZigbee = stats.zigbeeDetections > 0 || stats.zigbeeTotal > 0;
-    final counts = <({String key, String label, int unique, int? total})>[
+    final counts = <({String key, String label, int unique, int? total, Color? color})>[
       if (hasWifi)
-        (key: 'wifi', label: 'WIFI', unique: stats.wifiDetections, total: stats.wifiTotal),
+        (key: 'wifi', label: 'WIFI', unique: stats.wifiDetections, total: stats.wifiTotal, color: null),
       if (stats.flockCount > 0)
-        (key: 'flock', label: 'FLOCK', unique: stats.flockCount, total: null),
+        (key: 'flock', label: 'FLOCK', unique: stats.flockCount, total: null, color: WardriveTarget.flock.color),
       if (stats.droneCount > 0)
-        (key: 'drone', label: 'DRONE', unique: stats.droneCount, total: null),
+        (key: 'drone', label: 'DRONE', unique: stats.droneCount, total: null, color: WardriveTarget.drone.color),
       if (stats.detectorCount > 0)
-        (key: 'detect', label: 'DETECT', unique: stats.detectorCount, total: null),
+        (key: 'detect', label: 'DETECT', unique: stats.detectorCount, total: null, color: WardriveTarget.detector.color),
       if (hasBle)
-        (key: 'ble', label: 'BLE', unique: stats.bleDetections, total: stats.bleTotal),
+        (key: 'ble', label: 'BLE', unique: stats.bleDetections, total: stats.bleTotal, color: null),
       if (hasZigbee)
-        (key: 'zigbee', label: '802.15.4', unique: stats.zigbeeDetections, total: stats.zigbeeTotal),
+        (key: 'zigbee', label: '802.15.4', unique: stats.zigbeeDetections, total: stats.zigbeeTotal, color: null),
     ];
 
     return Padding(
@@ -105,7 +106,7 @@ class WardriveStats extends ConsumerWidget {
                       value: '${c.unique}',
                       label: c.label,
                       sub: c.total != null ? '${c.total} total' : null,
-                      valueColor: t.onFill,
+                      valueColor: c.color ?? t.onFill,
                       labelColor: t.onFillDim,
                     ),
                 ],
