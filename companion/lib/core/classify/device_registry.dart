@@ -738,10 +738,7 @@ class PhoneBleSource extends ObservationSource with ChangeNotifier {
     final services = <String>[];
     var model = '';
     try {
-      await dev.connect(autoConnect: true, mtu: null);
-      await dev.connectionState
-          .firstWhere((s) => s == BluetoothConnectionState.connected)
-          .timeout(probeConnectTimeout);
+      await dev.connect(timeout: probeConnectTimeout, mtu: null);
       final list = await dev.discoverServices(subscribeToServicesChanged: false, timeout: 8);
       services.addAll([for (final s in list) s.serviceUuid.str128.toUpperCase()]);
       for (final s in list) {
