@@ -124,6 +124,10 @@ final kBuiltInMelodies = <Melody>[
   Melody(id: 'triple', name: 'Triple beep', builtIn: true, notes: const [
     MelodyNote(81, 60, 60), MelodyNote(81, 60, 60), MelodyNote(81, 60, 60),
   ]),
+  Melody(id: 'charge', name: 'Charge', builtIn: true, notes: const [
+    MelodyNote(67, 110, 30), MelodyNote(72, 110, 30), MelodyNote(76, 110, 30),
+    MelodyNote(79, 220, 60), MelodyNote(76, 90, 30), MelodyNote(79, 400, 0),
+  ]),
 ];
 
 class MelodyState extends ChangeNotifier {
