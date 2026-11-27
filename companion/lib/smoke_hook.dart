@@ -294,6 +294,25 @@ void _inject(ProviderContainer container) {
       counts['alerts'] = 7;
     }
     final sdr = container.read(sdrControllerProvider);
+    final rnd = math.Random(tick);
+    sdr.injectFrame(SdrFrame(
+      centerHz: 100100000,
+      rate: 2400000,
+      power: [
+        for (var i = 0; i < 512; i++)
+          () {
+            final edge = math.pow((i - 255.5).abs() / 256, 6).toDouble();
+            final floor = -80 - 9 * edge + 1.6 * (rnd.nextDouble() + rnd.nextDouble() - 1);
+            var sig = 0.0;
+            for (final (bin, height) in const [(43, 24.0), (128, 37.0), (299, 30.0), (427, 17.0)]) {
+              final x = (i - bin) / 21;
+              sig = math.max(sig, height * math.exp(-x * x * x * x) * (0.93 + 0.07 * math.sin(i * 1.7 + tick)));
+            }
+            final dc = i == 256 ? 9.0 : 0.0;
+            return floor + sig + dc + (sig > 3 ? 2.2 * (rnd.nextDouble() - 0.5) : 0);
+          }(),
+      ],
+    ));
     for (final d in [
       SdrDetection(kind: 'rtl433', fields: {
         'model': 'ERT-SCM', 'id': 10001, 'consumption_data': 12000 + tick * 3, 'rssi': -20,
@@ -303,8 +322,12 @@ void _inject(ProviderContainer container) {
       }),
       SdrDetection(kind: 'tpms', fields: {'model': 'Schrader', 'id': '0000ABCD', 'pressure_kPa': 230, 'rssi': -30}),
       SdrDetection(kind: 'adsb', fields: {
-        'icao': 'ABC123', 'callsign': 'DEM123', 'lat': lat0 + 0.01, 'lon': lon0, 'alt_ft': 3000 + tick * 10,
-        'speed_kt': 120, 'heading': 90,
+        'icao': 'A835AF', 'callsign': 'UAL88', 'lat': lat0 + 0.01 + tick * 0.0004, 'lon': lon0 - 0.02 + tick * 0.0006,
+        'altitude': 37000, 'velocity': 478, 'heading': 95,
+      }),
+      SdrDetection(kind: 'adsb', fields: {
+        'icao': '4CA853', 'callsign': 'RYR1234', 'lat': lat0 - 0.015 + tick * 0.0003, 'lon': lon0 + 0.01 - tick * 0.0005,
+        'altitude': 35000, 'velocity': 452, 'heading': 270,
       }),
     ]) {
       sdr.injectFrame(SdrFrame(detection: d));
