@@ -117,10 +117,10 @@ class _SignatureSourcesDialogState extends ConsumerState<SignatureSourcesDialog>
     final dim = TextStyle(color: t.textDim, fontSize: 12);
     final extEnabled = _boardReady && _extBoard != null;
     final extNote = !_boardReady
-        ? 'Connect a board to change it here, or later in SETTINGS → Node → Flock Detection.'
+        ? 'Needs a connected board.'
         : _extBoard == null
-            ? 'This board does not report it.'
-            : 'Saved on the connected board.';
+            ? 'This board does not have it.'
+            : 'Saved on the board.';
     return AlertDialog(
       backgroundColor: t.surface,
       title: Text('Signature sources', style: TextStyle(color: t.textPrimary)),
@@ -130,9 +130,7 @@ class _SignatureSourcesDialogState extends ConsumerState<SignatureSourcesDialog>
           shrinkWrap: true,
           children: [
             Text(
-              'These are every source OUI-APEX can match devices against. Pick the ones you want. '
-              'Online sets download from GitHub only when you turn them on. You can change any of them later in '
-              'SETTINGS → Detection & Alerts → Your Lists → Signature sets.',
+              'Pick what to match devices against. Change it later in Your Lists.',
               style: TextStyle(color: t.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 8),
@@ -140,7 +138,7 @@ class _SignatureSourcesDialogState extends ConsumerState<SignatureSourcesDialog>
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.inventory_2_outlined),
               title: const Text('OUI-APEX catalog'),
-              subtitle: Text('Built in, always on', style: dim),
+              subtitle: Text('Always on', style: dim),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -153,8 +151,7 @@ class _SignatureSourcesDialogState extends ConsumerState<SignatureSourcesDialog>
                 contentPadding: EdgeInsets.zero,
                 secondary: Icon(s.url == null ? Icons.description_outlined : Icons.cloud_download_outlined),
                 title: Text(s.name),
-                subtitle: Text([if (s.license.isNotEmpty) s.license, if (s.source.isNotEmpty) s.source].join(' · '),
-                    style: dim),
+                subtitle: Text(s.url == null ? 'Built in' : 'Downloads when on', style: dim),
                 value: _want[s.id] ?? s.enabled,
                 onChanged: (v) => setState(() => _want[s.id] = v),
               ),
@@ -162,10 +159,7 @@ class _SignatureSourcesDialogState extends ConsumerState<SignatureSourcesDialog>
               contentPadding: EdgeInsets.zero,
               secondary: const Icon(Icons.lan),
               title: const Text('Extended Flock OUI set'),
-              subtitle: Text(
-                  'Board setting, off unless you turn it on. Roughly doubles the Flock OUIs with common chip makers '
-                  '(Espressif, Murata, Silicon Labs), so expect false positives. $extNote',
-                  style: dim),
+              subtitle: Text('More Flock hits, more false alarms. $extNote', style: dim),
               value: _extWant,
               onChanged: extEnabled ? (v) => setState(() => _extWant = v) : null,
             ),

@@ -110,7 +110,7 @@ void main() {
       expect(_tile(tester, s).value, isFalse, reason: s);
     }
     expect(_tile(tester, 'Extended Flock OUI set').onChanged, isNull);
-    expect(find.textContaining('Connect a board to change it'), findsOneWidget);
+    expect(find.textContaining('Needs a connected board'), findsOneWidget);
     await tester.tap(find.text('Not now'));
     await tester.pumpAndSettle();
     expect(c.read(sharedPreferencesProvider).getString(kSignatureSourcesSeenKey), '0.7.0');
@@ -125,7 +125,7 @@ void main() {
     final ext = _tile(tester, 'Extended Flock OUI set');
     expect(ext.value, isFalse);
     expect(ext.onChanged, isNotNull);
-    expect(find.textContaining('Saved on the connected board'), findsOneWidget);
+    expect(find.textContaining('Saved on the board'), findsOneWidget);
     await tester.tap(find.widgetWithText(SwitchListTile, 'Home Assistant Bluetooth devices'));
     await tester.tap(find.widgetWithText(SwitchListTile, 'Extended Flock OUI set'));
     await tester.pump();
