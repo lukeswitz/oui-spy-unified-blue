@@ -12,7 +12,6 @@ import 'package:oui_spy/core/debug_log.dart';
 const int melodyMaxNotes = 8;
 const int melodyAny = 0xFF;
 const int melodyEngineAxon = 0xFE;
-const int melodyOpClearAll = 0x03;
 const int melodyOpPreview = 0x04;
 const int melodyOpSync = 0x05;
 const String melodySilent = 'silent';
@@ -205,18 +204,14 @@ class MelodyState extends ChangeNotifier {
     final entries = <List<int>>[];
     for (final slot in kAlertSlots) {
       final id = _assign[slot.key];
-      if (id == null) continue;
-      final List<int> notes;
-      if (id == melodySilent) {
-        notes = const [];
-      } else {
-        final m = byId(id);
-        if (m == null) continue;
-        notes = m.encodeNotes();
-      }
+      final m = id == null || id == melodySilent ? null : byId(id);
+      final List<int> notes = id == melodySilent
+          ? const []
+          : m != null
+              ? m.encodeNotes()
+              : Melody(id: '', name: '', notes: defaultFor(slot).notes).encodeNotes();
       entries.add([slot.engine, slot.method, notes.length ~/ 3, ...notes]);
     }
-    if (entries.isEmpty) return [Uint8List.fromList([melodyOpClearAll])];
     return [
       for (var i = 0; i < entries.length; i++)
         Uint8List.fromList([melodyOpSync, i, entries.length, ...entries[i]]),

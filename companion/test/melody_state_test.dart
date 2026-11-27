@@ -19,10 +19,13 @@ void main() {
     await s.assign(flock, melodySilent);
 
     final ops = s.serializeForFirmware();
-    expect(ops.length, 2);
-    expect(ops[0], [melodyOpSync, 0, 2, 0, 8, 2, 72, 6, 4, 67, 11, 3]);
-    expect(ops[1], [melodyOpSync, 1, 2, 1, melodyAny, 0]);
+    final n = kAlertSlots.length;
+    expect(ops.length, n);
+    expect(ops[kAlertSlots.indexOf(axon)], [melodyOpSync, kAlertSlots.indexOf(axon), n, 0, 8, 2, 72, 6, 4, 67, 11, 3]);
+    expect(ops[kAlertSlots.indexOf(flock)], [melodyOpSync, kAlertSlots.indexOf(flock), n, 1, melodyAny, 0]);
+    expect(ops[0], [melodyOpSync, 0, n, melodyAny, melodyAny, 3, 88, 4, 2, 92, 4, 2, 95, 4, 2]);
     expect(ops.every((o) => o.length <= 32), isTrue);
+    expect(n <= 24, isTrue);
   });
 
   test('preview op caps at 8 notes and encodes 10ms units', () {
@@ -64,8 +67,6 @@ void main() {
     await s.assign(kAlertSlots.first, 'u1');
     await s.deleteMelody('u1');
     expect(s.assignmentFor(kAlertSlots.first), isNull);
-    expect(s.serializeForFirmware(), [
-      [melodyOpClearAll]
-    ]);
+    expect(s.serializeForFirmware().first, [melodyOpSync, 0, kAlertSlots.length, melodyAny, melodyAny, 3, 88, 4, 2, 92, 4, 2, 95, 4, 2]);
   });
 }
