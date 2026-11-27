@@ -459,6 +459,7 @@ class WardriveController extends ChangeNotifier {
   bool get zigbeeActive => zigbee && zigbeeAvailable;
   bool flockFilter = false;
   bool detectorFilter = false;
+  bool droneFilter = false;
   double _markerDistanceM = 10.0;
 
   int _wifiRssiRelogDb = 20;
@@ -1258,6 +1259,7 @@ class WardriveController extends ChangeNotifier {
     nodeBleCount.clear();
     distanceKm = 0;    flockFilter = false;
     detectorFilter = false;
+    droneFilter = false;
     _lastCompletedSessionId = null;
     sessionCenter = null;
     notifyListeners();
@@ -1530,6 +1532,11 @@ class WardriveController extends ChangeNotifier {
 
   void toggleFlockFilter() {
     flockFilter = !flockFilter;
+    notifyListeners();
+  }
+
+  void toggleDroneFilter() {
+    droneFilter = !droneFilter;
     notifyListeners();
   }
 

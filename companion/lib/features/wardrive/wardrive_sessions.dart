@@ -17,6 +17,7 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
 
   bool get _flockExpanded => wd.flockFilter;
   bool get _detectorExpanded => wd.detectorFilter;
+  bool get _droneExpanded => wd.droneFilter;
 
   void _showFlockDetailSheet(BuildContext context, Detection d) =>
       showDetectionDetails(context, ref, d);
@@ -126,38 +127,56 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                 ),
               ),
               const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: wd.droneCount > 0
-                      ? AppTheme.skySpy.withValues(alpha: 0.10)
-                      : t.surface.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(kMinInteractiveDimension),
-                  border: Border.all(
-                    color: wd.droneCount > 0
-                        ? AppTheme.skySpy.withValues(alpha: 0.35)
-                        : t.border,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.flight, size: 12,
-                        color: wd.droneCount > 0
-                            ? AppTheme.skySpy
-                            : t.textDim),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${wd.droneCount}',
-                      style: TextStyle(
-                        color: wd.droneCount > 0
-                            ? AppTheme.skySpy
-                            : t.textDim,
-                        fontSize: 10,
-                        fontFamily: AppTheme.mono, fontWeight: FontWeight.w700,
-                      ),
+              GestureDetector(
+                key: const Key('session-drone-chip'),
+                behavior: HitTestBehavior.opaque,
+                onTap: wd.droneCount > 0
+                    ? () => wd.toggleDroneFilter()
+                    : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _droneExpanded
+                        ? AppTheme.skySpy.withValues(alpha: 0.25)
+                        : wd.droneCount > 0
+                            ? AppTheme.skySpy.withValues(alpha: 0.10)
+                            : t.surface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(kMinInteractiveDimension),
+                    border: Border.all(
+                      color: _droneExpanded
+                          ? AppTheme.skySpy.withValues(alpha: 0.7)
+                          : wd.droneCount > 0
+                              ? AppTheme.skySpy.withValues(alpha: 0.35)
+                              : t.border,
                     ),
-                  ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.flight, size: 12,
+                          color: wd.droneCount > 0
+                              ? AppTheme.skySpy
+                              : t.textDim),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${wd.droneCount}',
+                        style: TextStyle(
+                          color: wd.droneCount > 0
+                              ? AppTheme.skySpy
+                              : t.textDim,
+                          fontSize: 10,
+                          fontFamily: AppTheme.mono, fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (wd.droneCount > 0) ...[
+                        const SizedBox(width: 3),
+                        Icon(
+                          _droneExpanded ? Icons.expand_less : Icons.expand_more,
+                          size: 12, color: AppTheme.skySpy,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
@@ -493,6 +512,92 @@ class _CompletedSessionBarState extends ConsumerState<_CompletedSessionBar> {
                       ),
                     ),
                   ),
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_droneExpanded && wd.droneDetections.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              key: const Key('session-drone-list'),
+              constraints: const BoxConstraints(maxHeight: 180),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: t.background.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(color: AppTheme.skySpy.withValues(alpha: 0.3)),
+              ),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                shrinkWrap: true,
+                itemCount: wd.droneDetections.length,
+                itemBuilder: (_, i) {
+                  final drones = wd.droneDetections;
+                  final d = drones[i];
+                  final rssiNorm = ((d.rssi + 100) / 70).clamp(0.0, 1.0);
+                  final rssiColor = Color.lerp(AppTheme.error, AppTheme.success, rssiNorm)!;
+                  final point = droneRidPoint(d);
+                  final hasGps = (d.latitude != null && d.longitude != null) || point != null;
+                  final uav = d.odid?.uavId ?? '';
+                  final alt = d.odid?.altitudeMsl;
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: hasGps ? () => widget.onZoomDetection(d) : null,
+                    onLongPress: () => _showFlockDetailSheet(context, d),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: i < drones.length - 1
+                            ? Border(bottom: BorderSide(color: t.border.withValues(alpha: 0.5), width: 0.5))
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(width: 3, height: 20, color: AppTheme.skySpy),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  uav.isNotEmpty ? uav : maskMac(d.macAddress.toUpperCase(), ref.watch(privacyScreenProvider)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: t.textPrimary, fontSize: 10,
+                                    fontFamily: AppTheme.mono, fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  [
+                                    methodLabel(d.method),
+                                    if (alt != null) '$alt m',
+                                    if (uav.isNotEmpty) maskMac(d.macAddress.toUpperCase(), ref.watch(privacyScreenProvider)),
+                                  ].join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: t.textDim, fontSize: 8, fontFamily: AppTheme.mono),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (!hasGps) ...[
+                            Icon(Icons.location_off, size: 8, color: t.textDim),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            '${d.rssi}',
+                            style: TextStyle(
+                              color: rssiColor, fontSize: 12,
+                              fontFamily: AppTheme.mono, fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text('dBm', style: TextStyle(color: t.textDim, fontSize: 7)),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),

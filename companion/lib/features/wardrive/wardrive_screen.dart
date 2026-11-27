@@ -1472,7 +1472,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
     final focus = _focusedDetection;
     final alerted = ref.read(notificationServiceProvider).classAlertedMacs.length;
     final key = '$alerted|${wd.sessionAlertRows.length}|${wd.dedupedDetections.length}|$recentLen|${wd.flockFilter}|'
-        '${wd.detectorFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
+        '${wd.detectorFilter}|${wd.droneFilter}|${_currentZoom.toStringAsFixed(1)}|${wd.sessionId}|'
         '${focus == null ? '' : '${focus.macAddress}|${focus.engine.name}'}|'
         '$_classGroupLabel|${_classGroup.length}|${wd.markerDistanceM.round()}|'
         '${Object.hashAll(ref.read(droneTagsProvider).entries.map((e) => '${e.key}${e.value.name}'))}|'
@@ -1527,7 +1527,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
             d.longitude ?? droneRidPoint(d)!.longitude))
         .toList();
     final focused = _focusedDetection;
-    final filterActive = wd.flockFilter || wd.detectorFilter;
+    final filterActive = wd.flockFilter || wd.detectorFilter || wd.droneFilter;
     final List<Detection> geoDetections;
     if (focused != null) {
       final hits = allGeo
@@ -1549,6 +1549,7 @@ class _WardriveScreenState extends ConsumerState<WardriveScreen> with WidgetsBin
           return true;
         }
         if (wd.detectorFilter && (d.engine == Engine.detector || isAlerted(d))) return true;
+        if (wd.droneFilter && d.engine == Engine.skySpy) return true;
         return false;
       }).toList();
     } else {
