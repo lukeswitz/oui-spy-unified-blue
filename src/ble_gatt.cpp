@@ -3460,9 +3460,25 @@ void bleGattNotifyDetection(const DetectionEvent* evt) {
     if (chrDetectionEvents == nullptr) return;
     uint8_t buf[200];
     size_t len = packDetection(evt, buf);
+    static uint32_t s_retried = 0, s_dropped = 0, s_reportMs = 0;
     if (chrDetMutex) xSemaphoreTake(chrDetMutex, portMAX_DELAY);
-    notifyChr(chrDetectionEvents, buf, len);
+    chrDetectionEvents->setValue(buf, len);
+    bool sent = chrDetectionEvents->notify(buf, len);
+    for (int i = 0; !sent && i < 20 && phoneConnected; i++) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+        s_retried++;
+        sent = chrDetectionEvents->notify(buf, len);
+    }
+    if (!sent) s_dropped++;
+#ifdef OUISPY_USB_LINK
+    usbLinkNotify(chrDetectionEvents, buf, len);
+#endif
     if (chrDetMutex) xSemaphoreGive(chrDetMutex);
+    const uint32_t now = millis();
+    if ((s_retried || s_dropped) && now - s_reportMs >= 5000) {
+        s_reportMs = now;
+        Serial.printf("[BLE] detection notify retried=%u dropped=%u\n", (unsigned)s_retried, (unsigned)s_dropped);
+    }
 }
 
 void bleGattNotifyFoxhunterRssi(int8_t rssi, uint16_t intervalMs) {
