@@ -95,7 +95,7 @@ class DetectorScreen extends ConsumerWidget {
           const Divider(height: 1),
           ListTile(
             leading: Icon(Icons.history, color: AppTheme.detector),
-            title: Text('History',
+            title: Text('Alerts',
                 style: TextStyle(color: t.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
             subtitle: Text(
               '${detections.length} this session · filters, map, export',
@@ -104,7 +104,7 @@ class DetectorScreen extends ConsumerWidget {
             trailing: Icon(Icons.chevron_right, color: t.textDim),
             onTap: () {
               ref.read(historyFilterRequestProvider.notifier).state = 'detector';
-              ref.read(detectionsViewProvider.notifier).state = DetectionsView.history;
+              ref.read(detectionsViewProvider.notifier).state = DetectionsView.alerts;
               context.go('/detections');
             },
           ),

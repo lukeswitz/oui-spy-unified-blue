@@ -338,6 +338,232 @@ class DetectionRow extends ConsumerWidget {
   }
 }
 
+class AlertHistoryRow extends ConsumerWidget {
+  const AlertHistoryRow({
+    super.key,
+    required this.detection,
+    required this.onTap,
+    this.alertKind,
+    this.alertTitle,
+    this.alertOnly = false,
+    this.unread = false,
+    this.macCount = 1,
+    this.transports = const [],
+  });
+
+  final Detection detection;
+  final VoidCallback onTap;
+  final String? alertKind;
+  final String? alertTitle;
+  final bool alertOnly;
+  final bool unread;
+  final int macCount;
+  final List<String> transports;
+
+  static final _macPattern = RegExp(r'^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$');
+
+  static String _transport(String method) => switch (method) {
+        'odid_ble' => 'Bluetooth',
+        'odid_nan' => 'Wi-Fi Aware',
+        'odid_beacon' => 'Wi-Fi beacon',
+        'odid_fpv' => 'FPV video',
+        _ => method,
+      };
+
+  static String _age(DateTime at) {
+    final diff = DateTime.now().difference(at);
+    if (diff.inSeconds < 60) return '${diff.inSeconds.clamp(0, 59)}s';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    return DateFormat(at.year == DateTime.now().year ? 'MMM d' : 'MMM d yy').format(at);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppTheme.of(context);
+    final d = detection;
+    final priv = ref.watch(privacyScreenProvider);
+    final app = ref.watch(appStateProvider);
+    final kind = alertKind;
+    final sdrCat = d.engine == Engine.sdr ? _sdrCategory(d) : null;
+    final isWifi = d.isWifiDetection;
+    final (icon, color) = alertOnly || (kind != null && d.engine == Engine.detector)
+        ? (alertKindIcon(kind), alertKindColor(kind))
+        : switch (d.engine) {
+            Engine.skySpy => (Icons.flight, d.engine.color),
+            Engine.flockBle || Engine.flockWifi => (Icons.videocam, d.engine.color),
+            Engine.sdr => (sdrCat?.icon ?? Icons.sensors, d.engine.color),
+            _ => (isWifi ? Icons.wifi : Icons.bluetooth, d.engine.color),
+          };
+
+    final alias = DeviceNotesNotifier.nameFor(d.macAddress);
+    final uav = d.odid?.uavId ?? '';
+    final name = d.ssid;
+    final String title;
+    if (alias != null) {
+      title = alias;
+    } else if (alertOnly) {
+      final raw = alertTitle ?? d.deviceName;
+      title = priv && name.isNotEmpty ? raw.replaceAll(name, maskName(name, true)) : raw;
+    } else if (d.engine == Engine.detector) {
+      title = detectorTitle(d);
+    } else if (d.engine == Engine.skySpy && uav.isNotEmpty) {
+      title = 'Drone $uav';
+    } else {
+      final h = detectionHeadline(d);
+      title = h == d.macAddress.toUpperCase() ? maskMac(h, priv) : maskName(h, priv);
+    }
+    final titleIsMac = _macPattern.hasMatch(title) || title.toUpperCase() == d.macAddress.toUpperCase();
+
+    final String lead;
+    if (alertOnly) {
+      lead = alertKindName(kind);
+    } else if (alertTitle != null && !alertTitle!.contains(title)) {
+      lead = alertTitle!;
+    } else if (kind != null) {
+      lead = alertKindName(kind);
+    } else {
+      lead = switch (d.engine) {
+        Engine.skySpy => transports.isEmpty
+            ? 'Remote ID'
+            : transports.contains('odid_fpv') && transports.length == 1
+                ? 'FPV video'
+                : 'Remote ID over ${transports.map(_transport).join(' + ')}',
+        Engine.flockBle || Engine.flockWifi => 'Flock',
+        Engine.sdr => sdrCat?.label ?? 'SDR',
+        _ => d.engine.label,
+      };
+    }
+
+    final flock = d.flock;
+    final alt = d.odid?.altitudeMsl;
+    final facts = <(String, Color?)>[
+      if (alertOnly && d.method.isNotEmpty) (d.method, null),
+      if (flock != null) (flock.confidence(d.method).label(d.method), null),
+      if (flock?.isRaven ?? false)
+        ((flock!.ravenFirmware?.isNotEmpty ?? false) ? 'Raven ${flock.ravenFirmware}' : 'Raven', AppTheme.warning),
+      if (d.engine == Engine.skySpy && kind != null && transports.isNotEmpty)
+        ('Remote ID over ${transports.map(_transport).join(' + ')}', null),
+      if (alt != null) ('$alt m', null),
+      if (!alertOnly && d.engine != Engine.skySpy && d.engine != Engine.sdr)
+        (isWifi ? (d.channel > 0 ? 'Wi-Fi ch ${d.channel}' : 'Wi-Fi') : 'Bluetooth', null),
+      if (d.count > 1) (alertOnly ? '${d.count} times' : 'heard ${d.count} times', null),
+      if (!alertOnly && (d.latitude == null || d.longitude == null)) ('no GPS', AppTheme.gpsNone),
+    ];
+
+    final nodeId = d.sourceNodeId;
+    final node = nodeId.isEmpty || nodeId == BleManager.phoneNodeId ? '' : app.labelForNode(nodeId);
+    final rawId = d.macAddress;
+    final ids = <String>[
+      if (!titleIsMac && _macPattern.hasMatch(rawId)) maskMac(rawId.toUpperCase(), priv),
+      if (d.engine == Engine.sdr && rawId.contains('|')) 'id ${rawId.substring(rawId.indexOf('|') + 1)}',
+      if (macCount > 1) '$macCount MACs',
+      if (node.isNotEmpty && node != 'LOCAL' && node != 'PHONE') 'via $node',
+    ];
+
+    final dim = t.textDim;
+    final authMode = d.wardrive?.authMode ?? 0;
+    final line2 = TextStyle(color: dim, fontSize: 12.5);
+    return Material(
+      color: unread ? color.withValues(alpha: 0.08) : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: () {
+          HapticFeedback.mediumImpact();
+          onTap();
+        },
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: t.border))),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 14),
+                child: Icon(icon, size: 22, color: color),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: t.textPrimary,
+                                        fontFamily: titleIsMac ? AppTheme.mono : null,
+                                        fontWeight: unread ? FontWeight.w800 : FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                              if (isWifi && authMode > 0) ...[
+                                const SizedBox(width: 8),
+                                Icon(Icons.lock, size: 12, color: AppTheme.success),
+                                const SizedBox(width: 3),
+                                Text(_authShort(authMode),
+                                    style: TextStyle(color: AppTheme.success, fontSize: 11, fontWeight: FontWeight.w600)),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (d.rssi != 0) ...[
+                          const SizedBox(width: 12),
+                          Text('${d.rssi}',
+                              style: TextStyle(
+                                  color: _rssiColor(d.rssi),
+                                  fontFamily: AppTheme.mono,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(text: lead, style: line2.copyWith(color: color, fontWeight: FontWeight.w600)),
+                              for (final (text, c) in facts) ...[
+                                TextSpan(text: ' · ', style: line2),
+                                TextSpan(text: text, style: c == null ? line2 : line2.copyWith(color: c)),
+                              ],
+                            ]),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(_age(d.appTimestamp), style: TextStyle(color: dim, fontSize: 11, fontFamily: AppTheme.mono)),
+                      ],
+                    ),
+                    if (ids.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(ids.join('  ·  '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: dim, fontSize: 11, fontFamily: AppTheme.mono)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 Future<void> detectionZoomOnMap(
     BuildContext context, WidgetRef ref, Detection detection) async {
   if (detection.latitude == null || detection.longitude == null) return;

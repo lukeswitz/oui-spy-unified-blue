@@ -60,15 +60,15 @@ IconData classIcon(SignatureClass c) => switch (c) {
     };
 
 const _watchKinds = <String, (String, IconData, Color)>{
-  'trusted_network': ('LOOKALIKE WI-FI', Icons.wifi_lock, Color(0xFFE65A6B)),
-  'cell_watch': ('CELL NETWORK', Icons.cell_tower, Color(0xFF6B8AFF)),
+  'trusted_network': ('Lookalike Wi-Fi', Icons.wifi_lock, Color(0xFFE65A6B)),
+  'cell_watch': ('Cell network', Icons.cell_tower, Color(0xFF6B8AFF)),
   'gps_watch': ('GPS', Icons.gps_off, Color(0xFFEAB308)),
-  'car_follow': ('CAR FOLLOWING', Icons.directions_car, Color(0xFF84CC16)),
-  'aircraft_circle': ('AIRCRAFT CIRCLING', Icons.connecting_airports, Color(0xFF5AE6D6)),
-  'drone_loiter': ('DRONE NEAR YOU', Icons.flight_land, Color(0xFFE6A85A)),
-  'mesh_crossing': ('MESH CROSSING', Icons.route, Color(0xFFA855F7)),
-  'zone_entry': ('IN YOUR ZONE', Icons.fence, Color(0xFFE6A85A)),
-  'beacon_flood': ('BEACON FLOOD', Icons.wifi_channel, Color(0xFFE66B9B)),
+  'car_follow': ('Car following', Icons.directions_car, Color(0xFF84CC16)),
+  'aircraft_circle': ('Aircraft circling', Icons.connecting_airports, Color(0xFF5AE6D6)),
+  'drone_loiter': ('Drone near you', Icons.flight_land, Color(0xFFE6A85A)),
+  'mesh_crossing': ('Mesh crossing', Icons.route, Color(0xFFA855F7)),
+  'zone_entry': ('In your zone', Icons.fence, Color(0xFFE6A85A)),
+  'beacon_flood': ('Beacon flood', Icons.wifi_channel, Color(0xFFE66B9B)),
 };
 
 SignatureClass? _classOfKind(String? kind) {
@@ -92,9 +92,10 @@ IconData alertKindIcon(String? kind) {
   return c == null ? Icons.warning_amber : classIcon(c);
 }
 
-String alertKindLabel(String? kind) {
-  if (kind == 'flock') return 'FLOCK';
+String alertKindLabel(String? kind) => alertKindName(kind).toUpperCase();
+
+String alertKindName(String? kind) {
+  if (kind == 'flock') return 'Flock';
   if (_watchKinds[kind] case (final label, _, _)) return label;
-  final c = _classOfKind(kind);
-  return c == null ? 'SIGNATURE' : c.label.toUpperCase();
+  return _classOfKind(kind)?.label ?? 'Signature';
 }

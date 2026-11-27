@@ -1154,6 +1154,8 @@ class AppDatabase extends _$AppDatabase {
       ((host['mergedClasses'] ??= <(String, String)>[]) as List<(String, String)>)
           .add((c['macAddress'] as String, c['alertClass'] as String));
       host['classTitle'] ??= c['deviceName'];
+      final at = c['appTimestamp'] as int;
+      if (at > (host['lastAlertAt'] as int? ?? 0)) host['lastAlertAt'] = at;
     }
     return out;
   }

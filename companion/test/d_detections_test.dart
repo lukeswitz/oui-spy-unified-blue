@@ -140,7 +140,8 @@ void main() {
     expect(find.text('Detections'), findsOneWidget);
     expect(find.text('Live'), findsOneWidget);
     expect(find.text('Devices'), findsOneWidget);
-    expect(find.text('History'), findsOneWidget);
+    expect(find.text('Alerts'), findsOneWidget);
+    expect(find.text('History'), findsNothing);
     expect(find.byType(SegmentedButton<DetectionsView>), findsNothing);
     expect(container.read(detectionsViewProvider), DetectionsView.live);
     await tester.tap(find.byTooltip('Detections guide'));
@@ -167,7 +168,7 @@ void main() {
     await tester.pump();
     expect(find.byTooltip('Filter'), findsOneWidget);
     expect(find.byTooltip('Sort: TIME'), findsOneWidget);
-    expect(find.byTooltip('History'), findsOneWidget);
+    expect(find.byTooltip('Alerts'), findsOneWidget);
     expect(find.byTooltip('More'), findsOneWidget);
     await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();

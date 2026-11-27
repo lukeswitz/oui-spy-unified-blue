@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import 'package:oui_spy/core/classify/class_style.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/db/detection_mapper.dart';
-import 'package:oui_spy/core/notifications/notification_service.dart';
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/watch_alert_log.dart';
 import 'package:oui_spy/core/app_state.dart';
@@ -16,123 +15,13 @@ import 'package:oui_spy/features/feed/device_mute_button.dart';
 import 'package:oui_spy/features/feed/detection_row.dart'
     show detectionHasBoard, detectionScanner, detectionZoomOnMap, showDetectionDetails;
 import 'package:oui_spy/theme/app_theme.dart';
-import 'package:oui_spy/widgets/command_bar.dart';
 
 const _notRadio = {'cell_watch', 'gps_watch', 'beacon_flood', 'aircraft_circle', 'car_follow', 'drone_loiter'};
-
-String _ago(int ms) {
-  final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
-  if (d.inMinutes < 1) return 'just now';
-  if (d.inHours < 1) return '${d.inMinutes} min ago';
-  if (d.inDays < 1) return '${d.inHours} h ago';
-  return '${d.inDays} d ago';
-}
 
 String _maskedTitle(Map<String, dynamic> r, bool masked) {
   final title = r['deviceName'] as String? ?? '';
   final name = r['ssid'] as String? ?? '';
   return masked && name.isNotEmpty ? title.replaceAll(name, maskName(name, true)) : title;
-}
-
-class AlertsView extends ConsumerWidget {
-  const AlertsView({super.key});
-
-  Future<void> _clear(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Clear all alerts?'),
-        content: const Text('Detections stay in HISTORY.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('CLEAR')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await ref.read(databaseProvider).clearClassAlerts();
-    await ref.read(alertsFeedProvider).reload();
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final feed = ref.watch(alertsFeedProvider);
-    final masked = ref.watch(privacyScreenProvider);
-    final rows = feed.rows;
-    final notif = ref.watch(notificationServiceProvider);
-    return Column(
-      children: [
-        CommandHeader(
-          title: 'ALERTS',
-          count: feed.unread > 0 ? '${rows.length} · ${feed.unread} unread' : '${rows.length}',
-          actions: [
-            CommandBarAction(
-              icon: Icons.done_all,
-              label: 'Dismiss all',
-              onTap: feed.unread == 0 ? null : feed.markAllRead,
-            ),
-            CommandBarAction(
-              icon: notif.silenced ? Icons.volume_off : Icons.volume_up_outlined,
-              label: notif.silenced ? 'Silenced until you switch it off' : 'Silence all',
-              active: notif.silenced,
-              onTap: () => notif.setSilenced(!notif.silenced),
-            ),
-            CommandBarAction(
-              icon: Icons.delete_sweep,
-              label: 'Clear',
-              onTap: rows.isEmpty ? null : () => _clear(context, ref),
-            ),
-          ],
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: feed.loading
-              ? const Center(child: CircularProgressIndicator())
-              : rows.isEmpty
-                  ? const CommandEmptyState(
-                      icon: Icons.notifications_none,
-                      title: 'No alerts yet',
-                      message: 'Every alert OUI-APEX raises shows here, newest first.',
-                    )
-                  : ListView.separated(
-                      itemCount: rows.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, i) =>
-                          _AlertRow(row: rows[i], masked: masked, unread: feed.isUnread(rows[i])),
-                    ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AlertRow extends ConsumerWidget {
-  const _AlertRow({required this.row, required this.masked, this.unread = false});
-  final Map<String, dynamic> row;
-  final bool masked;
-  final bool unread;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
-    final kind = row['alertClass'] as String?;
-    final count = row['count'] as int? ?? 1;
-    final reason = row['detectionMethod'] as String? ?? '';
-    return ListTile(
-      leading: Icon(alertKindIcon(kind), color: alertKindColor(kind)),
-      tileColor: unread ? alertKindColor(kind).withValues(alpha: 0.08) : null,
-      title: Text(_maskedTitle(row, masked),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: unread ? const TextStyle(fontWeight: FontWeight.w700) : null),
-      subtitle: Text(
-        [if (reason.isNotEmpty) reason, _ago(row['appTimestamp'] as int), if (count > 1) '$count times'].join(' · '),
-        style: TextStyle(color: t.textDim, fontSize: 12),
-      ),
-      trailing: Text(alertKindLabel(kind), style: TextStyle(color: alertKindColor(kind), fontSize: 10)),
-      onTap: () => showAlertSheet(context, ref, row, masked),
-    );
-  }
 }
 
 Future<void> showAlertSheet(BuildContext context, WidgetRef ref, Map<String, dynamic> row, bool masked) =>

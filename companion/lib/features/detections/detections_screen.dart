@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/app_state.dart';
 import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/watch_alert_log.dart';
-import 'package:oui_spy/features/alerts/alerts_view.dart';
 import 'package:oui_spy/features/config/config_menu_state.dart';
 import 'package:oui_spy/features/config/device_config.dart' show DetectionHistoryView;
 import 'package:oui_spy/features/devices/devices_screen.dart';
@@ -16,10 +15,10 @@ import 'package:oui_spy/widgets/d/d_header.dart';
 import 'package:oui_spy/widgets/d/d_tabs.dart';
 import 'package:oui_spy/widgets/info_sheet.dart';
 
-enum DetectionsView { live, devices, history, alerts }
+enum DetectionsView { live, devices, alerts }
 
 const _infoLines = [
-  'Live shows new hits, Devices each radio, History everything saved, Alerts every alert.',
+  'Live shows new hits, Devices each radio, Alerts every alert and every Flock, Detector, drone and SDR hit.',
   'Funnel filters, arrow sorts. Layers indents Wi-Fi clients under their network.',
   'Crossed arrows mark a random MAC. A walking person marks a device moving with you.',
   'Three dots: search, export and clear.',
@@ -27,11 +26,7 @@ const _infoLines = [
 
 final detectionsViewProvider = StateProvider<DetectionsView>((ref) => DetectionsView.live);
 
-DetectionsView? viewForAlertKind(String kind) => switch (kind) {
-      'foxhunt' => null,
-      'detector' || 'flock' || 'drone' => DetectionsView.history,
-      _ => DetectionsView.alerts,
-    };
+DetectionsView? viewForAlertKind(String kind) => kind == 'foxhunt' ? null : DetectionsView.alerts;
 
 class DetectionsScreen extends ConsumerWidget {
   const DetectionsScreen({super.key});
@@ -42,9 +37,9 @@ class DetectionsScreen extends ConsumerWidget {
     final view = ref.watch(detectionsViewProvider);
     final liveCount = ref.watch(appStateProvider.select((s) => s.totalDetections));
     final deviceCount = ref.watch(deviceRegistryProvider.select((r) => r.count));
-    final alertCount = ref.watch(alertsFeedProvider.select((f) => f.rows.length));
+    final unread = ref.watch(alertsFeedProvider.select((f) => f.unread));
     ref.listen<String?>(historyFilterRequestProvider, (_, req) {
-      if (req != null) ref.read(detectionsViewProvider.notifier).state = DetectionsView.history;
+      if (req != null) ref.read(detectionsViewProvider.notifier).state = DetectionsView.alerts;
     });
     return Scaffold(
       backgroundColor: t.background,
@@ -65,14 +60,13 @@ class DetectionsScreen extends ConsumerWidget {
                       items: const [
                         (DetectionsView.live, 'Live'),
                         (DetectionsView.devices, 'Devices'),
-                        (DetectionsView.history, 'History'),
                         (DetectionsView.alerts, 'Alerts'),
                       ],
                       selected: view,
                       counts: {
                         DetectionsView.live: liveCount,
                         DetectionsView.devices: deviceCount,
-                        if (alertCount > 0) DetectionsView.alerts: alertCount,
+                        if (unread > 0) DetectionsView.alerts: unread,
                       },
                       onSelect: (v) => ref.read(detectionsViewProvider.notifier).state = v,
                     ),
@@ -87,13 +81,12 @@ class DetectionsScreen extends ConsumerWidget {
             ),
             Expanded(
               child: switch (view) {
-                DetectionsView.history => DetectionHistoryView(
+                DetectionsView.alerts => DetectionHistoryView(
                     onShowLive: () => ref.read(detectionsViewProvider.notifier).state = DetectionsView.live,
                   ),
                 DetectionsView.devices => const DevicesScreen(embedded: true),
-                DetectionsView.alerts => const AlertsView(),
                 DetectionsView.live => FeedScreen(
-                    onShowHistory: () => ref.read(detectionsViewProvider.notifier).state = DetectionsView.history,
+                    onShowHistory: () => ref.read(detectionsViewProvider.notifier).state = DetectionsView.alerts,
                   ),
               },
             ),

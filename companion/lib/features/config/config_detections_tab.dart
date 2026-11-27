@@ -138,8 +138,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear all detections?'),
-        content: Text('Permanently deletes ${_detections.length} detection(s) from the database.'),
+        title: const Text('Clear all alerts?'),
+        content: Text('Permanently deletes ${_detections.length} alert(s) and detection(s) from the database.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
           TextButton(
@@ -160,6 +160,32 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
     await _load();
   }
 
+  static const _alertEngines = {Engine.flockBle, Engine.flockWifi, Engine.detector, Engine.skySpy};
+  final _liveSubs = <StreamSubscription<Object?>>[];
+  bool _newHit = false;
+  Timer? _reloadTimer;
+
+  void _watchNewHits() {
+    final ble = ref.read(bleManagerProvider);
+    for (final s in [ble.detections, ble.importedDetections]) {
+      _liveSubs.add(s.listen((d) {
+        if (_alertEngines.contains(d.engine)) _newHit = true;
+      }));
+    }
+    _liveSubs.add(ref
+        .read(databaseProvider)
+        .tableUpdates(const TableUpdateQuery.onTableName('detections'))
+        .listen((_) {
+      final sdrRunning = ref.exists(sdrControllerProvider) && ref.read(sdrControllerProvider).state != SdrState.idle;
+      if (!_newHit && !sdrRunning) return;
+      _reloadTimer?.cancel();
+      _reloadTimer = Timer(const Duration(milliseconds: 400), () {
+        _newHit = false;
+        _load();
+      });
+    }));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -168,11 +194,16 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       WidgetsBinding.instance.addPostFrameCallback(
           (_) => ref.read(historyFilterRequestProvider.notifier).state = null);
     }
+    _watchNewHits();
     _load();
   }
 
   @override
   void dispose() {
+    _reloadTimer?.cancel();
+    for (final s in _liveSubs) {
+      s.cancel();
+    }
     _searchCtrl.dispose();
     _mapController.dispose();
     super.dispose();
@@ -249,11 +280,7 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
           (a['macAddress'] as String).compareTo(b['macAddress'] as String),
     };
 
-    int wifiFirst(Map<String, dynamic> d) => switch (_detRadioRank(d)) { 1 => 0, 0 => 1, _ => 2 };
-    list.sort((a, b) {
-      final r = _sort == _DetSort.time ? wifiFirst(a).compareTo(wifiFirst(b)) : 0;
-      return r != 0 ? r : _ascending ? cmp(a, b) : cmp(b, a);
-    });
+    list.sort((a, b) => _ascending ? cmp(a, b) : cmp(b, a));
     return list;
   }
 
@@ -687,8 +714,8 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       );
 
   String get _sortDirectionHint => switch ((_sort, _ascending)) {
-        (_DetSort.time, true) => 'WiFi, then BLE · oldest first',
-        (_DetSort.time, false) => 'WiFi, then BLE · newest first',
+        (_DetSort.time, true) => 'Oldest first',
+        (_DetSort.time, false) => 'Newest first',
         (_DetSort.rssi, true) => 'Weakest signal first',
         (_DetSort.rssi, false) => 'Strongest signal first',
         (_DetSort.mac, true) => 'A → Z',
@@ -784,17 +811,31 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
       ref.read(historyFilterRequestProvider.notifier).state = null;
       _load();
     });
+    ref.listen(alertsFeedProvider.select((f) => f.rows), (_, _) => _load());
     final t = AppTheme.of(context);
     final items = _loading ? const <Map<String, dynamic>>[] : _filtered;
     final hasQuery = _search.trim().isNotEmpty;
+    final feed = ref.watch(alertsFeedProvider);
+    final notif = ref.watch(notificationServiceProvider);
 
     return Column(
       children: [
         CommandHeader(
-          title: 'HISTORY',
+          title: 'ALERTS',
           count: _activeFilterCount > 0 || hasQuery ? '${items.length}/${_detections.length}' : '${_detections.length}',
           chips: _filterChips(),
           actions: [
+            CommandBarAction(
+              icon: Icons.done_all,
+              label: 'Dismiss all',
+              onTap: feed.unread == 0 ? null : feed.markAllRead,
+            ),
+            CommandBarAction(
+              icon: notif.silenced ? Icons.volume_off : Icons.volume_up_outlined,
+              label: notif.silenced ? 'Silenced until you switch it off' : 'Silence all',
+              active: notif.silenced,
+              onTap: () => notif.setSilenced(!notif.silenced),
+            ),
             CommandBarAction(
               icon: Icons.filter_alt,
               label: 'Filter',
@@ -926,10 +967,10 @@ class _DetectionsTabState extends ConsumerState<_DetectionsTab> {
 
     if (_detections.isEmpty) {
       return CommandEmptyState(
-        icon: Icons.videocam_off,
-        title: 'NO DETECTIONS',
+        icon: Icons.notifications_none,
+        title: 'NO ALERTS YET',
         message:
-            'Flock, Detector and Sky Spy hits, and every signature alert you are notified about, are listed here.',
+            'Every alert and every Flock, Detector, drone and SDR hit shows here, newest first.',
       );
     }
 
@@ -1361,34 +1402,25 @@ class _DetectionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppTheme.of(context);
     final det = detectionFromDbRow(data);
-    final members = (data['memberMacs'] as List?)?.length ?? 1;
-    final transports = (data['transports'] as List?) ?? const [];
+    final alertOnly = data['engine'] == 'signature';
     final merged = data['mergedClasses'] as List<(String, String)>?;
-    return DetectionRow(
+    final feed = ref.watch(alertsFeedProvider);
+    final alertAt = alertOnly ? data['appTimestamp'] as int : data['lastAlertAt'] as int?;
+    return AlertHistoryRow(
       detection: det,
-      onActivate: _showDetailSheet,
-      notes: [
-        if (data['classTitle'] case final String ct when ct != det.deviceName && merged != null && merged.isNotEmpty)
-          (text: ct, color: alertKindColor(merged.first.$2)),
-        if (data['engine'] == 'skySpy' && (members > 1 || transports.length > 1))
-          (
-            text: '$members MACs · ${transports.map((m) => _droneTransportShort(m as String)).join(' · ')}',
-            color: t.textDim,
-          ),
-        if (det.latitude == null || det.longitude == null) (text: 'NO GPS', color: AppTheme.gpsNone),
-      ],
+      alertOnly: alertOnly,
+      alertKind: alertOnly
+          ? data['alertClass'] as String?
+          : detectionAlertClass[det] ?? (merged == null || merged.isEmpty ? null : merged.first.$2),
+      alertTitle: alertOnly ? data['deviceName'] as String? : data['classTitle'] as String?,
+      unread: alertAt != null && alertAt > feed.readAtMs,
+      macCount: (data['memberMacs'] as List?)?.length ?? 1,
+      transports: [for (final m in (data['transports'] as List?) ?? const []) m as String],
+      onTap: () => alertOnly
+          ? showAlertSheet(context, ref, data, ref.read(privacyScreenProvider))
+          : _showDetailSheet(context, ref),
     );
   }
-
-  static String _droneTransportShort(String method) => switch (method) {
-        'odid_ble' => 'BLE',
-        'odid_nan' => 'NAN',
-        'odid_beacon' => 'BEACON',
-        'odid_fpv' => 'FPV',
-        _ => method.toUpperCase(),
-      };
-
 }
 

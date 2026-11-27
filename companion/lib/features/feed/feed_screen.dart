@@ -421,7 +421,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 if (widget.onShowHistory != null)
                   CommandBarAction(
                     icon: Icons.history,
-                    label: 'History',
+                    label: 'Alerts',
                     onTap: widget.onShowHistory,
                   ),
                 CommandBarAction(

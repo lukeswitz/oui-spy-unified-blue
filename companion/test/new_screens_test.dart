@@ -15,11 +15,13 @@ import 'package:oui_spy/core/classify/observation.dart';
 import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/ble_protocol.dart';
+import 'package:oui_spy/core/capture_recorder.dart';
+import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/prefs.dart';
+import 'package:oui_spy/smoke_hook.dart' show smokeFrame;
 import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/core/trusted_networks.dart';
-import 'package:oui_spy/features/alerts/alerts_view.dart';
 import 'package:oui_spy/features/config/device_config.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
 import 'package:oui_spy/core/classify/user_signatures.dart';
@@ -196,7 +198,34 @@ void main() {
     await db.close();
   });
 
+  testWidgets('a new Flock hit shows in Alerts while the tab is open', (tester) async {
+    const storage = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(storage, (call) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(storage, null));
+    final (c, db) = await _container();
+    final recorder = c.read(captureRecorderProvider);
+    await _pump(tester, c, const Scaffold(body: DetectionHistoryView()));
+    await _settle(tester);
+    expect(find.text('NO ALERTS YET'), findsOneWidget);
+    List<int> str(String s, int n) => [...utf8.encode(s), ...List.filled(n - s.length, 0)];
+    c.read(bleManagerProvider).injectDetectionFrame(smokeFrame(Engine.flockBle, '02:00:00:00:04:00', -60, 37, 1,
+        [1, ...str('1.3.2', 16), 3, ...str('Penguin-TEST', 32), 0x47]));
+    await tester.pump();
+    expect(recorder.pending, 1);
+    await tester.runAsync(recorder.flush);
+    expect(recorder.rows, 1);
+    await tester.pump(const Duration(milliseconds: 500));
+    await _settle(tester);
+    expect(find.text('Penguin-TEST'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    c.dispose();
+    await db.close();
+  });
+
   testWidgets('Alerts tab lists alerts, opens one, and deletes it', (tester) async {
+    const storage = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(storage, (call) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(storage, null));
     final (c, db) = await _container();
     await tester.runAsync(() async {
       await db.insertClassAlert(
@@ -211,22 +240,22 @@ void main() {
         alertedAt: DateTime.now().millisecondsSinceEpoch,
       );
     });
-    await _pump(tester, c, const Scaffold(body: AlertsView()));
+    await _pump(tester, c, const Scaffold(body: DetectionHistoryView()));
     await _settle(tester);
     expect(find.text('GPS warning'), findsOneWidget);
-    expect(find.text('GPS'), findsOneWidget);
+    expect(find.text('GPS · An app on this phone is setting the GPS location'), findsOneWidget);
     await tester.tap(find.text('GPS warning'));
     await tester.pumpAndSettle();
     expect(find.text('Device details'), findsNothing);
     await tester.tap(find.text('Delete'));
     await _settle(tester);
-    expect(find.text('No alerts yet'), findsOneWidget);
+    expect(find.text('NO ALERTS YET'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await db.close();
   });
 
   for (final width in [360.0, 430.0]) {
-    testWidgets('all four Detections tabs fit at $width px in the real fonts with big counts', (tester) async {
+    testWidgets('all three Detections tabs fit at $width px in the real fonts with big counts', (tester) async {
       for (final (family, files) in [
         ('Inter', ['Inter-Regular.ttf', 'Inter-Medium.ttf', 'Inter-SemiBold.ttf']),
         ('JetBrainsMono', ['JetBrainsMono-Regular.ttf', 'JetBrainsMono-Medium.ttf']),
@@ -248,7 +277,6 @@ void main() {
               items: const [
                 (DetectionsView.live, 'Live'),
                 (DetectionsView.devices, 'Devices'),
-                (DetectionsView.history, 'History'),
                 (DetectionsView.alerts, 'Alerts'),
               ],
               selected: DetectionsView.live,
@@ -279,9 +307,9 @@ void main() {
   });
 
   test('a tapped notification opens the tab that holds its alert', () {
-    expect(viewForAlertKind('detector'), DetectionsView.history);
-    expect(viewForAlertKind('flock'), DetectionsView.history);
-    expect(viewForAlertKind('drone'), DetectionsView.history);
+    expect(viewForAlertKind('detector'), DetectionsView.alerts);
+    expect(viewForAlertKind('flock'), DetectionsView.alerts);
+    expect(viewForAlertKind('drone'), DetectionsView.alerts);
     expect(viewForAlertKind('gps_watch'), DetectionsView.alerts);
     expect(viewForAlertKind('trusted_network'), DetectionsView.alerts);
     expect(viewForAlertKind('finder'), DetectionsView.alerts);

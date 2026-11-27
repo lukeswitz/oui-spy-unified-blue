@@ -48,8 +48,13 @@ import 'package:oui_spy/core/privacy.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/db/app_database.dart' hide Detection;
 import 'package:oui_spy/core/db/detection_mapper.dart';
-import 'package:oui_spy/features/feed/detection_row.dart' show showDetectionDetails, DetectionRow;
-import 'package:oui_spy/core/models/detection.dart' show FlockExtension, FlockConfidence, FlockExtensionSignals;
+import 'package:oui_spy/features/feed/detection_row.dart' show showDetectionDetails, AlertHistoryRow;
+import 'package:oui_spy/features/alerts/alerts_view.dart' show showAlertSheet;
+import 'package:drift/drift.dart' show TableUpdateQuery;
+import 'package:oui_spy/core/link/sdr.dart' show sdrControllerProvider, SdrState;
+import 'package:oui_spy/core/watch_alert_log.dart' show alertsFeedProvider;
+import 'package:oui_spy/core/models/detection.dart'
+    show FlockExtension, FlockConfidence, FlockExtensionSignals, detectionAlertClass;
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/ota/ota_service.dart';
