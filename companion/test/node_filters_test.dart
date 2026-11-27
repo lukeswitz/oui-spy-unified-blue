@@ -82,7 +82,7 @@ void main() {
           total++;
         }
       }
-      expect(total, 99);
+      expect(total, 97);
     });
 
     test('every row is a valid rule and fits a record', () {

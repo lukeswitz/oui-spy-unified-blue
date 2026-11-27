@@ -48,8 +48,6 @@ final List<DetectorPreset> detectorPresets = [
     _r(WatchlistMatchType.wifiBeacon, '00:25:DF', 'AXON (WiFi)'),
   ]),
   DetectorPreset(1, 'meta', 'Meta glasses', 'Ray-Ban and Oakley Meta smart glasses', [
-    _r(WatchlistMatchType.oui, '7C:2A:9E', 'META/RAYBAN SMARTGLASSES'),
-    _r(WatchlistMatchType.wifiProbe, '7C:2A:9E', 'META/RAYBAN SMARTGLASSES'),
     _r(WatchlistMatchType.oui, '98:59:49', 'META/RAYBAN SMARTGLASSES'),
     _r(WatchlistMatchType.wifiProbe, '98:59:49', 'META/RAYBAN SMARTGLASSES'),
     _r(WatchlistMatchType.oui, '80:AA:1C', 'META/RAYBAN SMARTGLASSES'),
