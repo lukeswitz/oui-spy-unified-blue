@@ -145,12 +145,10 @@ void main() {
       expect(find.text('HUNT'), findsOneWidget);
     });
 
-    testWidgets('the wardrive 802.15.4 switch stays on an S3 board, off and disabled, with the reason', (tester) async {
+    testWidgets('the wardrive 802.15.4 switch is hidden on an S3 board', (tester) async {
       await _open(tester, _s3, const Scaffold(body: SingleChildScrollView(child: SessionTargets())));
-      final sw = tester.widget<Switch>(find.byKey(const ValueKey('zigbee-switch')));
-      expect(sw.value, isFalse);
-      expect(sw.onChanged, isNull);
-      expect(find.textContaining('Needs an ESP32-C5 board'), findsOneWidget);
+      expect(find.byKey(const ValueKey('zigbee-toggle')), findsNothing);
+      expect(find.textContaining('Needs an ESP32-C5 board'), findsNothing);
     });
 
     testWidgets('the wardrive 802.15.4 switch works on a C5 board', (tester) async {
@@ -166,11 +164,10 @@ void main() {
       expect(find.textContaining('Needs an ESP32-C5 board'), findsNothing);
     });
 
-    testWidgets('the wardrive 802.15.4 switch on a manager without a C5 node says so', (tester) async {
+    testWidgets('the wardrive 802.15.4 switch is hidden on a manager without a C5 node', (tester) async {
       await _open(tester, const BoardCaps(board: 'xiao_c3', connected: true, manager: true),
           const Scaffold(body: SingleChildScrollView(child: SessionTargets())));
-      expect(tester.widget<Switch>(find.byKey(const ValueKey('zigbee-switch'))).onChanged, isNull);
-      expect(find.textContaining('No C5 node is live in the mesh'), findsOneWidget);
+      expect(find.byKey(const ValueKey('zigbee-toggle')), findsNothing);
     });
 
     testWidgets('Settings keeps the Buzzer rows on a board without one, disabled, with the reason', (tester) async {

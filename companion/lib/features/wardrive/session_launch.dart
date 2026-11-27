@@ -18,7 +18,6 @@ import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/features/onboarding/permissions_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
-import 'package:oui_spy/widgets/disabled_reason.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool targetEngineRunning(AppState app, WardriveTarget m) {
@@ -229,7 +228,7 @@ class SessionTargets extends ConsumerWidget {
                 children: [for (final r in radios) segment(r)],
               ),
             ),
-            ...[
+            if (zigbeeCap.enabled) ...[
               const SizedBox(height: 8),
               Container(
                 key: const ValueKey('zigbee-toggle'),
@@ -260,13 +259,12 @@ class SessionTargets extends ConsumerWidget {
                     ),
                     Switch.adaptive(
                       key: const ValueKey('zigbee-switch'),
-                      value: wd.zigbee && zigbeeCap.enabled,
-                      onChanged: busy || !zigbeeCap.enabled ? null : wd.setZigbee,
+                      value: wd.zigbee,
+                      onChanged: busy ? null : wd.setZigbee,
                     ),
                   ],
                 ),
               ),
-              if (!zigbeeCap.enabled) DisabledReason(zigbeeCap.reason!),
             ],
           ],
         ],
