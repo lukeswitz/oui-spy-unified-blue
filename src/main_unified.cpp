@@ -233,7 +233,7 @@ static void detectionChime(void) {
 struct BuzzNote { uint16_t hz; uint16_t on_ms; uint16_t gap_ms; };
 
 static const BuzzNote AXON_DETECT[] = {
-    {523, 65, 30}, {659, 65, 30}, {784, 65, 30}, {1047, 65, 30}, {1319, 75, 60},
+    {1047, 120, 0}, {784, 120, 0}, {1047, 120, 0}, {784, 120, 0},
 };
 static const BuzzNote AXON_HEARTBEAT[] = { {523, 60, 40}, {392, 110, 30} };
 static const BuzzNote AXON_LOST[] = { {659, 150, 80}, {330, 260, 40} };
@@ -452,14 +452,14 @@ static void requestChime(uint8_t engine, uint8_t method) {
 static void playBootMelody(void) {
     if (!hwBuzzerEnabled) return;
 
-    const int notes[] = {523, 659, 784, 1047};  // C5, E5, G5, C6
-    for (int i = 0; i < 4; i++) {
-        ledcSetup(0, notes[i], 8);
+    const BuzzNote notes[] = { {2093, 40, 60}, {2093, 40, 0} };
+    for (const BuzzNote& n : notes) {
+        ledcSetup(0, n.hz, 8);
         ledcAttachPin(PIN_BUZZER, 0);
         ledcWrite(0, hwBuzzerVolume > 0 ? hwBuzzerVolume : 80);
-        delay(80);
+        delay(n.on_ms);
         ledcWrite(0, 0);
-        delay(30);
+        delay(n.gap_ms);
     }
     ledcDetachPin(PIN_BUZZER);
 }
