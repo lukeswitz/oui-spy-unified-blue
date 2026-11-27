@@ -81,30 +81,39 @@ Every screen below is the app itself on Android, filled with made-up devices alo
 
 The app asks for each permission on its own screen, then opens Home.
 
-<img width="240" src="docs/screenshots/tour/01-permissions.png" alt="Permission step: Bluetooth" />
+<img width="360" src="docs/screenshots/tour/01-permissions.png" alt="Permission step: Bluetooth" />
 <ol>
   <li><b>Progress</b>: which permission step you are on. Android asks for five.</li>
   <li><b>Continue</b>: your phone shows its own prompt next.</li>
 </ol>
 
-<img width="240" src="docs/screenshots/tour/02-location-always.png" alt="Permission step: location all the time" />
+<img width="360" src="docs/screenshots/tour/02-location-always.png" alt="Permission step: location all the time" />
 <ol>
   <li><b>Location all the time</b>: needed to keep wardriving with the screen off.</li>
   <li><b>Continue</b>: opens Settings. Choose <b>Allow all the time</b>, then go back.</li>
 </ol>
 
-<img width="240" src="docs/screenshots/tour/03-first-launch.png" alt="Home on first launch" />
+<img width="360" src="docs/screenshots/tour/03-first-launch.png" alt="Home on first launch" />
 <ol>
   <li><b>Status</b>: board link and GPS fix.</li>
   <li><b>Shortcuts</b>: the arrows open the Connect screen. The phone icon starts the phone scan.</li>
   <li><b>USE THIS DEVICE</b>: scan with the phone's own radios, no board needed.</li>
 </ol>
 
+<img width="360" src="docs/screenshots/tour/18-signature-sources.png" alt="Signature sources prompt on first launch" />
+<ol>
+  <li><b>Online sets</b>: the Fieldwatch stock catalog and Home Assistant's Bluetooth device list. They download from GitHub only when you turn them on.</li>
+  <li><b>Extended Flock OUI set</b>: a board setting, off by default. It roughly doubles the Flock maker prefixes and gives more false positives. Connect a board to change it.</li>
+  <li><b>Save / Not now</b>: the prompt shows once per app version. Change these later in SETTINGS → Detection & Alerts → Your Lists → Signature sets.</li>
+</ol>
+
+Next: [Start a scan](#start-a-scan)
+
 ### Start a scan
 
 Pick what to look for and which radios to use, then tap START.
 
-<img width="300" src="docs/screenshots/tour/04-home-ready.png" alt="Home before a scan" />
+<img width="360" src="docs/screenshots/tour/04-home-ready.png" alt="Home before a scan" />
 <ol>
   <li><b>Counters</b>: unique devices, engines running, and hits per minute.</li>
   <li><b>Targets</b>: Flock cameras, drones, every Wi-Fi and BLE device (SCAN), and your watchlist (DETECT).</li>
@@ -112,34 +121,37 @@ Pick what to look for and which radios to use, then tap START.
   <li><b>Engine cards</b>: turn one engine on or off by itself.</li>
 </ol>
 
-<img width="300" src="docs/screenshots/tour/05-home-running.png" alt="Home during a scan" />
+<img width="360" src="docs/screenshots/tour/05-home-running.png" alt="Home during a scan" />
 <ol>
   <li><b>Status</b>: what is scanning and how good the GPS fix is.</li>
   <li><b>PAUSE / STOP</b>: pause or end the session. A stopped session is saved.</li>
   <li><b>Hit counts</b>: hits per engine this session, next to its switch.</li>
 </ol>
 
+Next: [Detections](#detections)
+
 ### Detections
 
 Everything the boards and the phone hear, live. Tap any row for its details.
 
-<img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
+<img width="360" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
 <ol>
+  <li><b>Live counts</b>: nodes online, devices heard now and today, live drones, unread alerts, MACs kept, and the last 24 hours.</li>
   <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open ALERTS, and more.</li>
   <li><b>Top vendors and Flock</b>: tap a vendor to show only its devices.</li>
   <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
-  <li><b>A detector hit</b>: here a camera, with its channel and hit count.</li>
-  <li><b>A Flock hit</b>: with its confidence.</li>
+  <li><b>A network</b>: one row per network name. "3 MACs" counts the radios that use it.</li>
 </ol>
 
-<img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
+<img width="360" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
 <ol>
+  <li><b>MACs</b>: every MAC that uses this network name.</li>
   <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
   <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
   <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches-and-alerts">Watches and alerts</a>.</li>
 </ol>
 
-<img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+<img width="360" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
 <ol>
   <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
   <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
@@ -147,41 +159,40 @@ Everything the boards and the phone hear, live. Tap any row for its details.
   <li><b>With you</b>: the walking icon marks a device that moves with you, such as your own earbuds.</li>
 </ol>
 
-<img width="300" src="docs/screenshots/tour/17-history.png" alt="History of saved detections" />
-<ol>
-  <li><b>Tools</b>: filter, sort, back to LIVE, saved sessions, and more.</li>
-  <li><b>A detector hit</b>: what it matched, here a doorbell camera.</li>
-  <li><b>A watch alert</b>: here a lookalike network with weaker security.</li>
-</ol>
+Next: [Alerts and what to watch for](#alerts-and-what-to-watch-for)
 
 ### Alerts and what to watch for
 
 Choose which device types alert you. Every alert and every Flock, Detector, drone and SDR hit lands in one list, newest first.
 
-<img width="300" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
+<img width="360" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
 <ol>
-  <li><b>An alert</b>: what was found, why, and when. Tap it for the map and the device.</li>
-  <li><b>Count and clear</b>: how many alerts, and a button to clear them.</li>
+  <li><b>Dismiss all / Silence all</b>: mark every alert read, or stop sounds and notifications until you turn them back on.</li>
+  <li><b>An alert on a device</b>: shown on that device's row, here a drone hovering near you.</li>
+  <li><b>A watch alert</b>: here an aircraft circling you. Tap a row for the map, the device and Delete.</li>
+  <li><b>A Flock or detector hit</b>: its confidence, channel and how often it was heard. Unread alerts are tinted.</li>
 </ol>
 
-<img width="300" src="docs/screenshots/tour/11-what-to-watch.png" alt="Settings, What to Watch For" />
+<img width="360" src="docs/screenshots/tour/11-what-to-watch.png" alt="Settings, What to Watch For" />
 <ol>
   <li><b>Alert threshold</b>: how sure a detector hit must be before it notifies you.</li>
   <li><b>Bell</b>: notify, or only log it.</li>
 </ol>
 
+Next: [Map](#map)
+
 ### Map
 
 Every hit is placed where you heard it, along your route. The numbers are how many hits share a spot.
 
-<img width="300" src="docs/screenshots/tour/10-map-list.png" alt="Map during a wardrive with the Flock list open" />
+<img width="360" src="docs/screenshots/tour/10-map-list.png" alt="Map during a wardrive with the Flock list open" />
 <ol>
   <li><b>Session</b>: time recording, and counts of Wi-Fi, Flock, drone, detector and BLE hits.</li>
   <li><b>Flock list</b>: tap the chip to open or close it. Tap a row to zoom the map to it. Drones and detector hits have their own lists.</li>
   <li><b>Drive</b>: distance, speed, hits per km, and Stop / Pause.</li>
 </ol>
 
-<img width="300" src="docs/screenshots/tour/09-map.png" alt="A saved wardrive session on the map" />
+<img width="360" src="docs/screenshots/tour/09-map.png" alt="A saved wardrive session on the map" />
 <ol>
   <li><b>Saved session</b>: unique devices, total hits and distance.</li>
   <li><b>Lists</b>: Flock, drone and detector hits from this session.</li>
@@ -190,27 +201,31 @@ Every hit is placed where you heard it, along your route. The numbers are how ma
   <li><b>SESSIONS</b>: open, export or delete saved sessions.</li>
 </ol>
 
+Next: [Sessions and reports](#sessions-and-reports)
+
 ### Sessions and reports
 
 Every session is saved. Open one to replay it on the map, or open its report.
 
-<img width="240" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
+<img width="360" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
 <ol>
   <li><b>SELECT, IMPORT, CLEAR ALL</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
   <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
 </ol>
 
-<img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
+<img width="360" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
 <ol>
   <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
   <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
 </ol>
 
-<img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+<img width="360" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
 <ol>
   <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
   <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
 </ol>
+
+Next: [Tips](#tips)
 
 ### Tips
 
@@ -356,6 +371,12 @@ The phone can scan with its own radios, with or without a board. Tap **USE THIS 
 ### Receive only
 
 One switch in SETTINGS → Detection & Alerts → Privacy stops every scan from transmitting.
+
+<img width="360" src="docs/screenshots/tour/19-privacy.png" alt="Privacy settings: Receive only and Mask identifiers on screen" />
+<ol>
+  <li><b>Receive only</b>: boards, mesh nodes and this phone only listen.</li>
+  <li><b>Mask identifiers on screen</b>: hides most of each MAC, name and SSID on screen. Exports keep full values.</li>
+</ol>
 
 - **Boards:** each connected board stops Wi-Fi probe requests and Bluetooth scan requests. A manager passes this to its mesh nodes.
 - **Android phone:** the phone only hears scans that other apps already run, so it finds far fewer devices. Wi-Fi shows the networks Android already knows instead of starting a scan.
@@ -572,7 +593,7 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
   - Frequency: 315, 433.92, or 915 MHz
   - What it receives: The device types you pick from what the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire-pressure sensors
 
-<img width="300" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR SCAN with decoded devices" />
+<img width="360" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR SCAN with decoded devices" />
 <ol>
   <li><b>Bands</b>: pick 315, 433 or 915 MHz, or several to sweep them, then tap START.</li>
   <li><b>Types</b>: tap a chip to turn that type on or off. Each chip counts what it found.</li>
