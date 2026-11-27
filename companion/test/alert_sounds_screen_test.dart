@@ -95,6 +95,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('swiping the tune sheet down closes it', (tester) async {
+    await _open(tester);
+    tester.view.physicalSize = const Size(1170, 2532);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('slot-0:0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tune-sheet')), findsOneWidget);
+    await tester.fling(find.text('Pick a tune. Play tries it on the board.'), const Offset(0, 250), 1500);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tune-sheet')), findsNothing);
+  });
+
   testWidgets('Notifications opens Alert sounds without a board', (tester) async {
     await _open(tester, home: const Scaffold(body: NotificationSettingsBody()));
     final row = find.byKey(const ValueKey('notif-alert-sounds'));

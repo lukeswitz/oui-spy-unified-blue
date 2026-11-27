@@ -197,11 +197,15 @@ Future<void> _pickTune(BuildContext context, AlertSlot slot, String label) {
         );
       }
 
-      return SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.8),
+      return DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.8,
+        maxChildSize: 0.9,
+        snap: true,
+        builder: (_, scroll) => SafeArea(
           child: ListView(
-            shrinkWrap: true,
+            key: const ValueKey('tune-sheet'),
+            controller: scroll,
             padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
             children: [
               Text(label, style: TextStyle(color: t.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
