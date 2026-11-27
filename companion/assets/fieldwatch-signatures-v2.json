@@ -9137,6 +9137,56 @@
             "kind": "AUDIO"
         },
         {
+            "id": "fleet-google-audio",
+            "name": "Pixel Buds",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 5,
+            "rules": [
+                {
+                    "kind": "NAME_CONTAINS",
+                    "text": "Pixel Buds",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Google Pixel Buds earbuds.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "AUDIO"
+        },
+        {
+            "id": "fleet-samsung-audio",
+            "name": "Galaxy Buds",
+            "enabled": true,
+            "matchAny": true,
+            "colorIndex": 5,
+            "rules": [
+                {
+                    "kind": "NAME_CONTAINS",
+                    "text": "Galaxy Buds",
+                    "companyId": 0,
+                    "dataPrefixHex": "",
+                    "radio": "BLE",
+                    "enabled": true
+                }
+            ],
+            "minPeers": 0,
+            "peerWindowSec": 60,
+            "clusterByOui": false,
+            "sequentialMac": false,
+            "notes": "Samsung Galaxy Buds earbuds.",
+            "attentionNote": "",
+            "builtIn": true,
+            "kind": "AUDIO"
+        },
+        {
             "id": "fleet-brilliant-frame",
             "name": "Brilliant Frame",
             "enabled": true,

@@ -428,8 +428,15 @@ class SignatureEngine {
     if (hits.isEmpty && o.iosConnectable && advertEmpty(o) && o.gattServices.isEmpty) {
       return const [iosHiddenAppleSignature];
     }
-    return [for (final id in hits) byId[id]!];
+    return [
+      for (final id in hits)
+        if (!brandRows.contains(id)) byId[id]!,
+      for (final id in hits)
+        if (brandRows.contains(id)) byId[id]!,
+    ];
   }
+
+  static const brandRows = {'fleet-apple-device', 'fleet-fast-pair', 'fleet-google', 'fleet-microsoft'};
 
   void _indexOui(String text, RadioKind? radio, int idx, {required bool bssid, required bool vendor}) {
     final hex = hexOnly(text);

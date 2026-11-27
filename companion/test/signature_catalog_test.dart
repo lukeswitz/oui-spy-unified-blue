@@ -32,7 +32,7 @@ void main() {
   });
 
   test('catalog parses with expected stock rows', () {
-    expect(sigs.length, 312);
+    expect(sigs.length, 314);
     final ray = byId['fleet-rayneo']!;
     expect(ray.matchAny, isFalse);
     expect(ray.rules.length, 2);
@@ -165,5 +165,23 @@ void main() {
     expect(hits.first.kind, SignatureClass.wearable);
     const guard = Observation(key: 'BLE:X', kind: RadioKind.ble, mac: '', name: 'WatchGuard VISTA');
     expect(engine.match(guard).map((s) => s.id), isNot(contains('fleet-smartwatch')));
+  });
+
+  test('earbuds and watches beat the maker rows that also match them', () {
+    SignatureClass? first(String name, [List<MfgRecord> mfg = const []]) {
+      final hits = engine.match(Observation(key: 'BLE:$name', kind: RadioKind.ble, mac: '', name: name, mfgRecords: mfg));
+      return hits.isEmpty ? null : hits.first.kind;
+    }
+
+    expect(first('Pixel Buds'), SignatureClass.audio);
+    expect(first('Pixel Buds Pro'), SignatureClass.audio);
+    expect(first('Galaxy Buds2 (1A2B)'), SignatureClass.audio);
+    expect(first('Pixel Watch 2'), SignatureClass.wearable);
+    expect(first('Apple Watch', const [MfgRecord(0x004C, '1005031C')]), SignatureClass.wearable);
+    expect(first('AirPods Pro', const [MfgRecord(0x004C, '07190114200B')]), SignatureClass.audio);
+    expect(first('Pixel 8 Pro'), SignatureClass.phone);
+    expect(first('', const [MfgRecord(0x004C, '1005031C')]), SignatureClass.phone);
+    final buds = engine.match(const Observation(key: 'BLE:B', kind: RadioKind.ble, mac: '', name: 'Pixel Buds'));
+    expect(buds.map((s) => s.id), containsAllInOrder(['fleet-google-audio', 'fleet-google']));
   });
 }

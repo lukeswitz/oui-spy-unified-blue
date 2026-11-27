@@ -814,7 +814,7 @@ class ClassifiedDevice {
   }();
   late final SignatureClass? primaryClass = obs.key.startsWith('$zigbeeKeyPrefix:')
       ? SignatureClass.ieee802154
-      : signatures.isNotEmpty
+      : signatures.isNotEmpty && !(SignatureEngine.brandRows.contains(signatures.first.id) && bucketClass.containsKey(guess.bucket))
           ? signatures.first.kind
           : bucketClass[guess.bucket] ?? (obs.isAp ? SignatureClass.isp : null);
 

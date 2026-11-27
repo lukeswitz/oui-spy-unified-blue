@@ -7,8 +7,10 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oui_spy/core/classify/adv_decoder.dart';
 import 'package:oui_spy/core/classify/device_explain.dart';
+import 'package:oui_spy/core/classify/device_registry.dart';
 import 'package:oui_spy/core/classify/fast_pair_models.dart';
 import 'package:oui_spy/core/classify/observation.dart';
+import 'package:oui_spy/core/classify/signature_engine.dart';
 
 Map<String, String> _byLabel(List<AdvField> f) => {for (final x in f) x.label: x.value};
 
@@ -69,5 +71,18 @@ void main() {
     final m = _byLabel(AdvPayloadDecoder.decodeService(const ServiceDataRecord('FE2C', '01020304050607')));
     expect(m.containsKey('Model'), isFalse);
     expect(m['Google Fast Pair'], contains('Already paired'));
+  });
+
+  test('a known Fast Pair model sets the class over the Fast Pair maker row', () {
+    final engine = SignatureEngine(Signature.parseCatalog(File('assets/fieldwatch-signatures-v2.json').readAsStringSync()));
+    ClassifiedDevice dev(String hex) {
+      final o = _fp(hex);
+      return ClassifiedDevice(o, engine.match(o), const {'phone'});
+    }
+
+    expect(dev('92BBBD').signatures.first.id, 'fleet-fast-pair');
+    expect(dev('92BBBD').primaryClass, SignatureClass.audio);
+    expect(dev('D00CCF').primaryClass, SignatureClass.finder);
+    expect(dev('000001').primaryClass, SignatureClass.phone);
   });
 }
