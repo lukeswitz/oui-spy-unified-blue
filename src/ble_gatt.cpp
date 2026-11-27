@@ -1029,7 +1029,7 @@ void bleGattUsbLinkChanged(bool up) {
 #define BLE_RPA_MIN_S 300
 #define BLE_RPA_MAX_S 890
 
-struct BlePeer { uint16_t handle; uint32_t sinceMs; bool authed; };
+struct BlePeer { uint16_t handle; uint32_t sinceMs; bool authed; bool shortTimeout; };
 static BlePeer s_peers[BLE_MAX_PEERS];
 static uint8_t s_irk[16];
 static bool s_irkReady = false;
@@ -1231,6 +1231,21 @@ static int bleConnGapGuard(struct ble_gap_event* event, void* arg) {
             Serial.printf("[BLE] new pairing replaces stored bond rc=%d\n", rc);
         }
     }
+    if (event->type == BLE_GAP_EVENT_CONN_UPDATE) {
+        uint16_t h = event->conn_update.conn_handle;
+        struct ble_gap_conn_desc desc = {};
+        bool have = ble_gap_conn_find(h, &desc) == 0;
+        Serial.printf("[BLE] conn params handle=%u status=0x%X interval=%u latency=%u timeout=%u\n",
+                      (unsigned)h, (unsigned)event->conn_update.status,
+                      have ? (unsigned)desc.conn_itvl : 0u, have ? (unsigned)desc.conn_latency : 0u,
+                      have ? (unsigned)desc.supervision_timeout : 0u);
+        BlePeer* pe = blePeerFind(h);
+        if (event->conn_update.status != 0 && pe && !pe->shortTimeout && pServer) {
+            pe->shortTimeout = true;
+            pServer->updateConnParams(h, 12, 24, 0, 600);
+            Serial.printf("[BLE] conn params rejected handle=%u, asking 6 s timeout\n", (unsigned)h);
+        }
+    }
     if (event->type == BLE_GAP_EVENT_REPEAT_PAIRING && !blePairingOpen()) {
         Serial.println("[BLE] repeat pairing refused, pairing closed");
         if (pServer) pServer->disconnect(event->repeat_pairing.conn_handle);
@@ -1251,10 +1266,10 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         }
         ble_gap_set_event_cb(h, bleConnGapGuard, NimBLEDevice::getAdvertising());
         BlePeer* slot = blePeerFind(BLE_HS_CONN_HANDLE_NONE);
-        if (slot) { slot->handle = h; slot->sinceMs = millis(); slot->authed = false; }
-        server->updateConnParams(h, 12, 24, 0, 3000);
+        if (slot) { slot->handle = h; slot->sinceMs = millis(); slot->authed = false; slot->shortTimeout = false; }
         if (info.isEncrypted()) {
             if (slot) slot->authed = true;
+            server->updateConnParams(h, 12, 24, 0, 3000);
             onConnect(server);
         }
         if (!bleAnyAuthedPeer()) bleAdvStart();
@@ -1288,6 +1303,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         bool wasAuthed = pe && pe->authed;
         if (pe) pe->authed = true;
         Serial.printf("[BLE] peer authenticated handle=%u bonded=%d\n", (unsigned)h, (int)info.isBonded());
+        if (!wasAuthed && pServer) pServer->updateConnParams(h, 12, 24, 0, 3000);
         NimBLEDevice::stopAdvertising();
         s_pairWindow = false;
         bleAdvApply(blePairingOpen());
