@@ -64,15 +64,6 @@ _Getting Started:_
 2. Install the app: [Android / macOS](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) or [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
 3. Open the app, tap **CONNECT**, pick the board.
 
-_Connect your hardware:_
-
-| Hardware | How to connect it |
-|---|---|
-| **ESP32 board** | Flash it, power it, then tap **CONNECT** on Home and pick it. Enter the PIN `123456`. The app then asks you to set your own. A board with no paired phone accepts any phone. Once paired, it accepts a new phone only in the 2 minutes after it powers on. |
-| **More boards (mesh)** | Flash one board with a manager target (`mgr-…`) and up to 6 others with node targets (`node-…`). Connect the phone to the manager. The nodes join it on their own within about 10 seconds. See [Mesh](#mesh). |
-| **USB Wi-Fi adapter or RTL-SDR** (Android) | Plug it into the phone. When Android asks which app should use it, pick OUI-APEX and tick **Use by default for this USB device**. A Wi-Fi adapter needs internet the first time to download its chip's firmware. See [USB radios on Android](#usb-radios-on-android). |
-| **Meshtastic radio** | Close the Meshtastic app, then go to SETTINGS → DATA → **Meshtastic radio** → **Find a radio** and pick yours. Then pick one of its private channels. See [Meshtastic radio](#meshtastic-radio). |
-
 - **Android:** set Location to **Allow all the time**, or scanning stops when the screen is off.
 - **macOS:** Gatekeeper blocks the first launch of the release zip because it is not notarized. [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) builds are.
 
@@ -120,6 +111,17 @@ The app asks for each permission on its own screen, then opens Home.
       </ol></td>
   </tr>
 </table>
+
+### Connect your hardware
+
+After the permission steps, connect your board and any other radios you have.
+
+| Hardware | How to connect it |
+|---|---|
+| **ESP32 board** | Flash it, power it, then tap **CONNECT** on Home and pick it. Enter the PIN `123456`. The app then asks you to set your own. A board with no paired phone accepts any phone. Once paired, it accepts a new phone only in the 2 minutes after it powers on. |
+| **More boards (mesh)** | Flash one board with a manager target (`mgr-…`) and up to 6 others with node targets (`node-…`). Connect the phone to the manager. The nodes join it on their own within about 10 seconds. See [Mesh](#mesh). |
+| **USB Wi-Fi adapter or RTL-SDR** (Android) | Plug it into the phone. When Android asks which app should use it, pick OUI-APEX and tick **Use by default for this USB device**. A Wi-Fi adapter needs internet the first time to download its chip's firmware. See [USB radios on Android](#usb-radios-on-android). |
+| **Meshtastic radio** | Close the Meshtastic app, then go to SETTINGS → DATA → **Meshtastic radio** → **Find a radio** and pick yours. Then pick one of its private channels. See [Meshtastic radio](#meshtastic-radio). |
 
 ### Start a scan
 
