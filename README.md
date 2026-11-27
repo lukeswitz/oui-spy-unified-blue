@@ -64,6 +64,15 @@ _Getting Started:_
 2. Install the app: [Android / macOS](https://github.com/lukeswitz/oui-spy-unified-blue/releases/latest) or [iOS / macOS TestFlight](https://testflight.apple.com/join/5RCKgnJ2).
 3. Open the app, tap **CONNECT**, pick the board.
 
+_Connect your hardware:_
+
+| Hardware | How to connect it |
+|---|---|
+| **ESP32 board** | Flash it, power it, then tap **CONNECT** on Home and pick it. Enter the PIN `123456`. The app then asks you to set your own. A board with no paired phone accepts any phone. Once paired, it accepts a new phone only in the 2 minutes after it powers on. |
+| **More boards (mesh)** | Flash one board with a manager target (`mgr-…`) and up to 6 others with node targets (`node-…`). Connect the phone to the manager. The nodes join it on their own within about 10 seconds. See [Mesh](#mesh). |
+| **USB Wi-Fi adapter or RTL-SDR** (Android) | Plug it into the phone. When Android asks which app should use it, pick OUI-APEX and tick **Use by default for this USB device**. A Wi-Fi adapter needs internet the first time to download its chip's firmware. See [USB radios on Android](#usb-radios-on-android). |
+| **Meshtastic radio** | Close the Meshtastic app, then go to SETTINGS → DATA → **Meshtastic radio** → **Find a radio** and pick yours. Then pick one of its private channels. See [Meshtastic radio](#meshtastic-radio). |
+
 - **Android:** set Location to **Allow all the time**, or scanning stops when the screen is off.
 - **macOS:** Gatekeeper blocks the first launch of the release zip because it is not notarized. [TestFlight](https://testflight.apple.com/join/5RCKgnJ2) builds are.
 
@@ -112,8 +121,6 @@ The app asks for each permission on its own screen, then opens Home.
   </tr>
 </table>
 
-Next: [Start a scan](#start-a-scan)
-
 ### Start a scan
 
 Pick what to look for and which radios to use, then tap START.
@@ -135,8 +142,6 @@ Pick what to look for and which radios to use, then tap START.
       </ol></td>
   </tr>
 </table>
-
-Next: [Detections](#detections)
 
 ### Detections
 
@@ -169,8 +174,6 @@ Everything the boards and the phone hear, live. Tap any row for its details.
   </tr>
 </table>
 
-Next: [Alerts and what to watch for](#alerts-and-what-to-watch-for)
-
 ### Alerts and what to watch for
 
 Choose which device types alert you. Every alert and every Flock, Detector, drone and SDR hit lands in one list, newest first.
@@ -191,8 +194,6 @@ Choose which device types alert you. Every alert and every Flock, Detector, dron
       </ol></td>
   </tr>
 </table>
-
-Next: [Map](#map)
 
 ### Map
 
@@ -217,8 +218,6 @@ Every hit is placed where you heard it, along your route. The numbers are how ma
   </tr>
 </table>
 
-Next: [Sessions and reports](#sessions-and-reports)
-
 ### Sessions and reports
 
 Every session is saved. Open one to replay it on the map, or open its report.
@@ -242,8 +241,6 @@ Every session is saved. Open one to replay it on the map, or open its report.
       </ol></td>
   </tr>
 </table>
-
-Next: [Tips](#tips)
 
 ### Tips
 
