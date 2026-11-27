@@ -144,7 +144,7 @@ Everything the boards and the phone hear, live. Tap any row for its details.
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
       <ol>
         <li><b>Live counts</b>: nodes online, devices heard now and today, live drones, unread alerts, MACs kept, and the last 24 hours.</li>
         <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open ALERTS, and more.</li>
@@ -152,16 +152,14 @@ Everything the boards and the phone hear, live. Tap any row for its details.
         <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
         <li><b>A network</b>: one row per network name. "3 MACs" counts the radios that use it.</li>
       </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
       <ol>
         <li><b>MACs</b>: every MAC that uses this network name.</li>
         <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
         <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
         <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches-and-alerts">Watches and alerts</a>.</li>
       </ol></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
       <ol>
         <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
         <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
@@ -227,19 +225,17 @@ Every session is saved. Open one to replay it on the map, or open its report.
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
       <ol>
         <li><b>SELECT, IMPORT, CLEAR ALL</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
         <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
       </ol></td>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
       <ol>
         <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
         <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
       </ol></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
       <ol>
         <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
         <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
