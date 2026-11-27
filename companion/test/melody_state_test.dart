@@ -44,7 +44,7 @@ void main() {
 
     expect(s.defaultFor(flipper).name, 'Chime');
     expect(s.defaultFor(flipper).notes.map((n) => n.midi), [88, 92, 95]);
-    expect(s.defaultFor(slot(0, 8)).name, 'Arpeggio');
+    expect(s.defaultFor(slot(0, 8)).name, 'Siren');
     expect(s.defaultFor(heartbeat).name, 'Lub-dub');
 
     await s.assign(other, 'siren');

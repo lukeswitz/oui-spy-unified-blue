@@ -423,11 +423,31 @@ Turning it off puts each board back to its own setting.
 
 #### Sounds and muting
 
-- **Alert sounds:** **Every alert** sets the board's tune for all alerts. Tap any alert to give it its own tune, or compose one with up to 8 notes. Each play button tries the tune on the board.
+- **Alert sounds** (Notifications, or Node → Sound & Lights): the tune the board's buzzer plays for each kind of alert. Every alert starts on its default; tap one to pick another tune or Silent. Each play button tries the tune on the board.
 - **Repeat for a device** (Notifications): alerts again after the device goes 60 s unheard.
 - **Node down / Node back:** alerts when a mesh node goes missing for 45 s, and when it returns.
 - **Silence all** (ALERTS): stops every sound and notification until you turn it off. Alerts are still logged.
 - **Mute alerts for this device** (the device's sheet): silences one device. It is still logged.
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/20-alert-sounds.png" alt="Alert sounds: each alert with its tune and a play button" />
+      <ol>
+        <li><b>An alert</b>: what it plays now. Tap it to change the tune.</li>
+        <li><b>Play</b>: tries that tune on the board.</li>
+      </ol></td>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/21-alert-sounds-pick.png" alt="Picking a tune for one alert" />
+      <ol>
+        <li><b>Default</b>: the tune the board plays if you never change it.</li>
+        <li><b>Silent</b>, the built-in tunes and your own. Play any of them before you pick.</li>
+      </ol></td>
+    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/22-alert-sounds-compose.png" alt="Composing a tune" />
+      <ol>
+        <li><b>Notes</b>: up to 8. The arrows move a note up or down a semitone.</li>
+        <li><b>Length and Pause after</b>: how long each note plays, then how long the board waits.</li>
+      </ol></td>
+  </tr>
+</table>
 
 ### Map layers and geofences
 

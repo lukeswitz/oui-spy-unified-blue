@@ -12,6 +12,7 @@ import 'package:oui_spy/core/db/app_database.dart';
 import 'package:oui_spy/core/melody_state.dart';
 import 'package:oui_spy/core/prefs.dart';
 import 'package:oui_spy/features/config/alert_sounds_screen.dart';
+import 'package:oui_spy/features/notifications/notification_settings_screen.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,7 +33,7 @@ class _FakePhoneSource extends ChangeNotifier implements PhoneBleSource {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Future<ProviderContainer> _open(WidgetTester tester) async {
+Future<ProviderContainer> _open(WidgetTester tester, {Widget home = const AlertSoundsScreen()}) async {
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'), (c) async => null);
   SharedPreferences.setMockInitialValues({});
@@ -49,7 +50,7 @@ Future<ProviderContainer> _open(WidgetTester tester) async {
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(UncontrolledProviderScope(
     container: container,
-    child: MaterialApp(theme: AppTheme.darkTheme, home: const AlertSoundsScreen()),
+    child: MaterialApp(theme: AppTheme.darkTheme, home: home),
   ));
   await tester.pumpAndSettle();
   return container;
@@ -58,18 +59,19 @@ Future<ProviderContainer> _open(WidgetTester tester) async {
 void main() {
   testWidgets('every alert slot has a row that names its Default tune', (tester) async {
     await _open(tester);
-    for (final s in kAlertSlots) {
+    for (final s in kAlertSlots.where((s) => s.engine != melodyAny)) {
       expect(find.byKey(ValueKey('slot-${s.key}')), findsOneWidget, reason: s.label);
     }
-    expect(find.text('Every alert'), findsOneWidget);
-    expect(find.text('Default: built-in Chime'), findsWidgets);
-    expect(find.text('Default: built-in Lub-dub'), findsOneWidget);
+    expect(find.byKey(const ValueKey('slot-255:255')), findsNothing);
+    expect(find.text('Default (Chime)'), findsWidgets);
+    expect(find.text('Default (Siren)'), findsOneWidget);
+    expect(find.text('Default (Lub-dub)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('picking a tune from the sheet assigns it and others follow Every alert', (tester) async {
+  testWidgets('picking a tune from the sheet assigns it to that alert only', (tester) async {
     final c = await _open(tester);
-    await tester.tap(find.byKey(const ValueKey('slot-255:255')));
+    await tester.tap(find.byKey(const ValueKey('slot-0:2')));
     await tester.pumpAndSettle();
     expect(find.text('Pick a tune. Play tries it on the board.'), findsOneWidget);
     final sheetList = find.descendant(
@@ -80,8 +82,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('pick-siren')));
     await tester.pumpAndSettle();
     final mel = c.read(melodyProvider);
-    expect(mel.assignmentFor(kAlertSlots.first), 'siren');
-    expect(find.text('Default: same as every alert (Siren)'), findsWidgets);
+    expect(mel.assignmentFor(kAlertSlots.firstWhere((s) => s.key == '0:2')), 'siren');
+    expect(mel.assignmentFor(kAlertSlots.first), isNull);
+    expect(find.text('Siren'), findsWidgets);
+    expect(find.text('Default (Siren)'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('slot-0:3')));
     await tester.pumpAndSettle();
@@ -89,6 +93,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(mel.assignmentFor(kAlertSlots.firstWhere((s) => s.key == '0:3')), melodySilent);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Notifications opens Alert sounds without a board', (tester) async {
+    await _open(tester, home: const Scaffold(body: NotificationSettingsBody()));
+    final row = find.byKey(const ValueKey('notif-alert-sounds'));
+    await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('slot-0:0')), findsOneWidget);
   });
 
   testWidgets('composer lays out on a phone and the arrows move the pitch', (tester) async {

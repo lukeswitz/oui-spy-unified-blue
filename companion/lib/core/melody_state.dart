@@ -79,27 +79,27 @@ class AlertSlot {
 }
 
 const kAlertSlots = <AlertSlot>[
-  AlertSlot(melodyAny, melodyAny, 'All other alerts'),
-  AlertSlot(0, 0, 'BLE watchlist'),
-  AlertSlot(0, 1, 'WiFi watchlist'),
-  AlertSlot(0, 2, 'Tracker / AirTag'),
-  AlertSlot(0, 3, 'Flipper'),
-  AlertSlot(0, 4, 'Deauth'),
-  AlertSlot(0, 5, 'Probe flood'),
+  AlertSlot(melodyAny, melodyAny, 'All alerts'),
+  AlertSlot(0, 0, 'Watched Bluetooth device'),
+  AlertSlot(0, 1, 'Watched Wi-Fi device'),
+  AlertSlot(0, 2, 'Tracker, like an AirTag'),
+  AlertSlot(0, 3, 'Flipper Zero'),
+  AlertSlot(0, 4, 'Someone kicking devices off Wi-Fi'),
+  AlertSlot(0, 5, 'Wi-Fi probe flood'),
   AlertSlot(0, 6, 'Pwnagotchi'),
-  AlertSlot(0, 7, 'Meta glasses'),
-  AlertSlot(0, 8, 'Axon: appeared'),
-  AlertSlot(melodyEngineAxon, 1, 'Axon: still near (heartbeat)'),
-  AlertSlot(melodyEngineAxon, 2, 'Axon: lost'),
+  AlertSlot(0, 7, 'Meta smart glasses'),
+  AlertSlot(0, 8, 'Body camera shows up'),
+  AlertSlot(melodyEngineAxon, 1, 'Body camera still close'),
+  AlertSlot(melodyEngineAxon, 2, 'Body camera gone'),
   AlertSlot(0, 9, 'Security camera'),
   AlertSlot(0, 10, 'Amazon Sidewalk'),
   AlertSlot(0, 17, 'Wearable camera'),
   AlertSlot(0, 18, 'Vehicle'),
-  AlertSlot(0, 19, 'Drone (Bluetooth)'),
-  AlertSlot(1, melodyAny, 'Flock BLE'),
-  AlertSlot(2, melodyAny, 'Flock WiFi'),
-  AlertSlot(4, melodyAny, 'Drone Remote ID'),
-  AlertSlot(5, melodyAny, 'UniPwn'),
+  AlertSlot(0, 19, 'Drone over Bluetooth'),
+  AlertSlot(1, melodyAny, 'Flock camera over Bluetooth'),
+  AlertSlot(2, melodyAny, 'Flock camera over Wi-Fi'),
+  AlertSlot(4, melodyAny, 'Drone sending its ID'),
+  AlertSlot(5, melodyAny, 'Unitree robot'),
 ];
 
 final kBuiltInMelodies = <Melody>[
@@ -162,7 +162,7 @@ class MelodyState extends ChangeNotifier {
       if (m != null) return (name: m.name, notes: m.notes, builtIn: false);
     }
     return switch ((s.engine, s.method)) {
-      (0, 8) => (name: 'Arpeggio', notes: _boardAxonDetect, builtIn: true),
+      (0, 8) => (name: 'Siren', notes: _boardAxonDetect, builtIn: true),
       (melodyEngineAxon, 1) => (name: 'Lub-dub', notes: _boardAxonHeartbeat, builtIn: true),
       (melodyEngineAxon, 2) => (name: 'Falling', notes: _boardAxonLost, builtIn: true),
       _ => (name: 'Chime', notes: _boardChime, builtIn: true),
@@ -171,8 +171,7 @@ class MelodyState extends ChangeNotifier {
 
   static const _boardChime = [MelodyNote(88, 45, 20), MelodyNote(92, 45, 20), MelodyNote(95, 45, 20)];
   static const _boardAxonDetect = [
-    MelodyNote(72, 65, 30), MelodyNote(76, 65, 30), MelodyNote(79, 65, 30),
-    MelodyNote(84, 65, 30), MelodyNote(88, 75, 60),
+    MelodyNote(84, 120, 0), MelodyNote(79, 120, 0), MelodyNote(84, 120, 0), MelodyNote(79, 120, 0),
   ];
   static const _boardAxonHeartbeat = [MelodyNote(72, 60, 40), MelodyNote(67, 110, 30)];
   static const _boardAxonLost = [MelodyNote(76, 150, 80), MelodyNote(64, 260, 40)];

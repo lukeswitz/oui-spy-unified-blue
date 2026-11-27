@@ -15,15 +15,13 @@ void _preview(WidgetRef ref, List<MelodyNote> notes) {
   ref.read(bleManagerProvider).writeMelodyOps([MelodyState.previewOp(notes)]);
 }
 
-const _everySlot = AlertSlot(melodyAny, melodyAny, 'Every alert');
-
 const _groups = <(String, List<String>)>[
   ('Watchlist', ['0:0', '0:1']),
   ('Trackers and devices', ['0:2', '0:3', '0:6', '0:7', '0:9', '0:10', '0:17', '0:18']),
   ('Attacks', ['0:4', '0:5', '5:255']),
   ('Flock', ['1:255', '2:255']),
   ('Drones', ['0:19', '4:255']),
-  ('Axon body cameras', ['0:8', '254:1', '254:2']),
+  ('Body cameras', ['0:8', '254:1', '254:2']),
 ];
 
 IconData _slotIcon(String key) => switch (key) {
@@ -52,10 +50,9 @@ IconData _slotIcon(String key) => switch (key) {
 
 const _info = [
   'The board plays a short tune on its buzzer for each alert.',
-  'Every alert sets the tune for all of them. Leave an alert on Default to use it.',
-  'Tap an alert to pick its own tune. The play button tries a tune on the board.',
-  'Axon heartbeat and lost keep their own sounds unless you pick one for them.',
-  'Compose a tune with up to 8 notes. A manager passes your tunes on to its nodes.',
+  'Every alert starts on its default tune. Tap one to change it.',
+  'The play button tries a tune on the board.',
+  'Make your own tune with up to 8 notes. A manager board passes your tunes on to its nodes.',
 ];
 
 String _notesLabel(List<MelodyNote> notes) {
@@ -71,7 +68,8 @@ class AlertSoundsScreen extends ConsumerWidget {
     final t = AppTheme.of(context);
     final mel = ref.watch(melodyProvider);
     final notif = ref.watch(notificationServiceProvider);
-    final supported = ref.read(bleManagerProvider).hasMelodySupport;
+    final ble = ref.read(bleManagerProvider);
+    final supported = !ble.isConnected || ble.hasMelodySupport;
     final slots = {for (final s in kAlertSlots) s.key: s};
     return Scaffold(
       backgroundColor: t.background,
@@ -87,11 +85,9 @@ class AlertSoundsScreen extends ConsumerWidget {
                 style: TextStyle(color: AppTheme.warning, fontSize: 12),
               ),
             ),
-          const ConfigSectionHeader(label: 'Board buzzer', info: _info),
-          _SlotRow(slot: slots[_everySlot.key]!, mel: mel, label: _everySlot.label, prominent: true),
-          for (final (title, keys) in _groups) ...[
-            const SizedBox(height: 16),
-            ConfigSectionHeader(label: title),
+          for (final (i, (title, keys)) in _groups.indexed) ...[
+            if (i > 0) const SizedBox(height: 16),
+            ConfigSectionHeader(label: title, info: i == 0 ? _info : null),
             for (final k in keys)
               if (slots[k] != null) _SlotRow(slot: slots[k]!, mel: mel),
           ],
@@ -136,21 +132,14 @@ class AlertSoundsScreen extends ConsumerWidget {
   final m = current == null ? null : mel.byId(current);
   if (m != null) return (text: m.name, notes: m.notes);
   final d = mel.defaultFor(slot);
-  final text = d.builtIn
-      ? 'Default: built-in ${d.name}'
-      : slot.engine == melodyAny
-          ? 'Default: ${d.name}'
-          : 'Default: same as every alert (${d.name})';
-  return (text: text, notes: d.notes);
+  return (text: 'Default (${d.name})', notes: d.notes);
 }
 
 class _SlotRow extends ConsumerWidget {
-  const _SlotRow({required this.slot, required this.mel, this.label, this.prominent = false});
+  const _SlotRow({required this.slot, required this.mel});
 
   final AlertSlot slot;
   final MelodyState mel;
-  final String? label;
-  final bool prominent;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -158,10 +147,9 @@ class _SlotRow extends ConsumerWidget {
     return ConfigActionRow(
       key: ValueKey('slot-${slot.key}'),
       icon: _slotIcon(slot.key),
-      label: label ?? slot.label,
+      label: slot.label,
       subtitle: r.text,
-      prominent: prominent,
-      onTap: () => _pickTune(context, slot, label ?? slot.label),
+      onTap: () => _pickTune(context, slot, slot.label),
       trailing: IconButton(
         icon: const Icon(Icons.play_arrow),
         color: AppTheme.accent,
@@ -225,7 +213,7 @@ Future<void> _pickTune(BuildContext context, AlertSlot slot, String label) {
                 id: null,
                 icon: Icons.music_note_outlined,
                 title: 'Default',
-                subtitle: d.builtIn ? 'Built-in ${d.name}' : 'Same as every alert (${d.name})',
+                subtitle: d.name,
                 notes: d.notes,
               ),
               tile(id: melodySilent, icon: Icons.volume_off_outlined, title: 'Silent', notes: const []),
@@ -315,7 +303,7 @@ class _MelodyComposerScreenState extends ConsumerState<MelodyComposerScreen> {
   late final TextEditingController _name;
   late List<MelodyNote> _notes;
 
-  static const _durations = [0, 20, 40, 60, 80, 100, 120, 150, 200, 250, 300, 400, 500, 750, 1000];
+  static const _durations = [0, 20, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300, 400, 500, 750, 1000];
   static final _pitches = [0, for (var m = 48; m <= 108; m++) m];
 
   @override

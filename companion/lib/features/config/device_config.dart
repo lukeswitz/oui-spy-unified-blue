@@ -877,21 +877,15 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               ),
             ),
           ),
-        if (!hasBuzzer || _buzzerEnabled)
-          Opacity(
-            opacity: hasBuzzer ? 1 : 0.45,
-            child: ConfigActionRow(
-              icon: Icons.music_note,
-              label: 'Alert sounds',
-              subtitle: 'Compose melodies and assign them to detections',
-              color: AppTheme.accent,
-              onTap: hasBuzzer
-                  ? () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const AlertSoundsScreen(),
-                      ))
-                  : null,
-            ),
-          ),
+        ConfigActionRow(
+          icon: Icons.music_note,
+          label: 'Alert sounds',
+          subtitle: 'Board tunes for each alert, and phone sounds',
+          color: AppTheme.accent,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const AlertSoundsScreen(),
+          )),
+        ),
         if (!hasBuzzer) DisabledReason(buzzerCap.reason!),
 
         const SizedBox(height: 16),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/notifications/notification_service.dart';
+import 'package:oui_spy/features/config/alert_sounds_screen.dart';
 import 'package:oui_spy/features/config/widgets/config_widgets.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
@@ -132,6 +133,15 @@ class NotificationSettingsBody extends ConsumerWidget {
           color: t.textSecondary,
           value: notif.soundEnabled,
           onChanged: notif.setSoundEnabled,
+        ),
+        ConfigActionRow(
+          key: const ValueKey('notif-alert-sounds'),
+          icon: Icons.music_note,
+          label: 'Alert sounds',
+          subtitle: 'Board tunes for each alert, and phone sounds',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const AlertSoundsScreen(),
+          )),
         ),
         ConfigToggleRow(
           icon: Icons.vibration,
