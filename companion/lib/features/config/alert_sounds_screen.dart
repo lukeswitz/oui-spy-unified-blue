@@ -84,6 +84,12 @@ class _SlotRow extends ConsumerWidget {
     final t = AppTheme.of(context);
     final current = mel.assignmentFor(slot);
     final valid = current == null || current == melodySilent || mel.byId(current) != null;
+    final fallback = mel.defaultFor(slot);
+    final playing = !valid || current == null
+        ? fallback.notes
+        : current == melodySilent
+            ? const <MelodyNote>[]
+            : mel.byId(current)!.notes;
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -104,7 +110,7 @@ class _SlotRow extends ConsumerWidget {
             dropdownColor: t.surface,
             style: TextStyle(color: t.textSecondary, fontSize: 12),
             items: [
-              const DropdownMenuItem<String?>(value: null, child: Text('Default')),
+              DropdownMenuItem<String?>(value: null, child: Text('Default (${fallback.name})')),
               const DropdownMenuItem<String?>(value: melodySilent, child: Text('Silent')),
               for (final m in mel.melodies)
                 DropdownMenuItem<String?>(value: m.id, child: Text(m.name)),
@@ -115,9 +121,7 @@ class _SlotRow extends ConsumerWidget {
             icon: const Icon(Icons.play_arrow, size: 18),
             color: AppTheme.accent,
             tooltip: 'Play on board',
-            onPressed: current == null || current == melodySilent || mel.byId(current) == null
-                ? null
-                : () => _preview(ref, mel.byId(current)!.notes),
+            onPressed: playing.isEmpty ? null : () => _preview(ref, playing),
           ),
         ],
       ),

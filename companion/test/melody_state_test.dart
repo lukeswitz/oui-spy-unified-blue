@@ -34,6 +34,29 @@ void main() {
     expect(op.sublist(2, 5), [69, 25, 3]);
   });
 
+  test('Default resolves like the board: All other alerts, then the board sound', () async {
+    final s = MelodyState();
+    await Future<void>.delayed(Duration.zero);
+    AlertSlot slot(int e, int m) => kAlertSlots.firstWhere((x) => x.engine == e && x.method == m);
+    final other = slot(melodyAny, melodyAny);
+    final flipper = slot(0, 3);
+    final heartbeat = slot(melodyEngineAxon, 1);
+
+    expect(s.defaultFor(flipper).name, 'Chime');
+    expect(s.defaultFor(flipper).notes.map((n) => n.midi), [88, 92, 95]);
+    expect(s.defaultFor(slot(0, 8)).name, 'Arpeggio');
+    expect(s.defaultFor(heartbeat).name, 'Lub-dub');
+
+    await s.assign(other, 'siren');
+    expect(s.defaultFor(flipper).name, 'Siren');
+    expect(s.defaultFor(slot(1, melodyAny)).name, 'Siren');
+    expect(s.defaultFor(heartbeat).name, 'Lub-dub');
+    expect(s.defaultFor(other).name, 'Chime');
+
+    await s.assign(other, melodySilent);
+    expect(s.defaultFor(flipper).notes, isEmpty);
+  });
+
   test('deleting a melody drops its assignments', () async {
     final s = MelodyState();
     await Future<void>.delayed(Duration.zero);

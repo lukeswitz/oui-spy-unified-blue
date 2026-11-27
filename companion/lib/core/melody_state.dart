@@ -16,6 +16,7 @@ const int melodyOpClearAll = 0x03;
 const int melodyOpPreview = 0x04;
 const int melodyOpSync = 0x05;
 const String melodySilent = 'silent';
+const int melodyBoardEngineCount = 10;
 
 class MelodyNote {
   const MelodyNote(this.midi, this.onMs, this.gapMs);
@@ -148,6 +149,33 @@ class MelodyState extends ChangeNotifier {
   }
 
   String? assignmentFor(AlertSlot s) => _assign[s.key];
+
+  ({String name, List<MelodyNote> notes}) defaultFor(AlertSlot s) {
+    final inherited = [
+      if (s.method != melodyAny) '${s.engine}:$melodyAny',
+      if (s.engine < melodyBoardEngineCount) '$melodyAny:$melodyAny',
+    ];
+    for (final key in inherited) {
+      final id = _assign[key];
+      if (id == melodySilent) return (name: 'Silent', notes: const <MelodyNote>[]);
+      final m = id == null ? null : byId(id);
+      if (m != null) return (name: m.name, notes: m.notes);
+    }
+    return switch ((s.engine, s.method)) {
+      (0, 8) => (name: 'Arpeggio', notes: _boardAxonDetect),
+      (melodyEngineAxon, 1) => (name: 'Lub-dub', notes: _boardAxonHeartbeat),
+      (melodyEngineAxon, 2) => (name: 'Falling', notes: _boardAxonLost),
+      _ => (name: 'Chime', notes: _boardChime),
+    };
+  }
+
+  static const _boardChime = [MelodyNote(88, 45, 20), MelodyNote(92, 45, 20), MelodyNote(95, 45, 20)];
+  static const _boardAxonDetect = [
+    MelodyNote(72, 65, 30), MelodyNote(76, 65, 30), MelodyNote(79, 65, 30),
+    MelodyNote(84, 65, 30), MelodyNote(88, 75, 60),
+  ];
+  static const _boardAxonHeartbeat = [MelodyNote(72, 60, 40), MelodyNote(67, 110, 30)];
+  static const _boardAxonLost = [MelodyNote(76, 150, 80), MelodyNote(64, 260, 40)];
 
   Future<void> assign(AlertSlot s, String? melodyId) async {
     if (melodyId == null) {
