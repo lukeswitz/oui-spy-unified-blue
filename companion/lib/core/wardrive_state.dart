@@ -569,12 +569,18 @@ class WardriveController extends ChangeNotifier {
   final Map<String, int> nodeWifiCounts = {};
   final Map<String, int> nodeBleCount = {};
 
+  static List<Engine> wardriveFirst(Iterable<Engine> engines) {
+    final list = engines.toList();
+    if (list.remove(Engine.wardrive)) list.insert(0, Engine.wardrive);
+    return list;
+  }
+
   List<Engine> get activeEngines {
     final set = <Engine>{};
     for (final t in selectedTargets) {
       set.addAll(t.engines(radio));
     }
-    return set.toList();
+    return wardriveFirst(set);
   }
 
   List<Engine> get _fleetEngines {
@@ -583,7 +589,7 @@ class WardriveController extends ChangeNotifier {
     for (final t in selectedTargets) {
       set.addAll(t.engines(WardriveRadio.both));
     }
-    return set.toList();
+    return wardriveFirst(set);
   }
 
   /// Local-only WiFi/BLE counts (excludes peer detections).
