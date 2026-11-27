@@ -420,6 +420,12 @@ IconData _catIcon(Sdr433Category c) => switch (c) {
       Sdr433Category.unknown => Icons.help_outline,
     };
 
+Color _accentOf(SdrDetection d, Sdr433Category? cat, ResolvedTheme t) => d.kind == 'adsb'
+    ? AppTheme.themed(AppTheme.skySpy)
+    : cat != null
+        ? _catColor(cat)
+        : t.textDim;
+
 IconData _detIcon(SdrDetection d) {
   switch (d.kind) {
     case 'adsb':
@@ -629,7 +635,7 @@ class _SpectrumPainter extends CustomPainter {
     for (var i = 0; i < power.length; i++) {
       final x = size.width * i / (power.length - 1);
       final norm = ((power[i] - minDb) / (maxDb - minDb)).clamp(0.0, 1.0);
-      final y = plotH * norm;
+      final y = plotH * (1 - norm);
       if (i == 0) {
         path.moveTo(x, y);
         fill.moveTo(x, plotH);
@@ -771,7 +777,7 @@ Widget _infoBody(ResolvedTheme t, String title, List<String> lines) {
 
 void _showSdrDetail(BuildContext context, SdrDetection d, ResolvedTheme t) {
   final cat = _categoryOf(d);
-  final accent = cat != null ? _catColor(cat) : t.textDim;
+  final accent = _accentOf(d, cat, t);
   final f = d.fields;
   final hz = d.frequency;
   final isIsm = d.kind == 'tpms' || d.kind == 'rtl433';
@@ -995,7 +1001,7 @@ class _DetectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cat = _categoryOf(d);
-    final accent = cat != null ? _catColor(cat) : t.textDim;
+    final accent = _accentOf(d, cat, t);
     final f = d.fields;
 
     final String badge;
