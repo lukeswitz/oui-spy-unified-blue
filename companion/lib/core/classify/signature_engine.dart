@@ -24,6 +24,7 @@ enum SignatureClass {
   mesh('Mesh'),
   phone('Phones / PCs'),
   toy('Adult toys'),
+  ieee802154('802.15.4 (Zigbee, Thread)'),
   other('Other');
 
   final String label;

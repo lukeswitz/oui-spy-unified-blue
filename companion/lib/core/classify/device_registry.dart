@@ -18,6 +18,7 @@ import 'package:oui_spy/core/debug_log.dart';
 import 'package:oui_spy/core/detector_signatures.dart';
 import 'package:oui_spy/core/geofence/geofence_filter.dart';
 import 'package:oui_spy/core/link/phone_scan.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/core/link/wifi_adapter_controller.dart';
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/ignore_list_state.dart';
@@ -128,7 +129,7 @@ Observation observationFromDetection(Detection d) {
     mfgRecords: adv.mfg,
     serviceData: adv.serviceData,
     appearance: adv.appearance,
-    key: '${ble ? 'BLE' : 'WIFI'}:$mac',
+    key: '${d.isZigbeeDetection ? zigbeeKeyPrefix : ble ? 'BLE' : 'WIFI'}:$mac',
     kind: ble ? RadioKind.ble : RadioKind.wifi,
     mac: mac,
     name: name,
@@ -155,7 +156,7 @@ Observation observationFromDetection(Detection d) {
 class EspDetectionSource extends ObservationSource {
   EspDetectionSource(Stream<Detection> detections)
       : observations = detections
-            .where((d) => d.nodeId != BleManager.phoneNodeId && !d.isZigbeeDetection)
+            .where((d) => d.nodeId != BleManager.phoneNodeId)
             .map(observationFromDetection);
 
   @override
@@ -811,9 +812,11 @@ class ClassifiedDevice {
     final k = kin;
     return k != null && (own.confidence == Confidence.low || DeviceExplain.isGeneric(own)) ? k : own;
   }();
-  late final SignatureClass? primaryClass = signatures.isNotEmpty
-      ? signatures.first.kind
-      : bucketClass[guess.bucket] ?? (obs.isAp ? SignatureClass.isp : null);
+  late final SignatureClass? primaryClass = obs.key.startsWith('$zigbeeKeyPrefix:')
+      ? SignatureClass.ieee802154
+      : signatures.isNotEmpty
+          ? signatures.first.kind
+          : bucketClass[guess.bucket] ?? (obs.isAp ? SignatureClass.isp : null);
 
   static const bucketClass = <String, SignatureClass>{
     'ap': SignatureClass.isp,

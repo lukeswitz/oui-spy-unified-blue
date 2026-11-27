@@ -8,6 +8,7 @@ import 'package:oui_spy/theme/app_theme.dart';
 const zigbeeMethod = 'ieee802154';
 const zigbeeLabel = '802.15.4 (Zigbee, Thread)';
 const zigbeeRadioBit = 0x04;
+const zigbeeKeyPrefix = 'ZB';
 const zigbeeChannelMin = 11;
 const zigbeeChannelMax = 26;
 

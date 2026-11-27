@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:oui_spy/core/classify/signature_engine.dart';
+import 'package:oui_spy/core/zigbee.dart';
 import 'package:oui_spy/theme/app_theme.dart';
 
 final _classColors = <SignatureClass, Color>{
@@ -27,6 +28,7 @@ final _classColors = <SignatureClass, Color>{
   SignatureClass.mesh: Color(0xFF14B8A6),
   SignatureClass.phone: AppTheme.accent,
   SignatureClass.toy: Color(0xFFA855F7),
+  SignatureClass.ieee802154: Color(0xFFA6E22E),
   SignatureClass.other: AppTheme.textDim,
 };
 
@@ -53,6 +55,7 @@ IconData classIcon(SignatureClass c) => switch (c) {
       SignatureClass.mesh => Icons.hub,
       SignatureClass.phone => Icons.smartphone,
       SignatureClass.toy => Icons.vibration,
+      SignatureClass.ieee802154 => zigbeeIcon,
       SignatureClass.other => Icons.devices_other,
     };
 
