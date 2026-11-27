@@ -168,7 +168,7 @@ New watches look for patterns instead of single devices:
 - Boards now catch Wi-Fi beacon floods, where one radio fakes a crowd of networks, and deauth attacks, counted per sender. A beacon flood you only hear for a moment while driving is ignored.
 - Draw an alert zone with the fence button on the map. **In your zone** then alerts you when a drone or device is inside it.
 
-You can also compose your own alert melodies and give each alert type its own. They're in SETTINGS → Detection & Alerts → Notifications → **Alert sounds**. You can preview a melody on the board, and a manager passes it on to its nodes.
+You can pick the tune your board plays for each kind of alert in SETTINGS → Detection & Alerts → Notifications → **Alert sounds**, or under SETTINGS → Node → Sound & Lights. Each alert shows the tune it plays now, and the play button tries any tune on the board. Choose a built-in tune such as Chime, Siren or Charge, pick Silent, or compose your own. What you set in the app goes to your board and to every node in its mesh, defaults included.
 
 A few settings control how often you're alerted:
 
@@ -297,7 +297,8 @@ Boards now ask for a PIN when you pair, and they only install firmware signed wi
 - If a new firmware image doesn't keep running for 60 seconds, the board goes back to the old one.
 - Boards advertise as OUI-SPY-S3, OUI-SPY-C5, OUI-SPY-C3 or OUI-SPY-32. Until you rename one, the app names it by its chip, such as OUISPY-C501. To rename a board, tap the pencil next to it on the Connect screen.
 - There are two new engines. **AXEOFF** is a passive Axon detector that only beeps. **BLE Sniff** captures every Bluetooth advertisement to a file Wireshark can open.
-- C5 boards can now scan **802.15.4 (Zigbee, Thread)** while wardriving, and capture it to PCAP, on channels 11 to 26. A manager shows the switch when a C5 node is in its mesh.
+- C5 boards can now scan **802.15.4 (Zigbee, Thread)** while wardriving, and capture it to PCAP, on channels 11 to 26. A manager shows the switch when a C5 node is in its mesh. Without a C5, the switch is hidden.
+- Boards now start up with two short blips, and an Axon body camera showing up plays a siren, so neither sounds like another alert.
 - **JCMK Node Hub** (SETTINGS → Node) turns a board into a hub that collects networks from Piglet and JCMK ESP-NOW wardriver nodes.
 - T-Dongle and M5Stick boards have a new detections screen that shows the 4 latest hits.
 - An engine you start with the board's own button keeps running when the phone disconnects.
