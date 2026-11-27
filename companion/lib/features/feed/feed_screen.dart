@@ -399,6 +399,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     return Column(
           children: [
+            const FeedCountsStrip(),
             _FeedHeader(
               count: _activeFilterCount > 0 || hasQuery
                   ? '${filtered.length}/${searchScope.length}'
@@ -467,7 +468,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                 ),
               ),
             const Divider(height: 1),
-            const FeedCountsStrip(),
             if (_showStats && filtered.length >= 2)
               FeedStatsHeader(
                 detections: filtered,
