@@ -375,6 +375,7 @@ SETTINGS → About → **Check for update** looks for a newer release. The app o
 - Fixed an RTL8811AU or RTL8821AU finding nothing after STOP and START until you replugged it.
 - Fixed Home still showing a USB adapter after you unplugged it.
 - Bad Wi-Fi frames from USB adapters no longer show up as networks.
+- Fixed BLE Sniff naming the wrong maker for six Bluetooth company IDs. For example, it called Pone Biometrics DJI.
 - Fixed the SDR slowing the app down, or hanging on exit, during a scan. The SDR screen now keeps your band choice and shows its frequency labels again.
 - WiGLE CSV exports used to leave out Wi-Fi clients, detector hits and rows without a GPS fix. They now include every detection except ones inside an exclusion zone and iPhone hits, which have no MAC address.
 - Fixed Silicon Labs radios showing up as a Flock battery, and cut other Flock false positives.
