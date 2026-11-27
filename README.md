@@ -24,14 +24,11 @@
   <img width="349" src="docs/screenshots/ui/home-photo.jpg" alt="Phone running OUI-APEX on the Home screen with an RTL-SDR connected" />
 </p>
 
-- **Android**
-  - Phone scans: Bluetooth, Wi-Fi
-  - Detects on its own (no board): Wi-Fi networks and Bluetooth devices. Drones that send Remote ID over Bluetooth or Wi-Fi/Wi-Fi Aware
-  - Full feature hardware: ESP32 board(s), RTL-SDR, USB Wi-Fi adapter
-- **iPhone / macOS**
-  - Phone scans: Bluetooth
-  - Detects on its own (no board): Bluetooth devices, no drones
-  - Full feature hardware: ESP32 board(s)
+| | Android | iPhone / macOS |
+|---|---|---|
+| Phone scans | Bluetooth, Wi-Fi | Bluetooth |
+| Detects on its own (no board) | Wi-Fi networks and Bluetooth devices. Drones that send Remote ID over Bluetooth or Wi-Fi / Wi-Fi Aware | Bluetooth devices, no drones |
+| Full-feature hardware | ESP32 board(s), RTL-SDR, USB Wi-Fi adapter | ESP32 board(s) |
 
 </div>
 
@@ -128,7 +125,7 @@ Everything the boards and the phone hear, live. Tap any row for its details.
 
 <img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
 <ol>
-  <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open HISTORY, and more.</li>
+  <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open ALERTS, and more.</li>
   <li><b>Top vendors and Flock</b>: tap a vendor to show only its devices.</li>
   <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
   <li><b>A detector hit</b>: here a camera, with its channel and hit count.</li>
@@ -159,7 +156,7 @@ Everything the boards and the phone hear, live. Tap any row for its details.
 
 ### Alerts and what to watch for
 
-Choose which device types alert you. Every alert lands in one list.
+Choose which device types alert you. Every alert and every Flock, Detector, drone and SDR hit lands in one list, newest first.
 
 <img width="300" src="docs/screenshots/tour/08-alerts.png" alt="Alerts list" />
 <ol>
@@ -230,7 +227,7 @@ Every session is saved. Open one to replay it on the map, or open its report.
 
 ## Engines
 
-- **Detector:** Your watchlist (exact MAC, maker prefix, Bluetooth name contains, starts with or pattern, Bluetooth company ID, company data with a mask, 16-bit or 128-bit service UUID, Wi-Fi probe prefix, Wi-Fi beacon prefix, and a phone-only maker name), plus built-in signatures, all off by default: tracker tags following you (AirTag, AirPods and other Find My items, SmartTag, Tile, Google Find Hub, Chipolo, Pebblebee, DULT-standard tags), floods of new tracker tag addresses, Flipper Zero, Wi-Fi deauth floods, floods of join requests at one access point, Wi-Fi beacon floods (one radio faking 15+ networks), directed probes, evil-twin and KARMA rogue access points, Pwnagotchi, Meshtastic and MeshCore mesh radios, Meta Ray-Ban / Oakley glasses, Axon / law-enforcement gear, Motorola Solutions radios and body cams, i-PRO body cams, police and fleet vehicle routers, security / doorbell / dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others), Amazon Sidewalk BLE, wearable cameras and recorders (GoPro, Insta360, Snap Spectacles, Even Realities, Vuzix, Brilliant Labs Frame, PLAUD), vehicles (Teslas, Bluetooth OBD-II dongles), drones over Bluetooth (Remote ID, DJI)
+- **Detector:** your watchlist plus built-in signatures, all off by default. See the lists below.
 - **Flock BLE / Flock WiFi:** Flock Safety ALPR cameras, Raven gunshot sensors, Penguin and Pigvision. Optional OUI-only Wi-Fi hits
 - **Sky Spy:** Drones broadcasting FAA Remote ID over BLE and Wi-Fi: ID, position, altitude, speed, pilot position
 - **Foxhunter:** One target device. The board beeps faster as you get closer. The app's FIND IT view shows the signal and a ring that pulses faster, and the phone can buzz with it
@@ -240,6 +237,35 @@ Every session is saved. Open one to replay it on the map, or open its report.
 - **AXEOFF:** Axon gear only, on Bluetooth and Wi-Fi, passive. The board plays a tone when Axon gear appears, while it stays near, and when it leaves
 - **BLE Sniff:** Every Bluetooth LE advert as a live list, with filters and **RECORD PCAP**. Passive. Needs the board connected to the phone directly, or picked as the node on a manager
 - **FPV receiver:** Analog 5.8 GHz FPV video transmitters on 44 of the 48 standard channels. XIAO ESP32-C5 only. See [FPV receiver](#fpv-receiver)
+
+<details>
+<summary>Watchlist rule types</summary>
+
+- Exact MAC
+- Maker prefix
+- Bluetooth name contains, starts with, or pattern
+- Bluetooth company ID
+- Company data with a mask
+- 16-bit or 128-bit service UUID
+- Wi-Fi probe prefix
+- Wi-Fi beacon prefix
+- Phone-only maker name
+
+</details>
+
+<details>
+<summary>Built-in Detector signatures</summary>
+
+- **Trackers:** tracker tags following you (AirTag, AirPods and other Find My items, SmartTag, Tile, Google Find Hub, Chipolo, Pebblebee, DULT-standard tags); floods of new tracker tag addresses
+- **Hacking tools and attacks:** Flipper Zero; Pwnagotchi; Wi-Fi deauth floods; floods of join requests at one access point; Wi-Fi beacon floods (one radio faking 15+ networks); directed probes; evil-twin and KARMA rogue access points
+- **Mesh radios:** Meshtastic and MeshCore
+- **Glasses and wearable cameras:** Meta Ray-Ban / Oakley glasses; GoPro, Insta360, Snap Spectacles, Even Realities, Vuzix, Brilliant Labs Frame, PLAUD
+- **Police and public safety:** Axon / law-enforcement gear; Motorola Solutions radios and body cams; i-PRO body cams; police and fleet vehicle routers
+- **Cameras:** security, doorbell and dash cameras by vendor OUI or camera brand in the network or device name (Ring, Nest, Arlo, Blink, Wyze, Hikvision, Dahua and others); Amazon Sidewalk BLE
+- **Vehicles:** Teslas; Bluetooth OBD-II dongles
+- **Drones over Bluetooth:** Remote ID, DJI
+
+</details>
 
 > [!IMPORTANT]
 > The Flock OUI list comes from upstream FlockYou and matches Ubiquiti, Espressif and other common consumer parts. Check a hit with your own eyes before reporting it anywhere.
@@ -254,7 +280,7 @@ In SETTINGS → **Detection & Alerts** → **What to Watch For**, each type can 
 | **HIGH** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe with the Flock IE signature |
 | **SUSPECTED** | A listed OUI only, including a wildcard probe without the IE signature |
 
-DETECTIONS → HISTORY can filter by tier. 
+DETECTIONS → ALERTS can filter by tier. 
 
 ## Ways to run
 
@@ -285,7 +311,7 @@ DETECTIONS → HISTORY can filter by tier.
 The app controls your boards, shows what they find, and can scan with the phone's own radios. It has four main screens.
 
 - **Home:** The session bar (targets, radio, START / PAUSE / STOP) and one card per engine. The status bar shows the link, GPS fix and node count.
-- **Detections:** LIVE lists every hit, with filter, sort, search and export. DEVICES lists classified devices. HISTORY is the stored log, with CSV export. ALERTS lists every alert, newest first.
+- **Detections:** LIVE lists every hit with filter, sort, search and export. DEVICES lists classified devices. ALERTS lists every alert and every saved Flock, Detector, drone and SDR hit, newest first, with CSV export.
 - **Map:** Choose targets (WiGLE / Flock / Drone / Detector) and radio (Wi-Fi / BLE / both), then tap START. Sessions save as WiGLE CSV, upload to [WiGLE](https://wigle.net) and [WDGWars](https://wdgwars.pl), and replay on the map.
 - **SETTINGS:** APP, SCANNING (TIMING & RE-LOG, CHANNELS & BAND, EXTERNAL ADAPTERS), DETECTION & ALERTS (WHAT TO WATCH FOR, NOTIFICATIONS, YOUR LISTS, THIS PHONE, PRIVACY), NODE (SOUND & LIGHTS, GPS SOURCE, FLOCK DETECTION, RADIO PRIVACY, OFFLINE SCAN, MESH, FIRMWARE, JCMK NODE HUB), DATA (ACCOUNTS, CAPTURE DATABASE, CAPTURES, EXPORT).
 
@@ -300,8 +326,8 @@ The info button at the right end of the Detections tab row explains each tab and
 | **Arrow** | Picks the sort order. TIME lists Wi-Fi first, then Bluetooth, newest first. Tap again to reverse. |
 | **Layers** | Indents each Wi-Fi client under the network it uses. On LIVE and DEVICES. |
 | **Shapes** (DEVICES) | Switches between class sections and one flat list. |
-| **Clock** (LIVE) / **Antenna** (HISTORY) | Opens HISTORY / goes back to LIVE. |
-| **Folder** (HISTORY) | Opens saved sessions. |
+| **Clock** (LIVE) / **Antenna** (ALERTS) | Opens ALERTS / goes back to LIVE. |
+| **Folder** (ALERTS) | Opens saved sessions. |
 | **Three dots** | More actions for the tab, such as search, export and clear. |
 | **Crossed arrows** on a row | The device uses a random MAC. |
 | **Crossed-out eye** on a row | The network hides its name. |
@@ -343,7 +369,7 @@ Turning it off puts each board back to its own setting.
 
 #### Watches
 
-- **Seen at your stops** (HISTORY → More): radios heard at 2 or more of your stops in the last 7 days.
+- **Seen at your stops** (ALERTS → More): radios heard at 2 or more of your stops in the last 7 days.
 - **Trusted networks** (**Trust this network** on an access point): warns when a lookalike appears with weaker security, another maker, or far from home.
 - **Cell and GPS watch** (Android, SETTINGS → Detection & Alerts → This Phone): warns on a drop to 2G or 3G, a new tower at a known place, or faked GPS.
 - **Movement alerts** (off by default): a car following you (needs an RTL-SDR), an aircraft circling, a drone hovering near you, or a device moving between nodes.
