@@ -603,12 +603,12 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 - **Smart meters:** mesh hits show which meter talks to which and through which gateway. Readings are encrypted.
 - **History:** decoded devices save under an SDR filter, and you can foxhunt them.
 - **ADS-B:** each aircraft's callsign, altitude, speed and photo, with its flight path on the map. One button uploads them to WDGWars.
+- **Help:** the info button at the top of the SDR screen explains the mode you are in.
 
 <p>
-  <img width="220" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum waterfall with frequency labels along the bottom axis" />
-  <img width="220" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with operator, type, position and a photo for each aircraft" />
-  <img width="220" src="docs/screenshots/sdr/sdr-scan.png" alt="SCAN decoding weather, meter, security and remote devices, each row tagged with its type" />
-  <img width="220" src="docs/screenshots/sdr/sdr-scan-categories.png" alt="Info sheet describing each scan type" />
+  <img width="280" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum waterfall with frequency labels along the bottom axis" />
+  <img width="280" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with operator, type, position and a photo for each aircraft" />
+  <img width="280" src="docs/screenshots/sdr/sdr-scan.png" alt="SCAN decoding weather, meter, security and remote devices, each row tagged with its type" />
 </p>
 
 ## Boards
