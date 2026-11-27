@@ -3,8 +3,10 @@
 //
 // BLE Sniff: decodes the LE LL pcap records the BLE Sniff engine streams, and writes them back out as a
 // Wireshark .pcap. Advert summary fields and the manufacturer table follow colonelpanichacks/unified-blue
-// raw/blesniff.cpp (MIT).
+// raw/blesniff.cpp (MIT), with the company IDs corrected to the Bluetooth SIG registry.
 import 'dart:typed_data';
+
+import 'package:oui_spy/core/classify/bt_sig_registry.dart';
 
 const _recMagic = 0xCAFEBABE;
 const _recEnd = 0xDEADBEEF;
@@ -99,23 +101,22 @@ const _mfrNames = <int, String>{
   0x0171: 'Amazon',
   0x038F: 'Xiaomi',
   0x0087: 'Garmin',
-  0x00D2: 'Sonos',
-  0x008A: 'Bose',
-  0x2C00: 'GoPro',
+  0x05A7: 'Sonos',
+  0x009E: 'Bose',
+  0x02F2: 'GoPro',
   0x0059: 'Nordic',
   0x0131: 'Cypress',
   0x02E5: 'Espressif',
   0x000F: 'Broadcom',
-  0x0002: 'Nokia',
+  0x0001: 'Nokia',
   0x0157: 'Anhui Huami',
   0x0499: 'Ruuvi',
   0x034D: 'Axon/TASER',
   0x0D53: 'Luxottica (Meta/Ray-Ban)',
-  0x0BF3: 'DJI',
-  0x004D: 'Parrot',
+  0x08AA: 'DJI',
 };
 
-String sniffMfrName(int id) => _mfrNames[id] ?? '?';
+String sniffMfrName(int id) => _mfrNames[id] ?? BtSigRegistry.companies[id] ?? '?';
 
 /// Splits the byte stream into records. Bytes before a magic, or a record with a bad end mark, are skipped.
 class SniffRecordSplitter {
