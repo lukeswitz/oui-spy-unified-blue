@@ -582,7 +582,7 @@ Future<bool> confirmRadioRoles(BuildContext context, WidgetRef ref) async {
   final hubNodes = hubId == null
       ? const <EnowHubNode>[]
       : [for (final n in ble.enowHubNodeMap.values) if (n.paired) n];
-  if (selfId != null && (phoneChoice || hubId != null)) nodes.add(selfId);
+  if (selfId != null) nodes.add(selfId);
   if (phoneChoice) nodes.add(BleManager.phoneNodeId);
   final usbDual = {
     for (final d in usb.devices)
