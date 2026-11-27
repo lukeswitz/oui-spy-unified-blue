@@ -26,6 +26,7 @@ import 'package:oui_spy/features/onboarding/scan_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_screen.dart';
 import 'package:oui_spy/features/pcap/pcap_library_screen.dart';
 import 'package:oui_spy/features/sdr/sdr_screen.dart';
+import 'package:oui_spy/features/signatures/signature_sources_prompt.dart';
 import 'package:oui_spy/features/wardrive/wardrive_screen.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
 import 'package:oui_spy/core/ble/pin_prompt.dart';
@@ -320,6 +321,13 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
     _router = ref.read(routerProvider).routerDelegate..addListener(_askSetPinSoon);
     _askSetPinSoon();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askSignatureSources());
+  }
+
+  Future<void> _askSignatureSources() async {
+    final version = await signatureSourcesPromptVersion(ref);
+    if (version == null || !mounted) return;
+    await showSignatureSourcesPrompt(context, ref, version);
   }
 
   @override

@@ -2150,6 +2150,24 @@ class BleManager {
     }
   }
 
+  Future<bool?> readFlockExtendedOui() async {
+    final c = _hardwareConfig;
+    if (c == null) return null;
+    final v = await c.read();
+    return v.length >= 5 ? v[4] != 0 : null;
+  }
+
+  Future<bool> setFlockExtendedOui(bool on) async {
+    final c = _hardwareConfig;
+    if (c == null) return false;
+    final v = await c.read();
+    if (v.length < 5) return false;
+    if ((v[4] != 0) == on) return true;
+    await c.write(Uint8List.fromList([...v.sublist(0, 4), on ? 1 : 0, ...v.sublist(5)]));
+    DebugLog.log('BLE: flock extended OUI ${on ? 'on' : 'off'}');
+    return true;
+  }
+
   Future<void> writeHardwareConfig({
     required bool buzzer,
     required bool led,

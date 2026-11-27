@@ -411,7 +411,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
             ('Sound & Lights', 'Buzzer, alert sounds, status LED, NeoPixel', Icons.volume_up, () => _buildHardwareTab(_HwPart.sound)),
             ('GPS Source', 'Phone or on-board GPS module', Icons.satellite_alt, () => _buildHardwareTab(_HwPart.gps)),
             ('Flock Detection', 'Extended OUI set, OUI-only Wi-Fi hits', Icons.camera_outdoor, () => _buildHardwareTab(_HwPart.flock)),
-            ('Radio Privacy', 'Active Wi-Fi probing, passive Bluetooth', Icons.cell_tower, () => _buildHardwareTab(_HwPart.radio)),
+            ('Radio Privacy', 'Quiet Wi-Fi and Bluetooth scanning', Icons.cell_tower, () => _buildHardwareTab(_HwPart.radio)),
             ('Offline Scan', 'Keep scanning while disconnected', Icons.cloud_off, () => _buildHardwareTab(_HwPart.offline)),
             ('Mesh', 'Mode, status, key, nodes with board and temperature', Icons.hub, _buildMeshTab),
             ('Firmware', 'Device info, Wi-Fi network, Bluetooth PIN, updates', Icons.system_update, _buildFirmwareTab),
@@ -977,6 +977,13 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                 style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 14)),
           ),
         if (part == _HwPart.radio && _radioPolicy != null) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+            child: Text(
+                'Each switch keeps the board quiet while it is on. Turn one off and the board transmits to find more, '
+                'and anything listening nearby can see it.',
+                style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
+          ),
           if (rxOnly)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -984,22 +991,22 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
                   style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
             ),
           ConfigToggleRow(
-            icon: Icons.cell_tower,
-            label: 'Active Wi-Fi probing',
-            subtitle: 'Off: the board only listens. On: wardrive and Flock Wi-Fi send wildcard probe requests (random source MAC) to find hidden and slow-beaconing APs. Any transmission makes the board detectable.',
-            color: AppTheme.error,
-            value: (policy & BleProtocol.radioPolicyActiveProbe) != 0,
+            icon: Icons.wifi_off,
+            label: 'Quiet Wi-Fi scanning',
+            subtitle: 'On (default): the board only listens on Wi-Fi. Off: wardrive and Flock Wi-Fi send wildcard probe requests (random source MAC) to find hidden and slow-beaconing APs, and those requests show the board is there.',
+            color: AppTheme.accent,
+            value: (policy & BleProtocol.radioPolicyActiveProbe) == 0,
             onChanged: rxOnly ? null : (v) {
               setState(() => _radioPolicy = v
-                  ? (_radioPolicy! | BleProtocol.radioPolicyActiveProbe)
-                  : (_radioPolicy! & ~BleProtocol.radioPolicyActiveProbe));
+                  ? (_radioPolicy! & ~BleProtocol.radioPolicyActiveProbe)
+                  : (_radioPolicy! | BleProtocol.radioPolicyActiveProbe));
               _writeHardwareConfig();
             },
           ),
           ConfigToggleRow(
             icon: Icons.bluetooth_disabled,
-            label: 'Passive Bluetooth scanning',
-            subtitle: 'On: the board never sends scan requests, so detected devices never see its address. Fewer device names (names often arrive only in scan responses). Applies when an engine next starts.',
+            label: 'Quiet Bluetooth scanning',
+            subtitle: 'On: the board never sends scan requests, so nearby devices never see its address, but you get fewer device names because names often come only in scan replies. Off (default): the board asks each device for its scan reply. Applies when an engine next starts.',
             color: AppTheme.accent,
             value: (policy & BleProtocol.radioPolicyPassiveBle) != 0,
             onChanged: rxOnly ? null : (v) {

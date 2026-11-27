@@ -317,7 +317,7 @@ Every device the app hears gets a class, such as tracker, camera, public safety 
 - Class alerts are on by default.
 - A Samsung SmartTag away from its owner keeps its path when its address changes. The **WITH YOU** filter still finds it.
 - **Suggested signatures** (DEVICES → More) groups 3+ unclassified radios that share a name, service, vendor prefix or company. **SAVE** turns a group into your own signature, with an optional alert on new matches.
-- **Signature sets** (SETTINGS → Detection & Alerts → Your Lists) adds the Fieldwatch stock catalog, Home Assistant's Bluetooth device list, or your own set from an https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set.
+- **Signature sets** (SETTINGS → Detection & Alerts → Your Lists) adds the Fieldwatch stock catalog, Home Assistant's Bluetooth device list, or your own set from an https link or file (Fieldwatch JSON). A set adds only what the built-in catalog lacks. **Export** in My signatures shares yours as a set. The first launch of each new app version lists every signature source, with the extended Flock OUI set off, and asks which ones you want.
 
 ### Phone scan
 
@@ -700,7 +700,7 @@ Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
 These settings limit what the boards and the phone send over the air and what the app shows on screen.
 
 - **Receive only** (SETTINGS → Detection & Alerts → Privacy): one switch for every scan. See [Receive only](#receive-only).
-- **Board radio privacy** (SETTINGS → NODE → RADIO PRIVACY): **Active Wi-Fi probing** is off by default and uses a random MAC when on. **Passive Bluetooth scanning** stops scan requests.
+- **Board radio privacy** (SETTINGS → NODE → RADIO PRIVACY): each switch keeps the board quiet while it is on. **Quiet Wi-Fi scanning** is on by default. When you turn it off, the board sends probe requests from a random MAC. **Quiet Bluetooth scanning** stops scan requests.
 - **Private Bluetooth link:** the board's address rotates, and after pairing it hides its name. See [Ways to run](#ways-to-run).
 - **Random MAC each boot** for the board's Wi-Fi and mesh.
 - **Mesh encryption** (AES-256-GCM) is off by default. See [Mesh](#mesh).
