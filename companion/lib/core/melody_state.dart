@@ -150,22 +150,22 @@ class MelodyState extends ChangeNotifier {
 
   String? assignmentFor(AlertSlot s) => _assign[s.key];
 
-  ({String name, List<MelodyNote> notes}) defaultFor(AlertSlot s) {
+  ({String name, List<MelodyNote> notes, bool builtIn}) defaultFor(AlertSlot s) {
     final inherited = [
       if (s.method != melodyAny) '${s.engine}:$melodyAny',
       if (s.engine < melodyBoardEngineCount) '$melodyAny:$melodyAny',
     ];
     for (final key in inherited) {
       final id = _assign[key];
-      if (id == melodySilent) return (name: 'Silent', notes: const <MelodyNote>[]);
+      if (id == melodySilent) return (name: 'Silent', notes: const <MelodyNote>[], builtIn: false);
       final m = id == null ? null : byId(id);
-      if (m != null) return (name: m.name, notes: m.notes);
+      if (m != null) return (name: m.name, notes: m.notes, builtIn: false);
     }
     return switch ((s.engine, s.method)) {
-      (0, 8) => (name: 'Arpeggio', notes: _boardAxonDetect),
-      (melodyEngineAxon, 1) => (name: 'Lub-dub', notes: _boardAxonHeartbeat),
-      (melodyEngineAxon, 2) => (name: 'Falling', notes: _boardAxonLost),
-      _ => (name: 'Chime', notes: _boardChime),
+      (0, 8) => (name: 'Arpeggio', notes: _boardAxonDetect, builtIn: true),
+      (melodyEngineAxon, 1) => (name: 'Lub-dub', notes: _boardAxonHeartbeat, builtIn: true),
+      (melodyEngineAxon, 2) => (name: 'Falling', notes: _boardAxonLost, builtIn: true),
+      _ => (name: 'Chime', notes: _boardChime, builtIn: true),
     };
   }
 

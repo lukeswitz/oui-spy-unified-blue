@@ -423,7 +423,7 @@ Turning it off puts each board back to its own setting.
 
 #### Sounds and muting
 
-- **Alert sounds:** pick or compose a melody for each alert type, and preview it on the board.
+- **Alert sounds:** **Every alert** sets the board's tune for all alerts. Tap any alert to give it its own tune, or compose one with up to 8 notes. Each play button tries the tune on the board.
 - **Repeat for a device** (Notifications): alerts again after the device goes 60 s unheard.
 - **Node down / Node back:** alerts when a mesh node goes missing for 45 s, and when it returns.
 - **Silence all** (ALERTS): stops every sound and notification until you turn it off. Alerts are still logged.
