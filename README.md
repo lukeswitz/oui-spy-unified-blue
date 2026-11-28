@@ -228,7 +228,7 @@ Everything the boards and the phone hear shows up here, live. Tap any row for it
   </tr>
 </table>
 
-<img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+<p align="center"><img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" /></p>
 <ol>
   <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
   <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
@@ -325,7 +325,7 @@ Every session is saved. Open one to replay it on the map, or open its report.
   </tr>
 </table>
 
-<img width="300" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+<p align="center"><img width="300" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" /></p>
 <ol>
   <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
   <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
@@ -436,7 +436,7 @@ Each Flock hit gets a tier that says how much evidence matched. Detections → A
 
 Settings → Node → **Flock Detection** adds two board options for more Flock hits.
 
-<img width="300" src="docs/screenshots/tour/29-flock-detection.png" alt="Flock detection settings" />
+<p align="center"><img width="300" src="docs/screenshots/tour/29-flock-detection.png" alt="Flock detection settings" /></p>
 <ol>
   <li><b>Extended OUI set</b>: roughly doubles the Flock maker prefixes. Expect false positives.</li>
   <li><b>Report OUI-only WiFi hits</b>: reports a Wi-Fi device on its maker prefix alone. More hits, more false positives.</li>
@@ -472,7 +472,7 @@ The watchlist holds devices you want the Detector engine to catch. Each rule mat
 - **Rule limits:** a board holds 50 MAC and prefix rules, 50 service UUIDs and 32 other rules.
 - **Watched devices** alert with their own label and sound, even when muted.
 
-<img width="300" src="docs/screenshots/tour/36-your-lists.png" alt="Your Lists settings" />
+<p align="center"><img width="300" src="docs/screenshots/tour/36-your-lists.png" alt="Your Lists settings" /></p>
 <ol>
   <li><b>Watchlist</b>: the devices you want alerts on. Add rules or import them.</li>
   <li><b>My signatures and Signature sets</b>: your saved signatures and the sets you turned on.</li>
@@ -535,7 +535,7 @@ The watchlist holds devices you want the Detector engine to catch. Each rule mat
   </tr>
 </table>
 
-<img width="300" src="docs/screenshots/tour/35-notifications.png" alt="Notification settings" />
+<p align="center"><img width="300" src="docs/screenshots/tour/35-notifications.png" alt="Notification settings" /></p>
 <ol>
   <li><b>Foxhunt Proximity</b>: alerts when a foxhunt target's signal crosses its thresholds.</li>
   <li><b>Milestone Alerts</b>: a notification every 1000 unique networks.</li>
@@ -597,7 +597,7 @@ The app saves Wi-Fi, BLE or 802.15.4 traffic as PCAP files that Wireshark opens.
 
 On a XIAO ESP32-C5 the app finds analog 5.8 GHz FPV video transmitters. It receives only and shows no picture. Open it from the **FPV receiver** tile on Home.
 
-<img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" />
+<p align="center"><img width="300" src="docs/screenshots/ui/fpv-receiver.png" alt="FPV receiver locked on a transmitter on A8, 5725 MHz" /></p>
 <ol>
   <li><b>Status</b>: Locked, Tuned or the running mode, the channel, its level, coherence and noise floor, and how many channels are flagged.</li>
   <li><b>Proximity</b>: the needle moves toward Close as the tuned channel rises above the floor.</li>
@@ -693,7 +693,7 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 | **ADS-B** | 1090 MHz | Aircraft broadcasting their position and identity |
 | **Scan** | 315, 433.92, or 915 MHz | The device types you pick from what the rtl_433 decoders recognize: weather stations, utility meters (including Wireless M-Bus and Itron / Silver Spring smart-meter mesh), security sensors, remotes and key fobs, home sensors and tire-pressure sensors |
 
-<img width="360" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR Scan with decoded devices" />
+<p align="center"><img width="360" src="docs/screenshots/tour/12-sdr-scan.png" alt="SDR Scan with decoded devices" /></p>
 <ol>
   <li><b>Bands</b>: pick 315, 433 or 915 MHz, or several to sweep them, then tap Start.</li>
   <li><b>Types</b>: tap a chip to turn that type on or off. Each chip counts what it found.</li>
@@ -712,7 +712,7 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
   </tr>
 </table>
 
-<img width="300" src="docs/screenshots/sdr/sdr-scan.png" alt="Scan decoding weather, meter, security and remote devices, each row tagged with its type" />
+<p align="center"><img width="300" src="docs/screenshots/sdr/sdr-scan.png" alt="Scan decoding weather, meter, security and remote devices, each row tagged with its type" /></p>
 
 ### Optional GPS module
 
@@ -725,7 +725,7 @@ A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its 
 
 Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
 
-<img width="300" src="docs/screenshots/tour/28-gps-source.png" alt="GPS source settings" />
+<p align="center"><img width="300" src="docs/screenshots/tour/28-gps-source.png" alt="GPS source settings" /></p>
 <ol>
   <li><b>Status</b>: whether the module has a fix, and where positions come from now.</li>
   <li><b>Phone (default)</b>: records the phone's location.</li>
@@ -799,7 +799,7 @@ A mesh lets several boards cover a wider area. One board, the manager, connects 
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
 
-<img width="300" src="docs/screenshots/tour/32-mesh.png" alt="Mesh settings: mode and status" />
+<p align="center"><img width="300" src="docs/screenshots/tour/32-mesh.png" alt="Mesh settings: mode and status" /></p>
 <ol>
   <li><b>Mode</b>: off, broadcast (plaintext) or encrypted (AES-256-GCM).</li>
   <li><b>Status</b>: the mesh state, messages sent and received, failed key checks, peer slots and nodes heard.</li>
@@ -849,7 +849,7 @@ With a manager connected, Settings → Node → Mesh → **Nodes** lists every n
 
 The app can pass what it finds to other systems: a Meshtastic radio when you have no network, ATAK, a dashboard on your own computer, and a language model that can read the data with your permission.
 
-<img width="300" src="docs/screenshots/tour/37-export.png" alt="Export settings" />
+<p align="center"><img width="300" src="docs/screenshots/tour/37-export.png" alt="Export settings" /></p>
 <ol>
   <li><b>Export & Database Backup</b>: WiGLE, JSON and KML exports, and a full backup and restore.</li>
   <li><b>Saved map areas</b>: offline map areas you downloaded.</li>
@@ -919,7 +919,7 @@ To link the app to it, turn on Settings → Data → Export → **Home dashboard
 
 A language model can read what the app has seen and, when you allow it, change things. It is off by default. Turn it on in Settings → Data → **Assistant**, pick a model provider, then tap **Open the assistant**.
 
-<img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" />
+<p align="center"><img width="300" src="docs/screenshots/ui/assistant-settings.png" alt="Assistant settings: model providers and the Automatic section, off by default" /></p>
 <ol>
   <li><b>Model provider</b>: Ollama on your network, or Claude, OpenAI or Gemini in the cloud.</li>
   <li><b>ⓘ</b>: what the automatic features send and when.</li>
@@ -954,7 +954,7 @@ Settings → About → **Check for update**. **Check at launch** is off by defau
 - **Over Wi-Fi** (Settings → Node → Firmware): each node downloads its own board's image. Nodes older than v0.6.1 get the board picked in the app.
 - **Over the mesh** (Settings → Node → Mesh → **Fleet control**, or Settings → Node → Firmware): updates the nodes you tick with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks the image, the chip and the signature before sending. Nodes update one at a time, each row shows its progress, and **Stop** cancels. Needs a manager on firmware with this feature.
 
-<img width="300" src="docs/screenshots/tour/33-firmware.png" alt="Firmware settings: board info and Wi-Fi network" />
+<p align="center"><img width="300" src="docs/screenshots/tour/33-firmware.png" alt="Firmware settings: board info and Wi-Fi network" /></p>
 <ol>
   <li><b>Manager info</b>: firmware version, board, ID and free memory.</li>
   <li><b>WiFi network</b>: the network the board joins to download firmware over Wi-Fi.</li>
@@ -968,7 +968,7 @@ These settings limit what the boards and the phone send over the air and what th
 
 One switch in Settings → Detection & Alerts → Privacy stops every scan from transmitting.
 
-<img width="360" src="docs/screenshots/tour/19-privacy.png" alt="Privacy settings: Receive only and Mask identifiers on screen" />
+<p align="center"><img width="360" src="docs/screenshots/tour/19-privacy.png" alt="Privacy settings: Receive only and Mask identifiers on screen" /></p>
 <ol>
   <li><b>Receive only</b>: boards, mesh nodes and this phone only listen.</li>
   <li><b>Mask identifiers on screen</b>: hides most of each MAC, name and SSID on screen. Exports keep full values.</li>
@@ -991,7 +991,7 @@ Turning it off puts each board back to its own setting.
 - **Mask identifiers on screen** (Settings → Detection & Alerts → Privacy): hides most of each MAC and name on screen. Exports keep full values.
 - **No analytics or crash reporting.** See [Internet services](#internet-services).
 
-<img width="300" src="docs/screenshots/tour/30-radio-privacy.png" alt="Radio privacy settings" />
+<p align="center"><img width="300" src="docs/screenshots/tour/30-radio-privacy.png" alt="Radio privacy settings" /></p>
 <ol>
   <li><b>Quiet Wi-Fi scanning</b> (on by default): never sends Wi-Fi probes.</li>
   <li><b>Quiet Bluetooth scanning</b> (off by default): never asks devices for names.</li>
