@@ -144,8 +144,8 @@ The app has four main screens, reached from the tabs at the bottom.
 - **Settings:** six menus, each with its own pages.
   - **App**
   - **Scanning**
-    - Timing & Re-log
-    - Channels & Band
+    - [Timing & Re-log](#scan-timing-and-channels)
+    - [Channels & Band](#scan-timing-and-channels)
     - [External Adapters](#usb-radios-on-android)
   - **Detection & Alerts**
     - [What to Watch For](#choose-what-alerts-you)
@@ -163,8 +163,8 @@ The app has four main screens, reached from the tabs at the bottom.
     - [Firmware](#firmware-updates)
     - [JCMK Node Hub](#offline-scan-and-the-jcmk-node-hub)
   - **Data**
-    - Accounts
-    - Capture Database
+    - [Accounts](#accounts-and-capture-database)
+    - [Capture Database](#accounts-and-capture-database)
     - [Captures](#packet-capture)
     - [Export](#connect-to-other-tools)
     - [Meshtastic radio](#meshtastic-radio)
@@ -322,6 +322,47 @@ Every session is saved. Open one to replay it on the map, or open its report.
       <ol>
         <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
         <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Accounts and capture database
+
+Link your WiGLE and WDGWars accounts in Settings → Data → **Accounts** to upload sessions. Settings → Data → **Capture Database** totals everything your own wardrives have logged.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/23-accounts.png" alt="Accounts: linked WiGLE and WDGWars accounts with their stats" />
+      <ol>
+        <li><b>WiGLE</b>: enter your API name and token to link it. Once linked, it shows your rank and the Wi-Fi, Bluetooth and cell networks you found.</li>
+        <li><b>Donate data to WiGLE</b>: lets WiGLE license an anonymized copy of your uploads. Off keeps them for non-commercial use.</li>
+        <li><b>Refresh / Unlink</b>: reload your stats or remove the account.</li>
+        <li><b>WDGWars</b>: enter your API key to link it. Once linked, it shows your rank, gang, counts and the daily new-AP quota.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/24-capture-database.png" alt="Capture database totals, channels, vendors and encryption" />
+      <ol>
+        <li><b>Totals</b>: unique devices, Wi-Fi, BLE, network names, sessions and hits.</li>
+        <li><b>Channel distribution</b>: how many networks were heard on each channel.</li>
+        <li><b>Top vendors and Flock vendors</b>: the makers seen most often.</li>
+        <li><b>Encryption</b>: how many networks use each kind of security.</li>
+      </ol></td>
+  </tr>
+</table>
+
+### Scan timing and channels
+
+Settings → Scanning sets how the board steps through Wi-Fi channels and Bluetooth, and when it logs a device again.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/25-timing.png" alt="Timing and re-log settings" />
+      <ol>
+        <li><b>Wardrive RSSI</b>: how much a seen device's signal must change before it is logged again, for Wi-Fi and BLE.</li>
+        <li><b>Scan timing</b>: how long the board stays on channels 1, 6 and 11 and on the others, how often it sweeps every Wi-Fi channel, and how long and how often it scans Bluetooth. Lower values scan faster and use more battery.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/26-channels.png" alt="Channels and band settings" />
+      <ol>
+        <li><b>Channel range</b>: the first and last 2.4 GHz channel to scan. A narrower range spends more time on each channel. C5 boards also pick the Wi-Fi band here.</li>
       </ol></td>
   </tr>
 </table>
