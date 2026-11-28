@@ -99,6 +99,9 @@ The app asks for each permission on its own screen, then opens Home. The screens
         <li><b>Continue</b>: opens Settings. Choose <b>Allow all the time</b>, then go back.</li>
       </ol></td>
   </tr>
+</table>
+
+<table>
   <tr>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/03-first-launch.png" alt="Home on first launch" />
       <ol>
@@ -207,7 +210,7 @@ Everything the boards and the phone hear shows up here, live. Tap any row for it
 
 <table>
   <tr>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/06-live.png" alt="Live detections list" />
       <ol>
         <li><b>Live counts</b>: nodes online, devices heard now and today, live drones, unread alerts, MACs kept, and the last 24 hours.</li>
         <li><b>Tools</b>: filter, sort, group Wi-Fi clients under their network, open Alerts, and more.</li>
@@ -215,14 +218,19 @@ Everything the boards and the phone hear shows up here, live. Tap any row for it
         <li><b>A drone</b>: its Remote ID, the radio that heard it, and its altitude.</li>
         <li><b>A network</b>: one row per network name. "3 MACs" counts the radios that use it.</li>
       </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/07-device-sheet.png" alt="Details of a Wi-Fi network" />
       <ol>
         <li><b>MACs</b>: every MAC that uses this network name.</li>
         <li><b>What this looks like</b>: the app's best guess, in plain words.</li>
         <li><b>Foxhunt this device</b>: follow its signal to the source.</li>
         <li><b>Trust this network</b>: warns you later about lookalikes. See <a href="#watches">Watches</a>.</li>
       </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
       <ol>
         <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
         <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
@@ -308,17 +316,22 @@ Every session is saved. Open one to replay it on the map, or open its report.
 
 <table>
   <tr>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/13-sessions.png" alt="Saved sessions list" />
       <ol>
         <li><b>Select, Import, Clear all</b>: pick several sessions, load a WiGLE CSV, or delete them all.</li>
         <li><b>A session</b>: when, how long, how far, and its Wi-Fi, BLE, Flock, drone and detector counts. Tap it to replay it on the map.</li>
       </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/14-report.png" alt="Wardrive report, top" />
       <ol>
         <li><b>Totals</b>: Wi-Fi networks, how many were new, and Bluetooth devices.</li>
         <li><b>Wi-Fi networks</b>: new, seen before, hidden, and per band.</li>
       </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
       <ol>
         <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
         <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
@@ -429,6 +442,18 @@ Each Flock hit gets a tier that says how much evidence matched. Detections → A
 | **High** | One strong signal: Raven service UUID, Flock BLE name, or a Flock wildcard probe with the Flock IE signature |
 | **Suspected** | A listed OUI only, including a wildcard probe without the IE signature |
 
+Settings → Node → **Flock Detection** adds two board options for more Flock hits.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/29-flock-detection.png" alt="Flock detection settings" />
+      <ol>
+        <li><b>Extended OUI set</b>: roughly doubles the Flock maker prefixes. Expect false positives.</li>
+        <li><b>Report OUI-only WiFi hits</b>: reports a Wi-Fi device on its maker prefix alone. More hits, more false positives.</li>
+      </ol></td>
+  </tr>
+</table>
+
 ### Classification
 
 Every device the app hears gets a class, such as tracker, camera, public safety & fleet, drone, glasses, hacking tool, router, or home & office.
@@ -459,6 +484,19 @@ The watchlist holds devices you want the Detector engine to catch. Each rule mat
 - **Rule limits:** a board holds 50 MAC and prefix rules, 50 service UUIDs and 32 other rules.
 - **Watched devices** alert with their own label and sound, even when muted.
 
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/36-your-lists.png" alt="Your Lists settings" />
+      <ol>
+        <li><b>Watchlist</b>: the devices you want alerts on. Add rules or import them.</li>
+        <li><b>My signatures and Signature sets</b>: your saved signatures and the sets you turned on.</li>
+        <li><b>Trusted networks</b>: your own Wi-Fi names, for lookalike warnings.</li>
+        <li><b>Ignore list</b>: devices never logged or alerted on.</li>
+        <li><b>Search all captures</b>: counts, GPS coverage and a search over every stored session and import.</li>
+      </ol></td>
+  </tr>
+</table>
+
 <details>
 <summary>Watchlist rule types</summary>
 
@@ -484,20 +522,43 @@ The watchlist holds devices you want the Detector engine to catch. Each rule mat
 
 <table>
   <tr>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/20-alert-sounds.png" alt="Alert sounds: each alert with its tune and a play button" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/20-alert-sounds.png" alt="Alert sounds: each alert with its tune and a play button" />
       <ol>
         <li><b>An alert</b>: what it plays now. Tap it to change the tune.</li>
         <li><b>Play</b>: tries that tune on the board.</li>
       </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/21-alert-sounds-pick.png" alt="Picking a tune for one alert" />
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/21-alert-sounds-pick.png" alt="Picking a tune for one alert" />
       <ol>
         <li><b>Default</b>: the tune the board plays if you never change it.</li>
         <li><b>Silent</b>, the built-in tunes and your own. Play any of them before you pick.</li>
       </ol></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/tour/22-alert-sounds-compose.png" alt="Composing a tune" />
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/22-alert-sounds-compose.png" alt="Composing a tune" />
       <ol>
         <li><b>Notes</b>: up to 8. The arrows move a note up or down a semitone.</li>
         <li><b>Length and Pause after</b>: how long each note plays, then how long the board waits.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/27-sound-lights.png" alt="Sound and lights: buzzer, volume, alert sounds, status LED and NeoPixel" />
+      <ol>
+        <li><b>Buzzer and Buzzer Volume</b>: turn the board's buzzer on or off and set how loud it is.</li>
+        <li><b>Alert sounds</b>: opens the tune list above.</li>
+        <li><b>Status LED and NeoPixel Brightness</b>: the board's lights.</li>
+      </ol></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/35-notifications.png" alt="Notification settings" />
+      <ol>
+        <li><b>Foxhunt Proximity</b>: alerts when a foxhunt target's signal crosses its thresholds.</li>
+        <li><b>Milestone Alerts</b>: a notification every 1000 unique networks.</li>
+        <li><b>Repeat for a device and Max per minute</b>: when a device alerts again, and the most alerts a minute.</li>
+        <li><b>Sound</b>: plays an alert sound on the phone. Further down are vibration, alert sounds and muted types.</li>
       </ol></td>
   </tr>
 </table>
@@ -601,6 +662,22 @@ A board can keep working when the phone is away, and it can collect networks fro
 - **Offline scan** (Settings → Node → Offline Scan): the board keeps scanning without the phone, even after a reboot, and uploads hits on reconnect. A directly connected board with a GPS module fix also wardrives, one row per device every 5 min, up to 1 MB. It stops after 60 s without a fix.
 - **JCMK node hub** (Settings → Node → JCMK Node Hub): the board adds Wi-Fi networks from [Piglet](https://github.com/hamspiced/piglet) ESP-NOW nodes to your wardrive. Tap **Start hub**, power on a Piglet, and tap **Pair** under **Nearby nodes**. The hub board leaves the mesh while it runs. The wardrive radio picker can leave out any paired node.
 
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/31-offline-scan.png" alt="Offline scan settings" />
+      <ol>
+        <li><b>Keep scanning while disconnected</b>: experimental. Detections import when the phone reconnects.</li>
+        <li><b>Tag away detections with last GPS</b>: gives detections from while you were away the phone's last known position.</li>
+      </ol></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/34-jcmk-hub.png" alt="JCMK node hub" />
+      <ol>
+        <li><b>Start hub</b>: turns the board into a hub for Piglet and JCMK nodes.</li>
+        <li><b>Paired and nearby nodes</b>: nodes you paired, and nodes the hub hears.</li>
+        <li><b>Passphrase and Record node traffic</b>: an optional passphrase, and a copy of node traffic in the app log.</li>
+      </ol></td>
+  </tr>
+</table>
+
 ### USB radios on Android
 
 OUI-APEX drives a USB Wi-Fi adapter or RTL-SDR dongle with no root, kernel driver or custom ROM.
@@ -650,9 +727,14 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
 
 <table>
   <tr>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum waterfall with frequency labels along the bottom axis" /></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with operator, type, position and a photo for each aircraft" /></td>
-    <td width="33%" valign="top"><img width="240" src="docs/screenshots/sdr/sdr-scan.png" alt="Scan decoding weather, meter, security and remote devices, each row tagged with its type" /></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/sdr/sdr-spectrum.png" alt="Live spectrum waterfall with frequency labels along the bottom axis" /></td>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/sdr/sdr-adsb.png" alt="ADS-B aircraft list with operator, type, position and a photo for each aircraft" /></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/sdr/sdr-scan.png" alt="Scan decoding weather, meter, security and remote devices, each row tagged with its type" /></td>
   </tr>
 </table>
 
@@ -666,6 +748,17 @@ A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its 
 | RX ← | GPIO43 | GPIO43 | GPIO11 | GPIO32 |
 
 Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/28-gps-source.png" alt="GPS source settings" />
+      <ol>
+        <li><b>Status</b>: whether the module has a fix, and where positions come from now.</li>
+        <li><b>Phone (default)</b>: records the phone's location.</li>
+        <li><b>On-board GPS module</b>: records from the module, and falls back to the phone when it has no fix.</li>
+      </ol></td>
+  </tr>
+</table>
 
 ### Standalone controls
 
@@ -734,6 +827,16 @@ A mesh lets several boards cover a wider area. One board, the manager, connects 
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
 
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/32-mesh.png" alt="Mesh settings: mode and status" />
+      <ol>
+        <li><b>Mode</b>: off, broadcast (plaintext) or encrypted (AES-256-GCM).</li>
+        <li><b>Status</b>: the mesh state, messages sent and received, failed key checks, peer slots and nodes heard.</li>
+      </ol></td>
+  </tr>
+</table>
+
 ### Manage nodes
 
 With a manager connected, Settings → Node → Mesh → **Nodes** lists every node.
@@ -777,6 +880,18 @@ With a manager connected, Settings → Node → Mesh → **Nodes** lists every n
 ## Connect to other tools
 
 The app can pass what it finds to other systems: a Meshtastic radio when you have no network, ATAK, a dashboard on your own computer, and a language model that can read the data with your permission.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/37-export.png" alt="Export settings" />
+      <ol>
+        <li><b>Export & Database Backup</b>: WiGLE, JSON and KML exports, and a full backup and restore.</li>
+        <li><b>Saved map areas</b>: offline map areas you downloaded.</li>
+        <li><b>Send to ATAK</b> and <b>Home dashboard</b>: see below.</li>
+        <li><b>OUI database</b>: the maker lookup list, further down.</li>
+      </ol></td>
+  </tr>
+</table>
 
 ### Meshtastic radio
 
@@ -875,6 +990,16 @@ Settings → About → **Check for update**. **Check at launch** is off by defau
 - **Over Wi-Fi** (Settings → Node → Firmware): each node downloads its own board's image. Nodes older than v0.6.1 get the board picked in the app.
 - **Over the mesh** (Settings → Node → Mesh → **Fleet control**, or Settings → Node → Firmware): updates the nodes you tick with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks the image, the chip and the signature before sending. Nodes update one at a time, each row shows its progress, and **Stop** cancels. Needs a manager on firmware with this feature.
 
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/33-firmware.png" alt="Firmware settings: board info and Wi-Fi network" />
+      <ol>
+        <li><b>Manager info</b>: firmware version, board, ID and free memory.</li>
+        <li><b>WiFi network</b>: the network the board joins to download firmware over Wi-Fi.</li>
+      </ol></td>
+  </tr>
+</table>
+
 ## Privacy
 
 These settings limit what the boards and the phone send over the air and what the app shows on screen.
@@ -906,6 +1031,16 @@ Turning it off puts each board back to its own setting.
 - **Mask identifiers on screen** (Settings → Detection & Alerts → Privacy): hides most of each MAC and name on screen. Exports keep full values.
 - **No analytics or crash reporting.** See [Internet services](#internet-services).
 - **Tested:** the Bluetooth address checks passed on a XIAO ESP32-S3 on 2026-11-13. Wi-Fi probe and mesh MACs are not yet checked with an outside receiver.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/30-radio-privacy.png" alt="Radio privacy settings" />
+      <ol>
+        <li><b>Quiet Wi-Fi scanning</b>: on by default. The board only listens on Wi-Fi.</li>
+        <li><b>Quiet Bluetooth scanning</b>: off by default. When on, the board never sends scan requests and you get fewer device names.</li>
+      </ol></td>
+  </tr>
+</table>
 
 ## Internet services
 
