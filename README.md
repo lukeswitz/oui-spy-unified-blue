@@ -228,17 +228,13 @@ Everything the boards and the phone hear shows up here, live. Tap any row for it
   </tr>
 </table>
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
-      <ol>
-        <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
-        <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
-        <li><b>A camera you drove past</b>: its line shows the signal getting stronger, then weaker.</li>
-        <li><b>With you</b>: the walking icon marks a device that moves with you, such as your own earbuds.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/16-devices.png" alt="Devices grouped by type" />
+<ol>
+  <li><b>Tools</b>: filter, sort, group by type, and group Wi-Fi clients under their network.</li>
+  <li><b>A device type</b>: tap to open it. The handle arranges the sections.</li>
+  <li><b>A camera you drove past</b>: its line shows the signal getting stronger, then weaker.</li>
+  <li><b>With you</b>: the walking icon marks a device that moves with you, such as your own earbuds.</li>
+</ol>
 
 - **Search everything:** on Live, open search and type. Every word must match a MAC, name, maker, reason or node. Chips show the matches in Devices, Alerts, Drones, Nodes and Wardrive. Tap a chip or **Everything** for the results sheet, and tap a match to open it.
 - **Filter by maker:** on Live, tap a vendor in the strip above the list to show only its devices.
@@ -329,15 +325,11 @@ Every session is saved. Open one to replay it on the map, or open its report.
   </tr>
 </table>
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
-      <ol>
-        <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
-        <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/15-report-detail.png" alt="Wardrive report, details" />
+<ol>
+  <li><b>Detections</b>: Flock cameras, drones and watchlist hits.</li>
+  <li><b>Alerts</b>: every alert kind raised during the session. Further down, whether it was uploaded to WiGLE and WDGWars.</li>
+</ol>
 
 ### Accounts and capture database
 
@@ -444,15 +436,11 @@ Each Flock hit gets a tier that says how much evidence matched. Detections → A
 
 Settings → Node → **Flock Detection** adds two board options for more Flock hits.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/29-flock-detection.png" alt="Flock detection settings" />
-      <ol>
-        <li><b>Extended OUI set</b>: roughly doubles the Flock maker prefixes. Expect false positives.</li>
-        <li><b>Report OUI-only WiFi hits</b>: reports a Wi-Fi device on its maker prefix alone. More hits, more false positives.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/29-flock-detection.png" alt="Flock detection settings" />
+<ol>
+  <li><b>Extended OUI set</b>: roughly doubles the Flock maker prefixes. Expect false positives.</li>
+  <li><b>Report OUI-only WiFi hits</b>: reports a Wi-Fi device on its maker prefix alone. More hits, more false positives.</li>
+</ol>
 
 ### Classification
 
@@ -484,18 +472,14 @@ The watchlist holds devices you want the Detector engine to catch. Each rule mat
 - **Rule limits:** a board holds 50 MAC and prefix rules, 50 service UUIDs and 32 other rules.
 - **Watched devices** alert with their own label and sound, even when muted.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/36-your-lists.png" alt="Your Lists settings" />
-      <ol>
-        <li><b>Watchlist</b>: the devices you want alerts on. Add rules or import them.</li>
-        <li><b>My signatures and Signature sets</b>: your saved signatures and the sets you turned on.</li>
-        <li><b>Trusted networks</b>: your own Wi-Fi names, for lookalike warnings.</li>
-        <li><b>Ignore list</b>: devices never logged or alerted on.</li>
-        <li><b>Search all captures</b>: counts, GPS coverage and a search over every stored session and import.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/36-your-lists.png" alt="Your Lists settings" />
+<ol>
+  <li><b>Watchlist</b>: the devices you want alerts on. Add rules or import them.</li>
+  <li><b>My signatures and Signature sets</b>: your saved signatures and the sets you turned on.</li>
+  <li><b>Trusted networks</b>: your own Wi-Fi names, for lookalike warnings.</li>
+  <li><b>Ignore list</b>: devices never logged or alerted on.</li>
+  <li><b>Search all captures</b>: counts, GPS coverage and a search over every stored session and import.</li>
+</ol>
 
 <details>
 <summary>Watchlist rule types</summary>
@@ -551,17 +535,13 @@ The watchlist holds devices you want the Detector engine to catch. Each rule mat
   </tr>
 </table>
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/35-notifications.png" alt="Notification settings" />
-      <ol>
-        <li><b>Foxhunt Proximity</b>: alerts when a foxhunt target's signal crosses its thresholds.</li>
-        <li><b>Milestone Alerts</b>: a notification every 1000 unique networks.</li>
-        <li><b>Repeat for a device and Max per minute</b>: when a device alerts again, and the most alerts a minute.</li>
-        <li><b>Sound</b>: plays an alert sound on the phone. Further down are vibration, alert sounds and muted types.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/35-notifications.png" alt="Notification settings" />
+<ol>
+  <li><b>Foxhunt Proximity</b>: alerts when a foxhunt target's signal crosses its thresholds.</li>
+  <li><b>Milestone Alerts</b>: a notification every 1000 unique networks.</li>
+  <li><b>Repeat for a device and Max per minute</b>: when a device alerts again, and the most alerts a minute.</li>
+  <li><b>Sound</b>: plays an alert sound on the phone. Further down are vibration, alert sounds and muted types.</li>
+</ol>
 
 ## Map and drones
 
@@ -732,11 +712,7 @@ Use an RTL2832U dongle with USB ID `0bda:2832` or `0bda:2838`. Open the SDR scre
   </tr>
 </table>
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/sdr/sdr-scan.png" alt="Scan decoding weather, meter, security and remote devices, each row tagged with its type" /></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/sdr/sdr-scan.png" alt="Scan decoding weather, meter, security and remote devices, each row tagged with its type" />
 
 ### Optional GPS module
 
@@ -749,16 +725,12 @@ A serial GPS (NEO-6M / NEO-8M, 9600 baud) gives the board its own position. Its 
 
 Other boards: set `-DPIN_GPS_RX=` / `-DPIN_GPS_TX=`.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/28-gps-source.png" alt="GPS source settings" />
-      <ol>
-        <li><b>Status</b>: whether the module has a fix, and where positions come from now.</li>
-        <li><b>Phone (default)</b>: records the phone's location.</li>
-        <li><b>On-board GPS module</b>: records from the module, and falls back to the phone when it has no fix.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/28-gps-source.png" alt="GPS source settings" />
+<ol>
+  <li><b>Status</b>: whether the module has a fix, and where positions come from now.</li>
+  <li><b>Phone (default)</b>: records the phone's location.</li>
+  <li><b>On-board GPS module</b>: records from the module, and falls back to the phone when it has no fix.</li>
+</ol>
 
 ### Standalone controls
 
@@ -827,15 +799,11 @@ A mesh lets several boards cover a wider area. One board, the manager, connects 
 - The manager pushes buzzer, LED, alert, alert-sound, ignore-list, wardrive-radio and Wi-Fi-band settings to every node.
 - Any mix of node boards works under one manager.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/32-mesh.png" alt="Mesh settings: mode and status" />
-      <ol>
-        <li><b>Mode</b>: off, broadcast (plaintext) or encrypted (AES-256-GCM).</li>
-        <li><b>Status</b>: the mesh state, messages sent and received, failed key checks, peer slots and nodes heard.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/32-mesh.png" alt="Mesh settings: mode and status" />
+<ol>
+  <li><b>Mode</b>: off, broadcast (plaintext) or encrypted (AES-256-GCM).</li>
+  <li><b>Status</b>: the mesh state, messages sent and received, failed key checks, peer slots and nodes heard.</li>
+</ol>
 
 ### Manage nodes
 
@@ -881,17 +849,13 @@ With a manager connected, Settings → Node → Mesh → **Nodes** lists every n
 
 The app can pass what it finds to other systems: a Meshtastic radio when you have no network, ATAK, a dashboard on your own computer, and a language model that can read the data with your permission.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/37-export.png" alt="Export settings" />
-      <ol>
-        <li><b>Export & Database Backup</b>: WiGLE, JSON and KML exports, and a full backup and restore.</li>
-        <li><b>Saved map areas</b>: offline map areas you downloaded.</li>
-        <li><b>Send to ATAK</b> and <b>Home dashboard</b>: see below.</li>
-        <li><b>OUI database</b>: the maker lookup list, further down.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/37-export.png" alt="Export settings" />
+<ol>
+  <li><b>Export & Database Backup</b>: WiGLE, JSON and KML exports, and a full backup and restore.</li>
+  <li><b>Saved map areas</b>: offline map areas you downloaded.</li>
+  <li><b>Send to ATAK</b> and <b>Home dashboard</b>: see below.</li>
+  <li><b>OUI database</b>: the maker lookup list, further down.</li>
+</ol>
 
 ### Meshtastic radio
 
@@ -990,15 +954,11 @@ Settings → About → **Check for update**. **Check at launch** is off by defau
 - **Over Wi-Fi** (Settings → Node → Firmware): each node downloads its own board's image. Nodes older than v0.6.1 get the board picked in the app.
 - **Over the mesh** (Settings → Node → Mesh → **Fleet control**, or Settings → Node → Firmware): updates the nodes you tick with no Wi-Fi. Load a node build as a `.bin` file or from a link. The app checks the image, the chip and the signature before sending. Nodes update one at a time, each row shows its progress, and **Stop** cancels. Needs a manager on firmware with this feature.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/33-firmware.png" alt="Firmware settings: board info and Wi-Fi network" />
-      <ol>
-        <li><b>Manager info</b>: firmware version, board, ID and free memory.</li>
-        <li><b>WiFi network</b>: the network the board joins to download firmware over Wi-Fi.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/33-firmware.png" alt="Firmware settings: board info and Wi-Fi network" />
+<ol>
+  <li><b>Manager info</b>: firmware version, board, ID and free memory.</li>
+  <li><b>WiFi network</b>: the network the board joins to download firmware over Wi-Fi.</li>
+</ol>
 
 ## Privacy
 
@@ -1030,17 +990,12 @@ Turning it off puts each board back to its own setting.
 - **Mesh encryption** (AES-256-GCM) is off by default. See [Mesh](#mesh).
 - **Mask identifiers on screen** (Settings → Detection & Alerts → Privacy): hides most of each MAC and name on screen. Exports keep full values.
 - **No analytics or crash reporting.** See [Internet services](#internet-services).
-- **Tested:** the Bluetooth address checks passed on a XIAO ESP32-S3 on 2026-11-13. Wi-Fi probe and mesh MACs are not yet checked with an outside receiver.
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/30-radio-privacy.png" alt="Radio privacy settings" />
-      <ol>
-        <li><b>Quiet Wi-Fi scanning</b> (on by default): never sends Wi-Fi probes.</li>
-        <li><b>Quiet Bluetooth scanning</b> (off by default): never asks devices for names.</li>
-      </ol></td>
-  </tr>
-</table>
+<img width="300" src="docs/screenshots/tour/30-radio-privacy.png" alt="Radio privacy settings" />
+<ol>
+  <li><b>Quiet Wi-Fi scanning</b> (on by default): never sends Wi-Fi probes.</li>
+  <li><b>Quiet Bluetooth scanning</b> (off by default): never asks devices for names.</li>
+</ol>
 
 ## Internet services
 
