@@ -2529,6 +2529,26 @@ class BleManager {
 
   void injectDetectionFrame(List<int> data) => _onDetection(data);
 
+  void showDemoBoard({
+    required String nodeId,
+    required String board,
+    required String role,
+    required LinkCharacteristic hardwareConfig,
+    required LinkCharacteristic meshConfig,
+    required LinkCharacteristic deviceInfo,
+  }) {
+    _nodeId = nodeId;
+    _board = board;
+    _role = role;
+    _hardwareConfig = hardwareConfig;
+    _meshConfig = meshConfig;
+    _deviceInfoChar = deviceInfo;
+    _currentState = NodeConnectionState.ready;
+    _connectionState.add(NodeConnectionState.ready);
+  }
+
+  void showDemoMeshStatus(MeshStatusData mesh) => _meshStatusStream.add(mesh);
+
   void _onDetection(List<int> data) {
     _lastRx = DateTime.now();
     if (_importing) {

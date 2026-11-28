@@ -8,6 +8,10 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:oui_spy/core/ble/ble_manager.dart';
+import 'package:oui_spy/core/ble/ble_protocol.dart';
+import 'package:oui_spy/core/ble/gatt_uuids.dart';
+import 'package:oui_spy/core/link/link_characteristic.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' show Guid;
 import 'package:oui_spy/core/gps/gps_provider.dart';
 import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/models/engine.dart';
@@ -161,6 +165,7 @@ void runSmokeIfEnabled(ProviderContainer container) {
         credits: 1450,
         creditsLifetime: 6200,
       ));
+  _showDemoMesh(container);
   final wd = container.read(wardriveProvider);
   var started = false;
   void onWd() {
@@ -172,6 +177,71 @@ void runSmokeIfEnabled(ProviderContainer container) {
 
   wd.addListener(onWd);
   debugPrint('SMOKE: armed, waiting for a running session');
+}
+
+void _showDemoMesh(ProviderContainer container) {
+  const fw = 0x000700;
+  const nodes = [
+    (id: 'A1B2', board: 'xiao_s3', temp: 41, up: 86400, macs: 12, peers: 3),
+    (id: 'C3D4', board: 'xiao_c5', temp: 44, up: 52300, macs: 12, peers: 3),
+    (id: 'E5F6', board: 'tdongle_s3', temp: 39, up: 7200, macs: 8, peers: 2),
+  ];
+  final ble = container.read(bleManagerProvider);
+  ble.showDemoBoard(
+    nodeId: 'OUISPY-0A0B',
+    board: 'xiao_s3',
+    role: 'mgr',
+    hardwareConfig: _DemoCharacteristic(GattUuids.hardwareConfig, const [1, 1, 50, 100, 0, 1, 0, 0]),
+    meshConfig: _DemoCharacteristic(GattUuids.meshConfig, const [1, 0]),
+    deviceInfo: _DemoCharacteristic(GattUuids.deviceInfo, utf8.encode('0.7.0\x00OUISPY-0A0B\x00xiao_s3\x00mgr\x00187392')),
+  );
+  final MeshStatusData status = (
+      enabled: true,
+      peerCount: nodes.length,
+      connectedPeers: nodes.length,
+      rxCount: 18240,
+      txCount: 6115,
+      liveNodes: [
+        for (final n in nodes)
+          (id: n.id, role: 0, activeEngines: 0x07, fwVersion: fw, board: n.board, tempC: n.temp),
+      ],
+      keyFailures: 0,
+      details: [
+        for (final n in nodes)
+          (id: n.id, fwVersion: fw, board: n.board, uptimeS: n.up, filterMacs: n.macs, filterUuids: 4,
+              peerCount: n.peers, ageS: 20),
+      ],
+      filterPush: null,
+      filterOp: null,
+      signal: [
+        (id: 'A1B2', hears: [(id: 'C3D4', rssi: -61), (id: 'E5F6', rssi: -74)]),
+        (id: 'C3D4', hears: [(id: 'A1B2', rssi: -59), (id: 'E5F6', rssi: -70)]),
+        (id: 'E5F6', hears: [(id: 'A1B2', rssi: -76), (id: 'C3D4', rssi: -68)]),
+      ],
+      channel: (current: 1, state: 0, target: 1, epoch: 0, rows: const <MeshChannelRow>[]),
+  );
+  ble.showDemoMeshStatus(status);
+  Timer.periodic(const Duration(seconds: 3), (_) => ble.showDemoMeshStatus(status));
+}
+
+class _DemoCharacteristic implements LinkCharacteristic {
+  _DemoCharacteristic(this.uuid, this._value);
+
+  @override
+  final Guid uuid;
+  final List<int> _value;
+
+  @override
+  Future<List<int>> read({int timeout = 15}) async => _value;
+
+  @override
+  Future<void> write(List<int> value, {bool withoutResponse = false, bool allowLongWrite = false, int timeout = 15}) async {}
+
+  @override
+  Future<bool> setNotifyValue(bool notify, {int timeout = 15, bool forceIndications = false}) async => true;
+
+  @override
+  Stream<List<int>> get onValueReceived => const Stream.empty();
 }
 
 void _inject(ProviderContainer container) {
