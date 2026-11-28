@@ -46,6 +46,12 @@ class WdgwarsProvider extends ChangeNotifier {
   WdgwarsUserStats? get stats => _stats;
   String? get error => _error;
 
+  void showDemoAccount(WdgwarsUserStats stats) {
+    _stats = stats;
+    _isLoggedIn = true;
+    notifyListeners();
+  }
+
   String? _territoryError;
   String? get territoryError => _territoryError;
 

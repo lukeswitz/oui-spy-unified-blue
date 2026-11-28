@@ -49,6 +49,13 @@ class WigleProvider extends ChangeNotifier {
   String get apiName => _apiName;
   bool get rateLimited => _error == WigleApi.rateLimitMessage;
 
+  void showDemoAccount(String apiName, WigleUserStats stats) {
+    _apiName = apiName;
+    _stats = stats;
+    _isLoggedIn = true;
+    notifyListeners();
+  }
+
   final _lookupCache = <String, WigleNetworkRecord?>{};
 
   Future<WigleNetworkRecord?> lookupNetwork(String bssid) async {

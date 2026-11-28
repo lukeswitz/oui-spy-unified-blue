@@ -13,6 +13,10 @@ import 'package:oui_spy/core/link/sdr.dart';
 import 'package:oui_spy/core/models/engine.dart';
 import 'package:oui_spy/core/wardrive_state.dart';
 import 'package:oui_spy/core/watch_alert_log.dart';
+import 'package:oui_spy/core/wdgwars/wdgwars_api.dart';
+import 'package:oui_spy/core/wdgwars/wdgwars_provider.dart';
+import 'package:oui_spy/core/wigle/wigle_api.dart';
+import 'package:oui_spy/core/wigle/wigle_provider.dart';
 
 const _enabled = bool.fromEnvironment('SMOKE');
 const _seconds = int.fromEnvironment('SMOKE_SECS', defaultValue: 40);
@@ -121,6 +125,42 @@ List<int> smokePhoneOdidAdv(double lat, double lon, int counter) {
 
 void runSmokeIfEnabled(ProviderContainer container) {
   if (!_enabled) return;
+  container.read(wigleProvider).showDemoAccount('DemoDriver', WigleUserStats(
+        userName: 'DemoDriver',
+        rank: 18342,
+        monthRank: 2210,
+        discoveredWiFi: 48210,
+        discoveredWiFiGps: 47995,
+        discoveredBt: 12880,
+        discoveredBtGps: 12604,
+        discoveredCell: 312,
+        totalWiFi: 61450,
+        totalBt: 15320,
+        totalCell: 498,
+        last: '20261126-18:42:10',
+        first: '20250314-09:05:51',
+      ));
+  container.read(wdgwarsProvider).showDemoAccount(WdgwarsUserStats(
+        username: 'DemoDriver',
+        wifi: 39120,
+        ble: 9840,
+        aircraft: 612,
+        mesh: 87,
+        total: 49659,
+        badges: const ['First Upload', 'Night Owl', '10k Club'],
+        gang: 'Demo Crew',
+        rank: 412,
+        dailyUsed: 1830,
+        dailyRemaining: 498170,
+        dailyCap: 500000,
+        gangRole: 'member',
+        country: 'GB',
+        joined: '2025-03-14',
+        recentToday: 214,
+        recent7d: 3120,
+        credits: 1450,
+        creditsLifetime: 6200,
+      ));
   final wd = container.read(wardriveProvider);
   var started = false;
   void onWd() {
