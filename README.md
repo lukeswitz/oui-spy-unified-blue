@@ -1036,8 +1036,8 @@ Turning it off puts each board back to its own setting.
   <tr>
     <td width="50%" valign="top"><img width="300" src="docs/screenshots/tour/30-radio-privacy.png" alt="Radio privacy settings" />
       <ol>
-        <li><b>Quiet Wi-Fi scanning</b>: on by default. The board only listens on Wi-Fi.</li>
-        <li><b>Quiet Bluetooth scanning</b>: off by default. When on, the board never sends scan requests and you get fewer device names.</li>
+        <li><b>Quiet Wi-Fi scanning</b> (on by default): the board only listens and never sends Wi-Fi probe requests.</li>
+        <li><b>Quiet Bluetooth scanning</b> (off by default): the board only listens and never asks Bluetooth devices for their names.</li>
       </ol></td>
   </tr>
 </table>

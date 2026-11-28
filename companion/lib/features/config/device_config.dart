@@ -979,8 +979,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
             child: Text(
-                'Each switch keeps the board quiet while it is on. Turn one off and the board transmits to find more, '
-                'and anything listening nearby can see it.',
+                'Each switch stops the board from transmitting while it scans.',
                 style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
           ),
           if (rxOnly)
@@ -992,7 +991,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ConfigToggleRow(
             icon: Icons.wifi_off,
             label: 'Quiet Wi-Fi scanning',
-            subtitle: 'On (default): the board only listens on Wi-Fi. Off: wardrive and Flock Wi-Fi send wildcard probe requests (random source MAC) to find hidden and slow-beaconing APs, and those requests show the board is there.',
+            subtitle: 'The board only listens and never sends Wi-Fi probe requests.',
             color: AppTheme.accent,
             value: (policy & BleProtocol.radioPolicyActiveProbe) == 0,
             onChanged: rxOnly ? null : (v) {
@@ -1005,7 +1004,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ConfigToggleRow(
             icon: Icons.bluetooth_disabled,
             label: 'Quiet Bluetooth scanning',
-            subtitle: 'On: the board never sends scan requests, so nearby devices never see its address, but you get fewer device names because names often come only in scan replies. Off (default): the board asks each device for its scan reply. Applies when an engine next starts.',
+            subtitle: 'The board only listens and never asks Bluetooth devices for their names.',
             color: AppTheme.accent,
             value: (policy & BleProtocol.radioPolicyPassiveBle) != 0,
             onChanged: rxOnly ? null : (v) {
