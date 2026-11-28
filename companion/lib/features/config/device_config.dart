@@ -979,7 +979,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
             child: Text(
-                'Each switch stops the board from transmitting while it scans.',
+                'On = the board only listens.',
                 style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
           ),
           if (rxOnly)
@@ -991,7 +991,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ConfigToggleRow(
             icon: Icons.wifi_off,
             label: 'Quiet Wi-Fi scanning',
-            subtitle: 'The board only listens and never sends Wi-Fi probe requests.',
+            subtitle: 'Never sends Wi-Fi probes.',
             color: AppTheme.accent,
             value: (policy & BleProtocol.radioPolicyActiveProbe) == 0,
             onChanged: rxOnly ? null : (v) {
@@ -1004,7 +1004,7 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
           ConfigToggleRow(
             icon: Icons.bluetooth_disabled,
             label: 'Quiet Bluetooth scanning',
-            subtitle: 'The board only listens and never asks Bluetooth devices for their names.',
+            subtitle: 'Never asks devices for names.',
             color: AppTheme.accent,
             value: (policy & BleProtocol.radioPolicyPassiveBle) != 0,
             onChanged: rxOnly ? null : (v) {
