@@ -617,6 +617,7 @@
       <div class="complete-msg" id="completeMsg">
         FIRMWARE DEPLOYED // SUCCESS
         <span class="restart-note"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Unplug and replug the board for the update to take effect.</span>
+        <span class="restart-note">Pair it in the app with the PIN <b>123456</b>. The app then asks you to set your own.</span>
       </div>
 
       <div class="log" id="log"></div>
@@ -1105,6 +1106,7 @@
         progressFill.classList.add('complete');
         setStatus('FLASH COMPLETE', 'done');
         log('Flash complete.', 'success');
+        log('Pair it in the app with the PIN 123456. The app then asks you to set your own.', 'success');
 
         await transport.disconnect();
 
