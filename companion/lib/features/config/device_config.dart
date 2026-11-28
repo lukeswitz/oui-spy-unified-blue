@@ -1014,6 +1014,11 @@ class _DeviceConfigScreenState extends ConsumerState<DeviceConfigScreen> {
               _writeHardwareConfig();
             },
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+            child: Text('The board\'s Wi-Fi and Bluetooth addresses are randomized for privacy.',
+                style: TextStyle(color: AppTheme.of(context).textDim, fontSize: 13)),
+          ),
         ],
 
         if (part == _HwPart.offline) ...[
